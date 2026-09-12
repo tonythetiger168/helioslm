@@ -1,0 +1,38 @@
+# Core dependencies
+torch>=2.0.0
+numpy>=1.24.0
+
+# P0 FIX: Tokenizer (production-grade)
+sentencepiece>=0.1.99
+transformers>=4.35.0
+
+# P0 FIX: FAISS for vector search (required for RAG + Memory)
+faiss-cpu>=1.7.4
+
+# P0 FIX: FlashAttention (requires CUDA; install separately)
+# flash-attn>=2.3.0  # pip install flash-attn --no-build-isolation
+
+# Training & distributed training
+deepspeed>=0.12.0
+transformers>=4.35.0
+accelerate>=0.24.0
+
+# Data processing
+datasets>=2.14.0
+webdataset>=0.2.0
+
+# Serving
+vllm>=0.2.0
+fastapi>=0.104.0
+uvicorn>=0.24.0
+
+# Development
+pytest>=7.4.0
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.7.0
+bandit>=1.7.0
+
+# Utilities
+tqdm>=4.65.0
+pyyaml>=6.0

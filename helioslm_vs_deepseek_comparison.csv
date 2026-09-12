@@ -1,0 +1,33 @@
+﻿維度,DeepSeek V3/R1,HeliosLM v4.1,HeliosLM 優勢,HeliosLM 劣勢
+注意力架構,MLA (Multi-Head Latent Attention),KDA (Kimi Delta Attention) = GQA + FlashAttn,✅ GQA 實現簡單，與現有框架兼容,❌ GQA 壓縮率遠低於 MLA
+KV-Cache 策略,低秩潛在向量壓縮 (c_KV),"傳統 KV-Cache (K, V 分離存儲)",✅ 實現簡單，無額外投影開銷,❌ 存儲完整 K/V，內存佔用大
+KV-Cache 壓縮率,93.3% 減少 (vs MHA),GQA 減少 ~50% (8 頭 vs 96 頭),✅ 實現簡單，無性能損失,❌ 僅 ~50% vs MLA 的 93.3%
+RoPE 處理,Decoupled RoPE (部分維度無 RoPE),標準 RoPE (全維度),✅ 標準實現，廣泛兼容,❌ 全維度 RoPE 限制低秩壓縮
+Q/K/V 投影方式,低秩投影: W_DKV → c_KV → W_UK/W_UV,"線性投影: W_Q, W_K, W_V 獨立",✅ 無壓縮/解壓縮延遲,❌ 無法利用低秩壓縮優勢
+MoE 總專家數,256 專家,896 專家,✅ 更多專家 (896 vs 256)，容量更大,❌ 專家數多但無設備並行優化
+MoE 激活專家數,8 路由 + 1 共享 = 9 激活,16 激活 (top-k),✅ 更多激活專家，表達力更強,❌ 激活多導致通信開銷大
+路由函數,Sigmoid + 歸一化 (非 Softmax),Softmax + 動態 k 調整,✅ 動態調整，靈活性更高,❌ Softmax 負載均衡不如 Sigmoid
+共享專家,1 個共享專家 (始終激活),4 個共享專家,✅ 更多共享專家，穩定性更好,❌ 共享專家無設備親和性
+負載均衡策略,輔助損失 + 設備限制路由,輔助損失 + 動態稀疏度,✅ 動態稀疏度減少無意義計算,❌ 無設備限制路由
+動態稀疏度,無 (固定 top-k),有 (難度估計器調整 k),✅ 根據輸入難度自適應,❌ 動態 k 增加路由不確定性
+推測解碼,MTP (Multi-Token Prediction) 模塊,Draft Model + Tree Attention Verifier,✅ Tree Attention 可驗證多條路徑,❌ Draft Model 無 KV-Cache
+多 Token 預測,同時預測 2 個 token (85-90% 接受率),無 (單 token 預測),❌ 無,❌ 無 MTP，推理吞吐量低
+連續批處理,vLLM 連續批處理 (PagedAttention),自定義連續批處理 (桶分組),✅ 桶分組減少填充浪費,❌ 非 PagedAttention，內存碎片
+量化支持,FP8/INT8/AWQ/GPTQ,INT4/INT8 (自定義量化器),✅ 自定義量化器，可控性高,❌ 無 FP8/AWQ/GPTQ 標準實現
+KV-Cache 壓縮,MLA 本身即壓縮 + 量化,H2O + StreamingLLM 混合壓縮,✅ H2O 保留重要 token,❌ 壓縮後需重建，有損
+訓練精度,FP8 混合精度,bfloat16,✅ bfloat16 穩定性好,❌ 無 FP8，訓練效率低
+分散式策略,DualPipe + 專家並行 + 16 路專家並行,DeepSpeed ZeRO-1/2/3 + FSDP 配置,✅ 配置齊全，多策略支持,❌ 無 DualPipe/專家並行
+數據規模,14.8T tokens,未指定 (需數據管道),✅ 多模態數據管道完整,❌ 無大規模預訓練數據
+RL 訓練,GRPO (Group Relative Policy Optimization) + 純 RL,無原生 RL (僅 SFT 訓練器),❌ 無原生 RL 訓練,❌ 無 GRPO/DAPO 等 RL 算法
+視覺編碼器,無原生多模態 (V3 純文本),"ViT (224x224, 可變解析度)",✅ 原生支持，輸入層融合,❌ ViT 無 NaViT 任意解析度
+音頻編碼器,無,Conformer (80 mel-bins),✅ 原生支持,❌ Conformer 無流式處理
+融合位置,N/A,Embedding 層拼接 (LLaVA 風格),✅ 標準 LLaVA 架構,❌ 融合位置可能干擾文本位置編碼
+推理模型,R1: 純 RL 湧現推理 (CoT 自我發現),MCTS 搜索 + 自適應推理控制器,✅ MCTS 顯式搜索最優路徑,❌ MCTS 無真正語義 action
+工具使用,通過提示工程 (無原生工具架構),MCP 工具路由 + 代碼執行驗證器,✅ 原生 MCP 架構，安全執行,❌ 工具執行為模擬，無真實 MCP
+自我反思,RL 驅動的自我驗證,Self-Reflection 模塊 + 重試邏輯,✅ 顯式反射模塊,❌ 反射無法自動改進策略
+對齊方法,RLHF + 規則過濾,Constitutional AI + 分類器,✅ Constitutional 規則可配置,❌ 無 RLHF 獎勵模型訓練
+干預機制,輸出後過濾 (無生成中干預),生成中干預 (檢測有害即重定向),✅ 生成中即時干預,❌ 干預可能過度保守
+API 兼容性,OpenAI-compatible API (官方/第三方),OpenAI-compatible REST API (原生),✅ 原生實現，無依賴,❌ 無 vLLM 集成，吞吐量低
+容器化,Docker (社區),"Dockerfile (原生, CUDA 12.1)",✅ 原生 Dockerfile,❌ 無優化鏡像層
+K8s 支持,K8s (社區),K8s Deployment + Service + HPA (原生),✅ 原生 K8s manifest,❌ 無 Helm chart
+自動擴展,HPA (社區),"HPA (基於 CPU/內存, 原生)",✅ 原生 HPA 配置,❌ HPA 無 GPU 指標

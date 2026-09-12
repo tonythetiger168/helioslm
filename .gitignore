@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+
+# PyTorch
+*.pth
+*.pt
+*.ckpt
+checkpoints/
+models/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Zip packages (keep source)
+*.zip
+
+# Large files
+*.bin
+*.safetensors

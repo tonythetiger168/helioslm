@@ -1,0 +1,188 @@
+{
+  "ranking_2026_08": [
+    {
+      "rank": 1,
+      "model": "Claude Fable 5",
+      "developer": "Anthropic",
+      "index_score": 100,
+      "open_source": false,
+      "price_input": 10.0,
+      "price_output": 50.0,
+      "speed_tok_s": null
+    },
+    {
+      "rank": 2,
+      "model": "Claude Mythos 5",
+      "developer": "Anthropic",
+      "index_score": 100,
+      "open_source": false,
+      "price_input": null,
+      "price_output": null,
+      "speed_tok_s": null
+    },
+    {
+      "rank": 3,
+      "model": "Claude Opus 5",
+      "developer": "Anthropic",
+      "index_score": 99,
+      "open_source": false,
+      "price_input": 5.0,
+      "price_output": 25.0,
+      "speed_tok_s": 56
+    },
+    {
+      "rank": 4,
+      "model": "GPT-5.6 Sol",
+      "developer": "OpenAI",
+      "index_score": 98,
+      "open_source": false,
+      "price_input": 4.0,
+      "price_output": 20.0,
+      "speed_tok_s": 72
+    },
+    {
+      "rank": 5,
+      "model": "Kimi K3",
+      "developer": "Moonshot AI",
+      "index_score": 60,
+      "open_source": true,
+      "price_input": 3.0,
+      "price_output": 15.0,
+      "speed_tok_s": 37
+    }
+  ],
+  "benchmark_detailed": {
+    "GPQA_Diamond": {
+      "Fable_5": 92.6,
+      "Opus_5": null,
+      "GPT_5_6": 94.1,
+      "K3": 93.5,
+      "K3_plus_target": 95.0
+    },
+    "SWE_bench_Verified": {
+      "Fable_5": 95.5,
+      "Opus_5": 96.0,
+      "GPT_5_6": 90.0,
+      "K3": null,
+      "K3_plus_target": 96.0
+    },
+    "Terminal_Bench_2_1": {
+      "Fable_5": 88.0,
+      "Opus_5": null,
+      "GPT_5_6": 88.8,
+      "K3": 88.3,
+      "K3_plus_target": 90.0
+    },
+    "HLE_Full": {
+      "Fable_5": 53.3,
+      "Opus_5": null,
+      "GPT_5_6": 44.5,
+      "K3": 43.5,
+      "K3_plus_target": 50.0
+    },
+    "DeepSWE": {
+      "Fable_5": 70.0,
+      "Opus_5": null,
+      "GPT_5_6": 73.0,
+      "K3": 67.5,
+      "K3_plus_target": 75.0
+    },
+    "Frontend_Code_Arena": {
+      "Fable_5": 1631,
+      "Opus_5": null,
+      "GPT_5_6": 1618,
+      "K3": 1679,
+      "K3_plus_target": 1700
+    },
+    "BrowseComp": {
+      "Fable_5": 88.0,
+      "Opus_5": null,
+      "GPT_5_6": 90.4,
+      "K3": 91.2,
+      "K3_plus_target": 93.0
+    },
+    "OSWorld_2_0": {
+      "Fable_5": 66.1,
+      "Opus_5": null,
+      "GPT_5_6": 62.6,
+      "K3": 58.3,
+      "K3_plus_target": 65.0
+    }
+  },
+  "k3_weaknesses": [
+    {
+      "area": "速度",
+      "k3_value": "37 tok/s",
+      "gap_vs_leader": "-48% (vs GPT-5.6 72)",
+      "severity": "高"
+    },
+    {
+      "area": "幻觉率",
+      "k3_value": "51%",
+      "gap_vs_leader": "+20% (Fable 5 约31%)",
+      "severity": "极高"
+    },
+    {
+      "area": "HLE 硬推理",
+      "k3_value": "43.5",
+      "gap_vs_leader": "-18% (vs Fable 5 53.3)",
+      "severity": "高"
+    },
+    {
+      "area": "DeepSWE",
+      "k3_value": "67.5",
+      "gap_vs_leader": "-8% (vs GPT-5.6 73)",
+      "severity": "中"
+    },
+    {
+      "area": "SWE-bench Verified",
+      "k3_value": "未公布",
+      "gap_vs_leader": "缺失",
+      "severity": "高"
+    },
+    {
+      "area": "Vals Index v2",
+      "k3_value": "57.8%",
+      "gap_vs_leader": "-14% (vs Opus 5 67.2%)",
+      "severity": "高"
+    },
+    {
+      "area": "交互延迟",
+      "k3_value": "44分钟/任务",
+      "gap_vs_leader": "4x (vs GPT-5.6 <10分钟)",
+      "severity": "极高"
+    }
+  ],
+  "k3_strengths": [
+    {
+      "area": "前端代码",
+      "k3_value": "#1 (1679 Elo)",
+      "advantage": "超越 Fable 5 和 GPT-5.6"
+    },
+    {
+      "area": "性价比",
+      "k3_value": "$2.31/M blended",
+      "advantage": "比 Opus 5 低 40%，比 Fable 5 低 77%"
+    },
+    {
+      "area": "开源",
+      "k3_value": "权重公开",
+      "advantage": "前5中唯一开源"
+    },
+    {
+      "area": "长上下文",
+      "k3_value": "1M tokens",
+      "advantage": "输出长度无对手"
+    },
+    {
+      "area": "BrowseComp",
+      "k3_value": "91.2",
+      "advantage": "领先 GPT-5.6"
+    },
+    {
+      "area": "SWE-Marathon",
+      "k3_value": "42.0",
+      "advantage": "领先 Fable 5 (35.0)"
+    }
+  ]
+}

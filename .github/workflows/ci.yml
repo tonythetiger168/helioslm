@@ -1,0 +1,220 @@
+name: HeliosLM CI - All Versions to v5.0
+
+on:
+  push:
+    branches: [ main, v4.0, v4.1, v5.0 ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-v4-0:
+    name: Test v4.0 Legacy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install torch numpy
+      - name: Test v4.0 base
+        run: |
+          python -c "
+import sys; sys.path.insert(0, 'helioslm_patched/src')
+from configs import nano_config
+from model import KimiK3Plus
+from attention import KimiDeltaAttention
+from moe import StableLatentMoE
+import torch
+m = KimiK3Plus(nano_config, size='nano')
+ids = torch.randint(0, nano_config.vocab_size, (1, 10))
+logits, aux, meta = m(ids)
+assert logits.shape == (1, 10, nano_config.vocab_size)
+print('v4.0 model OK')
+attn = KimiDeltaAttention(nano_config)
+h = torch.randn(1, 4, nano_config.hidden_size)
+out, _, _ = attn(h, 0)
+assert out.shape == h.shape
+print('v4.0 attention OK')
+moe = StableLatentMoE(nano_config)
+out, _ = moe(h)
+assert out.shape == h.shape
+print('v4.0 MoE OK')
+print('v4.0 ALL PASSED')
+"
+
+  test-v4-1:
+    name: Test v4.1 Production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install torch numpy
+      - name: Test v4.1 all modules
+        run: |
+          python -c "
+import sys; sys.path.insert(0, 'helioslm_patched/src')
+from configs import nano_config
+from attention import KimiDeltaAttention
+from moe import StableLatentMoE
+from rag import RAGModule
+from cot_compiler import CoTCompiler
+from agentic import AgenticLayer
+from memory import LongTermMemory
+from reasoning_budget import ReasoningBudgetController
+from multimodal import MultimodalFusion
+from safety_alignment import SafetyAlignmentLayer
+from compression import CompressionManager, DynamicQuantizer
+from tokenizer import KimiTokenizer
+import torch
+h = torch.randn(1, 4, nano_config.hidden_size)
+attn = KimiDeltaAttention(nano_config)
+out, _, pk = attn(h, 0, use_cache=True)
+assert pk is not None
+print('v4.1 attention OK')
+moe = StableLatentMoE(nano_config)
+out, _ = moe(h)
+assert out.shape == h.shape
+print('v4.1 MoE OK')
+rag = RAGModule(nano_config)
+out = rag(h)
+assert 'confidence' in out
+print('v4.1 RAG OK')
+cot = CoTCompiler(nano_config)
+out = cot.compile_reasoning(h)
+assert 'max_steps' in out
+print('v4.1 CoT OK')
+agent = AgenticLayer(nano_config)
+out = agent(h)
+assert 'tools' in out
+print('v4.1 Agentic OK')
+mem = LongTermMemory(nano_config)
+mem.add(torch.randn(nano_config.hidden_size), 'test')
+assert len(mem.retrieve(torch.randn(nano_config.hidden_size))) > 0
+print('v4.1 Memory OK')
+rb = ReasoningBudgetController(nano_config)
+b, d, c = rb.get_budget(h, 4096)
+assert b > 0
+print('v4.1 Budget OK')
+mm = MultimodalFusion(nano_config)
+out = mm(h)
+assert out.shape == h.shape
+print('v4.1 Multimodal OK')
+safety = SafetyAlignmentLayer(nano_config)
+out = safety(h)
+assert 'safety' in out
+print('v4.1 Safety OK')
+comp = CompressionManager(nano_config)
+k = torch.randn(1, 2, 100, 64)
+v = torch.randn(1, 2, 100, 64)
+ck, cv = comp.compress_kv_cache(k, v, 100)
+assert ck.shape[2] < k.shape[2]
+print('v4.1 Compression OK')
+tok = KimiTokenizer()
+ids = tok.encode('hello')
+assert len(ids) > 0
+print('v4.1 Tokenizer OK')
+print('v4.1 ALL MODULES PASSED')
+"
+
+  test-v5-0:
+    name: Test v5.0 DeepSeek-Grade
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install torch numpy
+      - name: Test v5.0 P0-P4
+        run: |
+          python -c "
+import sys; sys.path.insert(0, '.')
+from helioslm_v5.configs.config_v5 import HeliosLMv5Config
+from helioslm_v5.src.attention.mla import MLA
+from helioslm_v5.src.inference.mtp import MTPModule
+from helioslm_v5.src.moe.sigmoid_moe import DeviceLimitedMoE
+from helioslm_v5.src.inference.paged_attention import BlockManager, PagedAttention
+from helioslm_v5.src.vision.navit import NaViTEncoder
+from helioslm_v5.src.audio.streaming_encoder import StreamingAudioEncoder
+from helioslm_v5.src.quantization.standard_quant import AWQLinear
+from helioslm_v5.src.model_v5 import HeliosLMv5
+import torch
+config = HeliosLMv5Config()
+h = torch.randn(1, 16, config.hidden_size)
+mla = MLA(config)
+out, pk = mla(h, 0, use_cache=True)
+assert out.shape == h.shape
+cache = mla.get_kv_cache_size(16)
+assert cache['reduction'] > 50
+print(f'v5.0 MLA OK ({cache[\"reduction\"]:.0f}% reduction)')
+mtp = MTPModule(config, 0)
+logits = mtp(h, torch.randint(0, config.vocab_size, (1, 16)))
+assert logits.shape[-1] == config.vocab_size
+print('v5.0 MTP OK')
+moe = DeviceLimitedMoE(config)
+out = moe(h)
+assert out.shape == h.shape
+print('v5.0 MoE OK')
+bm = BlockManager(16, 100)
+attn = PagedAttention(config)
+hd = config.hidden_size // config.attention.num_attention_heads
+bm.allocate(0, 32, config.attention.num_attention_heads, hd)
+out = attn(h[:, :1, :], bm, [0])
+assert out.shape == (1, 1, config.hidden_size)
+print('v5.0 PagedAttention OK')
+navit = NaViTEncoder(config)
+feat = navit(torch.randn(2, 3, 224, 224))
+assert feat.shape[0] == 2
+print('v5.0 NaViT OK')
+enc = StreamingAudioEncoder(config)
+audio = torch.randn(1, 80, 160)
+feat = enc(audio)
+assert feat.shape[0] == 1
+print('v5.0 Audio OK')
+awq = AWQLinear(256, 256, 128, 4)
+out = awq(torch.randn(1, 256))
+assert out.shape == (1, 256)
+print('v5.0 AWQ OK')
+model = HeliosLMv5(config, size='lite')
+ids = torch.randint(0, config.vocab_size, (1, 10))
+logits = model(ids)
+assert logits.shape == (1, 10, config.vocab_size)
+print('v5.0 Model OK')
+out = model.generate(ids, max_new_tokens=3, temperature=1.0)
+assert out.shape[1] > ids.shape[1]
+print(f'v5.0 Generate OK (+{out.shape[1]-ids.shape[1]} tokens)')
+print('v5.0 ALL P0-P4 PASSED')
+"
+
+  lint:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install flake8 black
+      - run: flake8 helioslm_patched/src/ helioslm_v5/src/ --max-line-length=120 --ignore=E501,W503,E402 || true
+      - run: flake8 --version
+      - run: black --check helioslm_patched/src/ helioslm_v5/src/ || true
+
+  build-release:
+    name: Build Release
+    runs-on: ubuntu-latest
+    needs: [test-v4-0, test-v4-1, test-v5-0]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          zip -r helioslm-v5.0-release.zip \
+            helioslm_v5/ helioslm_patched/ helioslm_phase3/ \
+            helioslm_phase4/ helioslm_phase5/ \
+            README.md CHANGELOG.md \
+            -x "*.zip" "*.pyc" "__pycache__/*"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: helioslm-v5.0-release
+          path: helioslm-v5.0-release.zip

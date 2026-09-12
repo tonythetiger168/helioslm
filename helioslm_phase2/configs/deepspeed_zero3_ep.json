@@ -1,0 +1,47 @@
+{
+  "bf16": {
+    "enabled": true
+  },
+  "zero_optimization": {
+    "stage": 3,
+    "offload_optimizer": {
+      "device": "nvme",
+      "nvme_path": "/nvme/offload",
+      "pin_memory": true
+    },
+    "offload_param": {
+      "device": "nvme",
+      "nvme_path": "/nvme/offload",
+      "pin_memory": true
+    },
+    "overlap_comm": true,
+    "contiguous_gradients": true,
+    "sub_group_size": 1e9,
+    "reduce_bucket_size": "auto",
+    "stage3_prefetch_bucket_size": "auto",
+    "stage3_param_persistence_threshold": "auto",
+    "stage3_max_live_parameters": 1e9,
+    "stage3_max_reuse_distance": 1e9,
+    "stage3_gather_16bit_weights_on_model_save": true
+  },
+  "moe": {
+    "enabled": true,
+    "ep_size": 8,
+    "moe_min_capacity": 4,
+    "moe_token_dropping": false,
+    "moe_loss_coeff": 0.01
+  },
+  "gradient_accumulation_steps": 4,
+  "gradient_clipping": 1.0,
+  "steps_per_print": 100,
+  "train_batch_size": "auto",
+  "train_micro_batch_size_per_gpu": 1,
+  "wall_clock_breakdown": false,
+  "flops_profiler": {
+    "enabled": false,
+    "profile_step": 10,
+    "module_depth": -1,
+    "top_modules": 3,
+    "detailed": true
+  }
+}
