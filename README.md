@@ -1,4 +1,4 @@
-# HeliosLM v5.6 — DeepSeek/K3-Style LLM
+# HeliosLM v5.7 — DeepSeek/K3-Style LLM
 
 A PyTorch reference implementation of a DeepSeek-V3-style LLM stack, built and hardened through four rounds of adversarial code review plus a v5.5 feature wave aligned with Kimi-K3-class architecture mechanisms (see `docs/`).
 
@@ -50,6 +50,7 @@ integration_test_v51.py
 - **v5.4** — Packed-sequence document isolation, engine edge cases, full hardening sweep
 - **v5.5** — K3-aligned feature wave: hybrid Gated-Delta linear attention, LatentMoE, quantile balancing, attention residuals, SiTU-GLU (34 unit tests)
 - **v5.6** (2026-09-13) — Daily-analysis improvement round: hybrid packed-sequence training support (doc-boundary state reset), MXFP4 quantization, Muon optimizer, test-suite calibration (36 unit tests)
+- **v5.7** (2026-09-13) — Daily round 2: RoPE scaling (linear/NTK), FP8 latent KV cache, Hyper-Connections (simplified mHC), QAT straight-through fake-quant training (40 unit tests)
 
 See `helioslm_v5/CHANGELOG.md` and `docs/` for details.
 
