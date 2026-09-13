@@ -60,13 +60,42 @@ class RotaryEmbedding(nn.Module):
 
     _INIT_BUDGET = 8192
 
-    def __init__(self, dim, max_position_embeddings, base=10000.0):
+    def __init__(self, dim, max_position_embeddings, base=10000.0, scaling=None):
         super().__init__()
         if dim % 2 != 0:
             raise ValueError(f"rotary dim must be even, got {dim}")
         self.dim = dim
         self.base = base
+        self.scaling = scaling
+        if scaling is not None:
+            stype = scaling["type"]
+            factor = float(scaling["factor"])
+            if factor < 1.0:
+                raise ValueError(
+                    f"rope scaling factor must be >= 1.0, got {factor}"
+                )
+            if stype == "linear":
+                # Position interpolation: position p behaves like p/factor.
+                # This is a UNIFORM frequency scaling (every inv_freq_k
+                # divided by factor), which is NOT expressible as a base
+                # rescale (base^m would weight high frequencies more), so
+                # inv_freq is scaled directly below.
+                pass
+            elif stype == "ntk":
+                # Dynamic-NTK style: rescale the base so the HIGHEST
+                # frequency sees the full stretch while lower frequencies
+                # are progressively less affected. inv_freq_k = base'^(-2k/d)
+                # with base' = base * factor^(d/(d-2)); k=0 gives base'^0 = 1
+                # exactly, so the lowest frequency is untouched.
+                base = base * factor ** (dim / (dim - 2))
+            else:
+                raise ValueError(
+                    f"unknown rope scaling type {stype!r}; expected "
+                    "'linear' or 'ntk'"
+                )
         inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float() / dim))
+        if scaling is not None and scaling["type"] == "linear":
+            inv_freq = inv_freq / float(scaling["factor"])
         self.register_buffer("inv_freq", inv_freq)
         self.max_seq_len = 0
         budget = min(max_position_embeddings, self._INIT_BUDGET)
@@ -138,6 +167,14 @@ class MLA(nn.Module):
       - False: expanded per-head cache (k_nope, k_rope, v), the v5.1
         behaviour, kept as fallback and numerical reference.
 
+    ``config.attention.kv_cache_dtype`` (v5.7) selects the STORAGE dtype of
+    c_kv in absorbed mode: "auto" keeps the compute dtype; "fp8" stores the
+    latent on the float8_e4m3fn grid (saturating cast, scale-free, <= 6.25%
+    relative element error) — the tuple layout is unchanged and dim 2 is
+    still the sequence length, so rollback clone/slice and engine
+    watermarking keep working; attention always computes over the same
+    quantized values that are stored.
+
     Both modes are mathematically identical up to floating-point
     reassociation (verified by the test suite at atol 1e-4).
     """
@@ -184,7 +221,29 @@ class MLA(nn.Module):
         # Output projection consumes per-head values of width v_head_dim
         self.o_proj = nn.Linear(self.num_heads * self.v_head_dim, self.hidden_size, bias=False)
 
-        self.rope = RotaryEmbedding(self.rope_head_dim, config.max_position_embeddings)
+        self.rope = RotaryEmbedding(
+            self.rope_head_dim, config.max_position_embeddings,
+            scaling=getattr(config.attention, "rope_scaling", None),
+        )
+
+        # v5.7: fp8 KV-cache storage (absorbed mode only, validated eagerly
+        # in the config; the expanded mode raises below as a loud fallback).
+        self.kv_cache_dtype = getattr(config.attention, "kv_cache_dtype", "auto")
+        if self.kv_cache_dtype == "fp8":
+            if not self.use_absorption:
+                raise ValueError(
+                    "kv_cache_dtype='fp8' is only implemented for the "
+                    "absorbed (latent) cache; the expanded per-head cache "
+                    "has no latent to quantize — set "
+                    "attention.use_absorption=True or kv_cache_dtype='auto'"
+                )
+            try:
+                torch.zeros(1).to(torch.float8_e4m3fn)
+            except (TypeError, RuntimeError) as exc:
+                raise NotImplementedError(
+                    "kv_cache_dtype='fp8' requires a torch build with "
+                    "float8_e4m3fn support"
+                ) from exc
 
         self.norm_q = RMSNorm(self.q_lora_rank, eps=config.rms_norm_eps)
         self.norm_kv = RMSNorm(self.kv_latent_dim, eps=config.rms_norm_eps)
@@ -381,14 +440,29 @@ class MLA(nn.Module):
             hidden_states, position_ids
         )
         c_kv = c_kv.unsqueeze(1)  # [B, 1, seq, d_c] — shared across heads
+        compute_dtype = hidden_states.dtype
 
-        # Append to the latent cache (dim 2 = sequence length).
+        # Append to the latent cache (dim 2 = sequence length). An fp8-stored
+        # past cache upcasts here; it is re-rounded to the E4M3 grid below
+        # together with the new tokens, so cached decode sees exactly what
+        # prefill stored (no double-quantization drift).
         if past_key_value is not None:
             past_c_kv, past_k_rope = past_key_value
-            c_kv = torch.cat([past_c_kv, c_kv], dim=2)
+            c_kv = torch.cat([past_c_kv.to(compute_dtype), c_kv], dim=2)
             k_rope = torch.cat([past_k_rope, k_rope], dim=2)
 
-        present_key_value = (c_kv, k_rope) if use_cache else None
+        stored_c_kv = c_kv
+        if self.kv_cache_dtype == "fp8":
+            # Saturating cast onto the E4M3 grid, scale-free (post-RMSNorm
+            # latents are O(1); 3 mantissa bits -> <= 6.25% relative element
+            # error). No sidecar scale tensor: cache consumers (MTP
+            # rollback clone/slice, engine watermark cat) only need to
+            # preserve dtype. Attention always runs over the SAME quantized
+            # values that are stored (current tokens included).
+            stored_c_kv = c_kv.detach().to(torch.float8_e4m3fn)
+            c_kv = stored_c_kv.to(compute_dtype)
+
+        present_key_value = (stored_c_kv, k_rope) if use_cache else None
         kv_len = c_kv.shape[2]
 
         w_uk, w_uv = self._w_uk_w_uv()  # [H, d_nope, d_c], [H, d_v, d_c]

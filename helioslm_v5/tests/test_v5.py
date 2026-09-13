@@ -4,7 +4,8 @@ Rewritten for v5.1 after the full code review and extended since (v5.2: true
 GPTQ calibration, audio sliding window; v5.3: AWQ calibration repair;
 v5.4: packed-position cross-document isolation, input-validation coverage;
 v5.5: hybrid GatedDeltaAttention + state-cache rollback, LatentMoE,
-quantile balancing, attention residuals, SiTU-GLU):
+quantile balancing, attention residuals, SiTU-GLU; v5.7: RoPE scaling,
+FP8 KV cache, Hyper-Connections, QAT):
 every test exercises the real module with numerical assertions (not just
 shapes), and any failure makes the process exit non-zero.
 
@@ -2095,6 +2096,252 @@ def test_mtp_hybrid_rollback():
           "rolled back)")
 
 
+# ----------------------------------------------------------------------
+# v5.7: RoPE scaling (linear / NTK), FP8 KV cache, Hyper-Connections, QAT
+# ----------------------------------------------------------------------
+def test_rope_scaling():
+    from helioslm_v5.src.attention.mla import RotaryEmbedding
+    dim = 8
+    r0 = RotaryEmbedding(dim, 2048)
+
+    # factor == 1 must be exactly vanilla
+    r1 = RotaryEmbedding(dim, 2048, scaling={"type": "linear", "factor": 1.0})
+    r2 = RotaryEmbedding(dim, 2048, scaling={"type": "ntk", "factor": 1.0})
+    assert torch.equal(r0.inv_freq, r1.inv_freq), "linear factor=1 != vanilla"
+    assert torch.equal(r0.inv_freq, r2.inv_freq), "ntk factor=1 != vanilla"
+
+    # linear: position p with factor f behaves like vanilla position p/f
+    f = 4.0
+    rl = RotaryEmbedding(dim, 2048, scaling={"type": "linear", "factor": f})
+    pos = torch.arange(2 * int(f) * 3).unsqueeze(0)
+    cl, _ = rl(pos)
+    c0, _ = r0(pos)
+    got = cl[0, 0, ::int(f)]  # scaled positions 0, f, 2f, ...
+    want = c0[0, 0, :len(got)]  # == vanilla positions 0, 1, 2, ...
+    assert (got - want).abs().max().item() < 1e-6, (
+        f"linear scaling: position {int(f)} should match vanilla position 1, "
+        f"max|diff|={(got - want).abs().max().item():.3e}"
+    )
+
+    # ntk: the LOWEST frequency (k=0) is exactly untouched; the HIGHEST
+    # frequency is stretched by exactly 1/factor
+    rn = RotaryEmbedding(dim, 2048, scaling={"type": "ntk", "factor": f})
+    assert rn.inv_freq[0].item() == 1.0, "ntk must not move the lowest freq"
+    ratio = (rn.inv_freq[-1] / r0.inv_freq[-1]).item()
+    assert abs(ratio - 1.0 / f) < 1e-6, f"ntk highest freq ratio {ratio}, want {1/f}"
+
+    # capacity: scaled embeddings serve positions far beyond the vanilla
+    # precompute budget (lazy growth still works)
+    c_far, _ = rl(torch.arange(20000, 20010).unsqueeze(0))
+    assert torch.isfinite(c_far).all(), "scaled RoPE broke at long positions"
+
+    # config validation
+    cfg = HeliosLMv5Config(size="lite")
+    cfg.attention.rope_scaling = {"type": "bogus", "factor": 2.0}
+    _expect_raises(ValueError, lambda: HeliosLMv5Config(
+        size="lite", attention=cfg.attention), "bad rope_scaling type")
+    bad = HeliosLMv5Config(size="lite")
+    bad.attention.rope_scaling = {"type": "linear", "factor": 0.5}
+    _expect_raises(ValueError, lambda: HeliosLMv5Config(
+        size="lite", attention=bad.attention), "rope_scaling factor < 1")
+    _pass("test_rope_scaling",
+          f"linear p/f match, ntk low-freq exact + high-freq 1/{int(f)}, "
+          "factor=1 == vanilla, long positions finite")
+
+
+def test_fp8_kv_cache():
+    from helioslm_v5.src.attention.mla import MLA
+    config = HeliosLMv5Config(size="lite")
+    config.attention.kv_cache_dtype = "fp8"
+    torch.manual_seed(202)
+    mla = MLA(config).eval()
+    L = 12
+    h = torch.randn(1, L, config.hidden_size)
+
+    with torch.no_grad():
+        out_fp8, past = mla(h, use_cache=True)
+    assert past[0].dtype == torch.float8_e4m3fn, (
+        f"fp8 cache stores {past[0].dtype}, want float8_e4m3fn")
+    assert past[0].element_size() == 1, "fp8 cache must use 1 byte/element"
+    assert past[0].shape[2] == L, "dim 2 must remain the sequence length"
+
+    # Storage contract used by MTP rollback / engine watermarking: clone
+    # and dim-2 slice keep the dtype and values.
+    snap = past[0].clone()
+    assert torch.equal(snap[:, :, :L], past[0][:, :, :L]), "clone/slice mismatch"
+
+    # fp8 grid: every stored value is an E4M3-representable number, so
+    # re-casting is a fixed point (no drift across re-quantization).
+    re_cast = past[0].to(torch.float32).to(torch.float8_e4m3fn)
+    assert torch.equal(re_cast, past[0]), "fp8 cache is not a fixed point"
+
+    # Cached decode over the fp8 cache stays consistent step by step...
+    with torch.no_grad():
+        step_outs = []
+        past_d = None
+        for i in range(L):
+            o, past_d = mla(h[:, i:i + 1], past_key_value=past_d, use_cache=True)
+            step_outs.append(o)
+        step_out = torch.cat(step_outs, dim=1)
+    d_self = (out_fp8 - step_out).abs().max().item()
+    assert d_self < 1e-5, f"fp8 cached decode diverges from fp8 prefill: {d_self:.3e}"
+
+    # ...and stays close to the fp32-cache reference (greedy tokens should
+    # usually survive; we assert a bounded logit perturbation, not equality).
+    config32 = HeliosLMv5Config(size="lite")
+    mla32 = MLA(config32).eval()
+    mla32.load_state_dict(mla.state_dict())
+    with torch.no_grad():
+        out32, _ = mla32(h, use_cache=False)
+    d_ref = (out_fp8 - out32).abs().max().item()
+    assert d_ref < 0.1, f"fp8 cache perturbation too large: {d_ref:.3e}"
+
+    # non-absorbed mode must fail loudly, not silently ignore the flag
+    config3 = HeliosLMv5Config(size="lite")
+    config3.attention.use_absorption = False
+    config3.attention.kv_cache_dtype = "fp8"
+    _expect_raises(ValueError, lambda: MLA(config3), "fp8 cache w/o absorption")
+    # bad dtype string rejected at config level
+    bad = HeliosLMv5Config(size="lite")
+    bad.attention.kv_cache_dtype = "int4"
+    _expect_raises(ValueError, lambda: HeliosLMv5Config(
+        size="lite", attention=bad.attention), "bad kv_cache_dtype")
+    _pass("test_fp8_kv_cache",
+          f"cache fp8 (1B/elem), decode==prefill {d_self:.1e}, "
+          f"vs fp32 max|diff|={d_ref:.1e} (<0.1)")
+
+
+def test_hyper_connections():
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+    n = 3
+    config = HeliosLMv5Config(size="lite")
+    config.use_hyper_connections = True
+    config.hyper_connection_branches = n
+    torch.manual_seed(7)
+    model = HeliosLMv5(config)
+    ids = torch.randint(0, config.vocab_size, (2, 6))
+    model.eval()
+
+    # Identity at init: B=0 drops every sublayer write, so the output is
+    # EXACTLY the embedding-only model (bit-for-bit).
+    with torch.no_grad():
+        logits, hid, past = model(ids, use_cache=True)
+        ref = model.lm_head(model.norm(model.embed_tokens(ids)))
+    assert (logits - ref).abs().max().item() == 0.0, (
+        "HC zero-init B must reproduce the vanilla model exactly")
+    # The static mixing matrices satisfy the manifold constraint (unit
+    # column norm) by construction and are NOT trainable.
+    for layer in model.layers:
+        for name in ("hc_attn_A", "hc_moe_A"):
+            A = getattr(layer, name)
+            norms = A.norm(dim=0)
+            assert torch.allclose(norms, torch.ones_like(norms)), (
+                f"{name} column norms {norms}, want 1")
+            assert not A.requires_grad, f"{name} must be static"
+
+    # Widened cache layout: one entry per (batch row, branch), self-consistent
+    # across prefill -> decode (every forward expands the same way).
+    assert past[0][0].shape[0] == 2 * n, (
+        f"HC cache batch {past[0][0].shape[0]}, want B*n={2 * n}")
+    with torch.no_grad():
+        _, _, past2 = model(ids[:, -1:], past_key_values=past, use_cache=True)
+    assert past2[0][0].shape[2] == 7, "HC decode must grow the cache by 1"
+
+    # Training dynamics: B receives gradients at init (attention weights do
+    # not — they enter through B, which is zero; the HC recipe warms up via
+    # B first), and one optimizer step moves the output.
+    model.train()
+    logits_tr, _, _ = model(ids)
+    logits_tr.pow(2).mean().backward()
+    gB = model.layers[0].hc_attn_B.grad
+    assert gB is not None and gB.abs().sum().item() > 0, "B must receive gradient"
+    opt = torch.optim.SGD(model.parameters(), lr=0.05)
+    opt.step()
+    model.eval()
+    with torch.no_grad():
+        logits_after, _, _ = model(ids)
+    assert (logits_after - logits).abs().max().item() > 0, (
+        "HC output must move once B trains")
+
+    # Loud error when a plain [B, L, d] caller hits an HC layer (DualPipe).
+    from helioslm_v5.src.model_v5 import HeliosLMv5Layer
+    plain_in = torch.randn(2, 6, config.hidden_size)
+    _expect_raises(NotImplementedError,
+                   lambda: model.layers[0](plain_in),
+                   "plain hidden state into an HC layer")
+    # Mutual exclusion with attention residuals is enforced at config time.
+    _expect_raises(ValueError, lambda: HeliosLMv5Config(
+        size="lite", use_attention_residuals=True, use_hyper_connections=True),
+        "HC + attention residuals")
+    _pass("test_hyper_connections",
+          f"n={n}: init identity exact, B grads flow, cache [B*n] consistent, "
+          "manifold column norms 1.0")
+
+
+def test_qat():
+    import torch.nn.functional as F
+    from helioslm_v5.src.quantization.qat import FakeQuantLinear, apply_qat
+    from helioslm_v5.src.quantization.standard_quant import (
+        AWQLinear, MXFP4Linear)
+
+    torch.manual_seed(11)
+    lin = nn.Linear(64, 32)
+    fq = FakeQuantLinear(lin, method="mxfp4")
+    x = torch.randn(5, 64)
+    out = fq(x)
+    # Forward runs on the quantization grid (exactly the qdq matmul).
+    ref_w = fq.fake_quant_weight()
+    ref = F.linear(x, ref_w, fq.bias)
+    assert (out - ref).abs().max().item() == 0.0, (
+        "QAT forward must equal the quantize-dequantize matmul exactly")
+
+    # STE backward: the weight gradient equals the DENSE gradient evaluated
+    # at the quantized point (identity through the staircase).
+    ref_leaf = ref_w.clone().requires_grad_(True)
+    bias_leaf = fq.bias.detach().clone().requires_grad_(True)
+    F.linear(x, ref_leaf, bias_leaf).pow(2).sum().backward()
+    fq.zero_grad()
+    out.pow(2).sum().backward()
+    assert (fq.weight.grad - ref_leaf.grad).abs().max().item() == 0.0, (
+        "STE gradient != dense gradient at the quantized point")
+
+    # QAT training actually converges on a toy least-squares task (the
+    # optimizer moves the full-precision weight behind the fake quantizer).
+    torch.manual_seed(12)
+    w_target = torch.randn(16, 16)
+    fq2 = FakeQuantLinear(nn.Linear(16, 16), method="awq", group_size=8)
+    opt = torch.optim.Adam(fq2.parameters(), lr=0.05)
+    xt = torch.randn(64, 16)
+    yt = xt @ w_target.t()
+    losses = []
+    for _ in range(60):
+        opt.zero_grad()
+        loss = (fq2(xt) - yt).pow(2).mean()
+        loss.backward()
+        opt.step()
+        losses.append(loss.item())
+    assert losses[-1] < losses[0] * 0.5, (
+        f"QAT did not converge: {losses[0]:.3f} -> {losses[-1]:.3f}")
+
+    # apply_qat wraps every nn.Linear in place and skips quantized modules
+    # (double-wrapping a reconstruction would fake-quantize noise).
+    container = nn.Sequential(nn.Linear(8, 8), nn.Linear(8, 4))
+    applied = apply_qat(container, method="mxfp4")
+    assert len(applied) == 2 and all(
+        isinstance(m, FakeQuantLinear) for m in container), "apply_qat wiring"
+    q_container = nn.Sequential(
+        MXFP4Linear.from_linear(nn.Linear(8, 8)), nn.Linear(8, 4))
+    apply_qat(q_container, method="mxfp4")
+    assert isinstance(q_container[0], MXFP4Linear), (
+        "already-quantized module must not be re-wrapped")
+    assert isinstance(q_container[1], FakeQuantLinear)
+    _expect_raises(ValueError, lambda: FakeQuantLinear(
+        nn.Linear(4, 4), method="bogus"), "unknown QAT method")
+    _pass("test_qat",
+          f"fwd==qdq exact, STE grad exact, toy loss "
+          f"{losses[0]:.2f}->{losses[-1]:.2f}, wrap/skip OK")
+
+
 TESTS = [
     test_mla,
     test_mla_absorption,
@@ -2134,11 +2381,16 @@ TESTS = [
     test_hybrid_packed_positions,
     test_attention_residuals_dualpipe,
     test_linear_attention_guards,
+    # v5.7
+    test_rope_scaling,
+    test_fp8_kv_cache,
+    test_hyper_connections,
+    test_qat,
 ]
 
 
 def main():
-    print("HeliosLM v5.5 Test Suite (lite config, CPU)")
+    print("HeliosLM v5.7 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:

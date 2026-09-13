@@ -83,7 +83,9 @@ class HeliosLMv5Layer(nn.Module):
     ``attn_res_new`` is the updated accumulator (``attn_res + attn_out``
     when the gate exists; the input ``attn_res`` passed through unchanged
     otherwise). With ``use_attention_residuals=False`` the numerics are
-    bit-identical to v5.4.
+    bit-identical to v5.4. With ``use_hyper_connections=True`` (v5.7) the
+    first element is the widened [B, L, n, d] stream and the third is
+    always None (mutually exclusive with attention residuals).
     """
 
     def __init__(self, config, layer_idx):
@@ -99,8 +101,96 @@ class HeliosLMv5Layer(nn.Module):
         else:
             self.attn_res_gate = None
 
+        # Hyper-Connections (v5.7, simplified HC/mHC): the residual stream
+        # is widened to n virtual branches. Each sublayer reads through a
+        # STATIC mixing matrix A (identity init; unit-norm columns are the
+        # manifold constraint — A never trains, so the constraint holds by
+        # construction) and writes back through a LEARNABLE matrix B
+        # (zero init), giving h_l = A h_{l-1} + B f(A h_{l-1}) per branch.
+        # At init B = 0, so the streams pass through unchanged and the
+        # network is exactly a vanilla transformer (the sublayer still runs
+        # so the KV cache populates). Simplifications vs the paper: single
+        # static A per sublayer (not per-layer-index dynamic), mean readout,
+        # no width/FLOP expansion is avoided — branches share the sublayer
+        # weights and are folded into the batch dim.
+        self.use_hyper_connections = bool(
+            getattr(config, "use_hyper_connections", False))
+        if self.use_hyper_connections:
+            n = config.hyper_connection_branches
+            self.hc_num_branches = n
+            self.register_buffer("hc_attn_A", torch.eye(n))
+            self.hc_attn_B = nn.Parameter(torch.zeros(n, n))
+            self.register_buffer("hc_moe_A", torch.eye(n))
+            self.hc_moe_B = nn.Parameter(torch.zeros(n, n))
+
+    # ------------------------------------------------------------------
+    # Hyper-Connection stream step (v5.7)
+    # ------------------------------------------------------------------
+    def _hc_step(self, streams, A, B, sublayer, norm, attention_mask,
+                 past_key_value, use_cache, position_ids, returns_kv):
+        """One HC sublayer: read A, apply f(x) = x + sublayer(norm(x)) per
+        branch, write back through B.
+
+        streams: [B, L, n, d]. Branches are folded into the batch dim for
+        the sublayer call, so the KV cache (when returns_kv) holds one
+        entry per (batch row, branch) — the widened layout is self-
+        consistent across prefill/decode because every forward expands the
+        same way. Returns (streams_new, present_kv_or_None).
+        """
+        x = torch.einsum("blnd,mn->blmd", streams, A)  # read: h̃ = A S
+        Bb, L, n, d = x.shape
+        xf = x.reshape(Bb * n, L, d)
+        mask = attention_mask
+        if mask is not None:
+            mask = mask.unsqueeze(1).expand(Bb, n, -1).reshape(Bb * n, -1)
+        pos = position_ids
+        if pos is not None:
+            pos = pos.unsqueeze(1).expand(Bb, n, L).reshape(Bb * n, L)
+        if returns_kv:
+            sub_out, present_kv = sublayer(
+                norm(xf), attention_mask=mask, past_key_value=past_key_value,
+                use_cache=use_cache, position_ids=pos)
+        else:
+            sub_out, present_kv = sublayer(norm(xf)), None
+        f = (xf + sub_out).reshape(Bb, L, n, d)  # f(h̃) = h̃ + F(h̃)
+        streams_new = x + torch.einsum("blmd,km->blkd", f, B)
+        return streams_new, present_kv
+
+    def _forward_hc(self, streams, attention_mask=None, past_key_value=None,
+                    use_cache=False, position_ids=None):
+        """Hyper-Connection forward. streams in/out: [B, L, n, d]."""
+        if streams.dim() != 4:
+            raise NotImplementedError(
+                "Hyper-Connection layers expect the widened [B, L, n, d] "
+                "stream; callers that pass a plain [B, L, d] hidden state "
+                "(the DualPipe schedule, hand-rolled layer loops) do not "
+                "support hyper connections yet"
+            )
+        attn_mask = attention_mask
+        streams, present_kv = self._hc_step(
+            streams, self.hc_attn_A, self.hc_attn_B, self.attention,
+            self.pre_attn_norm, attn_mask, past_key_value, use_cache,
+            position_ids, returns_kv=True)
+        # MoE sublayer: no cache, so the stream step runs without KV args.
+        moe_mask = attention_mask
+        if moe_mask is not None and moe_mask.dim() == 2:
+            # MoE does not consume the mask; pass None so the branch-fold
+            # reshape in _hc_step is skipped (keeps the call honest).
+            moe_mask = None
+        streams, _ = self._hc_step(
+            streams, self.hc_moe_A, self.hc_moe_B, self.moe,
+            self.pre_moe_norm, moe_mask, None, False, position_ids,
+            returns_kv=False)
+        return streams, present_kv, None
+
     def forward(self, hidden_states, attention_mask=None, past_key_value=None,
                 use_cache=False, position_ids=None, attn_res=None):
+        if self.use_hyper_connections:
+            streams, present_kv, _ = self._forward_hc(
+                hidden_states, attention_mask=attention_mask,
+                past_key_value=past_key_value, use_cache=use_cache,
+                position_ids=position_ids)
+            return streams, present_kv, None
         attn_in = self.pre_attn_norm(hidden_states)
         if self.attn_res_gate is not None and attn_res is not None:
             attn_in = attn_in + self.attn_res_gate * attn_res
@@ -252,21 +342,54 @@ class HeliosLMv5(nn.Module):
         # returns the updated accumulator explicitly (M4/M5 — no attribute
         # side channel). The accumulator starts at zeros, so layer 0's
         # injection is a no-op.
-        use_attn_res = bool(getattr(self.config, "use_attention_residuals", False))
-        attn_res = torch.zeros_like(hidden_states) if use_attn_res else None
+        #
+        # Hyper-Connections (v5.7): instead of a single [B, L, d] stream,
+        # the layers operate on n widened virtual branches [B, L, n, d]
+        # (initialized as copies of the embedding, read out by mean at the
+        # end). attn_res stays unused: the config validator rejects enabling
+        # both mechanisms.
+        use_hc = bool(getattr(self.config, "use_hyper_connections", False))
         present_key_values = [] if use_cache else None
-        for i, layer in enumerate(self.layers):
-            past_kv = past_key_values[i] if past_key_values is not None else None
-            hidden_states, present_kv, attn_res = layer(
-                hidden_states,
-                attention_mask=attention_mask,
-                past_key_value=past_kv,
-                use_cache=use_cache,
-                position_ids=position_ids,
-                attn_res=attn_res,
-            )
-            if use_cache:
-                present_key_values.append(present_kv)
+        if use_hc:
+            n_br = self.config.hyper_connection_branches
+            streams = hidden_states.unsqueeze(2).expand(
+                B, total_len, n_br, self.config.hidden_size)
+            for i, layer in enumerate(self.layers):
+                past_kv = past_key_values[i] if past_key_values is not None else None
+                streams, present_kv, _ = layer(
+                    streams,
+                    attention_mask=attention_mask,
+                    past_key_value=past_kv,
+                    use_cache=use_cache,
+                    position_ids=position_ids,
+                )
+                if use_cache:
+                    present_key_values.append(present_kv)
+            # Readout: mean over branches, accumulated in float64. The
+            # wider accumulator is not optional: at init the n branches are
+            # IDENTICAL copies, and summing n copies of x in float32 rounds
+            # (n*x needs up to 2 extra mantissa bits), which would break
+            # the exact identity-at-init property; in float64 n*x and the
+            # division by n are both exact, so the copy is restored
+            # bit-for-bit. (This also sidesteps .mean's reciprocal
+            # multiply, inexact for non-power-of-two n.)
+            hidden_states = (streams.sum(dim=2, dtype=torch.float64) / n_br).to(
+                streams.dtype)
+        else:
+            use_attn_res = bool(getattr(self.config, "use_attention_residuals", False))
+            attn_res = torch.zeros_like(hidden_states) if use_attn_res else None
+            for i, layer in enumerate(self.layers):
+                past_kv = past_key_values[i] if past_key_values is not None else None
+                hidden_states, present_kv, attn_res = layer(
+                    hidden_states,
+                    attention_mask=attention_mask,
+                    past_key_value=past_kv,
+                    use_cache=use_cache,
+                    position_ids=position_ids,
+                    attn_res=attn_res,
+                )
+                if use_cache:
+                    present_key_values.append(present_kv)
 
         hidden_states = self.norm(hidden_states)
         logits = self.lm_head(hidden_states)

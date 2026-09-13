@@ -51,6 +51,20 @@ class AttentionConfig:
     v_head_dim: int = 128          # per-head value dim (never rotated)
     attention_dropout: float = 0.0
     use_absorption: bool = True    # MLA weight absorption (latent KV cache)
+    # RoPE position scaling (v5.7): None = vanilla RoPE; otherwise a dict
+    # {"type": "linear" | "ntk", "factor": float >= 1}. Both stretch the
+    # effective context by ``factor`` so a checkpoint trained at L positions
+    # can attend up to ~L*factor positions: "linear" scales all frequencies
+    # down by factor (position p behaves like p/factor), "ntk" ( Neural
+    # Tangent Kernel / dynamic-NTK style) rescales only the RoPE base,
+    # leaving the lowest frequencies nearly untouched.
+    rope_scaling: Optional[dict] = None
+    # KV-cache storage dtype (v5.7): "auto" keeps the compute dtype;
+    # "fp8" stores the absorbed mode's c_kv cache in float8_e4m3fn
+    # (saturating cast, scale-free — post-RMSNorm latents are O(1), and the
+    # E4M3 mantissa grid gives <= 6.25% relative element error). Absorbed
+    # mode only; non-absorbed configs raise ValueError at layer init.
+    kv_cache_dtype: str = "auto"
 
     @property
     def head_dim(self) -> int:
@@ -145,7 +159,7 @@ class GRPOConfig:
 
 @dataclass
 class HeliosLMv5Config:
-    model_name: str = "HeliosLM-v5.6"
+    model_name: str = "HeliosLM-v5.7"
     size: str = "full"  # "full" (production defaults) or "lite" (CPU smoke tests)
     vocab_size: int = 160000
     max_position_embeddings: int = 1048576
@@ -170,6 +184,17 @@ class HeliosLMv5Config:
     # the accumulated sum of previous layers' attention outputs into the
     # attention input. None -> follow size (full: True, lite: False = v5.4).
     use_attention_residuals: Optional[bool] = None
+
+    # Hyper-Connections (v5.7, simplified mHC/HC): replace the single
+    # residual stream with N virtual branches per token. Each sublayer reads
+    # a static normalized mixing A (identity init, unit-norm columns) and
+    # writes back through a learnable zero-init matrix B, so at init the
+    # network is exactly a vanilla transformer (B=0 drops the sublayer
+    # write). None -> follow size (default OFF for both sizes: it is a
+    # training-time architecture switch; the DualPipe schedule and the
+    # vLLM-style engine do not support the widened stream and raise loudly).
+    use_hyper_connections: Optional[bool] = None
+    hyper_connection_branches: int = 4
 
     def __post_init__(self):
         if self.size not in ("full", "lite"):
@@ -227,6 +252,9 @@ class HeliosLMv5Config:
             # Quantile balancing on by default for the full size; the lite
             # size keeps the v5.4 heuristic update.
             self.moe.balance_strategy = "quantile" if self.size == "full" else "heuristic"
+        if self.use_hyper_connections is None:
+            # v5.7: opt-in for both sizes (training-time architecture switch).
+            self.use_hyper_connections = False
         if self.moe.latent_dim is not None and self.moe.latent_dim <= 0:
             self.moe.latent_dim = None  # explicit full-width opt-out
 
@@ -320,6 +348,52 @@ class HeliosLMv5Config:
         if m.situ_softcap <= 0:
             raise ValueError(
                 f"moe.situ_softcap must be positive, got {m.situ_softcap}"
+            )
+        # v5.7: RoPE scaling and KV-cache dtype.
+        rs = a.rope_scaling
+        if rs is not None:
+            if not isinstance(rs, dict):
+                raise ValueError(
+                    f"attention.rope_scaling must be a dict like "
+                    f"{{'type': 'linear'|'ntk', 'factor': f}}, got {rs!r}"
+                )
+            if rs.get("type") not in ("linear", "ntk"):
+                raise ValueError(
+                    f"attention.rope_scaling['type'] must be 'linear' or "
+                    f"'ntk', got {rs.get('type')!r}"
+                )
+            factor = rs.get("factor")
+            if factor is None or not (isinstance(factor, (int, float))) \
+                    or factor < 1.0:
+                raise ValueError(
+                    f"attention.rope_scaling['factor'] must be a number "
+                    f">= 1.0, got {factor!r}"
+                )
+        if a.kv_cache_dtype not in ("auto", "fp8"):
+            raise ValueError(
+                f"attention.kv_cache_dtype must be 'auto' or 'fp8', got "
+                f"{a.kv_cache_dtype!r}"
+            )
+        if a.kv_cache_dtype == "fp8" and not a.use_absorption:
+            raise ValueError(
+                "attention.kv_cache_dtype='fp8' requires use_absorption=True "
+                "(the fp8 cache stores the compressed latent c_kv; the "
+                "expanded per-head cache has no latent to quantize)"
+            )
+        # Hyper-Connections (v5.7): branch count and mutual exclusion with
+        # the v5.5 attention-residual accumulator (both rewire how sublayer
+        # outputs flow across the layer stack; combining them is untested
+        # and would silently double-inject previous-layer outputs).
+        if self.hyper_connection_branches < 2:
+            raise ValueError(
+                f"hyper_connection_branches must be >= 2, got "
+                f"{self.hyper_connection_branches}"
+            )
+        if self.use_hyper_connections and self.use_attention_residuals:
+            raise ValueError(
+                "use_hyper_connections and use_attention_residuals are "
+                "mutually exclusive (both rewire cross-layer residual flow); "
+                "enable exactly one"
             )
         # Vision transformer heads must tile the hidden width exactly.
         vision_hidden = getattr(self.multimodal, "vision_hidden_size", None)

@@ -1,4 +1,4 @@
-# HeliosLM v5.6 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.7 - DeepSeek/K3-Style Architecture
 
 Reference LLM implementation with DeepSeek-V3-style efficiency techniques.
 All modules below are implemented and exercised by a CPU test suite with
@@ -17,7 +17,7 @@ requests), and input validation that fails loudly instead of silently
 misbehaving (see CHANGELOG). v5.5 is a feature release aligned with
 Kimi-K3-class architecture mechanisms: hybrid linear attention, LatentMoE,
 quantile balancing, cross-layer attention residuals, and SiTU-GLU (see
-CHANGELOG; unit suite now 36 tests).
+CHANGELOG; unit suite now 40 tests).
 
 ## v5.5: K3-Aligned Feature Wave
 
@@ -82,6 +82,50 @@ CHANGELOG; unit suite now 36 tests).
   `situ_glu(a,b) = silu(t(a))·t(b)`, with an RMSNorm before the expert
   output projection. Output is bounded (|t(x)| ≤ cap); note the saturated
   region's gradient is ~1% at |x|=3·cap (cap is not learnable).
+
+## v5.7 (2026-09-13): Daily Improvement Round 2 — RoPE Scaling, FP8 KV Cache, Hyper-Connections, QAT
+
+Second daily round from the 2026-09-13 landscape scan (DeepSeek-V4's
+1M-context hybrid attention and mHC residuals; K3-class FP8/FP4 recipes;
+Qwen3-Coder-Next efficiency tier). Unit suite 36 → 40 tests.
+
+- **RoPE scaling** (`config.attention.rope_scaling`): `{"type": "linear",
+  "factor": f}` (position interpolation, uniform frequency scaling) or
+  `{"type": "ntk", "factor": f}` (base rescale, lowest frequency exactly
+  untouched, highest stretched by 1/f) extend a checkpoint's effective
+  context by ~f×. Implemented inside `RotaryEmbedding` (linear scales
+  `inv_freq` directly — it is not expressible as a base power); factor 1
+  is bit-identical to vanilla RoPE; the lazy cos/sin budget is unchanged.
+- **FP8 KV cache** (`config.attention.kv_cache_dtype="fp8"`, absorbed MLA
+  mode): the latent `c_kv` cache is stored on the float8_e4m3fn grid
+  (saturating cast, scale-free — post-RMSNorm latents are O(1); ≤ 6.25%
+  relative element error from the 3-bit mantissa). The tuple layout is
+  unchanged (dim 2 stays the sequence length, no sidecar scale tensor), so
+  MTP rollback clone/slice and engine watermark `cat` keep working;
+  attention always computes over the same quantized values that are stored
+  (cached decode == fp8 prefill at 3e-7; vs fp32 max logit diff 0.027 on
+  the lite config). Non-absorbed mode and missing torch fp8 support raise
+  loudly at layer init.
+- **Hyper-Connections** (`config.use_hyper_connections`, simplified
+  HC/mHC in the DeepSeek-V4 direction): the residual stream is widened to
+  n virtual branches; each sublayer reads through a static normalized
+  mixing matrix A (identity init, unit-norm columns = the manifold
+  constraint, never trained) and writes back through a learnable
+  zero-init matrix B (`h_l = A h_{l-1} + B f(A h_{l-1})`). At init B = 0,
+  so the network is bit-for-bit a vanilla transformer (verified exactly;
+  the readout mean accumulates in float64 — summing n identical fp32
+  copies would otherwise round). Branches fold into the batch dim, so the
+  KV cache holds one entry per (row, branch) and stays self-consistent
+  across prefill/decode. Simplifications documented: per-sublayer static
+  A, mean readout, shared sublayer weights across branches. Mutually
+  exclusive with attention residuals (config-level ValueError); DualPipe
+  and plain-hidden-state callers get a loud NotImplementedError.
+- **QAT** (`quantization/qat.py`): straight-through fake-quant training
+  wrapper (`FakeQuantLinear`, `apply_qat`) for the MXFP4 and AWQ grids —
+  the v5.6 MXFP4 recipe's missing half. Forward runs exactly on the
+  quantize-dequantize grid; the weight gradient is exactly the dense
+  gradient at the quantized point (STE, verified to 0.0); the stored
+  parameter stays full-precision. Already-quantized modules are skipped.
 
 ## v5.6 (2026-09-13): Daily Improvement Round — Packed Hybrid Training, MXFP4, Muon
 
@@ -335,7 +379,7 @@ From the repository root (the directory containing `helioslm_v5/`):
 python -m helioslm_v5.tests.test_v5
 ```
 
-Runs 36 tests against the real `size="lite"` model on CPU (a couple of
+Runs 40 tests against the real `size="lite"` model on CPU (a couple of
 minutes), prints a per-test PASS/FAIL summary, and exits non-zero if any
 test fails.
 
@@ -352,7 +396,9 @@ test fails.
 | Pipeline | Simple | **DualPipe-style schedule (single-process simulation)** |
 | Vision | Fixed 224x224 | **NaViT (any resolution up to max_grid)** |
 | Audio | Non-streaming | **Streaming causal (chunked == one-shot; sliding-window memory cap)** |
-| Quantization | Custom INT4/8 | **AWQ/GPTQ/FP8 (real 4-bit packing; true GPTQ Hessian compensation with calibration data)** |
+| Quantization | Custom INT4/8 | **AWQ/GPTQ/FP8/MXFP4 (real 4-bit packing; true GPTQ Hessian compensation) + QAT straight-through fake-quant training wrapper** |
+| RoPE / Context | Fixed | **RoPE scaling (linear interpolation / NTK base rescale), optional FP8 latent KV cache** |
+| Residual Stream | Standard | **Optional Hyper-Connections: n-branch stream, static normalized A + learnable zero-init B (identity at init)** |
 | Inference Engine | Custom | **vLLM-style engine (paged KV, continuous batching with batched [B,1] decode steps)** |
 | GPU Monitoring | CPU/内存 HPA | **GPU-utilization HPA (in-memory metrics, optional Prometheus export)** |
 

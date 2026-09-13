@@ -1,5 +1,82 @@
 # HeliosLM v5 Changelog
 
+## v5.7 (2026-09-13) - Daily Improvement Build 2: RoPE Scaling, FP8 KV Cache, Hyper-Connections, QAT
+
+Second daily-analysis-driven round (landscape scan 2026-09-13: DeepSeek-V4
+1M-context hybrid attention + mHC + Muon, K3-class FP4/FP8 recipes,
+Qwen3-Coder-Next efficiency tier; Muon and MXFP4 landed in v5.6). Four
+changes, all tested; unit suite 36 -> 40 tests.
+
+### RoPE scaling (attention/mla.py: RotaryEmbedding)
+- `config.attention.rope_scaling = {"type": "linear"|"ntk", "factor": f}`
+  extends the effective context by ~f x without retraining. "linear" is
+  position interpolation (freq_k(p) = p * inv_freq_k / f) and scales
+  `inv_freq` DIRECTLY — a base-power rescale would weight high frequencies
+  more and is not equivalent (documented in code). "ntk" rescales the base
+  by f^(d/(d-2)): the lowest frequency is EXACTLY untouched (inv_freq[0] ==
+  1), the highest is stretched by exactly 1/f (verified).
+- factor == 1 is bit-identical to vanilla RoPE; the lazy cos/sin precompute
+  budget and the [B, 1, L, dim] contract are unchanged; long positions keep
+  working (verified at position 20000). Config validation rejects unknown
+  types and factors < 1 at construction.
+
+### FP8 KV cache (attention/mla.py: MLA, absorbed mode)
+- `config.attention.kv_cache_dtype = "fp8"` stores the latent c_kv cache on
+  the float8_e4m3fn grid: saturating cast (no inf poisoning; verified 500 ->
+  448), scale-FREE (post-RMSNorm latents are O(1), so a fixed scale of 1.0
+  keeps the E4M3 3-bit-mantissa error at <= 6.25% relative per element).
+  No sidecar scale tensor: the cache tuple layout is unchanged (dim 2 is
+  still the sequence length), so MTP rollback clone/slice and engine
+  watermark cat keep working unmodified.
+- Attention always computes over the SAME quantized values that are stored
+  (the whole latent is re-rounded once per forward, current tokens
+  included): cached decode == fp8 prefill at 3e-7, and vs the fp32 cache
+  the lite-config max logit diff is 0.027 (bounded, measured).
+- Loud errors: non-absorbed configs and torch builds without float8_e4m3fn
+  raise at layer init; unknown dtype strings raise at config validation.
+
+### Hyper-Connections (model_v5.py, simplified HC/mHC — DeepSeek-V4 direction)
+- `config.use_hyper_connections` + `hyper_connection_branches` widen the
+  residual stream to n virtual branches [B, L, n, d]. Each sublayer reads
+  h_tilde = A * streams through a STATIC mixing matrix A (identity init;
+  unit-norm columns are the manifold constraint, enforced by construction
+  since A never trains) and writes back h_l = h_tilde + B * f(h_tilde)
+  through a LEARNABLE matrix B (zero init), f(x) = x + sublayer(norm(x)).
+- At init B = 0: the model is bit-for-bit a vanilla transformer (verified
+  exactly against the embedding-only reference). One subtlety found and
+  fixed during verification: summing n IDENTICAL fp32 branch copies rounds
+  (n*x needs up to 2 extra mantissa bits), so the readout mean accumulates
+  in float64 — restoring the copy bit-for-bit.
+- Branches fold into the batch dim for sublayer calls, so the KV cache
+  holds one entry per (row, branch) and stays self-consistent across
+  prefill/decode (verified). B receives gradients at init (attention
+  weights warm up through B, per the HC recipe); one optimizer step moves
+  the output (verified).
+- Simplifications documented in code: per-sublayer static A (not the
+  paper's per-index dynamic matrices), mean readout, shared sublayer
+  weights across branches. Mutually exclusive with v5.5 attention
+  residuals (config-level ValueError, tested); DualPipe / plain-hidden
+  callers get an explicit NotImplementedError (tested).
+
+### QAT (quantization/qat.py)
+- `FakeQuantLinear` + `apply_qat`: straight-through-estimator fake-quant
+  training for the MXFP4 and AWQ grids — the missing training half of the
+  v5.6 MXFP4 recipe. Forward runs EXACTLY on the quantize-dequantize grid
+  (reusing the standard_quant kernels; verified 0.0 vs the reference
+  matmul); the backward passes the dense gradient at the quantized point
+  through untouched (verified 0.0 vs an independent dense reference); the
+  stored parameter stays full-precision. Toy least-squares convergence
+  verified (loss 14.4 -> 0.19 in 60 Adam steps, AWQ grid).
+- `apply_qat` wraps every nn.Linear in place and SKIPS already-quantized
+  modules (AWQ/GPTQ/MXFP4/FakeQuantLinear) — wrapping a reconstruction
+  would fake-quantize grid noise. Deviation documented: the AWQ grid used
+  per-step is the plain-RTN (alpha=0) form since activation-aware scaling
+  is a calibration-time tool, not a per-step one.
+
+### Tests
+- test_rope_scaling, test_fp8_kv_cache, test_hyper_connections, test_qat
+  added to tests/test_v5.py (registered in TESTS; suite 36 -> 40).
+
 ## v5.6 (2026-09-13) - Daily Improvement Build: Packed Hybrid Training, MXFP4, Muon
 
 Daily-analysis-driven improvement round (latest-LLM-landscape scan:
