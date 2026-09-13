@@ -1,7 +1,11 @@
-"""HeliosLM v5.4 - Unified Model
+"""HeliosLM v5.5 - Unified Model
 
-Model core: token embedding + N x (pre-norm MLA + pre-norm Sigmoid MoE) +
-final RMSNorm + LM head, with optional MTP modules and multimodal encoders.
+Model core: token embedding + N x (pre-norm attention + pre-norm Sigmoid
+MoE) + final RMSNorm + LM head, with optional MTP modules and multimodal
+encoders. Attention is MLA on every layer by default; with
+``config.hybrid_attention.enabled`` (v5.5) layers are interleaved: layer i
+is MLA iff ``i == 0 or i % every == every - 1``, GatedDeltaAttention
+(fixed-size recurrent state) otherwise.
 
 Forward contract (relied upon by MTP / GRPO / training modules):
     logits, hidden_states, past_key_values = model(
@@ -11,10 +15,18 @@ Forward contract (relied upon by MTP / GRPO / training modules):
     )
   - logits: [B, L, vocab]
   - hidden_states: [B, L, hidden] after the final norm
-  - past_key_values: per-layer cache tuples, or None. Layout follows
+  - past_key_values: per-layer cache tuples, or None. MLA layers follow
     config.attention.use_absorption: (c_kv, k_rope) when absorbed
     (default), (k_nope, k_rope, v) otherwise; dim 2 is the sequence
-    length for every tensor in both layouts.
+    length for every tensor in both layouts. GatedDeltaAttention layers
+    return (state,) where state is a StateTensor [B, H, Dk, Dv] marked
+    with ``_is_recurrent_state = True`` — NOT sliceable along dim 2;
+    rollback = restore a pre-speculation clone (see inference/mtp.py).
+
+Packed sequences (per-document ``position_ids`` restarts, v5.4 B1) are
+supported on pure-MLA models only. In a hybrid model GatedDeltaAttention
+cannot segment its recurrent state, so a position restart raises a loud
+ValueError (v5.5 M3) instead of leaking across documents.
 
 PagedAttention / block management is intentionally NOT part of the model
 layer; it lives in the inference engine.
@@ -29,44 +41,89 @@ import torch.nn.functional as F
 # RMSNorm is defined once in attention.mla (O14); re-exported here so the
 # historical public name ``helioslm_v5.src.model_v5.RMSNorm`` keeps working.
 from helioslm_v5.src.attention.mla import MLA, RMSNorm
+from helioslm_v5.src.attention.linear_attention import (
+    GatedDeltaAttention, past_seq_len)
 from helioslm_v5.src.moe.sigmoid_moe import DeviceLimitedMoE
 from helioslm_v5.src.inference.mtp import MTPModule, MTPDecoder
 from helioslm_v5.src.vision.navit import NaViTEncoder
 from helioslm_v5.src.audio.streaming_encoder import StreamingAudioEncoder
 
 
+def _is_full_attention_layer(config, layer_idx):
+    """Hybrid interleave rule (v5.5): MLA iff layer 0 or
+    ``idx % every == every - 1``; GatedDeltaAttention otherwise."""
+    hcfg = getattr(config, "hybrid_attention", None)
+    if hcfg is None or not getattr(hcfg, "enabled", False):
+        return True
+    if layer_idx == 0:
+        return True
+    every = hcfg.full_attention_every
+    return layer_idx % every == every - 1
+
+
 class HeliosLMv5Layer(nn.Module):
-    """Single transformer layer: pre-norm MLA + pre-norm Sigmoid MoE.
+    """Single transformer layer: pre-norm attention + pre-norm Sigmoid MoE.
 
     Each sublayer input is normalized exactly once:
       h = h + attn(pre_attn_norm(h))
       h = h + moe(pre_moe_norm(h))
+
+    Attention residuals (v5.5, config.use_attention_residuals): the input
+    to attention additionally receives ``attn_res_gate * attn_res`` (the
+    accumulated sum of previous layers' attention outputs). The accumulator
+    is threaded EXPLICITLY (v5.5 M4/M5 fix): the caller passes ``attn_res``
+    and the layer returns the updated accumulator as the third element of
+    its return tuple — no ``self._last_attn_out`` attribute side channel
+    (a side channel silently truncates cross-layer residual gradients
+    under reentrant checkpointing and is invisible to the DualPipe
+    recompute scheme). The gate is a raw scalar Parameter (init 0.1) so
+    the model-wide Linear init does not touch it.
+
+    Returns ``(hidden_states, present_kv, attn_res_new)`` where
+    ``attn_res_new`` is the updated accumulator (``attn_res + attn_out``
+    when the gate exists; the input ``attn_res`` passed through unchanged
+    otherwise). With ``use_attention_residuals=False`` the numerics are
+    bit-identical to v5.4.
     """
 
     def __init__(self, config, layer_idx):
         super().__init__()
         self.layer_idx = layer_idx  # kept for external cache plumbing/debugging
         self.pre_attn_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.attention = MLA(config)
+        self.attention = (MLA(config) if _is_full_attention_layer(config, layer_idx)
+                          else GatedDeltaAttention(config))
         self.pre_moe_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.moe = DeviceLimitedMoE(config)
+        if bool(getattr(config, "use_attention_residuals", False)):
+            self.attn_res_gate = nn.Parameter(torch.tensor(0.1))
+        else:
+            self.attn_res_gate = None
 
     def forward(self, hidden_states, attention_mask=None, past_key_value=None,
-                use_cache=False, position_ids=None):
+                use_cache=False, position_ids=None, attn_res=None):
+        attn_in = self.pre_attn_norm(hidden_states)
+        if self.attn_res_gate is not None and attn_res is not None:
+            attn_in = attn_in + self.attn_res_gate * attn_res
         attn_out, present_kv = self.attention(
-            self.pre_attn_norm(hidden_states),
+            attn_in,
             attention_mask=attention_mask,
             past_key_value=past_key_value,
             use_cache=use_cache,
             position_ids=position_ids,
         )
+        # Explicit accumulator threading: the updated accumulator is a
+        # return value (part of the autograd graph), not an attribute.
+        if self.attn_res_gate is not None:
+            attn_res_new = attn_out if attn_res is None else attn_res + attn_out
+        else:
+            attn_res_new = attn_res  # pass-through (normally None)
         hidden_states = hidden_states + attn_out
         hidden_states = hidden_states + self.moe(self.pre_moe_norm(hidden_states))
-        return hidden_states, present_kv
+        return hidden_states, present_kv, attn_res_new
 
 
 class HeliosLMv5(nn.Module):
-    """HeliosLM v5.4 model. Sizing is driven by HeliosLMv5Config(size=...)."""
+    """HeliosLM v5.5 model. Sizing is driven by HeliosLMv5Config(size=...)."""
 
     def __init__(self, config, size=None):
         super().__init__()
@@ -144,7 +201,11 @@ class HeliosLMv5(nn.Module):
                     f"past_key_values has {len(past_key_values)} entries, "
                     f"expected {len(self.layers)}"
                 )
-            past_len = past_key_values[0][0].shape[2]
+            # Hybrid models (v5.5): recurrent-state tensors have no sequence
+            # axis — take the length from the first dim-2-sequence (MLA)
+            # cache tensor via the shared helper (m11; layer 0 is always
+            # MLA under the interleave rule).
+            past_len = past_seq_len(past_key_values)
 
         hidden_states = self.embed_tokens(input_ids)
         prefix_len = 0
@@ -185,16 +246,24 @@ class HeliosLMv5(nn.Module):
                 )
                 attention_mask = torch.cat([prefix_mask, attention_mask], dim=1)
 
-        # Transformer layers
+        # Transformer layers. Attention residuals (v5.5): attn_res carries
+        # the running sum of attention outputs across layers; layer i's
+        # attention input is injected with gate_i * attn_res, and each layer
+        # returns the updated accumulator explicitly (M4/M5 — no attribute
+        # side channel). The accumulator starts at zeros, so layer 0's
+        # injection is a no-op.
+        use_attn_res = bool(getattr(self.config, "use_attention_residuals", False))
+        attn_res = torch.zeros_like(hidden_states) if use_attn_res else None
         present_key_values = [] if use_cache else None
         for i, layer in enumerate(self.layers):
             past_kv = past_key_values[i] if past_key_values is not None else None
-            hidden_states, present_kv = layer(
+            hidden_states, present_kv, attn_res = layer(
                 hidden_states,
                 attention_mask=attention_mask,
                 past_key_value=past_kv,
                 use_cache=use_cache,
                 position_ids=position_ids,
+                attn_res=attn_res,
             )
             if use_cache:
                 present_key_values.append(present_kv)

@@ -1,8 +1,10 @@
-"""HeliosLM v5.4 test suite (CPU, lite config).
+"""HeliosLM v5.5 test suite (CPU, lite config).
 
 Rewritten for v5.1 after the full code review and extended since (v5.2: true
 GPTQ calibration, audio sliding window; v5.3: AWQ calibration repair;
-v5.4: packed-position cross-document isolation, input-validation coverage):
+v5.4: packed-position cross-document isolation, input-validation coverage;
+v5.5: hybrid GatedDeltaAttention + state-cache rollback, LatentMoE,
+quantile balancing, attention residuals, SiTU-GLU):
 every test exercises the real module with numerical assertions (not just
 shapes), and any failure makes the process exit non-zero.
 
@@ -577,20 +579,14 @@ def test_vllm_engine():
 # DualPipe: run_dual gradients == direct forward+backward (mean over MBs)
 # ----------------------------------------------------------------------
 def test_dualpipe():
-    from helioslm_v5.src.training.dualpipe import DualPipeScheduler, DualPipeStage
+    from helioslm_v5.src.training.dualpipe import (
+        DualPipeScheduler, DualPipeStage, LayerWrap)
 
     model, config = _lite_model(seed=108)
 
-    class LayerWrap(nn.Module):
-        """Adapt HeliosLMv5Layer ((hidden, kv) output) to tensor->tensor."""
-        def __init__(self, layer):
-            super().__init__()
-            self.layer = layer
-
-        def forward(self, x):
-            h, _ = self.layer(x, use_cache=False)
-            return h
-
+    # LayerWrap (dualpipe) adapts HeliosLMv5Layer ((hidden, kv, attn_res)
+    # output) to the tensor->tensor stage contract; with attention
+    # residuals off (lite default) it threads nothing (v5.4 behaviour).
     stage = DualPipeStage(nn.ModuleList([LayerWrap(model.layers[0]),
                                          LayerWrap(model.layers[1])]))
     torch.manual_seed(109)
@@ -715,6 +711,101 @@ def test_grpo():
           f"loss={out['loss']:.4f} policy={out['policy_loss']:.4f} "
           f"kl={out['kl_penalty']:.6f}, answers aligned, "
           f"params_with_grad={len(grads)}")
+
+
+# ----------------------------------------------------------------------
+# v5.6: Muon optimizer — Newton-Schulz orthogonalization quality, quadratic
+# convergence vs SGD, AdamW fallback for non-matrix params, muon=False
+# group routing
+# ----------------------------------------------------------------------
+def test_muon():
+    from helioslm_v5.src.training.muon import (
+        Muon, zeropower_via_newtonschulz5)
+
+    torch.manual_seed(601)
+    # 1) Orthogonalization quality: 5-step NS pushes every singular value
+    #    into the documented [~0.3, ~1.35] band around 1 (approximate
+    #    orthogonalization — the standard Muon recipe; exactness is NOT
+    #    expected at 5 steps) with mean singular value ~= 1 (energy kept).
+    A = torch.randn(24, 24)
+    O = zeropower_via_newtonschulz5(A)
+    sv = torch.linalg.svdvals(O)
+    assert 0.25 < sv.min().item() and sv.max().item() < 1.4, \
+        f"NS singular values out of band: [{sv.min():.3f}, {sv.max():.3f}]"
+    mean_sv = sv.mean().item()
+    assert 0.8 < mean_sv < 1.2, f"NS mean singular value {mean_sv:.3f} != 1"
+    eye_err = (O @ O.T - torch.eye(24)).abs().max().item()
+    assert eye_err < 0.6, f"NS far from orthogonal: |OO^T - I| max {eye_err:.3e}"
+    # Condition number is dramatically improved vs the raw matrix.
+    assert sv.max() / sv.min() < torch.linalg.svdvals(A).max() / \
+        torch.linalg.svdvals(A).min(), "NS did not improve conditioning"
+    # Tall/wide matrices are handled via the transposed iteration.
+    for shape in [(32, 12), (12, 32)]:
+        B = torch.randn(*shape)
+        OB = zeropower_via_newtonschulz5(B)
+        gram = OB @ OB.T if shape[0] <= shape[1] else OB.T @ OB
+        e = (gram - torch.eye(min(shape))).abs().max().item()
+        assert e < 0.6, f"NS({shape}) gram error {e:.3e}"
+
+    # 2) Convergence: Muon vs plain SGD on a least-squares problem. Muon's
+    #    update norm is ~constant (orthogonalized momentum), so like all
+    #    fixed-step methods it needs a decaying schedule to reach a tight
+    #    optimum; use a linear decay (standard practice in the Muon recipe).
+    X = torch.randn(64, 16)
+    W_true = torch.randn(16, 20)
+    Y = X @ W_true
+
+    def run(opt_cls, steps=300, decay=False, **kw):
+        W = torch.zeros(16, 20, requires_grad=True)
+        opt = opt_cls([W], **kw)
+        for t in range(steps):
+            if decay:
+                for gparam in opt.param_groups:
+                    gparam["lr"] = kw.get("lr", 0.02) * (1 - t / steps)
+            opt.zero_grad()
+            loss = torch.nn.functional.mse_loss(X @ W, Y)
+            loss.backward()
+            opt.step()
+        return loss.item()
+
+    sgd_final = run(torch.optim.SGD, lr=0.05, momentum=0.9)
+    muon_final = run(Muon, lr=0.1, decay=True)
+    assert muon_final < sgd_final, \
+        f"Muon ({muon_final:.3e}) should beat SGD ({sgd_final:.3e}) here"
+
+    # 3) Mixed model: 2-D params on the Muon path, 1-D on AdamW fallback.
+    lin = nn.Linear(16, 20)
+    norm = nn.LayerNorm(20)
+    opt = Muon(list(lin.parameters()) + list(norm.parameters()), lr=0.01)
+    x = torch.randn(8, 16)
+    named = [("lin." + n, p) for n, p in lin.named_parameters()] + \
+            [("norm." + n, p) for n, p in norm.named_parameters()]
+    before = {n: p.detach().clone() for n, p in named}
+    for _ in range(3):
+        opt.zero_grad()
+        loss = torch.nn.functional.mse_loss(norm(lin(x)), torch.randn(8, 20))
+        loss.backward()
+        opt.step()
+    after = {n: p for n, p in named}
+    changed = {n: (after[n] - before[n]).abs().max().item() for n in after}
+    assert all(torch.isfinite(p).all() for p in after.values())
+    assert changed["lin.weight"] > 0, "Muon path did not update the Linear weight"
+    assert changed["lin.bias"] > 0, "AdamW fallback did not update the bias"
+    assert changed["norm.weight"] > 0, "AdamW fallback did not update the norm gain"
+
+    # 4) muon=False routes a 2-D param to the AdamW path.
+    w = torch.nn.Parameter(torch.randn(8, 8))
+    opt2 = Muon([{"params": [w], "muon": False}], lr=0.01)
+    for _ in range(2):
+        opt2.zero_grad()
+        (w ** 2).sum().backward()
+        opt2.step()
+    assert torch.isfinite(w).all() and opt2.state[w]["step"] == 2, \
+        "muon=False group did not take the AdamW path"
+
+    _pass("test_muon",
+          f"NS orthog err {eye_err:.2e}, quadratic: muon {muon_final:.2e} "
+          f"vs sgd {sgd_final:.2e}, fallback + routing OK")
 
 
 # ----------------------------------------------------------------------
@@ -1132,6 +1223,67 @@ def test_gptq_odd_dims():
 
 
 # ----------------------------------------------------------------------
+# v5.6: MXFP4 microscaling FP4 (E2M1 codes + E8M0 per-block power-of-two
+# scales, MX block 32) — format validity, error bound, odd dims, manager
+# integration, MTP rebind
+# ----------------------------------------------------------------------
+def test_mxfp4():
+    from helioslm_v5.src.quantization.standard_quant import (
+        MXFP4Linear, QuantizationManager)
+
+    torch.manual_seed(501)
+    # Odd in/out exercises the pad path both directions.
+    lin = nn.Linear(35, 27, bias=True)
+    with torch.no_grad():
+        lin.weight.copy_(torch.randn(27, 35) * 0.05)
+        lin.bias.copy_(torch.randn(27) * 0.01)
+    x = torch.randn(5, 35)
+
+    mod = MXFP4Linear.from_linear(lin, block_size=32)
+    w = mod.weight
+    assert w.shape == (27, 35), f".weight shape {w.shape}"
+    # E8M0: every stored scale is a power of two.
+    lg = torch.log2(mod.scales)
+    assert torch.equal(lg, lg.round()), "scales are not all powers of two"
+    # Every dequantized magnitude must be a valid E2M1 code times its scale.
+    pad = (-35) % 32
+    w_blocks = torch.cat([w, w.new_zeros(27, pad)], 1).view(27, -1, 32)
+    ratio = w_blocks / mod.scales.unsqueeze(-1)
+    mags = {0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0}
+    for v in ratio.flatten().tolist():
+        assert abs(v) in mags or abs(abs(v) - round(abs(v), 6)) < 1e-9 and \
+            min(abs(abs(v) - m) for m in mags) < 1e-6, \
+            f"dequantized value {v} is not an E2M1 code x scale"
+    # Reconstruction error: FP4 is coarse (8 magnitudes) but must be bounded.
+    rel = ((w - lin.weight).norm() / lin.weight.norm()).item()
+    assert rel < 0.35, f"MXFP4 reconstruction error {rel:.3%} too high"
+    # forward == F.linear with .weight; deterministic; bias preserved.
+    out = mod(x)
+    ref = nn.functional.linear(x, w.to(x.dtype), mod.bias.to(x.dtype))
+    d = (out - ref).abs().max().item()
+    assert d < 1e-5, f"forward disagrees with .weight ({d:.3e})"
+    mod2 = MXFP4Linear.from_linear(lin, block_size=32)
+    assert torch.equal(mod.qweight, mod2.qweight) \
+        and torch.equal(mod.scales, mod2.scales), "not deterministic"
+
+    # QuantizationManager integration: whole-model quantize + MTP rebind.
+    model, config = _lite_model(seed=502)
+    QuantizationManager(method="mxfp4").quantize_model(model)
+    assert isinstance(model.lm_head, MXFP4Linear), \
+        f"lm_head should be MXFP4Linear, got {type(model.lm_head)}"
+    for i, mtp in enumerate(model.mtp_modules):
+        assert mtp.lm_head is model.lm_head, f"mtp[{i}] lm_head not re-bound"
+    ids = torch.randint(3, config.vocab_size, (1, 6))
+    with torch.no_grad():
+        logits, _, _ = model(ids)
+    assert torch.isfinite(logits).all(), "mxfp4 model produced non-finite logits"
+    assert logits.shape == (1, 6, config.vocab_size)
+    _pass("test_mxfp4",
+          f"E2M1+E8M0 valid (rel-err {rel:.1%}), odd dims exact, deterministic, "
+          "manager + MTP rebind OK")
+
+
+# ----------------------------------------------------------------------
 # v5.3: QuantizationManager re-binds MTP's shared lm_head/embed_tokens
 # ----------------------------------------------------------------------
 def test_mtp_rebind_after_quantization():
@@ -1216,6 +1368,733 @@ def test_audio_sliding_window():
           f"stream-vs-oneshot max|diff|={diff:.2e}, reset_state OK")
 
 
+# ----------------------------------------------------------------------
+# v5.5 (F1): GatedDeltaAttention — shapes, recurrent == one-shot, decay
+# gate range, StateTensor marker, masked tokens never write state
+# ----------------------------------------------------------------------
+def test_linear_attention():
+    from helioslm_v5.src.attention.linear_attention import (
+        GatedDeltaAttention, StateTensor, is_recurrent_state)
+
+    config = HeliosLMv5Config(size="lite")
+    torch.manual_seed(140)
+    attn = GatedDeltaAttention(config).eval()
+    B, L = 2, 7
+    h = torch.randn(B, L, config.hidden_size)
+    H = config.hybrid_attention.linear_num_heads
+    D = config.hybrid_attention.linear_head_dim
+
+    with torch.no_grad():
+        full_out, present = attn(h, use_cache=True)
+        assert full_out.shape == (B, L, config.hidden_size)
+        assert torch.isfinite(full_out).all()
+        # Cache: single fixed-size state tensor carrying the marker.
+        assert len(present) == 1
+        state = present[0]
+        assert isinstance(state, StateTensor) and is_recurrent_state(state)
+        assert state.shape == (B, H, D, D)
+
+        # Token-by-token decode must match the one-shot forward (same
+        # sequential op order in both paths).
+        past, outs = None, []
+        for i in range(L):
+            o, past = attn(h[:, i:i + 1], past_key_value=past, use_cache=True)
+            outs.append(o)
+        step_out = torch.cat(outs, dim=1)
+        diff = (full_out - step_out).abs().max().item()
+        assert diff < 1e-5, f"recurrent decode != one-shot forward: {diff:.3e}"
+        sdiff = (state - past[0]).abs().max().item()
+        assert sdiff < 1e-6, f"final state mismatch: {sdiff:.3e}"
+
+        # Decay gate: strictly inside (0, 1), and the +4 bias init keeps it
+        # near 1 (slow decay) at initialization.
+        g = attn.decay_gate(h)
+        assert g.shape == (B, L, H)
+        assert bool((g > 0).all()) and bool((g < 1).all()), \
+            f"decay gate out of (0,1): [{g.min()}, {g.max()}]"
+        fresh = attn.decay_gate(torch.zeros(1, 1, config.hidden_size))
+        assert float(fresh.min()) > 0.9, \
+            f"decay at init should be near 1, got {float(fresh.min()):.4f}"
+
+        # Masked (pad) tokens must not write into the state: masking the
+        # tail of a sequence == running the truncated sequence.
+        mask = torch.ones(B, L)
+        mask[0, 5:] = 0
+        _, present_m = attn(h, attention_mask=mask, use_cache=True)
+        _, present_t = attn(h[0:1, :5], use_cache=True)
+        mdiff = (present_m[0][0] - present_t[0][0]).abs().max().item()
+        assert mdiff < 1e-6, f"pad tokens polluted the state: {mdiff:.3e}"
+
+    # Bad cache arity / shape fails loudly.
+    bad = (torch.zeros(B, H, D, D), torch.zeros(B, H, D, D))
+    _expect_raises(ValueError,
+                   lambda: attn(h[:, :1], past_key_value=bad, use_cache=True),
+                   "2-tuple cache for a linear-attention layer")
+    _pass("test_linear_attention",
+          f"decode==one-shot max|diff|={diff:.2e}, state match {sdiff:.2e}, "
+          f"decay in (0,1) (init {float(fresh.min()):.3f}), pad no-write, "
+          f"state {tuple(state.shape)} marked")
+
+
+# ----------------------------------------------------------------------
+# v5.5 (F2): hybrid interleave — layer pattern, shapes, cached decode ==
+# full forward, generate, full-size config defaults, engine compatibility
+# ----------------------------------------------------------------------
+def test_hybrid_model():
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+    from helioslm_v5.src.attention.mla import MLA
+    from helioslm_v5.src.attention.linear_attention import (
+        GatedDeltaAttention, is_recurrent_state)
+
+    # every=3, 4 layers -> MLA iff i == 0 or i % 3 == 2:
+    # [MLA, GDA, MLA, GDA]; layer 0 always MLA.
+    torch.manual_seed(141)
+    config = HeliosLMv5Config(size="lite")
+    config.hybrid_attention.enabled = True
+    config.hybrid_attention.full_attention_every = 3
+    config.num_hidden_layers = 4
+    model = HeliosLMv5(config).eval()
+
+    pattern = [type(l.attention) for l in model.layers]
+    assert pattern == [MLA, GatedDeltaAttention, MLA, GatedDeltaAttention], \
+        f"unexpected interleave pattern: {[t.__name__ for t in pattern]}"
+
+    ids = torch.randint(3, config.vocab_size, (2, 8))
+    with torch.no_grad():
+        logits, hidden, past = model(ids, use_cache=True)
+        assert logits.shape == (2, 8, config.vocab_size)
+        assert hidden.shape == (2, 8, config.hidden_size)
+        assert len(past) == 4
+        # MLA layers: dim-2-sequence caches; GDA layers: marked state.
+        assert past[0][0].shape[2] == 8 and not is_recurrent_state(past[0][0])
+        assert is_recurrent_state(past[1][0]) and past[1][0].dim() == 4
+        assert past[2][0].shape[2] == 8 and not is_recurrent_state(past[2][0])
+        assert is_recurrent_state(past[3][0])
+
+        # Cached token-by-token decode == full forward (whole hybrid stack).
+        full = logits
+        past_i, outs = None, []
+        for i in range(8):
+            o, _, past_i = model(ids[:, i:i + 1], past_key_values=past_i,
+                                 use_cache=True)
+            outs.append(o)
+        dec = torch.cat(outs, dim=1)
+        diff = (full - dec).abs().max().item()
+        assert diff < 1e-4, f"hybrid cached decode diverged: {diff:.3e}"
+
+    g1 = model.generate(ids, max_new_tokens=5, temperature=0)
+    g2 = model.generate(ids, max_new_tokens=5, temperature=0)
+    assert g1.shape == (2, 13) and torch.equal(g1, g2)
+
+    # Engine: unequal prompts run unpadded (state cannot absorb pad
+    # prefixes) and still match per-request greedy exactly.
+    from helioslm_v5.src.inference.vllm_engine import VLLMEngine
+    engine = VLLMEngine(model, config, block_size=4, max_num_blocks=64)
+    assert engine._has_recurrent_state
+    prompts = [[5, 100, 200, 7], [42, 900]]
+    rids = [engine.add_request(p, max_new_tokens=5, temperature=0.0)
+            for p in prompts]
+    results = engine.run()
+    assert all(engine_r.prompt_pad == 0
+               for engine_r in engine.finished_requests), \
+        "hybrid engine must not use the pad-prefix watermark"
+    for p, rid in zip(prompts, rids):
+        ref = model.generate(torch.tensor([p]), max_new_tokens=5,
+                             temperature=0)[0, len(p):].tolist()
+        got = results[rid]
+        assert ref[:len(got)] == got, \
+            f"hybrid engine request {rid}: {got} != greedy {ref[:len(got)]}"
+
+    # Config: validation of full_attention_every, and size-based defaults.
+    def _bad_every():
+        c = HeliosLMv5Config(size="lite")
+        c.hybrid_attention.enabled = True
+        c.hybrid_attention.full_attention_every = 1
+        c._validate()
+    _expect_raises(ValueError, _bad_every, "full_attention_every=1")
+
+    full = HeliosLMv5Config(size="full")  # validation only (no model build)
+    assert full.hybrid_attention.enabled is True
+    assert full.moe.latent_dim == 1024
+    assert full.use_attention_residuals is True
+    lite = HeliosLMv5Config(size="lite")
+    assert lite.hybrid_attention.enabled is False
+    assert lite.moe.latent_dim is None
+    assert lite.use_attention_residuals is False
+    _pass("test_hybrid_model",
+          f"pattern [MLA,GDA,MLA,GDA], cached-decode max|diff|={diff:.2e}, "
+          f"generate OK, engine hybrid==greedy (unpadded), size defaults OK")
+
+
+# ----------------------------------------------------------------------
+# v5.5 (F3): LatentMoE — latent dims wired through, output shape, grads
+# flow in both latent and full-width variants
+# ----------------------------------------------------------------------
+def test_latent_moe():
+    from helioslm_v5.src.moe.sigmoid_moe import DeviceLimitedMoE
+
+    config = HeliosLMv5Config(size="lite")
+    config.moe.latent_dim = 64
+    torch.manual_seed(142)
+    moe = DeviceLimitedMoE(config)
+    H = config.hidden_size
+
+    # Latent wiring: router + routed experts live in latent space; the
+    # shared expert stays full-width.
+    assert moe.down_proj.weight.shape == (64, H)
+    assert moe.up_proj.weight.shape == (H, 64)
+    assert moe.router.weight.shape == (config.moe.num_experts, 64)
+    assert moe.experts[0].w13.in_features == 64
+    assert moe.experts[0].w2.out_features == 64
+    assert moe.shared_experts[0].w13.in_features == H
+
+    x = torch.randn(2, 6, H, requires_grad=True)
+    out = moe(x)
+    assert out.shape == x.shape and torch.isfinite(out).all()
+    moe.zero_grad(set_to_none=True)
+    out.sum().backward()
+    for name, p in (("down_proj", moe.down_proj.weight),
+                    ("up_proj", moe.up_proj.weight),
+                    ("router", moe.router.weight),
+                    ("expert0.w13", moe.experts[0].w13.weight)):
+        assert p.grad is not None and p.grad.abs().sum() > 0, \
+            f"no gradient through latent MoE: {name}"
+
+    # Full-width variant (v5.4 default) still backprops end-to-end.
+    config2 = HeliosLMv5Config(size="lite")
+    torch.manual_seed(142)
+    moe2 = DeviceLimitedMoE(config2)
+    assert moe2.down_proj is None and moe2.up_proj is None
+    assert moe2.experts[0].w13.in_features == H
+    x2 = torch.randn(2, 6, H, requires_grad=True)
+    moe2(x2).sum().backward()
+    assert moe2.router.weight.grad is not None \
+        and moe2.router.weight.grad.abs().sum() > 0
+
+    # Output differs between latent and full-width (real mechanism, and
+    # LatentMoE has fewer routed-expert parameters).
+    p_lat = sum(p.numel() for p in moe.experts.parameters())
+    p_full = sum(p.numel() for p in moe2.experts.parameters())
+    assert p_lat < p_full, "latent experts should shrink parameter count"
+    _pass("test_latent_moe",
+          f"latent=64 wiring OK, grads OK both variants, expert params "
+          f"{p_lat} < full-width {p_full}")
+
+
+# ----------------------------------------------------------------------
+# v5.5 (F4): quantile balancing — drives load toward uniform at least as
+# well as the heuristic update; bias is actually updated
+# ----------------------------------------------------------------------
+def test_quantile_balancing():
+    from helioslm_v5.src.moe.sigmoid_moe import DeviceLimitedMoE
+
+    E = HeliosLMv5Config(size="lite").moe.num_experts
+
+    def make(strategy, seed):
+        config = HeliosLMv5Config(size="lite")
+        config.moe.balance_strategy = strategy
+        torch.manual_seed(seed)
+        return DeviceLimitedMoE(config).train()
+
+    moe_h = make("heuristic", 143)
+    moe_q = make("quantile", 143)
+    # Identical initial weights -> any divergence comes from the strategy.
+    moe_q.load_state_dict(moe_h.state_dict(), strict=False)
+
+    # Strongly skewed input: a dominant fixed direction makes the initial
+    # ranking nearly input-independent -> a few experts are always picked.
+    g = torch.Generator().manual_seed(144)
+    direction = torch.randn(1, moe_h.hidden_size, generator=g)
+    direction = direction / direction.norm()
+
+    def batch(i):
+        noise = 0.3 * torch.randn(64, moe_h.hidden_size,
+                                  generator=torch.Generator().manual_seed(1000 + i))
+        return (5.0 * direction + noise).unsqueeze(0)  # [1, 64, H] tokens
+
+    def run(moe, steps=25):
+        for i in range(steps):
+            moe(batch(i))  # training mode: stats + margins accumulate
+            moe.update_bias()
+        # Measure the post-update load distribution over fresh batches.
+        moe.expert_load.zero_()
+        for i in range(4):
+            moe(batch(100 + i))
+        load = moe.expert_load.clone()
+        moe.expert_load.zero_()
+        return load
+
+    load_h = run(moe_h)
+    load_q = run(moe_q)
+    cv_h = (load_h.std() / load_h.mean().clamp(min=1e-12)).item()
+    cv_q = (load_q.std() / load_q.mean().clamp(min=1e-12)).item()
+    assert load_h.mean() > 0 and load_q.mean() > 0
+    assert cv_q <= cv_h + 1e-6, \
+        f"quantile balancing worse than heuristic: CV {cv_q:.3f} vs {cv_h:.3f}"
+    assert moe_q.route_bias.abs().sum() > 0, "quantile update never moved bias"
+    # Sanity: the skew really is hard for the heuristic at this step size
+    # (otherwise the comparison above is vacuous).
+    assert cv_h > 0.5, f"test is vacuous: heuristic already balanced (CV {cv_h:.3f})"
+    _pass("test_quantile_balancing",
+          f"load CV: quantile {cv_q:.3f} <= heuristic {cv_h:.3f}, "
+          f"|bias| sum={moe_q.route_bias.abs().sum():.3f}")
+
+    # Config validation of the strategy enum.
+    def _bad_strategy():
+        c = HeliosLMv5Config(size="lite")
+        c.moe.balance_strategy = "softmax"
+        c._validate()
+    _expect_raises(ValueError, _bad_strategy, "unknown balance_strategy")
+
+
+# ----------------------------------------------------------------------
+# v5.5 (F5a): attention residuals — on/off changes output, per-layer gate
+# exists, is learnable and receives gradient (layers >= 1)
+# ----------------------------------------------------------------------
+def test_attention_residuals():
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+
+    torch.manual_seed(145)
+    cfg_on = HeliosLMv5Config(size="lite")
+    cfg_on.use_attention_residuals = True
+    model_on = HeliosLMv5(cfg_on)
+    torch.manual_seed(145)
+    cfg_off = HeliosLMv5Config(size="lite")  # v5.4 default: off
+    model_off = HeliosLMv5(cfg_off)
+
+    for i, layer in enumerate(model_on.layers):
+        assert isinstance(layer.attn_res_gate, torch.nn.Parameter)
+        assert layer.attn_res_gate.requires_grad
+        assert abs(float(layer.attn_res_gate.detach()) - 0.1) < 1e-6
+    assert model_off.layers[0].attn_res_gate is None
+
+    ids = torch.randint(3, cfg_on.vocab_size, (2, 6))
+    logits_on, _, _ = model_on(ids)
+    logits_off, _, _ = model_off(ids)
+    delta = (logits_on - logits_off).abs().max().item()
+    assert delta > 1e-4, \
+        f"attention residuals had no effect on the output ({delta:.3e})"
+
+    model_on.zero_grad(set_to_none=True)
+    model_on(ids)[0].sum().backward()
+    g0 = model_on.layers[0].attn_res_gate.grad
+    g1 = model_on.layers[1].attn_res_gate.grad
+    assert g0 is not None and g1 is not None
+    # Layer 0 injects gate * zeros (empty accumulator) -> zero grad by
+    # construction; deeper layers must receive a real gradient.
+    assert g1.abs().item() > 0, "attention-residual gate got no gradient"
+    _pass("test_attention_residuals",
+          f"on/off output max|delta|={delta:.3e}, gates init 0.1, "
+          f"layer1 gate |grad|={g1.abs().item():.3e}")
+
+
+# ----------------------------------------------------------------------
+# v5.5 (F5b): SiTU-GLU — soft cap is bounded, expert output finite under
+# huge inputs, gradients flow
+# ----------------------------------------------------------------------
+def test_situ_glu():
+    from helioslm_v5.src.moe.sigmoid_moe import (
+        DeviceLimitedMoE, SiTUExpert, SwiGLUExpert, _situ_cap, build_expert)
+
+    softcap = 3.0
+    x_big = torch.randn(4, 32) * 1000.0
+    t = _situ_cap(x_big, softcap)
+    # |t(x)| < softcap mathematically; fp32 tanh saturates to exactly 1.0
+    # for large |x|, hence <= with a rounding allowance.
+    assert bool((t.abs() <= softcap + 1e-6).all()), \
+        f"soft cap violated: |t(x)| max {t.abs().max():.3e} > {softcap}"
+    # Identity near zero (t(x) ~= x for |x| << softcap).
+    x_small = torch.randn(8, 16) * 0.01
+    assert ((_situ_cap(x_small, softcap) - x_small).abs().max()
+            < 1e-4), "soft cap should be ~identity near zero"
+
+    config = HeliosLMv5Config(size="lite")
+    config.moe.activation = "situ"
+    config.moe.situ_softcap = softcap
+    torch.manual_seed(146)
+    expert = build_expert(config, 32, 32)
+    assert isinstance(expert, SiTUExpert)
+    x = (torch.randn(4, 32) * 100.0).requires_grad_(True)
+    out = expert(x)
+    assert out.shape == (4, 32) and torch.isfinite(out).all(), \
+        "SiTU expert output not finite under huge inputs"
+    out.sum().backward()
+    assert x.grad is not None and torch.isfinite(x.grad).all() \
+        and x.grad.abs().sum() > 0, "no gradient through SiTU-GLU"
+    assert expert.w13.weight.grad is not None \
+        and expert.norm.weight.grad is not None
+
+    # MoE-level: "situ" experts are wired everywhere, "swiglu" is default.
+    moe = DeviceLimitedMoE(config)
+    assert all(isinstance(e, SiTUExpert) for e in moe.experts)
+    assert all(isinstance(e, SiTUExpert) for e in moe.shared_experts)
+    h = torch.randn(2, 5, config.hidden_size)
+    out_m = moe(h)
+    assert out_m.shape == h.shape and torch.isfinite(out_m).all()
+
+    config_sw = HeliosLMv5Config(size="lite")
+    assert isinstance(build_expert(config_sw, 32, 32), SwiGLUExpert)
+
+    def _bad_act():
+        c = HeliosLMv5Config(size="lite")
+        c.moe.activation = "gelu"
+        c._validate()
+    _expect_raises(ValueError, _bad_act, "unknown activation")
+    _pass("test_situ_glu",
+          f"|t(x)| < {softcap} (max {t.abs().max():.3f} @|x|=1000), "
+          f"finite output, grads OK, MoE wiring OK, bad activation raises")
+
+
+# ----------------------------------------------------------------------
+# v5.5 (M1/M2 regression): quantile margin boundary — margin > 0 iff the
+# expert is actually selected (P(margin>0 | selected) == 1.0), and the
+# quantile update keeps route_bias bounded over 300 updates (fixed point,
+# not the unbounded linear drift of the off-by-one boundary)
+# ----------------------------------------------------------------------
+def test_quantile_margin_boundary():
+    from helioslm_v5.src.moe.sigmoid_moe import DeviceLimitedMoE
+
+    config = HeliosLMv5Config(size="lite")
+    config.moe.balance_strategy = "quantile"
+    torch.manual_seed(160)
+    moe = DeviceLimitedMoE(config).train()
+    E, K = moe.num_experts, moe.top_k
+
+    # Known selection: a huge bias on expert 3 forces it into every token's
+    # top-k; the rest of the ranking is data-dependent.
+    with torch.no_grad():
+        moe.route_bias[3] = 100.0
+    flat = torch.randn(12, config.hidden_size)
+    topk_indices, _ = moe._route(flat)  # train mode + grad on: records margins
+    N = flat.shape[0]
+    n = int(moe.margin_count)
+    assert n == N, f"expected {N} recorded margins, got {n}"
+    window = moe.margin_buffer[:, moe._MARGIN_BUF - n:]
+    selected = torch.zeros(E, N, dtype=torch.bool)
+    selected.scatter_(0, topk_indices.t(), True)
+    margin_pos = window > 0
+    p_pos_given_sel = margin_pos[selected].float().mean().item()
+    assert p_pos_given_sel == 1.0, \
+        f"P(margin>0 | selected) = {p_pos_given_sel:.3f} != 1.0 " \
+        "(boundary off-by-one regression)"
+    p_pos_given_unsel = margin_pos[~selected].float().mean().item()
+    assert p_pos_given_unsel == 0.0, \
+        f"P(margin>0 | not selected) = {p_pos_given_unsel:.3f} != 0.0"
+    assert bool(margin_pos[3].all()), "forced expert must have margin > 0"
+
+    # Boundedness: 300 forward+update cycles on a strongly skewed input
+    # distribution. With the fixed boundary the bias converges to a fixed
+    # point (selection frequency -> K/E); the off-by-one boundary made the
+    # K/E target unreachable and the bias drifted linearly without bound
+    # (mean |bias| ~3.65 after 300 steps in the buggy version).
+    torch.manual_seed(161)
+    moe2 = DeviceLimitedMoE(config).train()
+    g = torch.Generator().manual_seed(162)
+    direction = torch.randn(1, config.hidden_size, generator=g)
+    direction = direction / direction.norm()
+
+    def batch(seed):
+        noise = 0.3 * torch.randn(64, config.hidden_size,
+                                  generator=torch.Generator().manual_seed(seed))
+        return (5.0 * direction + noise).unsqueeze(0)
+
+    hist = {}
+    for i in range(300):
+        moe2(batch(2000 + i % 50))
+        moe2.update_bias()
+        if i in (250, 299):
+            hist[i] = moe2.route_bias.detach().clone()
+    max_abs = moe2.route_bias.abs().max().item()
+    assert torch.isfinite(moe2.route_bias).all()
+    assert max_abs < 2.0, \
+        f"route_bias unbounded after 300 updates: max|bias|={max_abs:.3f}"
+    late_drift = (hist[299] - hist[250]).abs().max().item()
+    assert late_drift < 0.5, \
+        f"bias still drifting late in training (fixed point not reached): " \
+        f"{late_drift:.3f}"
+    # The K/E target is now reachable: post-convergence load is near uniform.
+    moe2.expert_load.zero_()
+    for i in range(4):
+        moe2(batch(3000 + i))
+    load = moe2.expert_load.clone()
+    moe2.expert_load.zero_()
+    cv = (load.std() / load.mean().clamp(min=1e-12)).item()
+    assert cv < 0.3, f"post-convergence load CV {cv:.3f} not near-uniform"
+    _pass("test_quantile_margin_boundary",
+          f"P(margin>0|selected)=1.0 exactly, 300 updates: max|bias|="
+          f"{max_abs:.3f} (bounded), late drift {late_drift:.3f}, "
+          f"load CV {cv:.3f}")
+
+
+# ----------------------------------------------------------------------
+# v5.6: hybrid model SUPPORTS packed position_ids — the recurrent state is
+# zeroed at each document boundary, giving exact cross-document isolation
+# (mirrors the MLA packed-isolation test); pure-MLA models unaffected;
+# decode-with-past at a position restart still raises loudly
+# ----------------------------------------------------------------------
+def test_hybrid_packed_positions():
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+
+    torch.manual_seed(172)
+    config = HeliosLMv5Config(size="lite")
+    config.hybrid_attention.enabled = True
+    config.hybrid_attention.full_attention_every = 3
+    config.num_hidden_layers = 4
+    hybrid = HeliosLMv5(config).eval()
+
+    pos_packed = torch.tensor([[0, 1, 2, 0, 1, 2]])  # two packed documents
+    doc_a, doc_b = [5, 100, 200], [42, 900, 7]
+    ids_p = torch.tensor([doc_a + doc_b])
+    ids_p2 = ids_p.clone()
+    ids_p2[0, :3] = torch.tensor([7, 42, 5])
+
+    with torch.no_grad():
+        # Perturbing document A must leave document B's logits unchanged
+        # (state zeroed at the boundary — no cross-document leak).
+        la, _, _ = hybrid(ids_p, position_ids=pos_packed)
+        lb, _, _ = hybrid(ids_p2, position_ids=pos_packed)
+        # Packed documents must match their solo forward exactly: the
+        # boundary reset makes packing equivalent to separate sequences.
+        solo_b, _, _ = hybrid(torch.tensor([doc_b]))
+        packed_b = la[0, 3:]
+
+    leak = (la[0, 3:] - lb[0, 3:]).abs().max().item()
+    assert leak < 1e-5, \
+        f"hybrid packed isolation failed: doc B changed by {leak:.3e}"
+    solo_diff = (packed_b - solo_b).abs().max().item()
+    assert solo_diff < 1e-4, \
+        f"hybrid packed doc B diverges from solo forward ({solo_diff:.3e})"
+
+    # Normal prefill (default 0..T-1) and cached decode (past_len..,
+    # monotone) must NOT trip the boundary logic.
+    with torch.no_grad():
+        logits, _, past = hybrid(ids_p, use_cache=True)
+        step, _, past = hybrid(ids_p[:, -1:], past_key_values=past,
+                               use_cache=True)
+    assert logits.shape == (1, 6, config.vocab_size)
+    assert step.shape == (1, 1, config.vocab_size)
+
+    # A position restart while a non-empty cache is supplied (cached decode
+    # at a document boundary) is contradictory and still raises loudly.
+    bad_pos = torch.tensor([[2, 0]])  # restart with past present
+    _expect_raises(ValueError,
+                   lambda: hybrid(torch.tensor([[11, 12]]),
+                                  past_key_values=past,
+                                  position_ids=bad_pos),
+                   "hybrid cached decode with a position restart")
+
+    # Pure-MLA models are unaffected: packed positions still give exact
+    # cross-document isolation (v5.4 B1 behaviour preserved).
+    torch.manual_seed(173)
+    mla_model = HeliosLMv5(HeliosLMv5Config(size="lite")).eval()
+    with torch.no_grad():
+        la, _, _ = mla_model(ids_p, position_ids=pos_packed)
+        lb, _, _ = mla_model(ids_p2, position_ids=pos_packed)
+    leak_mla = (la[0, 3:] - lb[0, 3:]).abs().max().item()
+    assert leak_mla < 1e-5, \
+        f"pure-MLA packed isolation regressed: doc B changed by {leak_mla:.3e}"
+    _pass("test_hybrid_packed_positions",
+          f"hybrid packed isolation exact (leak {leak:.2e}), packed==solo "
+          f"({solo_diff:.2e}), decode+restart raises, prefill/decode OK, "
+          f"pure-MLA isolation intact (leak {leak_mla:.2e})")
+
+
+# ----------------------------------------------------------------------
+# v5.5 (M4/M5 regression): attention-residual accumulator is threaded
+# explicitly through the DualPipe path — attn_res_gate receives gradient
+# under run_dual, and pipeline gradients match the direct forward+backward
+# reference bitwise (single stage AND a two-stage split where the
+# accumulator crosses the stage boundary)
+# ----------------------------------------------------------------------
+def test_attention_residuals_dualpipe():
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+    from helioslm_v5.src.training.dualpipe import (
+        DualPipeScheduler, DualPipeStage, LayerWrap)
+
+    torch.manual_seed(170)
+    config = HeliosLMv5Config(size="lite")
+    config.use_attention_residuals = True
+    model = HeliosLMv5(config)
+    assert all(l.attn_res_gate is not None for l in model.layers)
+
+    torch.manual_seed(171)
+    inputs = [torch.randn(2, 5, config.hidden_size) for _ in range(4)]
+    loss_fn = lambda out: out.pow(2).mean()
+    M = len(inputs)
+
+    def run_pair(stages, reference):
+        """run_dual on `stages` vs a direct forward+backward `reference`;
+        return (loss_pipe, loss_ref, max_grad_diff, grads_pipe)."""
+        model.zero_grad(set_to_none=True)
+        sched = DualPipeScheduler(stages, num_micro_batches=M)
+        loss_pipe = sched.run_dual(inputs, loss_fn)
+        grads_pipe = {n: p.grad.clone()
+                      for n, p in model.named_parameters() if p.grad is not None}
+        model.zero_grad(set_to_none=True)
+        loss_ref = 0.0
+        for x in inputs:
+            loss = loss_fn(reference(x)) / M
+            loss.backward()
+            loss_ref += loss.item()
+        assert abs(loss_pipe - loss_ref) < 1e-6, \
+            f"loss mismatch: pipe={loss_pipe:.8f} ref={loss_ref:.8f}"
+        max_d = 0.0
+        for n, p in model.named_parameters():
+            if n in grads_pipe:
+                assert p.grad is not None, f"{n}: grad missing in reference"
+                d = (grads_pipe[n] - p.grad).abs().max().item()
+                max_d = max(max_d, d)
+        return loss_pipe, loss_ref, max_d, grads_pipe
+
+    # --- 1) single stage holding both layers ---
+    stage = DualPipeStage(nn.ModuleList([LayerWrap(model.layers[0]),
+                                         LayerWrap(model.layers[1])]))
+    assert stage.threads_attn_res
+    _, _, d1, grads1 = run_pair([stage], lambda x: stage(x)[0])
+    g1 = grads1.get("layers.1.attn_res_gate")
+    assert g1 is not None and g1.abs().item() > 0, \
+        "attn_res_gate got no gradient through DualPipe (M4 regression)"
+    assert d1 < 1e-6, f"1-stage pipe vs direct grad diff {d1:.3e}"
+
+    # --- 2) two-stage split: the accumulator must cross the stage
+    #    boundary through the scheduler's detached-carry leaves ---
+    s0 = DualPipeStage(nn.ModuleList([LayerWrap(model.layers[0])]))
+    s1 = DualPipeStage(nn.ModuleList([LayerWrap(model.layers[1])]))
+
+    def ref2(x):
+        h, ares = s0(x)
+        h, _ = s1(h, ares)
+        return h
+
+    _, _, d2, grads2 = run_pair([s0, s1], ref2)
+    g1b = grads2.get("layers.1.attn_res_gate")
+    assert g1b is not None and g1b.abs().item() > 0, \
+        "attn_res_gate grad missing when the accumulator crosses stages"
+    assert d2 < 1e-6, f"2-stage pipe vs direct grad diff {d2:.3e}"
+
+    # --- 3) residuals OFF: LayerWrap/stage degrade to the plain v5.4
+    #    tensor->tensor contract (no carry threaded) ---
+    model_off, _ = _lite_model(seed=175)
+    stage_off = DualPipeStage(nn.ModuleList([LayerWrap(model_off.layers[0]),
+                                             LayerWrap(model_off.layers[1])]))
+    assert not stage_off.threads_attn_res
+    assert torch.is_tensor(stage_off(torch.randn(1, 3, config.hidden_size)))
+    _pass("test_attention_residuals_dualpipe",
+          f"gate grads flow under DualPipe (|g1|={g1.abs().item():.3e}, "
+          f"2-stage |g1|={g1b.abs().item():.3e}), pipe==direct bitwise "
+          f"(max diff {max(d1, d2):.1e}), residuals-off path unchanged")
+
+
+# ----------------------------------------------------------------------
+# v5.5 (m6/m7 regression): dtype-aware decay clamp (fp16 upper bound must
+# stay strictly below 1.0) and a loud error for seq_len == 0
+# ----------------------------------------------------------------------
+def test_linear_attention_guards():
+    from helioslm_v5.src.attention.linear_attention import GatedDeltaAttention
+
+    config = HeliosLMv5Config(size="lite")
+    torch.manual_seed(174)
+    attn = GatedDeltaAttention(config).eval()
+
+    # m6: deep saturation (huge pre-activations -> sigmoid ~ 1).
+    big = torch.randn(2, 5, config.hidden_size) * 1e4
+    with torch.no_grad():
+        g32 = attn.decay_gate(big)
+    # fp32 keeps the historical [1e-6, 1 - 1e-6] bounds (fp32(1e-6) is
+    # marginally below the decimal value, hence the 1e-12 slack).
+    assert abs(g32.max().item() - (1.0 - 1e-6)) < 1e-7, \
+        f"fp32 clamp bound changed: {g32.max().item()}"
+    assert g32.min().item() >= 1e-6 - 1e-12
+
+    # fp16: a fixed 1 - 1e-6 bound would round to exactly 1.0; the
+    # dtype-aware bound is 1 - eps(fp16) = 0.9990234375, strictly < 1.
+    attn16 = GatedDeltaAttention(config).to(torch.float16).eval()
+    with torch.no_grad():
+        g16 = attn16.decay_gate(torch.randn(2, 5, config.hidden_size,
+                                            dtype=torch.float16))
+    eps16 = torch.finfo(torch.float16).eps
+    assert bool((g16 < 1).all()), \
+        f"fp16 decay gate reached 1.0 (clamp rounded away): {g16.max().item()}"
+    assert g16.max().item() <= 1.0 - eps16 + 1e-7, \
+        f"fp16 upper bound not dtype-aware: {g16.max().item()}"
+
+    # m7: seq_len == 0 raises a clear ValueError, not torch.stack([])'s
+    # cryptic RuntimeError.
+    _expect_raises(ValueError,
+                   lambda: attn(torch.zeros(1, 0, config.hidden_size)),
+                   "GatedDeltaAttention with seq_len=0")
+    _pass("test_linear_attention_guards",
+          f"fp32 bound 1-1e-6 kept, fp16 bound {g16.max().item():.6f} "
+          f"(= 1-eps16, strictly < 1), seq_len=0 raises ValueError")
+
+
+# ----------------------------------------------------------------------
+# v5.5 (F1+F2): MTP speculative decoding on a HYBRID model — recurrent
+# state clone/rollback restores the exact pre-speculation state
+# ----------------------------------------------------------------------
+def test_mtp_hybrid_rollback():
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+    from helioslm_v5.src.inference.mtp import MTPDecoder
+    from helioslm_v5.src.attention.linear_attention import is_recurrent_state
+
+    torch.manual_seed(147)
+    config = HeliosLMv5Config(size="lite")
+    config.hybrid_attention.enabled = True
+    config.hybrid_attention.full_attention_every = 3
+    config.num_hidden_layers = 4
+    model = HeliosLMv5(config).eval()
+
+    # --- unit level: clone -> speculate -> restore -> replay is exact ---
+    ids = torch.randint(3, config.vocab_size, (1, 7))
+    with torch.no_grad():
+        _, _, p5 = model(ids[:, :5], use_cache=True)
+        p5_state = p5[1][0].clone()  # linear layer state after 5 tokens
+        # Speculative +2 tokens from p5 (must NOT mutate p5).
+        _, _, p7 = model(ids[:, 5:7], past_key_values=p5, use_cache=True)
+        assert torch.equal(p5[1][0], p5_state), \
+            "speculative forward mutated the input state cache in place"
+        # _row_past with a truncation length: MLA cache truncated, state NOT.
+        rp = MTPDecoder._row_past(p7, 0, length=6)
+        assert rp[0][0].shape[2] == 6, "MLA cache not truncated to 6"
+        assert rp[1][0].shape == p7[1][0].shape \
+            and torch.equal(rp[1][0], p7[1][0]), \
+            "state cache must never be dim-2 truncated"
+        # Reject the speculation: restore the clone of p5 and replay the
+        # committed token ids[:, 5].
+        clone = [tuple(t.clone() for t in lp) for lp in p5]
+        _, _, p6r = model(ids[:, 5:6], past_key_values=clone, use_cache=True)
+        # Reference: a fresh sequential decode to 6 tokens.
+        _, _, p6d = model(ids[:, :6], use_cache=True)
+        s_diff = (p6r[1][0] - p6d[1][0]).abs().max().item()
+        k_diff = (p6r[0][0] - p6d[0][0]).abs().max().item()
+        assert s_diff < 1e-6, f"restored+replayed state diverges: {s_diff:.3e}"
+        # The MLA cache threshold is 1e-5, not 1e-6: the restored lower-layer
+        # GDA states differ from the fresh forward at float32 reassociation
+        # noise (one-shot vs stepwise recurrence), and that noise propagates
+        # into the MLA layers' c_kv projections (~1.5e-6 observed). The
+        # suite's own hybrid decode test allows 1e-4 for the same reason.
+        assert k_diff < 1e-5, f"restored+replayed MLA cache diverges: {k_diff:.3e}"
+
+    # --- end to end: MTP speculative decode == plain greedy on hybrid ---
+    decoder = MTPDecoder(model, model.mtp_modules, config)
+    ids = torch.randint(3, config.vocab_size, (1, 6))
+    res = decoder.generate(ids, max_new_tokens=8, temperature=0)
+    plain = model.generate(ids, max_new_tokens=8, temperature=0)
+    n = res.sequences.shape[1]
+    assert torch.equal(plain[:, :n], res.sequences), \
+        "hybrid MTP decode diverged from plain greedy"
+    assert res.num_drafted > 0
+    assert res.num_accepted < res.num_drafted, \
+        "test expected at least one rejection (rollback path) to occur"
+    assert decoder._past_has_state(
+        [tuple(t.clone() for t in lp) for lp in p5])
+    _pass("test_mtp_hybrid_rollback",
+          f"replay-exactness state {s_diff:.2e}/mla {k_diff:.2e}, "
+          f"MTP==greedy len {n}, acceptance {res.acceptance_rate:.3f} "
+          f"({res.num_accepted}/{res.num_drafted} drafted, rejections "
+          "rolled back)")
+
+
 TESTS = [
     test_mla,
     test_mla_absorption,
@@ -1229,6 +2108,7 @@ TESTS = [
     test_dualpipe,
     test_fp8_trainer,
     test_grpo,
+    test_muon,
     test_streaming_audio,
     test_navit,
     test_navit_input_validation,
@@ -1238,13 +2118,27 @@ TESTS = [
     test_quant_weight_property,
     test_quant_input_validation,
     test_gptq_odd_dims,
+    test_mxfp4,
     test_mtp_rebind_after_quantization,
     test_audio_sliding_window,
+    # v5.5
+    test_linear_attention,
+    test_hybrid_model,
+    test_latent_moe,
+    test_quantile_balancing,
+    test_attention_residuals,
+    test_situ_glu,
+    test_mtp_hybrid_rollback,
+    # v5.5 review fixes (M1-M5, m6/m7)
+    test_quantile_margin_boundary,
+    test_hybrid_packed_positions,
+    test_attention_residuals_dualpipe,
+    test_linear_attention_guards,
 ]
 
 
 def main():
-    print("HeliosLM v5.4 Test Suite (lite config, CPU)")
+    print("HeliosLM v5.5 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:

@@ -1,8 +1,20 @@
-"""HeliosLM v5.4 Configuration
+"""HeliosLM v5.5 Configuration
 
 Two sizes are supported via ``HeliosLMv5Config(size=...)``:
   - ``"lite"``: small CPU-friendly config for smoke tests (seconds per step).
   - ``"full"``: production-scale defaults.
+
+v5.5 additions (Kimi-K3-aligned, all backward compatible on "lite"):
+  - ``HybridAttentionConfig``: interleaved GatedDeltaAttention / MLA layers.
+  - ``moe.latent_dim`` (LatentMoE), ``moe.balance_strategy`` ("heuristic" /
+    "quantile"), ``moe.activation`` ("swiglu" / "situ") + ``situ_softcap``.
+  - ``use_attention_residuals``: cross-layer accumulated attention residual.
+
+``None`` on ``hybrid.enabled`` / ``use_attention_residuals`` /
+``moe.latent_dim`` means "follow the size default": the "full" size turns
+hybrid / residuals on and sets latent_dim=1024; the "lite" size keeps the
+v5.4 behaviour (all off / full-width experts) so the existing test suite is
+bit-identical. Explicit True/False/int values always win.
 
 ``__post_init__`` validates structural constraints (divisibility etc.) and
 raises ``ValueError`` immediately on an invalid configuration instead of
@@ -58,6 +70,42 @@ class MoEConfig:
     device_group_size: int = 8
     # Fixed step size for the aux-free load-balancing bias update.
     bias_update_rate: float = 1e-3
+    # LatentMoE (v5.5): when an int, routed experts operate in a shared
+    # latent space: down_proj(hidden->latent) -> router/experts in latent ->
+    # up_proj(latent->hidden). Shared experts stay full-width.
+    # None -> size default (full: 1024, lite: full-width, i.e. v5.4);
+    # a non-positive value explicitly selects full-width routed experts.
+    latent_dim: Optional[int] = None
+    # Aux-free balancing strategy for update_bias():
+    #   "heuristic": v5.4 sign-of-deviation fixed-step update.
+    #   "quantile":  bias tracks the (1 - target_frac) quantile of a sliding
+    #                window of per-expert routing margins (simplified
+    #                quantile estimator; see DeviceLimitedMoE).
+    # None -> size default (full: "quantile", lite: "heuristic", i.e. v5.4).
+    balance_strategy: Optional[str] = None
+    # Expert MLP activation: "swiglu" (SiLU-gated GLU) or "situ"
+    # (simplified K3-style SiTU-GLU: tanh soft-capped GLU with an RMSNorm
+    # before the output projection).
+    activation: str = "swiglu"
+    situ_softcap: float = 10.0  # tanh soft-cap magnitude for "situ"
+
+
+@dataclass
+class HybridAttentionConfig:
+    """Hybrid attention interleave (v5.5).
+
+    When enabled, layer i uses MLA iff
+    ``i == 0 or i % full_attention_every == full_attention_every - 1``
+    and a GatedDeltaAttention (linear attention with a fixed-size recurrent
+    state cache) otherwise. Layer 0 is ALWAYS MLA, so
+    ``past_key_values[0]`` keeps the dim-2-sequence layout that
+    ``HeliosLMv5.forward`` uses to derive past length.
+    """
+    # None -> follow size (full: True, lite: False, i.e. v5.4 behaviour).
+    enabled: Optional[bool] = None
+    full_attention_every: int = 4
+    linear_num_heads: int = 32
+    linear_head_dim: int = 128
 
 
 @dataclass
@@ -97,7 +145,7 @@ class GRPOConfig:
 
 @dataclass
 class HeliosLMv5Config:
-    model_name: str = "HeliosLM-v5.4"
+    model_name: str = "HeliosLM-v5.6"
     size: str = "full"  # "full" (production defaults) or "lite" (CPU smoke tests)
     vocab_size: int = 160000
     max_position_embeddings: int = 1048576
@@ -111,11 +159,17 @@ class HeliosLMv5Config:
     pad_token_id: int = 0
 
     attention: AttentionConfig = field(default_factory=AttentionConfig)
+    hybrid_attention: HybridAttentionConfig = field(default_factory=HybridAttentionConfig)
     moe: MoEConfig = field(default_factory=MoEConfig)
     mtp: MTPConfig = field(default_factory=MTPConfig)
     paged_attention: PagedAttentionConfig = field(default_factory=PagedAttentionConfig)
     multimodal: MultimodalConfig = field(default_factory=MultimodalConfig)
     grpo: GRPOConfig = field(default_factory=GRPOConfig)
+
+    # Attention residuals (v5.5): per-layer learnable scalar gate injecting
+    # the accumulated sum of previous layers' attention outputs into the
+    # attention input. None -> follow size (full: True, lite: False = v5.4).
+    use_attention_residuals: Optional[bool] = None
 
     def __post_init__(self):
         if self.size not in ("full", "lite"):
@@ -147,6 +201,11 @@ class HeliosLMv5Config:
         self.moe.expert_hidden_size = None  # -> intermediate_size
         self.moe.device_group_size = 2
 
+        # Small hybrid linear-attention dims (used only when a test enables
+        # hybrid_attention explicitly).
+        self.hybrid_attention.linear_num_heads = 4
+        self.hybrid_attention.linear_head_dim = 32
+
         self.mtp.num_modules = 1
         # Keep the lite model small: skip building heavy vision/audio encoders.
         self.multimodal.enabled = False
@@ -154,6 +213,22 @@ class HeliosLMv5Config:
     def _resolve_defaults(self):
         if self.moe.expert_hidden_size is None:
             self.moe.expert_hidden_size = self.intermediate_size
+        # v5.5 size-dependent defaults (None = follow size; explicit values win).
+        if self.hybrid_attention.enabled is None:
+            self.hybrid_attention.enabled = self.size == "full"
+        if self.use_attention_residuals is None:
+            self.use_attention_residuals = self.size == "full"
+        if self.moe.latent_dim is None:
+            # LatentMoE on by default for the full size; the lite size keeps
+            # full-width routed experts (v5.4 behaviour). A non-positive
+            # value explicitly requests full-width experts.
+            self.moe.latent_dim = 1024 if self.size == "full" else None
+        if self.moe.balance_strategy is None:
+            # Quantile balancing on by default for the full size; the lite
+            # size keeps the v5.4 heuristic update.
+            self.moe.balance_strategy = "quantile" if self.size == "full" else "heuristic"
+        if self.moe.latent_dim is not None and self.moe.latent_dim <= 0:
+            self.moe.latent_dim = None  # explicit full-width opt-out
 
     def _validate(self):
         a, m = self.attention, self.moe
@@ -215,6 +290,36 @@ class HeliosLMv5Config:
             raise ValueError(
                 f"mtp.num_modules must be a positive integer, got "
                 f"{self.mtp.num_modules}"
+            )
+        # v5.5: hybrid interleave / LatentMoE / balancing / activation.
+        h = self.hybrid_attention
+        if h.full_attention_every < 2:
+            raise ValueError(
+                f"hybrid_attention.full_attention_every must be >= 2 "
+                f"(layer 0 is always MLA), got {h.full_attention_every}"
+            )
+        if h.linear_num_heads <= 0 or h.linear_head_dim <= 0:
+            raise ValueError(
+                f"hybrid_attention.linear_num_heads/linear_head_dim must be "
+                f"positive, got {h.linear_num_heads}/{h.linear_head_dim}"
+            )
+        # m9: no latent_dim<=0 check here — _resolve_defaults already
+        # normalizes a non-positive latent_dim to None (the documented
+        # explicit full-width opt-out), so by validation time latent_dim is
+        # either None or a positive int.
+        if m.balance_strategy not in ("heuristic", "quantile"):
+            raise ValueError(
+                f"moe.balance_strategy must be 'heuristic' or 'quantile', "
+                f"got {m.balance_strategy!r}"
+            )
+        if m.activation not in ("swiglu", "situ"):
+            raise ValueError(
+                f"moe.activation must be 'swiglu' or 'situ', got "
+                f"{m.activation!r}"
+            )
+        if m.situ_softcap <= 0:
+            raise ValueError(
+                f"moe.situ_softcap must be positive, got {m.situ_softcap}"
             )
         # Vision transformer heads must tile the hidden width exactly.
         vision_hidden = getattr(self.multimodal, "vision_hidden_size", None)

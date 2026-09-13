@@ -561,6 +561,112 @@ else:
     FP8Linear = None
 
 
+class MXFP4Linear(nn.Module):
+    """MXFP4 microscaling FP4 weight-only quantization (v5.6).
+
+    Aligns with the Kimi-K3 / OCP MX recipe: weights are quantized to the
+    FP4 E2M1 format in fixed blocks (default 32 elements, the MX block
+    size) with one E8M0 (power-of-two) scale per block:
+
+        scale = 2^ceil(log2(amax / 6.0))   # 6.0 = max finite E2M1 value
+        q     = round_to_E2M1(w / scale)   # per element, sign + 3-bit code
+
+    E2M1 magnitudes are {0, .5, 1, 1.5, 2, 3, 4, 6}; rounding is to the
+    nearest magnitude with round-half-away-from-zero via searchsorted.
+    Codes are packed two-per-uint8 along the input dim (padded with zero
+    codes when in_features is odd). The E8M0 scale is stored in fp32 but
+    is a power of two by construction.
+
+    This is a numerical simulation of the MXFP4 format (dequantize to the
+    input dtype for the matmul, like FP8Linear) — no MX hardware kernel is
+    used. No calibration data: MX is a fixed-format recipe, not an
+    activation-aware one. Biases are preserved.
+    """
+
+    E2M1_MAGNITUDES = (0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0)
+
+    def __init__(self, in_features, out_features, block_size=32, bias=True):
+        super().__init__()
+        if block_size <= 0:
+            raise ValueError(f"block_size must be positive, got {block_size}")
+        self.in_features = in_features
+        self.out_features = out_features
+        self.block_size = block_size
+        n_blocks = (in_features + block_size - 1) // block_size
+        n_packed = (in_features + 1) // 2
+        # qweight: two 4-bit codes per uint8; a pad code is 0 (magnitude 0,
+        # positive sign) so odd in_features dequantize to exact zeros.
+        self.register_buffer("qweight", torch.zeros(out_features, n_packed,
+                                                    dtype=torch.uint8))
+        # E8M0 scales are powers of two; stored fp32 for device flexibility.
+        self.register_buffer("scales", torch.ones(out_features, n_blocks))
+        if bias:
+            self.bias = nn.Parameter(torch.zeros(out_features))
+        else:
+            self.register_parameter("bias", None)
+
+    @classmethod
+    def from_linear(cls, linear: nn.Linear, block_size=32):
+        mod = cls(linear.in_features, linear.out_features,
+                  block_size=block_size, bias=linear.bias is not None)
+        W = linear.weight.detach().float()
+        out_f, in_f = W.shape
+        bs = block_size
+        pad = (-in_f) % bs
+        if pad:
+            W = torch.cat([W, W.new_zeros(out_f, pad)], dim=1)
+        blocks = W.view(out_f, (in_f + pad) // bs, bs)
+        amax = blocks.abs().amax(dim=-1).clamp(min=1e-12)
+        # E8M0: smallest power of two >= amax / 6 (max finite E2M1).
+        scales = torch.exp2(torch.ceil(torch.log2(amax / 6.0)))
+        q = blocks / scales.unsqueeze(-1)
+        mags = q.new_tensor(cls.E2M1_MAGNITUDES)          # [8]
+        aq = q.abs()
+        # Nearest magnitude: searchsorted right, compare both neighbors.
+        idx = torch.searchsorted(mags, aq.contiguous())
+        lo = (idx - 1).clamp(min=0)
+        hi = idx.clamp(max=len(cls.E2M1_MAGNITUDES) - 1)
+        pick_hi = (aq - mags[lo]) >= (mags[hi] - aq)
+        mag_idx = torch.where(pick_hi, hi, lo)
+        codes = mag_idx.to(torch.uint8)                     # magnitude code
+        sign = (torch.where(q < 0, 1, 0).to(torch.uint8) << 3)
+        codes = codes | sign
+        codes = codes.view(out_f, (in_f + pad) // 2, 2)
+        packed = codes[:, :, 0] | (codes[:, :, 1] << 4)
+        mod.qweight = packed.contiguous()
+        mod.scales = scales.contiguous()
+        if linear.bias is not None:
+            mod.bias = nn.Parameter(linear.bias.detach().clone())
+        return mod.to(linear.weight.device)
+
+    def _dequantize(self) -> torch.Tensor:
+        """Rebuild [out_features, in_features] (slow path, deterministic)."""
+        lo = self.qweight & 0xF
+        hi = (self.qweight >> 4) & 0xF
+        codes = torch.stack([lo, hi], dim=-1).view(self.out_features, -1)
+        codes = codes[:, :self.in_features].long()
+        mag = codes.new_tensor(self.E2M1_MAGNITUDES).to(self.scales.dtype)
+        mags = mag[codes & 0x7]
+        signs = torch.where((codes & 0x8) != 0, -1.0, 1.0).to(self.scales.dtype)
+        w = mags * signs
+        pad = (-self.in_features) % self.block_size
+        if pad:
+            w = torch.cat([w, w.new_zeros(self.out_features, pad)], dim=1)
+        blocks = w.view(self.out_features, -1, self.block_size)
+        return (blocks * self.scales.unsqueeze(-1)).view(
+            self.out_features, -1)[:, :self.in_features]
+
+    @property
+    def weight(self) -> torch.Tensor:
+        """Compatibility accessor: reconstructed dense weight (slow path)."""
+        return self._dequantize()
+
+    def forward(self, x):
+        weight = self._dequantize().to(x.dtype)
+        bias = self.bias.to(dtype=x.dtype) if self.bias is not None else None
+        return F.linear(x, weight, bias)
+
+
 class QuantizationManager:
     """Manage model quantization by replacing nn.Linear layers with
     quantized equivalents (real weights are quantized via from_linear;
@@ -570,17 +676,20 @@ class QuantizationManager:
         "awq": AWQLinear,
         "gptq": GPTQLinear,
         "fp8": FP8Linear,  # None if torch lacks float8_e4m3fn
+        "mxfp4": MXFP4Linear,
     }
 
     def __init__(self, method="awq"):
         self.method = method
 
-    def quantize_model(self, model, group_size=128, calibration_data=None):
+    def quantize_model(self, model, group_size=None, calibration_data=None):
         """Quantize all Linear layers in model, in place.
 
         Args:
             model: module tree to quantize.
-            group_size: quantization group size (AWQ/GPTQ only).
+            group_size: quantization group size (AWQ/GPTQ) or MX block size
+                (MXFP4). None selects the method default: 128 for AWQ/GPTQ,
+                32 for MXFP4 (the OCP MX block size).
             calibration_data: optional calibration activations. Either a
                 single tensor [..., in_features] (then every target
                 Linear must share that in_features) or a dict mapping
@@ -590,7 +699,7 @@ class QuantizationManager:
                 the true GPTQ Hessian error compensation; for
                 method="awq" it enables the activation-aware per-channel
                 scaling (AWQLinear's ``activations`` argument). It is
-                ignored for fp8.
+                ignored for fp8 and mxfp4.
 
         Raises:
             ValueError: unknown quantization method.
@@ -607,6 +716,8 @@ class QuantizationManager:
             raise NotImplementedError(
                 "FP8 quantization requires a torch build with float8_e4m3fn support"
             )
+        if group_size is None:
+            group_size = 32 if self.method == "mxfp4" else 128
 
         # Build the parent map once; snapshot targets before mutating.
         modules = dict(model.named_modules())
@@ -628,6 +739,9 @@ class QuantizationManager:
                 continue
             if self.method == "fp8":
                 qmodule = qcls.from_linear(module)
+            elif self.method == "mxfp4":
+                # group_size doubles as the MX block size (default 32).
+                qmodule = qcls.from_linear(module, block_size=group_size)
             else:
                 if isinstance(calibration_data, dict):
                     calib = calibration_data.get(name)

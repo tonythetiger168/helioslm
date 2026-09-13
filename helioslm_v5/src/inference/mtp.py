@@ -26,6 +26,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+try:
+    from helioslm_v5.src.attention.linear_attention import past_seq_len as _past_seq_len_impl
+except ImportError:  # pragma: no cover - package-relative fallback
+    from ..attention.linear_attention import past_seq_len as _past_seq_len_impl
+
 
 def _derive_nhead(hidden_size: int, config) -> int:
     """Pick a num_heads that divides hidden_size (M22)."""
@@ -234,6 +239,14 @@ class MTPDecoder:
          axis), a rejection is rolled back by *truncating* the cache to the
          committed length per sequence — no prefix recompute (v5.1 used to
          re-forward the accepted prefix on every rejection).
+         v5.5 (hybrid models): GatedDeltaAttention layers hold a fixed-size
+         recurrent state (marked ``_is_recurrent_state``) that CANNOT be
+         truncated. When the committed prefix does not cover the whole
+         speculative suffix, the pre-speculation state is restored (the
+         model never mutates input caches, so the round-start cache is the
+         clone) and the committed prefix is replayed once
+         (``_replay_committed``). Full-acceptance rounds still need no
+         recompute: the verification state is already exact.
 
     Batched generation (v5.2):
       - ``input_ids`` is rectangular [B, L] (uniform prompt length) and
@@ -310,18 +323,64 @@ class MTPDecoder:
         )
         return logits, hidden, past
 
+    def _replay_committed(self, bpast, row: int, prefix_tokens, device):
+        """Recurrent-state rollback for hybrid models (v5.5).
+
+        A fixed-size recurrent state cannot be truncated to the committed
+        prefix, so rollback = RESTORE the pre-speculation state (a
+        batch-row slice of the round-start cache ``bpast`` — the model
+        never mutates input caches in place, and ``_row_past`` copies via
+        .contiguous(), so this slice IS the pre-speculation clone) and
+        REPLAY the committed tokens except the last through the main model
+        (the last committed token is fed by the next round's step A). The
+        replay is exact: the recurrence and MLA cache appends are
+        deterministic, so the rebuilt cache equals what a non-speculative
+        decode would hold. Cost: one short forward, paid only on rounds
+        where the committed prefix does not cover the whole speculative
+        suffix (i.e. any rejection or a budget cut); pure-MLA models never
+        take this path.
+        """
+        base = self._row_past(bpast, row)  # batch slice only, no truncation
+        if not prefix_tokens:
+            return base
+        ids = torch.tensor([list(prefix_tokens)], dtype=torch.long,
+                           device=device)
+        _, _, past = self._main_forward(ids, base)
+        return past
+
     # ------------------------------------------------------------------
     # batched-cache helpers (rely only on the cache contract: per-layer
-    # tuples of tensors whose dim 2 is the sequence axis)
+    # tuples of tensors whose dim 2 is the sequence axis; recurrent-state
+    # tensors are marked with ``_is_recurrent_state`` and have NO sequence
+    # axis — they are batch-sliced but never dim-2-truncated)
     # ------------------------------------------------------------------
     @staticmethod
-    def _past_seq_len(past) -> int:
-        """Sequence length covered by a per-layer cache (0 for None)."""
+    def _is_state_tensor(t) -> bool:
+        """Duck-typed marker check for recurrent-state cache tensors
+        (GatedDeltaAttention StateTensor, v5.5)."""
+        return bool(getattr(t, "_is_recurrent_state", False))
+
+    @classmethod
+    def _past_has_state(cls, past) -> bool:
+        """True iff any per-layer cache holds a recurrent-state tensor."""
+        if past is None:
+            return False
+        return any(cls._is_state_tensor(t) for layer in past for t in layer)
+
+    @classmethod
+    def _past_seq_len(cls, past) -> int:
+        """Sequence length covered by a per-layer cache (0 for None).
+
+        Recurrent-state tensors are skipped (fixed shape, no sequence
+        axis). Under the hybrid interleave rule layer 0 is always MLA, so
+        a sequence-length tensor always exists in a hybrid cache.
+        """
         if past is None:
             return 0
         for layer in past:
             for t in layer:
-                if torch.is_tensor(t) and t.dim() >= 3:
+                if torch.is_tensor(t) and t.dim() >= 3 \
+                        and not cls._is_state_tensor(t):
                     return t.shape[2]
         return 0
 
@@ -340,11 +399,17 @@ class MTPDecoder:
             batched.append(tuple(entries))
         return batched
 
-    @staticmethod
-    def _row_past(past, row: int, length: Optional[int] = None):
+    @classmethod
+    def _row_past(cls, past, row: int, length: Optional[int] = None):
         """Extract one batch row from a batched cache, optionally truncating
         the sequence axis (dim 2) to ``length`` — this truncation IS the
         speculative rollback (dim-2-sliceable cache contract); no recompute.
+
+        Recurrent-state tensors (v5.5) are batch-sliced but NEVER dim-2
+        truncated: the state has no sequence axis. Rolling a state cache
+        back to an earlier commit point requires restoring the
+        pre-speculation state and replaying the committed prefix, which is
+        what the generate loop does via ``_replay_committed``.
         """
         out = []
         for layer in past:
@@ -352,7 +417,8 @@ class MTPDecoder:
             for t in layer:
                 if torch.is_tensor(t) and t.dim() >= 1 and t.shape[0] > row:
                     r = t[row:row + 1]
-                    if length is not None and r.dim() >= 3:
+                    if length is not None and r.dim() >= 3 \
+                            and not cls._is_state_tensor(t):
                         # Slice beyond the size is a no-op, so this is safe
                         # even if a tensor's dim 2 were shorter than length.
                         r = r[:, :, :length]
@@ -521,6 +587,7 @@ class MTPDecoder:
                 # v_logits[r, j] = main distribution for the token following
                 # draft_ids[r][j]; draft_ids[r][j+1] is checked against it.
                 # The last row validates the final draft / sources the bonus.
+                has_state = self._past_has_state(v_past)
 
                 # ---- Step D+E: per-row accept/reject, commit, rollback --
                 for r, i in enumerate(rows):
@@ -593,12 +660,26 @@ class MTPDecoder:
                     if stop or remaining[i] == 0:
                         pasts[i] = None  # finished: drop the cache
                     else:
-                        # Rollback by truncation: v_past covers the full
-                        # speculative suffix; slice dim 2 down to the
-                        # committed prefix (new seq[:-1] = seq_len + c - 1).
-                        # The rejected tail is discarded WITHOUT recompute.
-                        pasts[i] = self._row_past(
-                            v_past, r, seq_len + len(committed) - 1)
+                        # Rollback. v_past covers bpast + the whole
+                        # speculative suffix (len(ids_r) tokens); the cache
+                        # must end up covering new seq[:-1], i.e. bpast +
+                        # committed[:-1] (len(committed) - 1 tokens).
+                        if has_state and len(committed) - 1 != len(ids_r):
+                            # Hybrid model: recurrent state cannot be
+                            # truncated -> restore the pre-speculation
+                            # state and replay the committed prefix.
+                            pasts[i] = self._replay_committed(
+                                bpast, r, committed[:-1], device)
+                        else:
+                            # Rollback by truncation: slice dim 2 down to
+                            # the committed prefix (new seq[:-1] = seq_len +
+                            # c - 1). The rejected tail is discarded WITHOUT
+                            # recompute. (With state tensors, this branch is
+                            # only taken when the committed prefix covers
+                            # the whole suffix, so the state is exact and
+                            # the dim-2 slice is a no-op.)
+                            pasts[i] = self._row_past(
+                                v_past, r, seq_len + len(committed) - 1)
                         next_active.append(i)
 
             active = next_active

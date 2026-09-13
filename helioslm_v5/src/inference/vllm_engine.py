@@ -118,6 +118,18 @@ class VLLMEngine:
         self.block_size = block_size
 
         device = next(model.parameters()).device
+        # v5.5 (hybrid models): recurrent-state caches (GatedDeltaAttention,
+        # marked via attention.is_recurrent_attention) CANNOT absorb the
+        # neutral pad-token prefix used for watermark alignment — pad tokens
+        # are folded into the fixed-size state multiplicatively and are not
+        # maskable afterwards. For such models the engine falls back to
+        # unpadded prefills; requests then group by their natural cache
+        # length (correct, just less batched across unequal prompts).
+        self._has_recurrent_state = any(
+            getattr(getattr(layer, "attention", None),
+                    "is_recurrent_attention", False)
+            for layer in getattr(model, "layers", [])
+        )
         self.block_manager = BlockManager(
             block_size=block_size,
             num_blocks=max_num_blocks,
@@ -186,14 +198,16 @@ class VLLMEngine:
                            for j in range(k)])
         for _ in range(k):
             req = self.request_queue.pop(0)
-            req.prompt_pad = watermark - len(req.prompt_token_ids)
+            # Hybrid (recurrent-state) models: no pad prefix (see __init__).
+            req.prompt_pad = 0 if self._has_recurrent_state else \
+                watermark - len(req.prompt_token_ids)
             # Paged accounting (M25/M-I3): allocate blocks covering the
             # ACTUAL stored cache length (prompt_pad + prompt), not just
             # the prompt — the pad-prefix K/V occupies real memory, so
             # the block ledger must charge for it or OOM protection
             # drifts from reality as the watermark grows.
             self.block_manager.allocate(
-                req.request_id, watermark,
+                req.request_id, req.prompt_pad + len(req.prompt_token_ids),
                 self._bm_num_heads, self._bm_head_dim,
             )
             self.running_requests.append(req)

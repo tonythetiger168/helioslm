@@ -16,22 +16,78 @@ forward pass stores only the detached stage inputs (as
 forward to rebuild a connected autograd graph before calling
 ``torch.autograd.backward``. Parameter gradients therefore flow correctly
 while only stage inputs (not full graphs) are kept alive between F and B.
+
+v5.5 (M4/M5): the attention-residual accumulator of ``HeliosLMv5Layer`` is
+threaded through the pipeline EXPLICITLY — ``LayerWrap`` /
+``DualPipeStage`` carry it as a second input/output, and the scheduler
+stores a detached accumulator leaf per stage boundary so cross-stage
+accumulator gradients flow during recomputation. With
+``use_attention_residuals=False`` nothing is threaded and the behaviour is
+bit-identical to v5.4.
 """
 import torch
 import torch.nn as nn
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict, List
+
+
+class LayerWrap(nn.Module):
+    """Adapt a ``HeliosLMv5Layer`` to the DualPipe stage contract.
+
+    v5.5 (M4/M5): the attention-residual accumulator is threaded
+    EXPLICITLY as an argument/return value instead of the old
+    ``layer._last_attn_out`` attribute side channel (which silently
+    truncated cross-layer residual gradients under recompute/checkpointing
+    and never injected the accumulator on the DualPipe path at all, leaving
+    ``attn_res_gate`` with grad=None).
+
+    When the wrapped layer has attention residuals enabled
+    (``attn_res_gate is not None``), ``threads_attn_res`` is True and
+    ``forward(x, attn_res) -> (hidden, attn_res_new)``; a None accumulator
+    is initialized to zeros (matching ``HeliosLMv5.forward``). With
+    attention residuals OFF the wrapper is a plain tensor->tensor adapter
+    and the scheduler behaviour is bit-identical to v5.4.
+    """
+
+    def __init__(self, layer: nn.Module):
+        super().__init__()
+        self.layer = layer
+        self.threads_attn_res = getattr(layer, "attn_res_gate", None) is not None
+
+    def forward(self, x: torch.Tensor, attn_res: torch.Tensor = None):
+        if self.threads_attn_res:
+            if attn_res is None:
+                attn_res = torch.zeros_like(x)
+            h, _present, attn_res = self.layer(x, use_cache=False,
+                                               attn_res=attn_res)
+            return h, attn_res
+        h, _present, _ares = self.layer(x, use_cache=False)
+        return h
 
 
 class DualPipeStage(nn.Module):
-    """Single pipeline stage for DualPipe."""
+    """Single pipeline stage for DualPipe.
+
+    If any wrapped layer threads the attention-residual accumulator
+    (``LayerWrap`` with attention residuals enabled), the stage accepts and
+    returns it: ``forward(x, attn_res) -> (hidden, attn_res_new)``.
+    Otherwise the stage is a plain tensor->tensor module, exactly as in
+    v5.4.
+    """
 
     def __init__(self, layers: nn.ModuleList):
         super().__init__()
         self.layers = layers
+        self.threads_attn_res = any(
+            getattr(layer, "threads_attn_res", False) for layer in layers)
 
-    def forward(self, x):
+    def forward(self, x, attn_res=None):
         for layer in self.layers:
-            x = layer(x)
+            if getattr(layer, "threads_attn_res", False):
+                x, attn_res = layer(x, attn_res)
+            else:
+                x = layer(x)
+        if self.threads_attn_res:
+            return x, attn_res
         return x
 
 
@@ -88,23 +144,43 @@ class DualPipeScheduler:
         if "cuda" in state:
             torch.cuda.set_rng_state_all(state["cuda"])
 
-    def _recompute_stage(self, s: int, mb_idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _recompute_stage(self, s: int, mb_idx: int):
         """Recompute stage s's forward of micro-batch mb_idx under the RNG
         state captured at the original forward, leaving the global RNG state
         untouched afterwards (fork semantics).
 
-        Returns ``(stage_output, input_leaf)``: the recomputed, grad-carrying
-        stage output and the stored detached input leaf (whose ``.grad`` the
-        caller reads after backward)."""
-        leaf = self._stage_inputs[s].pop(mb_idx)
+        Returns ``(stage_output, attn_res_output, input_leaf,
+        attn_res_leaf)``: the recomputed, grad-carrying stage outputs and
+        the stored detached input leaves (whose ``.grad`` the caller reads
+        after backward). ``attn_res_output`` / ``attn_res_leaf`` are None
+        for stages that do not thread the attention-residual accumulator.
+        """
+        leaf, ares_leaf = self._stage_inputs[s].pop(mb_idx)
         rng_state = self._rng_states[s].pop(mb_idx)
         saved = self._capture_rng_state()
         self._restore_rng_state(rng_state)
         try:
-            out = self.stages[s](leaf)
+            stage = self.stages[s]
+            if getattr(stage, "threads_attn_res", False):
+                out, ares_out = stage(leaf, ares_leaf)
+            else:
+                out, ares_out = stage(leaf), None
         finally:
             self._restore_rng_state(saved)
-        return out, leaf
+        return out, ares_out, leaf, ares_leaf
+
+    @staticmethod
+    def _backward_stage(out, ares_out, grad, ares_grad):
+        """Backward through one recomputed stage, seeding both the hidden
+        gradient and (when threaded) the attention-residual accumulator
+        gradient. A missing upstream accumulator gradient is mathematically
+        a zero gradient."""
+        outs, grads = [out], [grad]
+        if ares_out is not None and ares_out.requires_grad:
+            outs.append(ares_out)
+            grads.append(ares_grad if ares_grad is not None
+                         else torch.zeros_like(ares_out))
+        torch.autograd.backward(outs, grad_tensors=grads)
 
     # ------------------------------------------------------------------
     # Per-micro-batch primitives
@@ -115,37 +191,49 @@ class DualPipeScheduler:
         For each stage, the input is turned into a detached leaf
         (``requires_grad_(True)``) and stored; the stage itself runs under
         ``torch.no_grad()`` because the graph is rebuilt (recomputed) during
-        the backward pass.
+        the backward pass. The attention-residual accumulator (if any stage
+        threads it) is carried across stages the same way — as a detached
+        leaf per stage boundary.
         """
         self.trace.append(("F", mb_idx))
+        attn_res = None
         for s, stage in enumerate(self.stages):
             leaf = x.detach().requires_grad_(True)
-            self._stage_inputs[s][mb_idx] = leaf
+            ares_leaf = None
+            if getattr(stage, "threads_attn_res", False) and attn_res is not None:
+                ares_leaf = attn_res.detach().requires_grad_(True)
+            self._stage_inputs[s][mb_idx] = (leaf, ares_leaf)
             # Capture the RNG state right before the stage forward so the
             # backward-pass recomputation replays identical stochastic ops
             # (e.g. dropout masks) — without this the detached-leaf scheme
             # is not self-consistent for stochastic layers.
             self._rng_states[s][mb_idx] = self._capture_rng_state()
             with torch.no_grad():
-                x = stage(leaf)
+                if getattr(stage, "threads_attn_res", False):
+                    x, attn_res = stage(leaf, ares_leaf)
+                else:
+                    x = stage(leaf)
         return x
 
     def _backward_one(self, mb_idx: int, grad_output: torch.Tensor) -> torch.Tensor:
         """Backward one micro-batch through all stages (reversed order).
 
-        Each stage forward is *recomputed* from its stored leaf input to
+        Each stage forward is *recomputed* from its stored leaf inputs to
         build a fresh autograd graph; ``torch.autograd.backward`` on the
-        recomputed output then produces both the stage parameter gradients
-        and the leaf ``.grad`` passed upstream.
+        recomputed outputs then produces both the stage parameter gradients
+        and the leaf ``.grad``s (hidden + attention-residual accumulator)
+        passed upstream.
         """
         self.trace.append(("B", mb_idx))
         grad = grad_output
+        ares_grad = None
         for s in reversed(range(self.num_stages)):
             # Activation recomputation under the forward's RNG state:
             # rebuild the stage's autograd graph with identical stochastic ops.
-            out, leaf = self._recompute_stage(s, mb_idx)
-            torch.autograd.backward(out, grad_tensors=grad)
+            out, ares_out, leaf, ares_leaf = self._recompute_stage(s, mb_idx)
+            self._backward_stage(out, ares_out, grad, ares_grad)
             grad = leaf.grad
+            ares_grad = ares_leaf.grad if ares_leaf is not None else None
         return grad
 
     # ------------------------------------------------------------------
@@ -201,15 +289,17 @@ class DualPipeScheduler:
             # gradient of this micro-batch.
             last = self.num_stages - 1
             self.trace.append(("B", i))
-            out, leaf = self._recompute_stage(last, i)
+            out, _ares_out, leaf, ares_leaf = self._recompute_stage(last, i)
             loss = loss_fn(out) / M        # micro-batch mean scaling
             loss.backward()
             grad = leaf.grad
+            ares_grad = ares_leaf.grad if ares_leaf is not None else None
             for s in reversed(range(last)):
                 # Activation recomputation for upstream stages (RNG-restored).
-                out_s, leaf_s = self._recompute_stage(s, i)
-                torch.autograd.backward(out_s, grad_tensors=grad)
+                out_s, ares_out_s, leaf_s, ares_leaf_s = self._recompute_stage(s, i)
+                self._backward_stage(out_s, ares_out_s, grad, ares_grad)
                 grad = leaf_s.grad
+                ares_grad = ares_leaf_s.grad if ares_leaf_s is not None else None
             return loss.item()
 
         # --- warmup: forward of first micro-batch ---

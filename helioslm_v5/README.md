@@ -1,4 +1,4 @@
-# HeliosLM v5.4 - DeepSeek-Style Architecture
+# HeliosLM v5.6 - DeepSeek/K3-Style Architecture
 
 Reference LLM implementation with DeepSeek-V3-style efficiency techniques.
 All modules below are implemented and exercised by a CPU test suite with
@@ -14,9 +14,103 @@ repaired AWQ calibration path (see Quantization). v5.4 is a robustness fix
 release: packed-sequence cross-document attention isolation, strict MTP
 sampling verification, engine edge-case cleanup (max_new_tokens=0, failed
 requests), and input validation that fails loudly instead of silently
-misbehaving (see CHANGELOG).
+misbehaving (see CHANGELOG). v5.5 is a feature release aligned with
+Kimi-K3-class architecture mechanisms: hybrid linear attention, LatentMoE,
+quantile balancing, cross-layer attention residuals, and SiTU-GLU (see
+CHANGELOG; unit suite now 36 tests).
+
+## v5.5: K3-Aligned Feature Wave
+
+### Hybrid Linear Attention (Gated Delta Rule)
+- `attention/linear_attention.py`: `GatedDeltaAttention` — per-head sigmoid
+  decay gate, delta-rule recurrence
+  `S ← decay·S + k⊗(v − k·S)` with L2-normalized k; output `q·S`.
+  Decode is numerically identical to one-shot forward (max diff ~2e-7).
+- `config.hybrid_attention` (default ON for `size="full"`): layer `i` uses
+  MLA iff `i == 0 or i % full_attention_every == full_attention_every - 1`,
+  GatedDeltaAttention otherwise; layer 0 is always MLA.
+- Cache contract extension: linear layers cache a fixed-size recurrent
+  state `(B, H, Dk, Dv)` tagged as a `StateTensor` subclass; sequence
+  caches keep the dim-2 layout. The tag is stripped at module output
+  boundaries so it cannot leak into the residual stream.
+- MTP speculative decoding supports hybrid caches: recurrent states are
+  snapshotted before drafting and restored+replayed on rejection
+  (verified bitwise vs. greedy, including batch>1 all-reject paths).
+- Engine: hybrid models are detected via duck-typing and fall back to
+  unpadded prefill with natural cache-length grouping (pad-prefix
+  watermarking is incompatible with multiplicative recurrent state).
+- **Known limit**: recurrent state cannot be segmented, so hybrid models
+  raise `ValueError` on packed-sequence `position_ids` (loud error instead
+  of silent cross-document leakage; doc-boundary state reset is future
+  work). Pure-MLA models keep the v5.4 packed-sequence isolation.
+  **Resolved in v5.6**: the state is now zeroed at each document
+  boundary, so packed hybrid training is supported with exact
+  cross-document isolation (see CHANGELOG).
+
+### LatentMoE
+- `config.moe.latent_dim` (default 1024 for `size="full"`; `None` or
+  non-positive = full-width v5.4 behaviour): a shared
+  `down_proj (hidden→latent)` feeds the router and routed experts, which
+  operate entirely in latent space (`latent→expert_hidden→latent`),
+  followed by a shared `up_proj (latent→hidden)`. Shared experts stay
+  full-width. Dispatch/load-balancing logic is unchanged.
+
+### Quantile Load Balancing
+- `config.moe.balance_strategy = "quantile"` (default for `size="full"`;
+  `"heuristic"` keeps the v5.4 update): the selection bias tracks the
+  `(1 − top_k/E)` quantile of a sliding window (512 samples) of per-expert
+  routing margins vs. the top-k boundary (the (K+1)-th largest score, so
+  margin>0 ⟺ selected). Simplified estimator: fixed boundary assumption,
+  FIFO window. Verified: converged load CV 0.166–0.234 vs. 0.474–0.942
+  heuristic; bias bounded over 300+ updates. Under torch.distributed the
+  per-rank quantiles are all-reduced (mean) so biases stay consistent
+  across ranks, matching the heuristic path's contract.
+
+### Attention Residuals
+- `config.use_attention_residuals` (default ON for `size="full"`): each
+  layer's attention input is injected with `gate_i · attn_res`, where
+  `attn_res` accumulates all lower layers' attention outputs; `gate_i` is
+  a learnable scalar (init 0.1). The accumulator is threaded explicitly
+  through `HeliosLMv5Layer.forward` (3-tuple return) — no attribute side
+  channels, activation-checkpointing safe — and through DualPipe's
+  official `LayerWrap`, so the gates train identically under pipeline
+  scheduling (verified bitwise vs. direct forward).
+
+### SiTU-GLU
+- `config.moe.activation = "situ"` (`"swiglu"` default): simplified
+  K3-style tanh soft-capped GLU, `t(x)=cap·tanh(x/cap)`,
+  `situ_glu(a,b) = silu(t(a))·t(b)`, with an RMSNorm before the expert
+  output projection. Output is bounded (|t(x)| ≤ cap); note the saturated
+  region's gradient is ~1% at |x|=3·cap (cap is not learnable).
+
+## v5.6 (2026-09-13): Daily Improvement Round — Packed Hybrid Training, MXFP4, Muon
+
+Driven by a latest-landscape scan (LMArena / SWE-bench Pro / HLE /
+Artificial Analysis, 2026-09-13); see CHANGELOG for details. Unit suite
+34 → 36 tests.
+
+- **Hybrid packed-sequence support**: `GatedDeltaAttention` now ZEROES its
+  recurrent state at each packed `position_ids` document boundary instead
+  of raising — packed training layouts are exactly equivalent to per-
+  document sequences (isolation verified, leak 0.0). A restart over a
+  non-empty cache (decode at a boundary) still raises loudly.
+- **MXFP4 quantization**: `MXFP4Linear` + `method="mxfp4"` — FP4 E2M1
+  codes with E8M0 power-of-two scales per 32-element block (OCP MX
+  format, Kimi-K3 recipe direction), packed two-per-uint8, deterministic,
+  odd-dim exact. Simulated dequant matmul; ~22% weight reconstruction
+  error (8-magnitude FP4 grid). QAT remains future work.
+- **Muon optimizer** (`training/muon.py`): Newton-Schulz orthogonalized
+  momentum (quintic, 5 steps) with shape scaling and Nesterov momentum;
+  non-matrix params take an internal AdamW fallback, and a group's
+  `muon=False` routes 2-D params (embeddings/LM head) to AdamW, per the
+  K3 per-head-Muon recipe. Simplified: per-matrix, single-process.
+- **Test calibration**: `test_mtp_hybrid_rollback`'s MLA-cache threshold
+  corrected 1e-6 → 1e-5 (documented float32 reassociation noise; the
+  suite's own hybrid decode test allows 1e-4 for the same mechanism).
+  Suite now 36/36.
 
 ## P0: Core Architecture Improvements
+
 
 ### MLA (Multi-Head Latent Attention)
 - Low-rank KV compression: hidden -> `kv_latent_dim` latent -> per-head K/V
@@ -115,6 +209,16 @@ misbehaving (see CHANGELOG).
   per response), not DeepSeekMath's per-token objective — documented in the
   module docstring.
 
+### Muon (v5.6)
+- `training/muon.py`: momentum orthogonalized by the quintic Newton-Schulz
+  iteration (5 steps, the standard 3.4445/-4.7750/2.0315 coefficients),
+  `sqrt(max(1, rows/cols))` shape scaling, Nesterov heavy-ball momentum;
+  non-matrix params take an internal AdamW fallback, and a param group's
+  `muon=False` routes 2-D params (embeddings / LM head) to AdamW — the
+  K3 "per-head Muon + Adam for embeddings" recipe direction.
+- Simplifications documented: per-matrix (not per-head) orthogonalization,
+  single process, Newton-Schulz in the param dtype.
+
 ### DualPipe + Expert Parallelism
 - Single-process **simulation** of the DualPipe schedule (warmup /
   interleaved 1F1B / cooldown ordering, inspectable via `trace`); there is
@@ -198,6 +302,13 @@ Multimodal encoders are built only when `config.multimodal.enabled=True`
   a silent skip. Odd `in_features`/`out_features` pack/unpack exactly.
 - FP8: `float8_e4m3fn` weight-only storage with per-tensor scale when the
   torch build supports it; `NotImplementedError` otherwise.
+- **MXFP4 (v5.6)**: microscaling FP4 — E2M1 codes (8 magnitudes, two
+  packed per uint8) with an E8M0 power-of-two scale per 32-element block
+  (OCP MX block size; Kimi-K3 recipe direction). Deterministic, odd dims
+  exact, biases preserved, `.weight` property, MTP re-bind. Simulated
+  dequantize matmul (no MX kernel); measured weight reconstruction error
+  ~22% relative (inherent to the 8-magnitude FP4 grid). Quantization-
+  aware training remains future work.
 - `QuantizationManager.quantize_model(model, method=...,
   calibration_data=...)`; unknown methods raise `ValueError`.
 
@@ -224,17 +335,17 @@ From the repository root (the directory containing `helioslm_v5/`):
 python -m helioslm_v5.tests.test_v5
 ```
 
-Runs 23 tests against the real `size="lite"` model on CPU (a couple of
+Runs 36 tests against the real `size="lite"` model on CPU (a couple of
 minutes), prints a per-test PASS/FAIL summary, and exits non-zero if any
 test fails.
 
 ## Architecture Comparison
 
-| Feature | v4.1 | v5.4 (DeepSeek-Style) |
+| Feature | v4.1 | v5.5 (DeepSeek/K3-Style) |
 |---------|------|----------------------|
-| Attention | GQA | **MLA (weight absorption; latent cache -97.7% values vs MHA full / -71.9% lite; packed-sequence doc isolation)** |
-| Token Prediction | Single | **MTP (multi-depth modules, batched speculative verify + dim-2 cache rollback)** |
-| MoE Routing | Softmax | **Sigmoid + aux-free bias balancing + device-limited** |
+| Attention | GQA | **Hybrid MLA (weight absorption; latent cache -97.7% values vs MHA full / -71.9% lite; packed-sequence doc isolation) + Gated-Delta linear layers (fixed-size recurrent state)** |
+| Token Prediction | Single | **MTP (multi-depth modules, batched speculative verify + dim-2 cache rollback + recurrent-state restore/replay)** |
+| MoE Routing | Softmax | **Sigmoid + aux-free bias balancing (heuristic or quantile) + device-limited + LatentMoE (latent-space routed experts) + SiTU-GLU option** |
 | KV-Cache | Contiguous | **Paged (block-based, refcounted CoW)** |
 | Training Precision | bfloat16 | **FP8 mixed (E4M3 fwd / E5M2 grads, real grid quantization)** |
 | RL Training | None | **GRPO (group baseline, k3 KL vs frozen ref)** |
@@ -244,3 +355,8 @@ test fails.
 | Quantization | Custom INT4/8 | **AWQ/GPTQ/FP8 (real 4-bit packing; true GPTQ Hessian compensation with calibration data)** |
 | Inference Engine | Custom | **vLLM-style engine (paged KV, continuous batching with batched [B,1] decode steps)** |
 | GPU Monitoring | CPU/内存 HPA | **GPU-utilization HPA (in-memory metrics, optional Prometheus export)** |
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE) (also at the repository root).
+Copyright 2026 tonythetiger168 and HeliosLM contributors.

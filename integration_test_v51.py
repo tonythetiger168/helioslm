@@ -185,19 +185,13 @@ def test_grpo():
 # T5: DualPipe end-to-end over a real lite-model layer
 # ----------------------------------------------------------------------
 def test_dualpipe():
-    from helioslm_v5.src.training.dualpipe import DualPipeScheduler, DualPipeStage
+    from helioslm_v5.src.training.dualpipe import (
+        DualPipeScheduler, DualPipeStage, LayerWrap)
     model, config = make_lite_model(seed=5)
 
-    class LayerWrap(nn.Module):
-        """Adapt HeliosLMv5Layer (returns (hidden, kv)) to a tensor->tensor stage."""
-        def __init__(self, layer):
-            super().__init__()
-            self.layer = layer
-
-        def forward(self, x):
-            h, _ = self.layer(x, use_cache=False)
-            return h
-
+    # LayerWrap (dualpipe) adapts HeliosLMv5Layer ((hidden, kv, attn_res)
+    # output) to the tensor->tensor stage contract; with attention
+    # residuals off (lite default) it threads nothing (v5.4 behaviour).
     stage = DualPipeStage(nn.ModuleList([LayerWrap(model.layers[0]),
                                          LayerWrap(model.layers[1])]))
     sched = DualPipeScheduler([stage], num_micro_batches=4)
