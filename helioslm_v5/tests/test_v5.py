@@ -1,11 +1,12 @@
-"""HeliosLM v5.5 test suite (CPU, lite config).
+"""HeliosLM v5.8 test suite (CPU, lite config).
 
 Rewritten for v5.1 after the full code review and extended since (v5.2: true
 GPTQ calibration, audio sliding window; v5.3: AWQ calibration repair;
 v5.4: packed-position cross-document isolation, input-validation coverage;
 v5.5: hybrid GatedDeltaAttention + state-cache rollback, LatentMoE,
 quantile balancing, attention residuals, SiTU-GLU; v5.7: RoPE scaling,
-FP8 KV cache, Hyper-Connections, QAT):
+FP8 KV cache, Hyper-Connections, QAT; v5.8: YaRN RoPE scaling, DSA sparse
+top-k attention, per-head Muon, GPTQ act-order):
 every test exercises the real module with numerical assertions (not just
 shapes), and any failure makes the process exit non-zero.
 
@@ -2342,6 +2343,337 @@ def test_qat():
           f"{losses[0]:.2f}->{losses[-1]:.2f}, wrap/skip OK")
 
 
+# v5.8: YaRN RoPE scaling, DSA sparse top-k attention, per-head Muon,
+# GPTQ act-order
+def test_yarn_rope_scaling():
+    from helioslm_v5.src.attention.mla import RotaryEmbedding
+    dim = 8
+    r0 = RotaryEmbedding(dim, 2048)
+
+    # factor == 1 must be exactly vanilla (inv_freq unchanged by the
+    # NTK-by-parts remap; attention_factor = 0.1*ln(1)+1 = 1.0)
+    ry1 = RotaryEmbedding(dim, 2048, scaling={"type": "yarn", "factor": 1.0})
+    assert torch.equal(r0.inv_freq, ry1.inv_freq), "yarn factor=1 != vanilla"
+    assert ry1.attention_factor == 1.0, "yarn factor=1 must keep mscale 1.0"
+    pos = torch.arange(64).unsqueeze(0)
+    c0, s0 = r0(pos)
+    c1, s1 = ry1(pos)
+    assert torch.equal(c0, c1) and torch.equal(s0, s1), (
+        "yarn factor=1 cos/sin must be bit-identical to vanilla")
+
+    # NTK-by-parts wavelength law on the lite dims (base=10000, dim=8 ->
+    # inv_freq (1, 0.1, 0.01, 1e-3), wavelengths 2pi*(1, 10, 100, 1000);
+    # thresholds L/32 = 64 and L/1 = 2048 with L = 2048).
+    f = 4.0
+    ry = RotaryEmbedding(dim, 2048, scaling={"type": "yarn", "factor": f})
+    assert ry.inv_freq[0].item() == 1.0, "yarn must keep the lowest inv_freq 1"
+    assert torch.equal(ry.inv_freq[:2], r0.inv_freq[:2]), (
+        "yarn must keep short-wavelength (high-frequency) dims untouched")
+    want_low = r0.inv_freq[-1].item() / f
+    assert abs(ry.inv_freq[-1].item() - want_low) < 1e-9, (
+        f"yarn long-wavelength dim must be fully interpolated: "
+        f"{ry.inv_freq[-1].item()} vs {want_low}")
+    mid = ry.inv_freq[2].item()
+    assert r0.inv_freq[2].item() / f < mid < r0.inv_freq[2].item(), (
+        f"yarn in-band dim must lie strictly between inv_freq and "
+        f"inv_freq/factor, got {mid}")
+
+    # mscale: default = 0.1*ln(f)+1; cos/sin are scaled by it (scores by
+    # its square — the YaRN softmax-temperature compensation).
+    assert abs(ry.attention_factor - (0.1 * math.log(f) + 1.0)) < 1e-9
+    ry2 = RotaryEmbedding(dim, 2048, scaling={
+        "type": "yarn", "factor": 1.0, "attention_factor": 2.0})
+    c2, _ = ry2(pos)
+    assert torch.equal(c0 * 2.0, c2), (
+        "explicit attention_factor must scale cos/sin exactly")
+
+    # capacity: scaled embeddings serve long positions (lazy growth works)
+    c_far, _ = ry(torch.arange(20000, 20010).unsqueeze(0))
+    assert torch.isfinite(c_far).all(), "yarn RoPE broke at long positions"
+
+    # loud validation of the optional knobs
+    _expect_raises(ValueError, lambda: RotaryEmbedding(
+        dim, 2048, scaling={"type": "yarn", "factor": 2.0, "beta_fast": 1.0,
+                            "beta_slow": 32.0}), "yarn beta_fast <= beta_slow")
+    _expect_raises(ValueError, lambda: RotaryEmbedding(
+        dim, 2048, scaling={"type": "yarn", "factor": 2.0,
+                            "attention_factor": 0.0}),
+        "yarn non-positive attention_factor")
+    _expect_raises(ValueError, lambda: RotaryEmbedding(
+        dim, 2048, scaling={"type": "yarn", "factor": 2.0,
+                            "original_max_position": 0}),
+        "yarn non-positive original_max_position")
+
+    # config-level validation accepts yarn and still rejects junk
+    cfg = HeliosLMv5Config(size="lite")
+    cfg.attention.rope_scaling = {"type": "yarn", "factor": 2.0}
+    ok = HeliosLMv5Config(size="lite", attention=cfg.attention)
+    assert ok.attention.rope_scaling["type"] == "yarn"
+    _pass("test_yarn_rope_scaling",
+          f"factor=1 bit-identical, high-freq kept, low-freq /{int(f)} exact, "
+          f"ramp bounded, mscale={ry.attention_factor:.3f}, guards OK")
+
+
+def test_sparse_top_k_attention():
+    from helioslm_v5.src.attention.mla import MLA
+
+    config = HeliosLMv5Config(size="lite")
+    config.attention.sparse_top_k = 4
+    torch.manual_seed(303)
+    mla = MLA(config).eval()
+    L = 12
+    h = torch.randn(1, L, config.hidden_size)
+
+    # Sparse cached decode stays finite and keeps the cache layout.
+    with torch.no_grad():
+        past = None
+        step_outs = []
+        for i in range(L):
+            o, past = mla(h[:, i:i + 1], past_key_value=past, use_cache=True)
+            step_outs.append(o)
+        sparse_out = torch.cat(step_outs, dim=1)
+    assert torch.isfinite(sparse_out).all(), "sparse decode produced non-finite"
+    assert past[0].shape[2] == L and past[1].shape[2] == L, (
+        "sparse attention must not alter the cache layout")
+
+    # The cache tensors are BIT-IDENTICAL to a dense run's (selection
+    # gathers copies for the score matmul; it never mutates the cache).
+    config_d = HeliosLMv5Config(size="lite")
+    mla_d = MLA(config_d).eval()
+    mla_d.load_state_dict(mla.state_dict())
+    with torch.no_grad():
+        past_d = None
+        for i in range(L):
+            _, past_d = mla_d(h[:, i:i + 1], past_key_value=past_d,
+                              use_cache=True)
+    assert torch.equal(past[0], past_d[0]) and torch.equal(past[1], past_d[1]), (
+        "sparse decode must build exactly the dense cache")
+
+    # k >= kv_len degenerates to dense attention (no selection kicks in).
+    config_big = HeliosLMv5Config(size="lite")
+    config_big.attention.sparse_top_k = 10**6
+    mla_big = MLA(config_big).eval()
+    mla_big.load_state_dict(mla.state_dict())
+    with torch.no_grad():
+        out_big, _ = mla_big(h, use_cache=False)
+        out_dense, _ = mla_d(h, use_cache=False)
+    d_degen = (out_big - out_dense).abs().max().item()
+    assert d_degen == 0.0, (
+        f"sparse_top_k >= kv_len must equal dense exactly, diff {d_degen:.3e}")
+
+    # k = 1 is fully determined at DECODE: only the current token is
+    # selected (the indexer force-includes it), so the output equals the
+    # o_proj of the LAST latent mapped through W_UV — no softmax
+    # uncertainty. (Prefill stays dense by design, so exercise the
+    # decode path token by token.)
+    config1 = HeliosLMv5Config(size="lite")
+    config1.attention.sparse_top_k = 1
+    mla1 = MLA(config1).eval()
+    mla1.load_state_dict(mla.state_dict())
+    with torch.no_grad():
+        past1 = None
+        out1 = None
+        for i in range(L):
+            out1, past1 = mla1(h[:, i:i + 1], past_key_value=past1,
+                               use_cache=True)
+        w_uk, w_uv = mla1._w_uk_w_uv()
+        B, H = 1, mla1.num_heads
+        c_last = past1[0][:, :, -1:, :].to(torch.float32).expand(
+            -1, H, -1, -1)  # [B, H, 1, d_c]
+        exp = torch.einsum("bhqc,hvc->bqhv", c_last, w_uv)
+        exp = mla1.o_proj(exp.reshape(B, 1, H * mla1.v_head_dim))
+    d_k1 = (out1 - exp).abs().max().item()
+    assert d_k1 < 1e-5, (
+        f"k=1 sparse output must be the last-token W_UV projection, "
+        f"diff {d_k1:.3e}")
+
+    # Padding masks are honored during selection (masked-out keys cannot
+    # be picked; output stays finite).
+    with torch.no_grad():
+        mask = torch.ones(1, L)
+        mask[0, :6] = 0
+        past_m = None
+        for i in range(L):
+            o_m, past_m = mla(h[:, i:i + 1],
+                              attention_mask=mask[:, :i + 1],
+                              past_key_value=past_m, use_cache=True)
+    assert torch.isfinite(o_m).all(), "sparse decode with padding broke"
+
+    # Model-level integration: a full lite model decodes with sparse
+    # attention — finite, deterministic, and EXACTLY dense when
+    # sparse_top_k covers the whole cache. (A bounded-drift assertion
+    # against dense is meaningless on an untrained random model: dropping
+    # half the cache legitimately renormalizes the softmax.)
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+    cfg_s = HeliosLMv5Config(size="lite")
+    cfg_s.attention.sparse_top_k = 4
+    torch.manual_seed(304)
+    model_s = HeliosLMv5(cfg_s).eval()
+    ids = torch.randint(0, cfg_s.vocab_size, (1, 6))
+
+    def decode(model, steps=3):
+        with torch.no_grad():
+            lg, _, past = model(ids, use_cache=True)
+            for _ in range(steps):
+                nxt = lg[:, -1:].argmax(-1)
+                lg, _, past = model(nxt, past_key_values=past,
+                                    use_cache=True)
+        return lg
+
+    lg_s = decode(model_s)
+    assert torch.isfinite(lg_s).all(), "model-level sparse decode non-finite"
+    model_s2 = HeliosLMv5(cfg_s).eval()
+    model_s2.load_state_dict(model_s.state_dict())
+    assert torch.equal(lg_s, decode(model_s2)), (
+        "sparse top-k decode is not deterministic")
+
+    cfg_big = HeliosLMv5Config(size="lite")
+    cfg_big.attention.sparse_top_k = 10**6
+    model_big = HeliosLMv5(cfg_big).eval()
+    model_big.load_state_dict(model_s.state_dict())
+    cfg_m = HeliosLMv5Config(size="lite")
+    model_m = HeliosLMv5(cfg_m).eval()
+    model_m.load_state_dict(model_s.state_dict())
+    d_model = (decode(model_big) - decode(model_m)).abs().max().item()
+    assert d_model == 0.0, (
+        f"model-level sparse_top_k >= kv_len must equal dense exactly: "
+        f"{d_model:.3e}")
+
+    # Loud errors: non-absorbed cache rejects the flag; bad values fail at
+    # config validation.
+    bad = HeliosLMv5Config(size="lite")
+    bad.attention.use_absorption = False
+    bad.attention.sparse_top_k = 4
+    _expect_raises(ValueError, lambda: HeliosLMv5Config(
+        size="lite", attention=bad.attention), "sparse_top_k w/o absorption")
+    bad2 = HeliosLMv5Config(size="lite")
+    bad2.attention.sparse_top_k = 0
+    _expect_raises(ValueError, lambda: HeliosLMv5Config(
+        size="lite", attention=bad2.attention), "sparse_top_k = 0")
+    _pass("test_sparse_top_k_attention",
+          f"cache bit-equal dense, k>=L exact (unit+model), k=1 W_UV form "
+          f"{d_k1:.1e}, deterministic, guards OK")
+
+
+def test_per_head_muon():
+    from helioslm_v5.src.training.muon import (
+        Muon, zeropower_via_newtonschulz5)
+
+    torch.manual_seed(701)
+    n_heads, head_dim, cols = 4, 8, 16
+    # 1) Exact per-head semantics: the optimizer update equals a manual
+    #    per-head Newton-Schulz of the (nesterov) momentum.
+    p1 = torch.nn.Parameter(torch.zeros(n_heads * head_dim, cols))
+    g = torch.randn(n_heads * head_dim, cols)
+    opt = Muon([p1], lr=0.1, momentum=0.9, per_head_dim=head_dim)
+    p1.grad = g.clone()
+    opt.step()
+    # First step: buf = g, d = g + 0.9*g = 1.9*g.
+    d = 1.9 * g
+    manual = torch.stack([
+        zeropower_via_newtonschulz5(d[i * head_dim:(i + 1) * head_dim])
+        for i in range(n_heads)])
+    scale = max(1.0, head_dim / cols) ** 0.5
+    want = -0.1 * scale * manual.reshape(n_heads * head_dim, cols)
+    assert torch.allclose(p1.data, want, atol=1e-6), (
+        f"per-head update mismatch: {(p1.data - want).abs().max().item():.3e}")
+
+    # 2) Per-head blocks are independently (approximately) orthogonalized —
+    #    each head's singular values sit in the documented NS band.
+    sv_bands = []
+    for i in range(n_heads):
+        sv = torch.linalg.svdvals(manual[i])
+        sv_bands.append((sv.min().item(), sv.max().item()))
+    assert all(0.25 < lo and hi < 1.4 for lo, hi in sv_bands), (
+        f"per-head NS singular values out of band: {sv_bands}")
+
+    # 3) Convergence with per-head routing (quadratic toward a target).
+    W = torch.zeros(n_heads * head_dim, cols, requires_grad=True)
+    tgt = torch.randn(n_heads * head_dim, cols)
+    opt2 = Muon([W], lr=0.1, per_head_dim=head_dim)
+    steps = 200
+    for t in range(steps):
+        for gp in opt2.param_groups:
+            gp["lr"] = 0.1 * (1 - t / steps)
+        opt2.zero_grad()
+        loss = ((W - tgt) ** 2).sum()
+        loss.backward()
+        opt2.step()
+    err = ((W - tgt) ** 2).sum().item() / (tgt ** 2).sum().item()
+    assert err < 0.2, f"per-head Muon did not converge: rel err {err:.3f}"
+
+    # 4) Loud errors: a row count not divisible by per_head_dim raises
+    #    (silently falling back to whole-matrix NS would hide a layout
+    #    bug); non-positive per_head_dim is rejected at construction.
+    p2 = torch.nn.Parameter(torch.randn(10, cols))
+    opt3 = Muon([p2], lr=0.01, per_head_dim=head_dim)  # 10 % 8 != 0
+    p2.grad = torch.randn_like(p2)
+    _expect_raises(ValueError, opt3.step,
+                   "per_head_dim not dividing rows")
+    _expect_raises(ValueError, lambda: Muon([p2], per_head_dim=0),
+                   "per_head_dim=0")
+    _pass("test_per_head_muon",
+          f"manual per-head NS exact (atol 1e-6), bands OK, converge rel "
+          f"err {err:.3f}, guards OK")
+
+
+def test_gptq_act_order():
+    from helioslm_v5.src.quantization.standard_quant import GPTQLinear
+
+    torch.manual_seed(801)
+    in_f, out_f, group_size = 32, 16, 16
+    # Heterogeneous column activation scales — the regime act-order is
+    # designed for (high-variance columns are quantized first so the
+    # still-dense low-variance columns can absorb their error).
+    col_scale = torch.logspace(-2, 2, in_f)
+    X = torch.randn(512, in_f) * col_scale
+    W_lin = nn.Linear(in_f, out_f, bias=False)
+
+    def out_err(mod):
+        with torch.no_grad():
+            ref = X @ W_lin.weight.t()
+            got = mod(X)
+        return ((got - ref).norm() / ref.norm()).item()
+
+    q_rtn = GPTQLinear.from_linear(W_lin, group_size=group_size)
+    q_plain = GPTQLinear.from_linear(W_lin, group_size=group_size,
+                                     calibration_data=X, act_order=False)
+    q_act = GPTQLinear.from_linear(W_lin, group_size=group_size,
+                                   calibration_data=X, act_order=True)
+    e_rtn, e_plain, e_act = out_err(q_rtn), out_err(q_plain), out_err(q_act)
+    assert e_act <= e_plain * 1.05, (
+        f"act-order hurt output error: {e_act:.4f} vs plain {e_plain:.4f}")
+    assert e_act < e_rtn, (
+        f"act-order GPTQ should beat RTN here: {e_act:.4f} vs {e_rtn:.4f}")
+
+    # The act-order packed layout is still exact: g_idx maps every
+    # original column to the group it was quantized in, and forward ==
+    # matmul with the .weight property.
+    assert q_act.g_idx.shape == (in_f,) and q_act.g_idx.max().item() == \
+        (in_f + group_size - 1) // group_size - 1, "act-order g_idx broken"
+    with torch.no_grad():
+        w_eff = q_act.weight
+        got = torch.nn.functional.linear(X, w_eff)
+        ref = q_act(X)
+    assert (got - ref).abs().max().item() == 0.0, (
+        ".weight property inconsistent with forward after act-order")
+
+    # Deterministic: same inputs -> same packed buffers.
+    q_act2 = GPTQLinear.from_linear(W_lin, group_size=group_size,
+                                    calibration_data=X, act_order=True)
+    assert torch.equal(q_act.qweight, q_act2.qweight) and \
+        torch.equal(q_act.qzeros, q_act2.qzeros), "act-order not deterministic"
+
+    # Plain GPTQ is untouched by the new flag (default path unchanged).
+    q_plain2 = GPTQLinear.from_linear(W_lin, group_size=group_size,
+                                      calibration_data=X)
+    assert torch.equal(q_plain.qweight, q_plain2.qweight), (
+        "default GPTQ path changed")
+    _pass("test_gptq_act_order",
+          f"out err RTN {e_rtn:.4f} -> GPTQ {e_plain:.4f} -> act-order "
+          f"{e_act:.4f}, layout exact, deterministic")
+
+
 TESTS = [
     test_mla,
     test_mla_absorption,
@@ -2386,11 +2718,16 @@ TESTS = [
     test_fp8_kv_cache,
     test_hyper_connections,
     test_qat,
+    # v5.8
+    test_yarn_rope_scaling,
+    test_sparse_top_k_attention,
+    test_per_head_muon,
+    test_gptq_act_order,
 ]
 
 
 def main():
-    print("HeliosLM v5.7 Test Suite (lite config, CPU)")
+    print("HeliosLM v5.8 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:

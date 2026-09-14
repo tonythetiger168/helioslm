@@ -1,4 +1,4 @@
-"""HeliosLM v5.5 Configuration
+"""HeliosLM v5.8 Configuration
 
 Two sizes are supported via ``HeliosLMv5Config(size=...)``:
   - ``"lite"``: small CPU-friendly config for smoke tests (seconds per step).
@@ -9,6 +9,9 @@ v5.5 additions (Kimi-K3-aligned, all backward compatible on "lite"):
   - ``moe.latent_dim`` (LatentMoE), ``moe.balance_strategy`` ("heuristic" /
     "quantile"), ``moe.activation`` ("swiglu" / "situ") + ``situ_softcap``.
   - ``use_attention_residuals``: cross-layer accumulated attention residual.
+v5.7: ``attention.rope_scaling`` ("linear"/"ntk"), ``kv_cache_dtype="fp8"``,
+  ``use_hyper_connections``. v5.8: ``rope_scaling["type"]="yarn"``
+  (NTK-by-parts), ``attention.sparse_top_k`` (DSA-style top-k decode).
 
 ``None`` on ``hybrid.enabled`` / ``use_attention_residuals`` /
 ``moe.latent_dim`` means "follow the size default": the "full" size turns
@@ -52,12 +55,17 @@ class AttentionConfig:
     attention_dropout: float = 0.0
     use_absorption: bool = True    # MLA weight absorption (latent KV cache)
     # RoPE position scaling (v5.7): None = vanilla RoPE; otherwise a dict
-    # {"type": "linear" | "ntk", "factor": float >= 1}. Both stretch the
-    # effective context by ``factor`` so a checkpoint trained at L positions
-    # can attend up to ~L*factor positions: "linear" scales all frequencies
-    # down by factor (position p behaves like p/factor), "ntk" ( Neural
-    # Tangent Kernel / dynamic-NTK style) rescales only the RoPE base,
-    # leaving the lowest frequencies nearly untouched.
+    # {"type": "linear" | "ntk" | "yarn", "factor": float >= 1}. All stretch
+    # the effective context by ``factor`` so a checkpoint trained at L
+    # positions can attend up to ~L*factor positions: "linear" scales all
+    # frequencies down by factor (position p behaves like p/factor), "ntk"
+    # (Neural Tangent Kernel / dynamic-NTK style) rescales only the RoPE
+    # base, leaving the lowest frequencies nearly untouched. "yarn" (v5.8,
+    # NTK-by-parts) keeps high frequencies, fully interpolates low
+    # frequencies, and blends the band in between; optional keys
+    # "original_max_position" (default = max_position_embeddings),
+    # "beta_fast" (32), "beta_slow" (1), "attention_factor" (default
+    # 0.1*ln(factor)+1, applied to cos/sin).
     rope_scaling: Optional[dict] = None
     # KV-cache storage dtype (v5.7): "auto" keeps the compute dtype;
     # "fp8" stores the absorbed mode's c_kv cache in float8_e4m3fn
@@ -65,6 +73,14 @@ class AttentionConfig:
     # E4M3 mantissa grid gives <= 6.25% relative element error). Absorbed
     # mode only; non-absorbed configs raise ValueError at layer init.
     kv_cache_dtype: str = "auto"
+    # DSA-style sparse top-k attention (v5.8, absorbed mode only): at
+    # DECODE (one new token per step) a lightning-indexer-style score
+    # selects the top-``sparse_top_k`` cached tokens and attention runs
+    # only over them; prefill stays dense (documented simplification).
+    # None = dense attention (v5.7 behaviour). The cache layout is
+    # unchanged; when sparse_top_k >= kv_len the output is bit-identical
+    # to dense attention.
+    sparse_top_k: Optional[int] = None
 
     @property
     def head_dim(self) -> int:
@@ -159,7 +175,7 @@ class GRPOConfig:
 
 @dataclass
 class HeliosLMv5Config:
-    model_name: str = "HeliosLM-v5.7"
+    model_name: str = "HeliosLM-v5.8"
     size: str = "full"  # "full" (production defaults) or "lite" (CPU smoke tests)
     vocab_size: int = 160000
     max_position_embeddings: int = 1048576
@@ -349,18 +365,19 @@ class HeliosLMv5Config:
             raise ValueError(
                 f"moe.situ_softcap must be positive, got {m.situ_softcap}"
             )
-        # v5.7: RoPE scaling and KV-cache dtype.
+        # v5.7/v5.8: RoPE scaling, KV-cache dtype, sparse top-k.
         rs = a.rope_scaling
         if rs is not None:
             if not isinstance(rs, dict):
                 raise ValueError(
                     f"attention.rope_scaling must be a dict like "
-                    f"{{'type': 'linear'|'ntk', 'factor': f}}, got {rs!r}"
+                    f"{{'type': 'linear'|'ntk'|'yarn', 'factor': f}}, got "
+                    f"{rs!r}"
                 )
-            if rs.get("type") not in ("linear", "ntk"):
+            if rs.get("type") not in ("linear", "ntk", "yarn"):
                 raise ValueError(
-                    f"attention.rope_scaling['type'] must be 'linear' or "
-                    f"'ntk', got {rs.get('type')!r}"
+                    f"attention.rope_scaling['type'] must be 'linear', "
+                    f"'ntk' or 'yarn', got {rs.get('type')!r}"
                 )
             factor = rs.get("factor")
             if factor is None or not (isinstance(factor, (int, float))) \
@@ -368,6 +385,18 @@ class HeliosLMv5Config:
                 raise ValueError(
                     f"attention.rope_scaling['factor'] must be a number "
                     f">= 1.0, got {factor!r}"
+                )
+        if a.sparse_top_k is not None:
+            if not isinstance(a.sparse_top_k, int) or a.sparse_top_k <= 0:
+                raise ValueError(
+                    f"attention.sparse_top_k must be a positive integer or "
+                    f"None, got {a.sparse_top_k!r}"
+                )
+            if not a.use_absorption:
+                raise ValueError(
+                    "attention.sparse_top_k requires use_absorption=True "
+                    "(the top-k selection runs over the shared latent "
+                    "cache; the expanded per-head cache is not supported)"
                 )
         if a.kv_cache_dtype not in ("auto", "fp8"):
             raise ValueError(

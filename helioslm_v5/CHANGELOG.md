@@ -1,5 +1,91 @@
 # HeliosLM v5 Changelog
 
+## v5.8 (2026-09-14) - Daily Improvement Build 3: YaRN, DSA Sparse Top-k, Per-Head Muon, GPTQ act-order
+
+Third daily-analysis-driven round (landscape scan 2026-09-14: DeepSeek
+V4.1 Flash's sparse/efficient decode direction on the new Terminal-Bench
+4.0, the 1M-context extension stack (YaRN) used across Qwen/GLM-class
+models, K3's Per-Head Muon recipe, and standard GPTQ act-order). Four
+changes, all tested; unit suite 40 -> 44 tests.
+
+### YaRN RoPE scaling (attention/mla.py: RotaryEmbedding)
+- `config.attention.rope_scaling = {"type": "yarn", "factor": f}` adds the
+  third standard context-extension method: NTK-by-parts. Frequencies are
+  split by WAVELENGTH relative to the pre-trained context length
+  (`original_max_position`, default = the config's
+  max_position_embeddings): short wavelengths (high frequency) keep the
+  original inv_freq, long wavelengths are fully interpolated
+  (inv_freq/factor), and the band in between is blended with a linear
+  ramp — matching the HuggingFace `rope_type="yarn"` formula with
+  beta_fast=32 / beta_slow=1 (both overridable).
+- YaRN attention temperature (mscale) is applied to cos/sin: default
+  `0.1*ln(factor)+1` (1.0 at factor 1), overridable via
+  `attention_factor`. Since it scales the rotated q AND k, attention
+  scores pick up factor^2 — the paper's softmax-sharpness compensation;
+  documented in code.
+- Verified: factor 1 is bit-identical to vanilla RoPE (inv_freq AND
+  cos/sin); the short-wavelength dims are exactly untouched; the longest
+  wavelength is divided by factor exactly; the in-band dim lies strictly
+  between. Lazy cos/sin growth is unchanged (positions beyond the budget
+  verified at 20000). Loud ValueError on beta_fast <= beta_slow,
+  non-positive attention_factor / original_max_position.
+
+### DSA-style sparse top-k attention (attention/mla.py: MLA, absorbed mode)
+- `config.attention.sparse_top_k = k` (default None = dense): at DECODE
+  (one new token per step) a lightning-indexer-style score selects the
+  top-k cached tokens and attention runs only over the gathered subset —
+  the DeepSeek-V3.2/V4 Sparse-Attention direction. The index score is the
+  head-mean of the true score terms (a "free" indexer reusing the
+  absorbed projections q_absorbed / q_rope); a real DSA indexer is a
+  dedicated learned scorer — documented simplification.
+- Contract preserved: the cache tensors are NEVER modified (gathered
+  copies only — verified bit-identical to a dense run's cache), dim 2
+  stays the sequence length, MTP rollback and engine watermarking are
+  unaffected. Selection is order-preserving (sorted indices), respects
+  the causal/padding mask (masked keys are -inf'd before top-k), and the
+  current token is always force-selected.
+- Exactness: sparse_top_k >= kv_len degenerates to dense attention
+  (verified diff 0.0 at both MLA and full-model level); k=1 decode is
+  exactly the o_proj of the last latent through W_UV (verified diff 0.0);
+  decode is deterministic (verified bitwise-equal across runs).
+- Prefill (seq > 1) stays dense BY DESIGN: per-query top-k over the full
+  sequence costs O(L^2), defeating the point (documented). Loud errors:
+  non-absorbed configs and k <= 0 raise at config validation / layer init.
+
+### Per-head Muon (training/muon.py)
+- New group option `per_head_dim`: a 2-D momentum matrix whose row count
+  is a multiple of per_head_dim is split into per-head blocks along dim 0
+  and each block is orthogonalized INDEPENDENTLY (K3's "Per-Head Muon"
+  recipe — heads specialize, and whole-matrix Newton-Schulz couples their
+  singular values). The v5.6 documented simplification ("per-matrix, not
+  per-head") is now implemented for row-stacked layouts. The shape scale
+  is computed per head block.
+- Verified: the update equals a manual per-head NS of the nesterov
+  momentum exactly (atol 1e-6); each head block's singular values sit in
+  the documented NS band; least-squares convergence (rel err ~0);
+  non-divisible row counts raise ValueError (a silent whole-matrix
+  fallback would hide a layout bug); per_head_dim <= 0 rejected at
+  construction.
+
+### GPTQ act-order (quantization/standard_quant.py)
+- `GPTQLinear.from_linear(..., act_order=True)` and
+  `QuantizationManager.quantize_model(..., act_order=True)`: columns are
+  quantized in DESCENDING diag(H) order (AutoGPTQ's act-order/"desc"
+  heuristic) — high-activation columns are quantized FIRST, while the
+  still-dense later columns can absorb their error. The packed layout is
+  unchanged: columns are un-permuted afterwards and g_idx records each
+  ORIGINAL column's group, so the standard dequant path works unmodified.
+- Verified on heterogeneous-column calibration data: output error RTN
+  6.97% -> GPTQ 6.98% -> act-order 6.92% (act-order best; GPTQ's
+  weight-space trade-off documented); `.weight` property == forward
+  exactly; deterministic across runs; the default (act_order=False) path
+  is bit-unchanged.
+
+### Tests
+- test_yarn_rope_scaling, test_sparse_top_k_attention,
+  test_per_head_muon, test_gptq_act_order added to tests/test_v5.py
+  (registered in TESTS; suite 40 -> 44).
+
 ## v5.7 (2026-09-13) - Daily Improvement Build 2: RoPE Scaling, FP8 KV Cache, Hyper-Connections, QAT
 
 Second daily-analysis-driven round (landscape scan 2026-09-13: DeepSeek-V4

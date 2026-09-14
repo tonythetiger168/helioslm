@@ -1,4 +1,4 @@
-# HeliosLM v5.7 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.8 - DeepSeek/K3-Style Architecture
 
 Reference LLM implementation with DeepSeek-V3-style efficiency techniques.
 All modules below are implemented and exercised by a CPU test suite with
@@ -17,7 +17,41 @@ requests), and input validation that fails loudly instead of silently
 misbehaving (see CHANGELOG). v5.5 is a feature release aligned with
 Kimi-K3-class architecture mechanisms: hybrid linear attention, LatentMoE,
 quantile balancing, cross-layer attention residuals, and SiTU-GLU (see
-CHANGELOG; unit suite now 40 tests).
+CHANGELOG; unit suite now 44 tests).
+
+## v5.8 (2026-09-14): Daily Improvement Round 3 — YaRN, DSA Sparse Top-k, Per-Head Muon, GPTQ act-order
+
+Third daily round from the 2026-09-14 landscape scan (DeepSeek V4.1
+Flash's sparse/efficient decode direction on Terminal-Bench 4.0, the
+YaRN-based 1M-context extension stack, K3's Per-Head Muon recipe,
+standard GPTQ act-order). Unit suite 40 → 44 tests.
+
+- **YaRN RoPE scaling** (`config.attention.rope_scaling={"type":"yarn"}`):
+  NTK-by-parts — short wavelengths keep the original inv_freq, long
+  wavelengths are fully interpolated (÷factor), the band between is
+  blended by a linear ramp (HuggingFace `rope_type="yarn"` formula,
+  beta_fast=32/beta_slow=1 overridable); the YaRN mscale
+  (`0.1·ln(f)+1`, overridable) scales cos/sin. factor 1 is bit-identical
+  to vanilla; the boundary dims are exactly untouched/÷factor (verified).
+- **DSA-style sparse top-k attention** (`config.attention.sparse_top_k`,
+  absorbed mode): at decode, a lightning-indexer-style score (head-mean
+  of the true score terms — a "free" indexer; a learned indexer is a
+  documented simplification) selects the top-k cached tokens. The cache
+  is never modified (gathered copies; bit-identical to a dense run),
+  masked keys are excluded, the current token is always selected, and
+  prefill stays dense by design. k ≥ kv_len is exactly dense (diff 0.0,
+  unit and model level); k=1 is exactly the last-token W_UV projection.
+- **Per-head Muon** (group option `per_head_dim`): the v5.6 documented
+  simplification is implemented — the momentum matrix is split into
+  per-head row blocks and each is Newton-Schulz-orthogonalized
+  independently (K3's Per-Head Muon recipe). Verified equal to manual
+  per-head NS (atol 1e-6); non-divisible layouts raise loudly.
+- **GPTQ act-order** (`from_linear(..., act_order=True)` /
+  `quantize_model(..., act_order=True)`): columns quantized in
+  descending diag(H) order (AutoGPTQ "desc"); the packed layout is
+  unchanged (g_idx maps original columns to groups). On heterogeneous-
+  column calibration: output error 6.97% RTN → 6.98% GPTQ → 6.92%
+  act-order; default path bit-unchanged.
 
 ## v5.5: K3-Aligned Feature Wave
 
@@ -379,7 +413,7 @@ From the repository root (the directory containing `helioslm_v5/`):
 python -m helioslm_v5.tests.test_v5
 ```
 
-Runs 40 tests against the real `size="lite"` model on CPU (a couple of
+Runs 44 tests against the real `size="lite"` model on CPU (a couple of
 minutes), prints a per-test PASS/FAIL summary, and exits non-zero if any
 test fails.
 
@@ -396,8 +430,8 @@ test fails.
 | Pipeline | Simple | **DualPipe-style schedule (single-process simulation)** |
 | Vision | Fixed 224x224 | **NaViT (any resolution up to max_grid)** |
 | Audio | Non-streaming | **Streaming causal (chunked == one-shot; sliding-window memory cap)** |
-| Quantization | Custom INT4/8 | **AWQ/GPTQ/FP8/MXFP4 (real 4-bit packing; true GPTQ Hessian compensation) + QAT straight-through fake-quant training wrapper** |
-| RoPE / Context | Fixed | **RoPE scaling (linear interpolation / NTK base rescale), optional FP8 latent KV cache** |
+| Quantization | Custom INT4/8 | **AWQ/GPTQ/FP8/MXFP4 (real 4-bit packing; true GPTQ Hessian compensation + act-order) + QAT straight-through fake-quant training wrapper** |
+| RoPE / Context | Fixed | **RoPE scaling (linear interpolation / NTK base rescale / YaRN NTK-by-parts), optional FP8 latent KV cache, optional DSA-style sparse top-k decode over the latent cache** |
 | Residual Stream | Standard | **Optional Hyper-Connections: n-branch stream, static normalized A + learnable zero-init B (identity at init)** |
 | Inference Engine | Custom | **vLLM-style engine (paged KV, continuous batching with batched [B,1] decode steps)** |
 | GPU Monitoring | CPU/内存 HPA | **GPU-utilization HPA (in-memory metrics, optional Prometheus export)** |

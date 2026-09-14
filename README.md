@@ -1,4 +1,4 @@
-# HeliosLM v5.7 — DeepSeek/K3-Style LLM
+# HeliosLM v5.8 — DeepSeek/K3-Style LLM
 
 A PyTorch reference implementation of a DeepSeek-V3-style LLM stack, built and hardened through four rounds of adversarial code review plus a v5.5 feature wave aligned with Kimi-K3-class architecture mechanisms (see `docs/`).
 
@@ -9,20 +9,20 @@ A PyTorch reference implementation of a DeepSeek-V3-style LLM stack, built and h
 
 | Area | Implementation |
 |---|---|
-| **Attention** | MLA (Multi-head Latent Attention) with **weight absorption** — latent-only KV cache, −97.7% memory vs MHA (full config), verified equivalent to expanded path (<1e-4); **hybrid linear attention** (v5.5): Gated Delta Rule layers interleaved with MLA, fixed-size recurrent state cache, decode ≡ one-shot (<2e-7) |
+| **Attention** | MLA (Multi-head Latent Attention) with **weight absorption** — latent-only KV cache, −97.7% memory vs MHA (full config), verified equivalent to expanded path (<1e-4); **hybrid linear attention** (v5.5): Gated Delta Rule layers interleaved with MLA, fixed-size recurrent state cache, decode ≡ one-shot (<2e-7); **RoPE scaling** linear/NTK/YaRN (v5.7/5.8); **DSA-style sparse top-k decode** over the latent cache (v5.8, k≥L exactly dense) |
 | **MoE** | Sigmoid-gated, fine-grained experts with **auxiliary-loss-free** load balancing (selection-only bias + heuristic or **quantile** updates); **LatentMoE** (v5.5): routed experts in shared latent space (down→dispatch→up), shared experts full-width; **SiTU-GLU** (v5.5) tanh soft-capped activation |
 | **Cross-layer** | **Attention Residuals** (v5.5): per-layer gated injection of accumulated lower-layer attention outputs, threaded through DualPipe (gradient-exact, bitwise-verified) |
 | **Speculative decoding** | DeepSeek-style MTP with **strict verification** (residual `(p−q)₊` resampling), batch support, O(1) cache-truncation rollback; hybrid recurrent-state rollback via restore+replay (v5.5) |
 | **Serving** | vLLM-style engine: paged KV accounting, copy-on-write forks, watermark-aligned continuous batching; hybrid-aware batching fallback (v5.5) |
-| **Training** | FP8 trainer (native float8 + STE, E5M2 gradient hooks, AdamW master weights), DualPipe schedule simulation (recompute-based, gradient-exact), GRPO (real sampling, k3 KL, answer-extraction rewards) |
-| **Quantization** | **True GPTQ** (Hessian OBS with error compensation), AWQ with activation-aware grid search, native FP8 — all with `from_linear` real-weight packing |
+| **Training** | FP8 trainer (native float8 + STE, E5M2 gradient hooks, AdamW master weights), DualPipe schedule simulation (recompute-based, gradient-exact), GRPO (real sampling, k3 KL, answer-extraction rewards), Muon optimizer (Newton-Schulz orthogonalized momentum, optional **per-head** blocks, v5.6/5.8) |
+| **Quantization** | **True GPTQ** (Hessian OBS with error compensation, optional **act-order** v5.8), AWQ with activation-aware grid search, native FP8 — all with `from_linear` real-weight packing |
 | **Multimodal** | NaViT vision encoder (row/col position decomposition, mixed-resolution packing), streaming audio encoder (causal, sliding-window memory, bit-equivalent to one-shot) |
 
 ## Quick Start
 
 ```bash
 pip install torch
-python -m helioslm_v5.tests.test_v5        # 34 unit tests
+python -m helioslm_v5.tests.test_v5        # 44 unit tests
 python integration_test_v51.py             # 9 end-to-end integration tests
 ```
 
@@ -51,6 +51,7 @@ integration_test_v51.py
 - **v5.5** — K3-aligned feature wave: hybrid Gated-Delta linear attention, LatentMoE, quantile balancing, attention residuals, SiTU-GLU (34 unit tests)
 - **v5.6** (2026-09-13) — Daily-analysis improvement round: hybrid packed-sequence training support (doc-boundary state reset), MXFP4 quantization, Muon optimizer, test-suite calibration (36 unit tests)
 - **v5.7** (2026-09-13) — Daily round 2: RoPE scaling (linear/NTK), FP8 latent KV cache, Hyper-Connections (simplified mHC), QAT straight-through fake-quant training (40 unit tests)
+- **v5.8** (2026-09-14) — Daily round 3: YaRN RoPE scaling (NTK-by-parts + mscale), DSA-style sparse top-k attention at decode (latent-cache top-k, k≥L exactly dense), Per-Head Muon (`per_head_dim`), GPTQ act-order (descending diag(H)) (44 unit tests)
 
 See `helioslm_v5/CHANGELOG.md` and `docs/` for details.
 

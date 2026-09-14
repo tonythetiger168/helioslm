@@ -88,18 +88,98 @@ class RotaryEmbedding(nn.Module):
                 # with base' = base * factor^(d/(d-2)); k=0 gives base'^0 = 1
                 # exactly, so the lowest frequency is untouched.
                 base = base * factor ** (dim / (dim - 2))
+            elif stype == "yarn":
+                # YaRN (NTK-by-parts, v5.8): split the frequency range by
+                # WAVELENGTH relative to the pre-trained context length.
+                # Short wavelengths (high frequency) keep the original
+                # inv_freq; long wavelengths (low frequency) are fully
+                # interpolated (divided by factor); the band in between is
+                # blended with a linear ramp, avoiding the discontinuity a
+                # hard split would introduce. This matches the HuggingFace
+                # `rope_type="yarn"` formula.
+                pass  # applied after inv_freq is built below
             else:
                 raise ValueError(
                     f"unknown rope scaling type {stype!r}; expected "
-                    "'linear' or 'ntk'"
+                    "'linear', 'ntk' or 'yarn'"
                 )
         inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float() / dim))
         if scaling is not None and scaling["type"] == "linear":
             inv_freq = inv_freq / float(scaling["factor"])
+        elif scaling is not None and scaling["type"] == "yarn":
+            inv_freq = self._yarn_inv_freq(inv_freq, scaling, max_position_embeddings)
         self.register_buffer("inv_freq", inv_freq)
+        # YaRN attention temperature (mscale): scaling cos/sin by this
+        # factor scales the rotated q AND k, so attention scores pick up
+        # factor^2 — the YaRN paper's sqrt(t) compensation for the
+        # softmax sharpness lost when long-context positions are
+        # interpolated onto a smaller range. Non-yarn types keep 1.0.
+        self.attention_factor = 1.0
+        if scaling is not None and scaling["type"] == "yarn":
+            self.attention_factor = self._yarn_attention_factor(scaling)
         self.max_seq_len = 0
         budget = min(max_position_embeddings, self._INIT_BUDGET)
         self._precompute(budget)
+
+    @staticmethod
+    def _yarn_inv_freq(inv_freq, scaling, max_position_embeddings):
+        """NTK-by-parts (YaRN) frequency remapping.
+
+        Keys: ``factor`` (>=1), optional ``original_max_position`` (the
+        pre-trained context length; defaults to the config's
+        max_position_embeddings, which plays the role of the training
+        length for this reference implementation), ``beta_fast`` (32) and
+        ``beta_slow`` (1) — the wavelength thresholds in units of
+        original_max_position.
+
+        Wavelength law (HuggingFace `rope_type="yarn"`):
+          wavelen_k = 2*pi / inv_freq_k
+          wavelen_k <  L / beta_fast  -> keep inv_freq_k   (high freq)
+          wavelen_k >  L / beta_slow  -> inv_freq_k / factor (low freq)
+          in between                   -> linear ramp between the two
+        """
+        factor = float(scaling["factor"])
+        orig_len = float(
+            scaling.get("original_max_position", max_position_embeddings)
+        )
+        if orig_len <= 0:
+            raise ValueError(
+                f"yarn original_max_position must be positive, got {orig_len}"
+            )
+        beta_fast = float(scaling.get("beta_fast", 32.0))
+        beta_slow = float(scaling.get("beta_slow", 1.0))
+        if not (beta_fast > beta_slow > 0):
+            raise ValueError(
+                f"yarn requires beta_fast > beta_slow > 0, got "
+                f"beta_fast={beta_fast}, beta_slow={beta_slow}"
+            )
+        low_wavelen = orig_len / beta_fast
+        high_wavelen = orig_len / beta_slow
+        wavelen = 2.0 * math.pi / inv_freq
+        # Fully interpolated beyond the long-wavelength threshold.
+        remapped = torch.where(wavelen > high_wavelen,
+                               inv_freq / factor, inv_freq)
+        # Smooth ramp inside the band: smooth = 1 at the SHORT-wavelength
+        # edge (keep original) and 0 at the LONG-wavelength edge (fully
+        # interpolated).
+        smooth = (orig_len / wavelen - beta_slow) / (beta_fast - beta_slow)
+        ramped = (1.0 - smooth) * inv_freq / factor + smooth * inv_freq
+        in_band = (wavelen >= low_wavelen) & (wavelen <= high_wavelen)
+        return torch.where(in_band, ramped, remapped)
+
+    @staticmethod
+    def _yarn_attention_factor(scaling):
+        factor = float(scaling["factor"])
+        explicit = scaling.get("attention_factor")
+        if explicit is not None:
+            explicit = float(explicit)
+            if explicit <= 0:
+                raise ValueError(
+                    f"yarn attention_factor must be positive, got {explicit}"
+                )
+            return explicit
+        # YaRN paper default: mscale = 0.1 * ln(s) + 1 (1.0 at factor 1).
+        return 0.1 * math.log(factor) + 1.0
 
     def _precompute(self, seq_len):
         t = torch.arange(seq_len, device=self.inv_freq.device, dtype=self.inv_freq.dtype)
@@ -110,9 +190,11 @@ class RotaryEmbedding(nn.Module):
         # oversized buffer and strict-load into a fresh model would fail.
         # Excluding it keeps state_dict stable; the table is rebuilt on
         # demand by _ensure_capacity at the next forward.
-        self.register_buffer("cos_cached", emb.cos()[None, None, :, :],
+        self.register_buffer("cos_cached",
+                             (emb.cos() * self.attention_factor)[None, None, :, :],
                              persistent=False)
-        self.register_buffer("sin_cached", emb.sin()[None, None, :, :],
+        self.register_buffer("sin_cached",
+                             (emb.sin() * self.attention_factor)[None, None, :, :],
                              persistent=False)
         self.max_seq_len = seq_len
 
@@ -244,6 +326,24 @@ class MLA(nn.Module):
                     "kv_cache_dtype='fp8' requires a torch build with "
                     "float8_e4m3fn support"
                 ) from exc
+
+        # v5.8: DSA-style sparse top-k attention at decode (absorbed mode
+        # only). None = dense attention (v5.7 behaviour).
+        self.sparse_top_k = getattr(config.attention, "sparse_top_k", None)
+        if self.sparse_top_k is not None:
+            if not isinstance(self.sparse_top_k, int) or self.sparse_top_k <= 0:
+                raise ValueError(
+                    f"sparse_top_k must be a positive integer or None, got "
+                    f"{self.sparse_top_k!r}"
+                )
+            if not self.use_absorption:
+                raise ValueError(
+                    "sparse_top_k is only implemented for the absorbed "
+                    "(latent) cache — the top-k selection gathers shared "
+                    "latents; the expanded per-head cache would need a "
+                    "per-head selection and is not supported. Set "
+                    "attention.use_absorption=True or sparse_top_k=None"
+                )
 
         self.norm_q = RMSNorm(self.q_lora_rank, eps=config.rms_norm_eps)
         self.norm_kv = RMSNorm(self.kv_latent_dim, eps=config.rms_norm_eps)
@@ -470,15 +570,51 @@ class MLA(nn.Module):
         # q_absorbed[h] = q_nope[h] @ W_UK[h]  -> [B, H, seq, d_c]
         q_absorbed = torch.einsum("bhqd,hdc->bhqc", q_nope, w_uk)
 
+        attn_mask = self._build_attn_mask(
+            position_ids, kv_len, attention_mask, past_len, seq, B, custom_positions
+        )
+
+        # DSA-style sparse top-k selection (v5.8): at DECODE (seq == 1) a
+        # lightning-indexer-style score picks the top-`sparse_top_k` cached
+        # tokens and attention runs only over them. The index score is the
+        # head-mean of the TRUE score terms (a "free" indexer reusing the
+        # absorbed projections — a real DSA indexer is a dedicated learned
+        # scorer; see README). Selection is order-preserving (indices are
+        # sorted), the cache tensors themselves are NOT modified (gathered
+        # copies only), and the current token is always force-selected.
+        # Prefill (seq > 1) stays dense by design — per-query top-k over
+        # the full sequence costs O(L^2), defeating the point.
+        if (self.sparse_top_k is not None and seq == 1
+                and kv_len > self.sparse_top_k):
+            index_scores = torch.matmul(
+                q_absorbed.mean(dim=1, keepdim=True), c_kv.transpose(-2, -1)
+            ) + torch.matmul(
+                q_rope.mean(dim=1, keepdim=True), k_rope.transpose(-2, -1)
+            )  # [B, 1, seq, kv_len] with seq == 1
+            if attn_mask is not None:
+                # Never select keys the causal/padding mask excludes.
+                index_scores = index_scores.masked_fill(
+                    ~attn_mask, float("-inf"))
+            # The current (last) token must always attend to itself.
+            index_scores[..., -1] = float("inf")
+            top_idx = torch.topk(index_scores, self.sparse_top_k, dim=-1
+                                 ).indices.sort(dim=-1).values  # [B,1,1,k]
+            # gather along the sequence dim: index [B, 1, k, d]
+            gidx = top_idx.squeeze(2).unsqueeze(-1)
+            c_kv = torch.gather(
+                c_kv, 2, gidx.expand(-1, -1, -1, c_kv.shape[-1]))
+            k_rope = torch.gather(
+                k_rope, 2, gidx.expand(-1, -1, -1, k_rope.shape[-1]))
+            if attn_mask is not None:
+                attn_mask = torch.gather(attn_mask, -1, top_idx)
+            kv_len = self.sparse_top_k
+
         # Scores in latent space + the decoupled-RoPE term. c_kv / k_rope
         # have head dim 1 and broadcast over H.
         scores = torch.matmul(q_absorbed, c_kv.transpose(-2, -1))
         scores = scores + torch.matmul(q_rope, k_rope.transpose(-2, -1))
         scores = scores * self.softmax_scale  # [B, H, seq, kv_len]
 
-        attn_mask = self._build_attn_mask(
-            position_ids, kv_len, attention_mask, past_len, seq, B, custom_positions
-        )
         if attn_mask is None:
             # Fast path equivalent to SDPA is_causal=True: bottom-right
             # causal mask (here past_len == 0, so it is a plain tril).

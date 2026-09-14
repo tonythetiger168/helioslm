@@ -322,7 +322,8 @@ class GPTQLinear(nn.Module):
         return q, scales, zeros
 
     @staticmethod
-    def _gptq_quantize(W, X, group_size, bits, percdamp, blocksize=128):
+    def _gptq_quantize(W, X, group_size, bits, percdamp, blocksize=128,
+                       act_order=False):
         """True GPTQ quantization with Hessian error compensation.
 
         Args:
@@ -335,9 +336,17 @@ class GPTQLinear(nn.Module):
             blocksize: OBS block width (AutoGPTQ uses 128): error is
                 propagated densely inside a block and via one rank-`block`
                 matmul to the remaining columns after each block.
+            act_order (v5.8): quantize columns in DESCENDING diag(H) order
+                (AutoGPTQ's act-order / "desc" heuristic). High-activation
+                columns are quantized FIRST, while the still-dense later
+                columns can absorb their error; with heterogeneous column
+                scales this measurably lowers the output error. The packed
+                layout is unchanged: columns are un-permuted afterwards and
+                ``g_idx`` records each ORIGINAL column's group.
 
-        Returns (q int32 [in, out], scales [G, out], zeros int32 [G, out])
-        with the same conventions as ``_rtn_quantize``.
+        Returns (q int32 [in, out], scales [G, out], zeros int32 [G, out],
+        g_idx int64 [in]) with the same conventions as ``_rtn_quantize``;
+        ``g_idx`` is the plain arange//group_size when act_order=False.
         """
         in_f, out_f = W.shape
         qmax = 2 ** bits - 1
@@ -351,6 +360,12 @@ class GPTQLinear(nn.Module):
         dead = torch.diag(H) == 0
         H[dead, dead] = 1
         W[dead, :] = 0
+
+        if act_order:
+            # Permute columns so quantization walks diag(H) descending.
+            perm = torch.argsort(torch.diag(H), descending=True)
+            W = W[perm]
+            H = H[perm][:, perm]
 
         # Damped Cholesky -> inverse -> upper Cholesky factor of H^{-1}
         # (the GPTQ update coefficients are rows of this factor).
@@ -407,11 +422,20 @@ class GPTQLinear(nn.Module):
             # Propagate this block's error to all remaining columns.
             if i2 < in_f:
                 W[i2:] -= (err_blk[:count].t() @ Hinv[i1:i2, i2:]).t()
-        return q, scales, zeros
+
+        g_idx = torch.arange(in_f, device=dev) // group_size
+        if act_order:
+            # Un-permute: q rows back to the original column order, and
+            # map each original column to the group it was quantized in
+            # (groups are contiguous in PERMUTED space).
+            inv_perm = torch.argsort(perm)
+            q = q[inv_perm]
+            g_idx = g_idx[inv_perm]
+        return q, scales, zeros, g_idx
 
     @classmethod
     def from_linear(cls, linear: nn.Linear, group_size=128, bits=4,
-                    calibration_data=None, percdamp=0.01):
+                    calibration_data=None, percdamp=0.01, act_order=False):
         """Quantize an nn.Linear into the GPTQ-compatible layout.
 
         Args:
@@ -424,6 +448,9 @@ class GPTQLinear(nn.Module):
                 this is a plain per-group RTN packing fallback.
             percdamp: Hessian damping fraction (only used with
                 calibration data).
+            act_order (v5.8): quantize columns in descending diag(H)
+                order (only meaningful with calibration data; ignored on
+                the RTN fallback path since no Hessian exists).
         """
         if bits != 4:
             raise ValueError(
@@ -435,17 +462,17 @@ class GPTQLinear(nn.Module):
 
         if calibration_data is None:
             q, scales, zeros = cls._rtn_quantize(W, group_size, bits)
+            num_groups = (in_f + group_size - 1) // group_size
+            g_idx = torch.arange(in_f, device=q.device) // group_size
         else:
             if calibration_data.shape[-1] != in_f:
                 raise ValueError(
                     f"calibration_data last dim {calibration_data.shape[-1]} "
                     f"!= linear.in_features {in_f}")
             X = calibration_data.detach().float().reshape(-1, in_f).to(W.device)
-            q, scales, zeros = cls._gptq_quantize(W, X, group_size, bits,
-                                                  percdamp)
-
-        num_groups = (in_f + group_size - 1) // group_size
-        g_idx = torch.arange(in_f, device=q.device) // group_size
+            q, scales, zeros, g_idx = cls._gptq_quantize(
+                W, X, group_size, bits, percdamp, act_order=act_order)
+            num_groups = (in_f + group_size - 1) // group_size
 
         # Pack qweight: int32 per 8 input rows
         in_pad = ((in_f + 7) // 8) * 8
@@ -682,7 +709,8 @@ class QuantizationManager:
     def __init__(self, method="awq"):
         self.method = method
 
-    def quantize_model(self, model, group_size=None, calibration_data=None):
+    def quantize_model(self, model, group_size=None, calibration_data=None,
+                       act_order=False):
         """Quantize all Linear layers in model, in place.
 
         Args:
@@ -700,6 +728,8 @@ class QuantizationManager:
                 method="awq" it enables the activation-aware per-channel
                 scaling (AWQLinear's ``activations`` argument). It is
                 ignored for fp8 and mxfp4.
+            act_order (v5.8, gptq only): quantize columns in descending
+                diag(H) order; ignored by the other methods.
 
         Raises:
             ValueError: unknown quantization method.
@@ -749,7 +779,8 @@ class QuantizationManager:
                     calib = calibration_data
                 if self.method == "gptq":
                     qmodule = qcls.from_linear(module, group_size=group_size,
-                                               calibration_data=calib)
+                                               calibration_data=calib,
+                                               act_order=act_order)
                 else:  # awq
                     qmodule = qcls.from_linear(module, group_size=group_size,
                                                activations=calib)
