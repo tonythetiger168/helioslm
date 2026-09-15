@@ -9,8 +9,7 @@ A from-scratch PyTorch reference implementation of a modern LLM stack: MLA atten
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![PyTorch](https://img.shields.io/badge/framework-PyTorch%20(pure)-ee4c2c)
 
-<!-- TODO: record a 10–15s GIF of `model.generate()` running and place at docs/demo.gif -->
-<!-- ![Demo](docs/demo.gif) -->
+![Demo](docs/demo.gif)
 
 ## Who is this for?
 
