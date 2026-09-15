@@ -1,5 +1,20 @@
 # HeliosLM v5 Changelog
 
+## v5.11 (2026-09-15) - Fused Quantization Kernels + Eval Harness + MXFP4 Decode Fix
+- AWQ/GPTQ/MXFP4 forward paths are FUSED group-wise dequant x matmul: only
+  one group slice is decoded at a time, the dense [out, in] fp32 weight is
+  never materialized (breaks the "non-fused quantization kernels"
+  limitation); GPTQ slices by maximal runs of constant g_idx (act-order
+  safe); `mod.fused = False` restores the reference dense path
+- BUGFIX: MXFP4 `_dequantize` built the E2M1 magnitude table via
+  `codes.new_tensor(...)` on a LONG tensor, truncating magnitudes to
+  (0,0,1,1,2,3,4,6) — 0.5/1.5 were silently lost; decode is now the exact
+  inverse of from_linear's float-table encode (found by the fused path)
+- New `helioslm_v5/eval/harness.py`: log-likelihood harness (loglikelihood,
+  multiple_choice, run_harness) in the spirit of lm-evaluation-harness,
+  token-id based; CLI: `python -m helioslm_v5.eval.harness`
+- 51/51 tests + 9/9 integration
+
 ## v5.10 (2026-09-15) - CPU Benchmark Suite
 - `benchmarks/bench_cpu.py`: analytic KV-cache accounting (MLA/hybrid vs MHA
   reference) + wall-clock prefill/decode on CPU; JSON results tracking;

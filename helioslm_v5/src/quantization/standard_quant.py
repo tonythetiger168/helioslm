@@ -121,6 +121,9 @@ class AWQLinear(nn.Module):
         self.out_features = out_features
         self.group_size = group_size
         self.bits = bits
+        # Fused group-wise dequant x matmul (v5.11): never materializes the
+        # dense [out, in] fp32 weight. Set to False to use the reference path.
+        self.fused = True
 
         num_groups = (in_features + group_size - 1) // group_size
         # Packed weights: ceil(in/2) bytes per output row (supports odd in_features)
@@ -238,11 +241,43 @@ class AWQLinear(nn.Module):
             w = w / self.act_scale.to(device=w.device, dtype=w.dtype).unsqueeze(0)
         return w
 
+    def _fused_forward(self, x, bias):
+        """Group-wise dequant x matmul (v5.11).
+
+        Dequantizes only one group slice at a time and accumulates
+        ``x[:, g] @ w_g.T`` — the dense [out, in] fp32 weight is never
+        materialized (the old path allocates it on EVERY call, plus the
+        full unpacked-int copy). Arithmetic per group is identical to
+        ``_dequantize``; only the matmul reduction order differs, so the
+        result matches the reference path to fp32 rounding (~1e-6).
+        """
+        acc = None
+        for g0 in range(0, self.in_features, self.group_size):
+            g1 = min(g0 + self.group_size, self.in_features)
+            # Nibble interleave: byte j holds cols 2j (low) and 2j+1 (high)
+            b0, b1 = g0 // 2, (g1 + 1) // 2
+            lo = self.qweight[:, b0:b1] & 0x0F
+            hi = (self.qweight[:, b0:b1] >> 4) & 0x0F
+            w = torch.stack([lo, hi], dim=2).flatten(1)
+            w = w[:, (g0 - 2 * b0):(g0 - 2 * b0) + (g1 - g0)]
+            g = g0 // self.group_size
+            w = (w.to(self.scales.dtype) - self.zeros[:, [g]]) * self.scales[:, [g]]
+            part = F.linear(x[..., g0:g1], w.to(dtype=x.dtype))
+            acc = part if acc is None else acc + part
+        if bias is not None:
+            acc = acc + bias
+        return acc
+
     def forward(self, x):
+        bias = self.bias.to(dtype=x.dtype) if self.bias is not None else None
+        if getattr(self, "fused", True):
+            if self.act_scale is not None:
+                x = x / self.act_scale.to(device=x.device, dtype=x.dtype)
+            return self._fused_forward(x, bias)
+        # Reference path: materialize the dense weight (kept for A/B checks)
         weight = self._dequantize()
         if self.act_scale is not None:
             x = x / self.act_scale.to(device=x.device, dtype=x.dtype)
-        bias = self.bias.to(dtype=x.dtype) if self.bias is not None else None
         return F.linear(x, weight.to(dtype=x.dtype), bias)
 
 
@@ -280,6 +315,8 @@ class GPTQLinear(nn.Module):
         self.out_features = out_features
         self.bits = bits
         self.group_size = group_size
+        # Fused group-wise dequant x matmul (v5.11, see AWQLinear.fused).
+        self.fused = True
 
         num_groups = (in_features + group_size - 1) // group_size
         pack_rows = (in_features + 7) // 8
@@ -526,11 +563,48 @@ class GPTQLinear(nn.Module):
         """
         return self._dequantize()
 
+    def _fused_forward(self, x, bias):
+        """Run-wise dequant x matmul (v5.11).
+
+        GPTQ's ``g_idx`` maps each input column to a group (act-order makes
+        it monotonic; plain grouping makes it piecewise-constant). Slicing by
+        maximal runs of constant ``g_idx`` gives the largest fused tiles; the
+        dense [out, in] weight is never materialized. Per-run arithmetic is
+        identical to ``_dequantize``.
+        """
+        dev = self.qweight.device
+        shifts8 = torch.arange(8, device=dev, dtype=torch.int32) * 4
+        g_idx = self.g_idx.long()
+        # Maximal runs of constant group id
+        boundaries = (g_idx[1:] != g_idx[:-1]).nonzero().flatten() + 1
+        starts = [0] + boundaries.tolist()
+        ends = boundaries.tolist() + [g_idx.numel()]
+        acc = None
+        for c0, c1 in zip(starts, ends):
+            g = int(g_idx[c0])
+            # int32 element r holds input cols 8r..8r+8 (4 bits each)
+            r0, r1 = c0 // 8, (c1 - 1) // 8 + 1
+            q = (self.qweight[r0:r1].unsqueeze(1) >> shifts8.view(1, 8, 1)) & 0x0F
+            # input columns flatten into DIM 0 after reshape (dim 1 is
+            # out_features) — the dense reference slices [:, :in] on dim 0
+            q = q.reshape(-1, self.out_features)
+            q = q[(c0 - 8 * r0):(c0 - 8 * r0) + (c1 - c0), :]
+            z = (self.qzeros[g].unsqueeze(-1) >> shifts8.view(1, 8)) & 0x0F
+            z = z.reshape(-1)[:self.out_features]
+            w = (q.to(self.scales.dtype) - z) * self.scales[g]
+            part = F.linear(x[..., c0:c1], w.t().to(dtype=x.dtype))
+            acc = part if acc is None else acc + part
+        if bias is not None:
+            acc = acc + bias
+        return acc
+
     def forward(self, x):
         # Deterministic: rebuild W from the packed buffers every call.
         # In production, use auto-gptq / exllama fused kernels instead.
-        weight = self._dequantize()
         bias = self.bias.to(dtype=x.dtype) if self.bias is not None else None
+        if getattr(self, "fused", True):
+            return self._fused_forward(x, bias)
+        weight = self._dequantize()
         return F.linear(x, weight.to(dtype=x.dtype), bias)
 
 
@@ -619,6 +693,8 @@ class MXFP4Linear(nn.Module):
         self.in_features = in_features
         self.out_features = out_features
         self.block_size = block_size
+        # Fused block-wise dequant x matmul (v5.11, see AWQLinear.fused).
+        self.fused = True
         n_blocks = (in_features + block_size - 1) // block_size
         n_packed = (in_features + 1) // 2
         # qweight: two 4-bit codes per uint8; a pad code is 0 (magnitude 0,
@@ -672,7 +748,12 @@ class MXFP4Linear(nn.Module):
         hi = (self.qweight >> 4) & 0xF
         codes = torch.stack([lo, hi], dim=-1).view(self.out_features, -1)
         codes = codes[:, :self.in_features].long()
-        mag = codes.new_tensor(self.E2M1_MAGNITUDES).to(self.scales.dtype)
+        # v5.11 fix: new_tensor on the LONG codes tensor inherited long
+        # dtype, silently truncating the table to (0,0,1,1,2,3,4,6) — .5
+        # and 1.5 magnitudes were lost. Build the fp32 table explicitly so
+        # decode is the exact inverse of from_linear's float-table encode.
+        mag = torch.tensor(self.E2M1_MAGNITUDES, dtype=self.scales.dtype,
+                           device=codes.device)
         mags = mag[codes & 0x7]
         signs = torch.where((codes & 0x8) != 0, -1.0, 1.0).to(self.scales.dtype)
         w = mags * signs
@@ -688,9 +769,37 @@ class MXFP4Linear(nn.Module):
         """Compatibility accessor: reconstructed dense weight (slow path)."""
         return self._dequantize()
 
+    def _fused_forward(self, x, bias):
+        """Block-wise dequant x matmul (v5.11).
+
+        Decodes only one E2M1 block slice at a time (magnitude lookup +
+        sign + E8M0 power-of-two scale) and accumulates; the dense
+        [out, in] weight is never materialized. Pad codes decode to exact
+        zero magnitude, so a ragged final block needs no special casing.
+        """
+        mag = x.new_tensor(self.E2M1_MAGNITUDES).to(self.scales.dtype)
+        acc = None
+        for b0 in range(0, self.in_features, self.block_size):
+            b1 = min(b0 + self.block_size, self.in_features)
+            bb0, bb1 = b0 // 2, (b1 + 1) // 2
+            lo = self.qweight[:, bb0:bb1] & 0x0F
+            hi = (self.qweight[:, bb0:bb1] >> 4) & 0x0F
+            codes = torch.stack([lo, hi], dim=-1).view(self.out_features, -1)
+            codes = codes[:, (b0 - 2 * bb0):(b0 - 2 * bb0) + (b1 - b0)].long()
+            mags = mag[codes & 0x7]
+            signs = torch.where((codes & 0x8) != 0, -1.0, 1.0).to(self.scales.dtype)
+            w = mags * signs * self.scales[:, [b0 // self.block_size]]
+            part = F.linear(x[..., b0:b1], w.to(dtype=x.dtype))
+            acc = part if acc is None else acc + part
+        if bias is not None:
+            acc = acc + bias
+        return acc
+
     def forward(self, x):
-        weight = self._dequantize().to(x.dtype)
         bias = self.bias.to(dtype=x.dtype) if self.bias is not None else None
+        if getattr(self, "fused", True):
+            return self._fused_forward(x, bias)
+        weight = self._dequantize().to(x.dtype)
         return F.linear(x, weight, bias)
 
 

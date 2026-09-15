@@ -2653,6 +2653,11 @@ def test_gptq_act_order():
     # matmul with the .weight property.
     assert q_act.g_idx.shape == (in_f,) and q_act.g_idx.max().item() == \
         (in_f + group_size - 1) // group_size - 1, "act-order g_idx broken"
+    # v5.11: forward defaults to the FUSED path, whose group-wise matmul
+    # reduction order differs from the dense reference by fp32 rounding —
+    # bitwise equality with .weight is a property of the dense reference
+    # path, so disable fusion for this exactness check.
+    q_act.fused = False
     with torch.no_grad():
         w_eff = q_act.weight
         got = torch.nn.functional.linear(X, w_eff)
@@ -3173,6 +3178,95 @@ def test_gguf_export():
           f"alignment/determinism OK, 15 loud-error paths OK")
 
 
+def test_fused_quant_kernels():
+    """v5.11: fused group-wise dequant x matmul == reference dense path."""
+    import torch.nn.functional as F  # noqa: F401
+    from helioslm_v5.src.quantization.standard_quant import (
+        AWQLinear, GPTQLinear, MXFP4Linear)
+    torch.manual_seed(7)
+    lin = nn.Linear(256, 128, bias=True)
+    x = torch.randn(4, 256)
+
+    for name, mod in [
+        ("awq", AWQLinear.from_linear(lin, group_size=64, bits=4)),
+        ("gptq", GPTQLinear.from_linear(lin, group_size=64, bits=4,
+                                        calibration_data=torch.randn(256, 256))),
+        ("mxfp4", MXFP4Linear.from_linear(lin, block_size=32)),
+    ]:
+        mod.eval()
+        with torch.no_grad():
+            ref = mod.fused
+            mod.fused = False
+            y_ref = mod(x)
+            mod.fused = True
+            y_fused = mod(x)
+            mod.fused = ref
+        err = (y_ref - y_fused).abs().max().item()
+        scale = y_ref.abs().max().item() + 1e-8
+        assert err / scale < 1e-4, f"{name}: fused vs reference rel err {err/scale:.2e}"
+
+    # act-order GPTQ (descending g_idx runs) fused path
+    gmod = GPTQLinear.from_linear(lin, group_size=64, bits=4, act_order=True,
+                                  calibration_data=torch.randn(256, 256))
+    gmod.eval()
+    with torch.no_grad():
+        gmod.fused = False
+        y_ref = gmod(x)
+        gmod.fused = True
+        y_fused = gmod(x)
+    assert (y_ref - y_fused).abs().max().item() < 1e-3
+    _pass("test_fused_quant_kernels",
+          "AWQ/GPTQ/MXFP4 fused == reference (<1e-4 rel); act-order run-sliced")
+
+
+def test_eval_harness():
+    """v5.11: loglikelihood harness correctness + learning-signal detection."""
+    from helioslm_v5.eval.harness import (
+        TASKS, loglikelihood, multiple_choice, run_harness)
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+    torch.manual_seed(11)
+    cfg = HeliosLMv5Config(size="lite")
+    model = HeliosLMv5(cfg)
+    model.eval()
+
+    # 1) loglikelihood == manual teacher-forced computation from forward()
+    ctx, cont = [5, 6, 7], [9, 9]
+    manual = 0.0
+    with torch.no_grad():
+        logits, _, _ = model(torch.tensor([ctx + cont]))
+        lp = torch.log_softmax(logits[0, :len(ctx) + len(cont) - 1].float(), -1)
+        manual = sum(lp[len(ctx) - 1 + i, t].item() for i, t in enumerate(cont))
+    assert abs(loglikelihood(model, ctx, cont) - manual) < 1e-5
+
+    # 2) multiple_choice / run_harness plumbing on the synthetic task
+    docs = TASKS["copy_vs_reverse"](n_samples=8, seed=3)
+    report = run_harness(model, {"copy_vs_reverse": docs})
+    r = report["copy_vs_reverse"]
+    assert r["n"] == 8 and 0.0 <= r["acc"] <= 1.0
+    pred, scores = multiple_choice(model, docs[0]["context"], docs[0]["choices"])
+    assert 0 <= pred < len(scores) and all(math.isfinite(s) for s in scores)
+
+    # 3) harness detects a learned signal: memorize context -> [9, 9]
+    model.train()
+    opt = torch.optim.Adam(model.parameters(), lr=0.05)
+    x = torch.tensor([ctx + cont])
+    for _ in range(120):
+        logits, _, _ = model(x)
+        loss = torch.nn.functional.cross_entropy(
+            logits[0, :2].reshape(-1, logits.shape[-1]),
+            torch.tensor([9, 9]))
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+    model.eval()
+    ll_good = loglikelihood(model, ctx, [9, 9])
+    ll_bad = max(loglikelihood(model, ctx, [t, t])
+                 for t in (8, 10, 42) )
+    assert ll_good > ll_bad, "harness should prefer the memorized continuation"
+    _pass("test_eval_harness",
+          "loglikelihood==manual; harness plumbing; memorized-signal detected")
+
+
 TESTS = [
     test_mla,
     test_mla_absorption,
@@ -3229,11 +3323,14 @@ TESTS = [
     test_final_logit_soft_cap,
     # limitations task: GGUF export
     test_gguf_export,
+    # v5.11
+    test_fused_quant_kernels,
+    test_eval_harness,
 ]
 
 
 def main():
-    print("HeliosLM v5.9 Test Suite (lite config, CPU)")
+    print("HeliosLM v5.11 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:

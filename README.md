@@ -55,6 +55,7 @@ Nothing sells an LLM repo like showing it produce tokens. -->
 | **Serving** | vLLM-style engine: paged KV accounting, copy-on-write forks, watermark-aligned continuous batching. |
 | **Training** | FP8 trainer (native float8 + STE, E5M2 gradient hooks, AdamW master weights), DualPipe schedule simulation (recompute-based, gradient-exact), GRPO (real sampling, k3 KL, answer-extraction rewards), Muon optimizer (Newton–Schulz orthogonalized momentum, optional per-head blocks), QAT straight-through fake-quant training. |
 | **Quantization** | **True GPTQ** (Hessian OBS with error compensation, optional act-order), AWQ with activation-aware grid search, native FP8, MXFP4 — all with `from_linear` real-weight packing. |
+| **Eval** | Log-likelihood harness (`helioslm_v5/eval/harness.py`): `loglikelihood` / `multiple_choice` / `run_harness` + built-in synthetic tasks (v5.11), token-id based, lm-eval-harness spirit |
 | **Multimodal** | NaViT vision encoder (row/col position decomposition, mixed-resolution packing), streaming audio encoder (causal, sliding-window memory, bit-equivalent to one-shot). |
 
 ## Why HeliosLM vs. alternatives?
@@ -103,12 +104,13 @@ Contributions are very welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Issue
 
 ## Known Limitations
 
-Single-process DualPipe simulation; non-fused quantization kernels; CPU-verified (CUDA paths static-checked); MTP acceptance requires trained weights; hybrid (linear-attention) models support packed sequences via doc-boundary state reset; hybrid models use unpadded prefill batching in the engine. See `docs/V5.5_FEATURES_REPORT.md` for details.
+Single-process DualPipe simulation; CPU-verified (CUDA paths static-checked); MTP acceptance requires trained weights; hybrid (linear-attention) models support packed sequences via doc-boundary state reset; hybrid models use unpadded prefill batching in the engine. See `docs/V5.5_FEATURES_REPORT.md` for details.
 
 ## Version history
 
 Headlines (full details in [CHANGELOG.md](helioslm_v5/CHANGELOG.md)):
 
+- **v5.11** — Fused dequant×matmul kernels (AWQ/GPTQ/MXFP4), MXFP4 decode fix, eval loglikelihood harness
 - **v5.10** — CPU benchmark suite: analytic KV-cache accounting + wall-clock generation, BENCHMARKS.md
 - **v5.9** — Gemma-style attention + final logit soft-capping, per-head QK-norm, sliding-window attention with StreamingLLM sinks
 - **v5.8** — YaRN RoPE scaling, DSA-style sparse top-k decode, per-head Muon, GPTQ act-order
