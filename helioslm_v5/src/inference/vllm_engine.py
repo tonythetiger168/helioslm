@@ -74,9 +74,13 @@ class VLLMEngine:
       - Continuous batching (schedule/step over Request objects)
       - Paged KV-cache accounting with CoW (BlockManager)
       - Incremental decoding via the model's past_key_values
-      - Batched stepping (v5.2): prefills run per request (prompt lengths
-        differ); decode-phase requests that only need to feed ONE new token
-        are merged into a single [B, 1] forward per step.
+      - Batched stepping (v5.2): decode-phase requests that only need to feed
+        ONE new token are merged into a single [B, 1] forward per step.
+      - Batched prefill (v5.12): newly admitted requests are grouped by
+        prompt length; equal-length rows share one [B, L] forward (exact —
+        no mask, no position shift). For recurrent-state (hybrid) models —
+        which cannot use watermark pad prefixes — this is the only batched
+        prefill path; singleton groups keep the solo forward.
 
     Batched-decode alignment strategy (v5.2, watermark padding):
       The attention stack uses ``position_ids`` for BOTH RoPE and the causal
@@ -329,6 +333,35 @@ class VLLMEngine:
         req.past_key_values = past
         return logits[0, -1]
 
+    def _prefill_group(self, reqs: List[Request], device):
+        """Batched prefill for requests sharing prompt length (v5.12).
+
+        Rows of equal length need no padding mask and no position shifting:
+        the causal forward scores each row independently, so one [B, L]
+        forward replaces B solo forwards. This is the ONLY batched prefill
+        path for recurrent-state (hybrid) models — pad prefixes are
+        unavailable to them (see __init__), and equal-length groups are
+        exact: unmasked, unshifted, and each row's cache is a batch slice of
+        the shared forward (a view; the storage stays alive until the
+        request finishes — the same lifetime contract as pad-prefix views).
+
+        Returns the per-request next-token logits rows (list of [V]).
+        """
+        L = len(reqs[0].prompt_token_ids)
+        assert all(len(r.prompt_token_ids) == L for r in reqs), \
+            "batched prefill requires equal prompt lengths"
+        assert all(r.prompt_pad == 0 for r in reqs), \
+            "batched prefill does not support pad prefixes"
+        ids = torch.tensor([r.prompt_token_ids for r in reqs],
+                           dtype=torch.long, device=device)
+        logits, _, past = self.model(input_ids=ids, use_cache=True)
+        for i, req in enumerate(reqs):
+            req.past_key_values = [
+                tuple(t[i:i + 1] for t in layer) for layer in past
+            ]
+            req.cache_len = L
+        return [logits[i, -1] for i in range(len(reqs))]
+
     def _decode_batch(self, group: List[Request], outputs: Dict[int, int],
                       device):
         """One batched decode forward for a group of requests whose stored
@@ -398,19 +431,35 @@ class VLLMEngine:
         outputs: Dict[int, int] = {}
         device = next(self.model.parameters()).device
         with torch.no_grad():
-            # 1) Prefill newly admitted requests individually (prompt lengths
-            #    differ); a prefilled request joins decode batches next step.
-            for req in list(self.running_requests):
-                if req.past_key_values is None:
-                    # O2: a failed prefill must not hold its blocks forever —
-                    # retire the request (error recorded, blocks freed) and
-                    # re-raise; the remaining requests keep their state and
-                    # the engine can continue serving them on the next step.
-                    try:
-                        logits_row = self._prefill(req, device)
-                    except Exception as exc:
+            # 1) Prefill newly admitted requests, grouped by prompt length
+            #    (v5.12): equal-length rows batch into one forward (exact —
+            #    no mask, no position shift); singletons keep the solo path.
+            #    For recurrent-state (hybrid) models this grouping is the
+            #    only batched prefill available (pad prefixes are unusable).
+            #    A prefilled request joins decode batches next step.
+            pending = [r for r in self.running_requests
+                       if r.past_key_values is None]
+            prefill_groups: Dict[int, List[Request]] = {}
+            for req in pending:
+                prefill_groups.setdefault(len(req.prompt_token_ids), []).append(req)
+            for length in sorted(prefill_groups):
+                group = prefill_groups[length]
+                # O2: a failed prefill must not hold its blocks forever —
+                # retire the request(s) (error recorded, blocks freed) and
+                # re-raise; the remaining requests keep their state and the
+                # engine can continue serving them on the next step. A
+                # batched-forward failure cannot be attributed to one row,
+                # so the whole group is retired together.
+                try:
+                    if len(group) == 1:
+                        logits_rows = [self._prefill(group[0], device)]
+                    else:
+                        logits_rows = self._prefill_group(group, device)
+                except Exception as exc:
+                    for req in group:
                         self._finish(req, error=exc)
-                        raise
+                    raise
+                for req, logits_row in zip(group, logits_rows):
                     token = self._sample(logits_row, req.temperature)
                     req.append_token(token)
                     self.block_manager.append_tokens(req.request_id, 1)

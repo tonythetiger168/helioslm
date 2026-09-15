@@ -1,5 +1,14 @@
 # HeliosLM v5 Changelog
 
+## v5.12 (2026-09-15) - Batched Equal-Length Prefill
+- Engine groups newly admitted requests by prompt length: equal-length rows
+  share one [B, L] prefill forward (exact — no mask, no position shift),
+  replacing the one-forward-per-request rule
+- For recurrent-state (hybrid) models — which cannot use watermark pad
+  prefixes — this is the only batched prefill path; singletons keep the
+  solo forward; a batched-forward failure retires the whole group (O2)
+- 52/52 tests + 9/9 integration
+
 ## v5.11 (2026-09-15) - Fused Quantization Kernels + Eval Harness + MXFP4 Decode Fix
 - AWQ/GPTQ/MXFP4 forward paths are FUSED group-wise dequant x matmul: only
   one group slice is decoded at a time, the dense [out, in] fp32 weight is

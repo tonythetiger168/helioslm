@@ -3266,6 +3266,41 @@ def test_eval_harness():
     _pass("test_eval_harness",
           "loglikelihood==manual; harness plumbing; memorized-signal detected")
 
+def test_batched_prefill():
+    """v5.12: equal-length prompts batch through one engine prefill forward.
+
+    Hybrid (recurrent-state) model: the engine cannot use watermark pad
+    prefixes, so equal-length admission waves must produce identical output
+    to solo greedy generation while sharing a single [B, L] prefill.
+    """
+    from helioslm_v5.src.inference.vllm_engine import VLLMEngine
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+
+    torch.manual_seed(1721)
+    config = HeliosLMv5Config(size="lite")
+    config.hybrid_attention.enabled = True
+    config.hybrid_attention.full_attention_every = 3
+    config.num_hidden_layers = 4
+    model = HeliosLMv5(config).eval()
+
+    prompts = [[11, 22, 33, 44], [55, 66, 77, 88], [1, 2, 3]]  # 2x len-4 + 1x len-3
+    max_new = 6
+    engine = VLLMEngine(model, config, block_size=4, max_num_blocks=64)
+    req_ids = [engine.add_request(p, max_new_tokens=max_new, temperature=0.0)
+               for p in prompts]
+    results = engine.run()
+
+    for p, rid in zip(prompts, req_ids):
+        ref = model.generate(torch.tensor([p]), max_new_tokens=max_new,
+                             temperature=0)
+        ref_new = ref[0, len(p):].tolist()
+        got = results[rid]
+        assert ref_new[:len(got)] == got, \
+            f"request {rid}: engine {got} != greedy reference {ref_new[:len(got)]}"
+        assert len(got) >= 1
+    _pass("test_batched_prefill",
+          "hybrid engine: equal-length prompts batched, == solo greedy")
+
 
 TESTS = [
     test_mla,
@@ -3323,6 +3358,8 @@ TESTS = [
     test_final_logit_soft_cap,
     # limitations task: GGUF export
     test_gguf_export,
+    # v5.12
+    test_batched_prefill,
     # v5.11
     test_fused_quant_kernels,
     test_eval_harness,
@@ -3330,7 +3367,7 @@ TESTS = [
 
 
 def main():
-    print("HeliosLM v5.11 Test Suite (lite config, CPU)")
+    print("HeliosLM v5.12 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:
