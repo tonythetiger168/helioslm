@@ -1,5 +1,13 @@
 # HeliosLM v5 Changelog
 
+## v5.10 (2026-09-15) - CPU Benchmark Suite
+- `benchmarks/bench_cpu.py`: analytic KV-cache accounting (MLA/hybrid vs MHA
+  reference) + wall-clock prefill/decode on CPU; JSON results tracking;
+  optional chart (`--chart`)
+- `docs/BENCHMARKS.md`: reproducible numbers — full config saves **99.2%**
+  KV-cache memory vs MHA at 128k context (2.0 GB vs 257.7 GB)
+- No model-code changes; 48/48 tests + 9/9 integration unchanged
+
 ## v5.9 (2026-09-15) - Daily Improvement Build 4: Logit Soft-Capping, QK-Norm, Sliding Window + Sinks, Final Logit Cap
 
 Fourth daily-analysis-driven round (landscape scan 2026-09-15:

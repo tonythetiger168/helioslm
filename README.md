@@ -68,6 +68,17 @@ Nothing sells an LLM repo like showing it produce tokens. -->
 | Bitwise/strict correctness checks on core paths | ✅ | — | — | — |
 | Production throughput | ❌ (by design) | — | ✅ | ❌ |
 
+## Benchmarks
+
+![KV cache](docs/benchmarks_kv_cache.png)
+
+The full config holds **99.2% less KV-cache memory than MHA** at 128k context
+(2.0 GB vs 257.7 GB): 36 of 48 layers are Gated-Delta linear attention with a
+fixed ~1 MB recurrent state, and the 12 MLA layers store only the compressed
+latent (512 + 64 values/token). Full numbers and methodology:
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md) — reproducible on CPU via
+`python benchmarks/bench_cpu.py`.
+
 ## Repository layout
 
 ```
@@ -99,6 +110,7 @@ Single-process DualPipe simulation; non-fused quantization kernels; CPU-verified
 
 Headlines (full details in [CHANGELOG.md](helioslm_v5/CHANGELOG.md)):
 
+- **v5.10** — CPU benchmark suite: analytic KV-cache accounting + wall-clock generation, BENCHMARKS.md
 - **v5.9** — Gemma-style attention + final logit soft-capping, per-head QK-norm, sliding-window attention with StreamingLLM sinks
 - **v5.8** — YaRN RoPE scaling, DSA-style sparse top-k decode, per-head Muon, GPTQ act-order
 - **v5.7** — RoPE scaling (linear/NTK), FP8 latent KV cache, Hyper-Connections, QAT training

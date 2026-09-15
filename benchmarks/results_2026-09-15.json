@@ -1,0 +1,46 @@
+{
+  "date": "2026-09-15",
+  "version": "HeliosLM-v5.10",
+  "size": "lite",
+  "cache": {
+    "1024": {
+      "mla_layers": 2,
+      "gda_layers": 0,
+      "helioslm_bytes": 294912,
+      "mha_reference_bytes": 1048576,
+      "savings_vs_mha": 0.71875
+    },
+    "8192": {
+      "mla_layers": 2,
+      "gda_layers": 0,
+      "helioslm_bytes": 2359296,
+      "mha_reference_bytes": 8388608,
+      "savings_vs_mha": 0.71875
+    },
+    "65536": {
+      "mla_layers": 2,
+      "gda_layers": 0,
+      "helioslm_bytes": 18874368,
+      "mha_reference_bytes": 67108864,
+      "savings_vs_mha": 0.71875
+    },
+    "131072": {
+      "mla_layers": 2,
+      "gda_layers": 0,
+      "helioslm_bytes": 37748736,
+      "mha_reference_bytes": 134217728,
+      "savings_vs_mha": 0.71875
+    }
+  },
+  "generation": {
+    "prompt_len": 32,
+    "new_tokens": 32,
+    "params_M": 8.5,
+    "param_bytes_MB": 34.0,
+    "prefill_s": 0.01,
+    "prefill_tok_s": 3099.0,
+    "decode_s": 0.198,
+    "decode_tok_s": 156.32,
+    "total_s": 0.209
+  }
+}
