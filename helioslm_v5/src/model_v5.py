@@ -393,6 +393,12 @@ class HeliosLMv5(nn.Module):
 
         hidden_states = self.norm(hidden_states)
         logits = self.lm_head(hidden_states)
+        # v5.9: Gemma-2 style final logit soft-capping (None = uncapped,
+        # v5.8 behaviour). Bounds every logit to (-cap, cap); generate()
+        # inherits it because it consumes these logits.
+        cap = getattr(self.config, "final_logit_soft_cap", None)
+        if cap is not None:
+            logits = cap * torch.tanh(logits / cap)
 
         return logits, hidden_states, present_key_values
 

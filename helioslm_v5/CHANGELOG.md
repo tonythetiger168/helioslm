@@ -1,5 +1,100 @@
 # HeliosLM v5 Changelog
 
+## v5.9 (2026-09-15) - Daily Improvement Build 4: Logit Soft-Capping, QK-Norm, Sliding Window + Sinks, Final Logit Cap
+
+Fourth daily-analysis-driven round (landscape scan 2026-09-15:
+GLM-4.5/5.x and Qwen3-class training-stability staples — per-head
+QK-norm and Gemma-2/3-style logit soft-capping — plus the
+sliding-window/sink decode-efficiency direction shared by Gemma 3,
+Qwen3 hybrid and DeepSeek V4.1 Flash). Four changes, all tested; unit
+suite 44 -> 48 tests.
+
+### Attention logit soft-capping (attention/mla.py: MLA, both cache modes)
+- `config.attention.logit_soft_cap = cap` (default None = uncapped, the
+  v5.8 behaviour): attention scores are soft-capped as
+  `cap * tanh(score / cap)` AFTER the softmax scale and BEFORE the
+  causal/padding mask, so masked positions still become exactly -inf.
+  Bounds every attention logit to (-cap, cap) — the Gemma-2/3 and
+  GLM-4.5 answer to attention-logit blow-up in long training runs.
+- The absorbed path caps the latent-space scores directly; the EXPANDED
+  path switches from F.scaled_dot_product_attention (which has no
+  soft-cap hook) to a manual score/softmax/weighted-sum pipeline when a
+  cap is set — same math as the absorbed path, including the nan_to_num
+  guard for fully-masked rows. Without a cap the expanded path is
+  bit-identical to v5.8 (SDPA).
+- Verified: a tiny cap (1e-6) saturates every score to +/-cap, yielding
+  EXACTLY uniform attention (diff 5.8e-07 vs the mean-of-values
+  reference); a huge cap matches the uncapped path (6.0e-08);
+  absorbed/expanded agree under a cap (2.4e-07); cached decode ==
+  one-shot in both modes; adversarial 1e4-scaled inputs stay finite.
+  Loud ValueError on cap <= 0 (config validation AND hand-built module).
+
+### Per-head QK-norm (attention/mla.py: MLA._project_new_tokens)
+- `config.attention.qk_norm = True` (default False): RMSNorm over
+  no_rope_head_dim on q_nope (per head), over rope_head_dim on q_rope
+  (per head) and on the shared k_rope, applied BEFORE RoPE (rotation
+  preserves norms, so pre-rotation norming keeps the rotated vectors
+  normed) — the GLM-4.5 / Qwen3 / Gemma training-stability staple.
+- Documented simplification: the nope-side K is deliberately NOT
+  re-normed per head — the shared latent c_kv already passes through
+  norm_kv (the DeepSeek-V3 design), and a per-head K_nope norm cannot be
+  folded into the absorbed W_UK matmul, so it would either break the
+  absorbed path or diverge between cache modes.
+- Verified: invariant to a x100 rescale of q_b_proj / k_rope_proj
+  (< 1e-4; upscale regime only — the RMSNorm eps breaks exact scale
+  invariance once mean(x^2) ~ eps, so downscale invariance is bounded
+  by eps, NOT exact; documented in the test), a no-norm control DOES
+  change under the same rescale (diff 0.825), absorbed/expanded agree
+  (3.0e-07), cached decode == one-shot, default off bit-identical to
+  v5.8. Non-bool qk_norm raises at config validation.
+
+### Sliding-window attention + attention sinks (attention/mla.py)
+- `config.attention.sliding_window = W` (default None = full attention)
+  restricts each query to keys with position distance < W (StreamingLLM
+  / Gemma-3 / Qwen3-hybrid direction); `sliding_window_sink = S`
+  (default 0) additionally keeps the first S positions attendable from
+  anywhere (attention sinks). Sinks require a window (loud ValueError
+  otherwise); the window composes with packed-position document
+  isolation (position-distance semantics).
+- ABSORBED DECODE slices gathered copies of the latent cache to the
+  sink prefix + trailing window — the cache itself is NEVER modified
+  (verified: it still grows to the full length) — so the decode matmul
+  is O(W+S) instead of O(L). The window mask (already restricted by
+  _build_attn_mask) is sliced with the same indices, keeping the two
+  consistent. Prefill (seq > 1) and the expanded mode apply the window
+  through the attention mask only (no compute saving there; documented).
+- Verified: perturbing an out-of-window token leaves later outputs
+  EXACTLY unchanged (diff 0.0, single layer); W >= L is bit-identical
+  to full attention; cached decode == one-shot in both modes; sink
+  tokens stay attendable from anywhere (d 8.7e-01) while non-sink
+  out-of-window keys stay exactly excluded; composes exactly with the
+  v5.8 sparse top-k (window slice first, top-k inside the window; k >=
+  windowed length degenerates to dense-over-window, diff 0.0). Loud
+  ValueError on window <= 0, sink < 0, sink > 0 without a window.
+
+### Final logit soft-capping (model_v5.py: HeliosLMv5.forward)
+- `config.final_logit_soft_cap = cap` (default None = uncapped): the
+  LM-head logits are soft-capped as `cap * tanh(logits / cap)` — the
+  Gemma-2 final-logit cap (Gemma-2 used 30.0). `generate()` inherits it
+  because it consumes forward's logits.
+- Verified: logits strictly bounded by cap; the mapping equals
+  `cap * tanh(uncapped / cap)` exactly (diff 0.0 vs an uncapped model
+  with identical weights); gradients flow through the cap; greedy
+  generate works; default None is bit-identical to v5.8. Loud
+  ValueError on cap <= 0.
+
+### Tests
+- test_attention_logit_soft_cap, test_qk_norm,
+  test_sliding_window_attention, test_final_logit_soft_cap added to
+  tests/test_v5.py (registered in TESTS; suite 44 -> 48).
+- Test-design note (quantitative evidence, per the no-silent-threshold
+  rule): test_qk_norm asserts scale invariance for UPSCALE factors only
+  (x100, diff < 1e-4). A x0.01 downscale deviates by 3.2e-3 because
+  RMSNorm's eps (1e-6) stops being negligible once mean(x^2) ~ eps —
+  this is inherent to every RMSNorm, not a wiring bug; the regime is
+  asserted via the bounded-deviation comment in the test instead of a
+  loosened blanket tolerance.
+
 ## v5.8 (2026-09-14) - Daily Improvement Build 3: YaRN, DSA Sparse Top-k, Per-Head Muon, GPTQ act-order
 
 Third daily-analysis-driven round (landscape scan 2026-09-14: DeepSeek

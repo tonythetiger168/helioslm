@@ -257,6 +257,15 @@ class MLA(nn.Module):
     watermarking keep working; attention always computes over the same
     quantized values that are stored.
 
+    ``config.attention.sparse_top_k`` (v5.8) enables DSA-style top-k
+    decode over the latent cache; ``config.attention.logit_soft_cap``
+    (v5.9) soft-caps attention logits Gemma-style; ``config.attention.
+    qk_norm`` (v5.9) RMSNorms the per-head query parts and the shared
+    k_rope before RoPE; ``config.attention.sliding_window`` /
+    ``sliding_window_sink`` (v5.9) restrict attention to a trailing
+    position window (plus optional sink tokens) without modifying the
+    cache.
+
     Both modes are mathematically identical up to floating-point
     reassociation (verified by the test suite at atol 1e-4).
     """
@@ -345,6 +354,61 @@ class MLA(nn.Module):
                     "attention.use_absorption=True or sparse_top_k=None"
                 )
 
+        # v5.9: Gemma-2/3 & GLM-4.5 style attention logit soft-capping.
+        # Validated eagerly in the config; re-checked here for hand-built
+        # attention configs (same pattern as sparse_top_k above).
+        self.logit_soft_cap = getattr(config.attention, "logit_soft_cap", None)
+        if self.logit_soft_cap is not None:
+            if not isinstance(self.logit_soft_cap, (int, float)) \
+                    or self.logit_soft_cap <= 0:
+                raise ValueError(
+                    f"logit_soft_cap must be a positive number or None, got "
+                    f"{self.logit_soft_cap!r}"
+                )
+            self.logit_soft_cap = float(self.logit_soft_cap)
+
+        # v5.9: per-head QK-norm (GLM-4.5 / Qwen3 / Gemma style). The
+        # per-head query parts (q_nope, q_rope) and the shared k_rope are
+        # RMSNormed BEFORE RoPE. The nope-side K is deliberately NOT
+        # re-normed per head: the shared latent c_kv already passes through
+        # norm_kv (the DeepSeek-V3 design), and a per-head K_nope norm
+        # cannot be folded into the absorbed W_UK matmul.
+        self.qk_norm = bool(getattr(config.attention, "qk_norm", False))
+        if self.qk_norm:
+            self.norm_q_nope = RMSNorm(self.no_rope_head_dim,
+                                       eps=config.rms_norm_eps)
+            self.norm_q_rope = RMSNorm(self.rope_head_dim,
+                                       eps=config.rms_norm_eps)
+            self.norm_k_rope = RMSNorm(self.rope_head_dim,
+                                       eps=config.rms_norm_eps)
+
+        # v5.9: sliding-window attention with optional attention sinks
+        # (StreamingLLM / Gemma-3 / Qwen3 hybrid style). Semantics: a query
+        # at position p attends keys with position > p - sliding_window,
+        # plus the first sliding_window_sink positions unconditionally.
+        # The cache is NEVER modified; absorbed decode slices gathered
+        # copies so the decode matmul is O(window) instead of O(L).
+        self.sliding_window = getattr(config.attention, "sliding_window", None)
+        self.sliding_window_sink = int(
+            getattr(config.attention, "sliding_window_sink", 0))
+        if self.sliding_window is not None:
+            if not isinstance(self.sliding_window, int) \
+                    or self.sliding_window <= 0:
+                raise ValueError(
+                    f"sliding_window must be a positive integer or None, "
+                    f"got {self.sliding_window!r}"
+                )
+        if self.sliding_window_sink < 0:
+            raise ValueError(
+                f"sliding_window_sink must be non-negative, got "
+                f"{self.sliding_window_sink}"
+            )
+        if self.sliding_window_sink > 0 and self.sliding_window is None:
+            raise ValueError(
+                "sliding_window_sink > 0 requires sliding_window to be set "
+                "(attention sinks only have meaning inside a sliding window)"
+            )
+
         self.norm_q = RMSNorm(self.q_lora_rank, eps=config.rms_norm_eps)
         self.norm_kv = RMSNorm(self.kv_latent_dim, eps=config.rms_norm_eps)
         self.attention_dropout = config.attention.attention_dropout
@@ -392,6 +456,13 @@ class MLA(nn.Module):
         k_rope = self.k_rope_proj(hidden_states)
         k_rope = k_rope.view(B, seq, 1, self.rope_head_dim).transpose(1, 2)
 
+        # v5.9: per-head QK-norm BEFORE RoPE (rotation preserves the norm,
+        # so normalizing pre-rotation keeps the rotated vectors normed).
+        if self.qk_norm:
+            q_nope = self.norm_q_nope(q_nope)
+            q_rope = self.norm_q_rope(q_rope)
+            k_rope = self.norm_k_rope(k_rope)
+
         # RoPE applied ONLY to the rope dims of q and the shared k_rope,
         # at the correct absolute positions. V is never rotated.
         cos, sin = self.rope(position_ids)
@@ -417,6 +488,17 @@ class MLA(nn.Module):
     # ------------------------------------------------------------------
     # forward
     # ------------------------------------------------------------------
+    def _soft_cap(self, scores):
+        """v5.9: Gemma-style logit soft-capping, cap*tanh(scores/cap).
+
+        Applied AFTER the softmax scale and BEFORE the causal/padding
+        mask, so masked positions still become exactly -inf afterwards.
+        Bounds every attention logit to (-cap, cap).
+        """
+        if self.logit_soft_cap is None:
+            return scores
+        return self.logit_soft_cap * torch.tanh(scores / self.logit_soft_cap)
+
     def forward(self, hidden_states, attention_mask=None, past_key_value=None,
                 use_cache=False, position_ids=None):
         """
@@ -494,12 +576,29 @@ class MLA(nn.Module):
         attn_mask = self._build_attn_mask(
             position_ids, kv_len, attention_mask, past_len, seq, B, custom_positions
         )
-        attn_out = F.scaled_dot_product_attention(
-            q_full, k_full, v,
-            dropout_p=self.attention_dropout if self.training else 0.0,
-            is_causal=attn_mask is None,
-            attn_mask=attn_mask,
-        )
+        if self.logit_soft_cap is None:
+            attn_out = F.scaled_dot_product_attention(
+                q_full, k_full, v,
+                dropout_p=self.attention_dropout if self.training else 0.0,
+                is_causal=attn_mask is None,
+                attn_mask=attn_mask,
+            )
+        else:
+            # v5.9: SDPA has no soft-capping hook, so the capped path runs
+            # the score/softmax/weighted-sum matmuls manually (same math as
+            # the absorbed path below, including the nan_to_num guard for
+            # fully-masked rows).
+            scores = torch.matmul(q_full, k_full.transpose(-2, -1))
+            scores = self._soft_cap(scores * self.softmax_scale)
+            if attn_mask is None:
+                attn_mask = torch.ones(seq, kv_len, dtype=torch.bool,
+                                       device=scores.device).tril(
+                    diagonal=kv_len - seq)
+            scores = scores.masked_fill(~attn_mask, float("-inf"))
+            probs = torch.nan_to_num(F.softmax(scores, dim=-1))
+            if self.training and self.attention_dropout > 0:
+                probs = F.dropout(probs, p=self.attention_dropout)
+            attn_out = torch.matmul(probs, v)
 
         output = self.o_proj(attn_out.transpose(1, 2).contiguous().view(B, seq, -1))
         return output, present_key_value
@@ -574,6 +673,33 @@ class MLA(nn.Module):
             position_ids, kv_len, attention_mask, past_len, seq, B, custom_positions
         )
 
+        # Sliding-window decode slice (v5.9): at DECODE the default
+        # contiguous layout is enforced (custom position_ids raise in
+        # _build_attn_mask), so the cached keys hold positions
+        # 0..kv_len-1 and the query sits at kv_len-1. The window then
+        # keeps exactly the first `sliding_window_sink` keys (attention
+        # sinks) plus the last `sliding_window` keys. Only GATHERED
+        # COPIES are sliced — the cache itself is never modified — and
+        # the mask (already window-restricted by _build_attn_mask) is
+        # sliced with the same indices. This makes the decode matmul
+        # O(window + sink) instead of O(kv_len). When
+        # sink + window >= kv_len every key is inside the window and
+        # nothing is sliced (bit-identical to full attention).
+        if self.sliding_window is not None and seq == 1:
+            keep = self.sliding_window_sink + self.sliding_window
+            if kv_len > keep:
+                idx = torch.cat([
+                    torch.arange(self.sliding_window_sink,
+                                 device=c_kv.device),
+                    torch.arange(kv_len - self.sliding_window, kv_len,
+                                 device=c_kv.device),
+                ])
+                c_kv = c_kv.index_select(2, idx)
+                k_rope = k_rope.index_select(2, idx)
+                if attn_mask is not None:
+                    attn_mask = attn_mask.index_select(-1, idx)
+                kv_len = keep
+
         # DSA-style sparse top-k selection (v5.8): at DECODE (seq == 1) a
         # lightning-indexer-style score picks the top-`sparse_top_k` cached
         # tokens and attention runs only over them. The index score is the
@@ -614,6 +740,9 @@ class MLA(nn.Module):
         scores = torch.matmul(q_absorbed, c_kv.transpose(-2, -1))
         scores = scores + torch.matmul(q_rope, k_rope.transpose(-2, -1))
         scores = scores * self.softmax_scale  # [B, H, seq, kv_len]
+        # v5.9: soft-cap after the scale, before the mask (masked
+        # positions still become exactly -inf below).
+        scores = self._soft_cap(scores)
 
         if attn_mask is None:
             # Fast path equivalent to SDPA is_causal=True: bottom-right
@@ -672,8 +801,15 @@ class MLA(nn.Module):
         same document. Document boundaries are derived from the reset
         points of position_ids: every position where
         ``pos[:, i] <= pos[:, i-1]`` starts a new segment.
+
+        Sliding window (v5.9): when ``self.sliding_window`` is set, the
+        mask additionally requires ``q_pos - k_pos < sliding_window``
+        (position distance, so it composes with packed documents), unless
+        ``k_pos < sliding_window_sink`` (StreamingLLM attention sinks are
+        attendable from any position).
         """
-        if attention_mask is None and past_len == 0 and not custom_positions:
+        if attention_mask is None and past_len == 0 and not custom_positions \
+                and self.sliding_window is None:
             return None
 
         device = position_ids.device
@@ -709,6 +845,11 @@ class MLA(nn.Module):
         causal = k_pos <= q_pos  # [B, 1, seq, kv_len], True = attend
         if same_doc is not None:
             causal = causal & same_doc
+        if self.sliding_window is not None:
+            window_ok = (q_pos - k_pos) < self.sliding_window
+            if self.sliding_window_sink > 0:
+                window_ok = window_ok | (k_pos < self.sliding_window_sink)
+            causal = causal & window_ok
 
         if attention_mask is not None:
             attention_mask = attention_mask.to(device)

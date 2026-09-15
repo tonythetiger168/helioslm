@@ -1,4 +1,4 @@
-# HeliosLM v5.8 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.9 - DeepSeek/K3-Style Architecture
 
 Reference LLM implementation with DeepSeek-V3-style efficiency techniques.
 All modules below are implemented and exercised by a CPU test suite with
@@ -18,6 +18,53 @@ misbehaving (see CHANGELOG). v5.5 is a feature release aligned with
 Kimi-K3-class architecture mechanisms: hybrid linear attention, LatentMoE,
 quantile balancing, cross-layer attention residuals, and SiTU-GLU (see
 CHANGELOG; unit suite now 44 tests).
+
+## v5.9 (2026-09-15): Daily Improvement Round 4 — Logit Soft-Capping, QK-Norm, Sliding Window, Final Logit Cap
+
+Fourth daily round from the 2026-09-15 landscape scan (GLM-4.5/5.x and
+Qwen3-class training-stability staples — QK-norm, Gemma-2/3-style
+soft-capping — plus the sliding-window/sink efficiency direction shared
+by Gemma 3, Qwen3 hybrid and the DeepSeek V4.1 Flash decode stack).
+Unit suite 44 → 48 tests.
+
+- **Attention logit soft-capping** (`config.attention.logit_soft_cap`):
+  Gemma-2/3 & GLM-4.5 style `cap·tanh(score/cap)` applied after the
+  softmax scale and before the causal/padding mask, in BOTH MLA cache
+  modes (the expanded path drops to a manual score/softmax/weighted-sum
+  pipeline when a cap is set — SDPA has no soft-cap hook). Verified: a
+  tiny cap yields exactly-uniform attention (diff 5.8e-07 vs the
+  mean-of-values reference), a huge cap matches the uncapped path
+  (6.0e-08), absorbed/expanded agree under a cap (2.4e-07), cached
+  decode == one-shot, adversarial 1e4-scaled inputs stay finite.
+- **Per-head QK-norm** (`config.attention.qk_norm`): RMSNorm on q_nope
+  (per head), q_rope (per head) and the shared k_rope BEFORE RoPE — the
+  GLM-4.5 / Qwen3 / Gemma stability staple. Documented simplification:
+  the nope-side K needs no extra norm (the shared latent c_kv is already
+  RMSNormed via `norm_kv`, the DeepSeek-V3 design; a per-head K_nope
+  norm cannot fold into the absorbed W_UK matmul). Verified: exact
+  invariance to ×100 rescales of q_b_proj / k_rope_proj (upscale regime;
+  the downscale regime is bounded by rms_norm_eps and documented), a
+  no-norm control changes the output (diff 0.825), absorbed/expanded
+  agree (3.0e-07), default off is bit-identical to v5.8.
+- **Sliding-window attention + attention sinks**
+  (`config.attention.sliding_window`, `sliding_window_sink`): a query at
+  position p attends keys with position distance < W (StreamingLLM /
+  Gemma-3 / Qwen3-hybrid style), plus the first S sink positions
+  unconditionally. Absorbed decode slices GATHERED COPIES to the
+  sink+window prefix — the cache is never modified (verified: cache
+  still grows to L) and the decode matmul becomes O(W+S); prefill and
+  the expanded mode apply the window through the mask. Verified:
+  out-of-window perturbation leaks exactly 0.0, W ≥ L is bit-identical
+  to full attention, sinks stay attendable from anywhere (d 8.7e-01),
+  non-sink out-of-window keys stay exactly excluded, composes exactly
+  with v5.8 sparse top-k (k ≥ windowed length → dense-over-window,
+  diff 0.0).
+- **Final logit soft-capping** (`config.final_logit_soft_cap`):
+  Gemma-2 style `cap·tanh(logits/cap)` on the LM-head output inside
+  `HeliosLMv5.forward`; `generate()` inherits it. Verified: logits
+  strictly bounded by cap, mapping equals `cap·tanh(uncapped/cap)`
+  exactly (diff 0.0), gradients flow, greedy generate works, default
+  None is the untouched v5.8 path.
 
 ## v5.8 (2026-09-14): Daily Improvement Round 3 — YaRN, DSA Sparse Top-k, Per-Head Muon, GPTQ act-order
 
@@ -413,7 +460,7 @@ From the repository root (the directory containing `helioslm_v5/`):
 python -m helioslm_v5.tests.test_v5
 ```
 
-Runs 44 tests against the real `size="lite"` model on CPU (a couple of
+Runs 48 tests against the real `size="lite"` model on CPU (a couple of
 minutes), prints a per-test PASS/FAIL summary, and exits non-zero if any
 test fails.
 
@@ -431,7 +478,7 @@ test fails.
 | Vision | Fixed 224x224 | **NaViT (any resolution up to max_grid)** |
 | Audio | Non-streaming | **Streaming causal (chunked == one-shot; sliding-window memory cap)** |
 | Quantization | Custom INT4/8 | **AWQ/GPTQ/FP8/MXFP4 (real 4-bit packing; true GPTQ Hessian compensation + act-order) + QAT straight-through fake-quant training wrapper** |
-| RoPE / Context | Fixed | **RoPE scaling (linear interpolation / NTK base rescale / YaRN NTK-by-parts), optional FP8 latent KV cache, optional DSA-style sparse top-k decode over the latent cache** |
+| RoPE / Context | Fixed | **RoPE scaling (linear interpolation / NTK base rescale / YaRN NTK-by-parts), optional FP8 latent KV cache, optional DSA-style sparse top-k decode over the latent cache, optional sliding-window attention with StreamingLLM sinks (O(W) decode), per-head QK-norm, Gemma-style attention + final logit soft-capping** |
 | Residual Stream | Standard | **Optional Hyper-Connections: n-branch stream, static normalized A + learnable zero-init B (identity at init)** |
 | Inference Engine | Custom | **vLLM-style engine (paged KV, continuous batching with batched [B,1] decode steps)** |
 | GPU Monitoring | CPU/内存 HPA | **GPU-utilization HPA (in-memory metrics, optional Prometheus export)** |

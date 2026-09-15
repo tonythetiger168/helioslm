@@ -1,4 +1,4 @@
-"""HeliosLM v5.8 Configuration
+"""HeliosLM v5.9 Configuration
 
 Two sizes are supported via ``HeliosLMv5Config(size=...)``:
   - ``"lite"``: small CPU-friendly config for smoke tests (seconds per step).
@@ -12,6 +12,11 @@ v5.5 additions (Kimi-K3-aligned, all backward compatible on "lite"):
 v5.7: ``attention.rope_scaling`` ("linear"/"ntk"), ``kv_cache_dtype="fp8"``,
   ``use_hyper_connections``. v5.8: ``rope_scaling["type"]="yarn"``
   (NTK-by-parts), ``attention.sparse_top_k`` (DSA-style top-k decode).
+v5.9: ``attention.logit_soft_cap`` (Gemma-style score capping),
+  ``attention.qk_norm`` (per-head pre-RoPE QK-norm),
+  ``attention.sliding_window`` + ``sliding_window_sink`` (windowed
+  attention with StreamingLLM sinks), ``final_logit_soft_cap`` (Gemma-2
+  style LM-head capping).
 
 ``None`` on ``hybrid.enabled`` / ``use_attention_residuals`` /
 ``moe.latent_dim`` means "follow the size default": the "full" size turns
@@ -81,6 +86,33 @@ class AttentionConfig:
     # unchanged; when sparse_top_k >= kv_len the output is bit-identical
     # to dense attention.
     sparse_top_k: Optional[int] = None
+    # Attention logit soft-capping (v5.9, Gemma-2/3 & GLM-4.5 style):
+    # when a positive float, attention scores are soft-capped as
+    # ``cap * tanh(score / cap)`` after the softmax scale and before the
+    # causal/padding mask, bounding every logit to (-cap, cap). This
+    # suppresses the attention-logit blow-up observed in long training
+    # runs. None = uncapped (v5.8 behaviour, bit-identical).
+    logit_soft_cap: Optional[float] = None
+    # Per-head QK-norm (v5.9, GLM-4.5 / Qwen3 / Gemma style): RMSNorm the
+    # per-head query parts (q_nope over no_rope_head_dim, q_rope over
+    # rope_head_dim) and the shared k_rope (over rope_head_dim) BEFORE
+    # RoPE. Documented simplification: the nope-side K needs no extra
+    # norm — the shared latent c_kv is already RMSNormed (norm_kv, the
+    # DeepSeek-V3 design), and a per-head K_nope norm cannot be folded
+    # into the absorbed W_UK matmul, so it is intentionally omitted.
+    qk_norm: bool = False
+    # Sliding-window attention (v5.9, StreamingLLM / Gemma-3 / Qwen3
+    # hybrid style): when a positive int W, a query at position p attends
+    # only keys with position > p - W (distance < W). In absorbed decode
+    # the gathered cache copies are sliced to the window so the decode
+    # matmul cost is O(W) instead of O(L); prefill and the expanded mode
+    # apply the window through the attention mask. The cache itself is
+    # never modified. ``sliding_window_sink`` > 0 additionally keeps the
+    # first S positions attendable from anywhere (StreamingLLM attention
+    # sinks); sinks require a sliding window. W >= sequence length is
+    # bit-identical to full attention.
+    sliding_window: Optional[int] = None
+    sliding_window_sink: int = 0
 
     @property
     def head_dim(self) -> int:
@@ -175,7 +207,7 @@ class GRPOConfig:
 
 @dataclass
 class HeliosLMv5Config:
-    model_name: str = "HeliosLM-v5.8"
+    model_name: str = "HeliosLM-v5.9"
     size: str = "full"  # "full" (production defaults) or "lite" (CPU smoke tests)
     vocab_size: int = 160000
     max_position_embeddings: int = 1048576
@@ -211,6 +243,14 @@ class HeliosLMv5Config:
     # vLLM-style engine do not support the widened stream and raise loudly).
     use_hyper_connections: Optional[bool] = None
     hyper_connection_branches: int = 4
+
+    # Final logit soft-capping (v5.9, Gemma-2 style): when a positive
+    # float, the LM-head logits are soft-capped as
+    # ``cap * tanh(logits / cap)`` inside ``HeliosLMv5.forward``, bounding
+    # every logit to (-cap, cap) (Gemma-2 used 30.0). This stabilizes the
+    # logits against rare activation spikes. None = uncapped (v5.8
+    # behaviour, bit-identical).
+    final_logit_soft_cap: Optional[float] = None
 
     def __post_init__(self):
         if self.size not in ("full", "lite"):
@@ -409,6 +449,35 @@ class HeliosLMv5Config:
                 "(the fp8 cache stores the compressed latent c_kv; the "
                 "expanded per-head cache has no latent to quantize)"
             )
+        # v5.9: soft-capping, QK-norm, sliding window.
+        if a.logit_soft_cap is not None:
+            if not isinstance(a.logit_soft_cap, (int, float)) \
+                    or a.logit_soft_cap <= 0:
+                raise ValueError(
+                    f"attention.logit_soft_cap must be a positive number or "
+                    f"None, got {a.logit_soft_cap!r}"
+                )
+        if not isinstance(a.qk_norm, bool):
+            raise ValueError(
+                f"attention.qk_norm must be a bool, got {a.qk_norm!r}"
+            )
+        if a.sliding_window is not None:
+            if not isinstance(a.sliding_window, int) or a.sliding_window <= 0:
+                raise ValueError(
+                    f"attention.sliding_window must be a positive integer or "
+                    f"None, got {a.sliding_window!r}"
+                )
+        if not isinstance(a.sliding_window_sink, int) or a.sliding_window_sink < 0:
+            raise ValueError(
+                f"attention.sliding_window_sink must be a non-negative "
+                f"integer, got {a.sliding_window_sink!r}"
+            )
+        if a.sliding_window_sink > 0 and a.sliding_window is None:
+            raise ValueError(
+                "attention.sliding_window_sink > 0 requires "
+                "attention.sliding_window to be set (attention sinks only "
+                "have meaning inside a sliding window)"
+            )
         # Hyper-Connections (v5.7): branch count and mutual exclusion with
         # the v5.5 attention-residual accumulator (both rewire how sublayer
         # outputs flow across the layer stack; combining them is untested
@@ -448,4 +517,12 @@ class HeliosLMv5Config:
                 raise ValueError(
                     f"{name} ({tid}) must be in [0, vocab_size="
                     f"{self.vocab_size})"
+                )
+        # v5.9: final logit soft-capping.
+        if self.final_logit_soft_cap is not None:
+            if not isinstance(self.final_logit_soft_cap, (int, float)) \
+                    or self.final_logit_soft_cap <= 0:
+                raise ValueError(
+                    f"final_logit_soft_cap must be a positive number or "
+                    f"None, got {self.final_logit_soft_cap!r}"
                 )
