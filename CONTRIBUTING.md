@@ -15,12 +15,17 @@ Thanks for your interest in contributing! This project values **correctness you 
 
 ## Getting started (good first issues)
 
-Look for issues labeled [`good first issue`](https://github.com/tonythetiger168/helioslm/labels/good%20first%20issue). Suggested starters:
+Open issues labeled [`good first issue`](https://github.com/tonythetiger168/helioslm/labels/good%20first%20issue) — comment on one before starting:
 
+- **#1 CUDA end-to-end verification** — run the suites on a GPU machine and report (hardware access is the only requirement)
+- **#2 Fused vs unfused quant speedup benchmark** — `benchmarks/bench_quant.py` + BENCHMARKS.md entry
+- **#3 Notebook: add a new attention variant in 30 lines** — guided tour of the hackable-stack pitch
+- **#4 HF Hub integration** — `push_to_hub` / `from_hub` with round-trip test
+- **#5 Real BPE tokenizer for the toy checkpoint** — replace char-level with a 1024-vocab BPE
+
+More starters:
 - Add missing edge-case tests (empty batch, single-token sequence, max-length boundary)
 - Improve error messages and docstrings in a module you just read
-- Add a benchmark script (`benchmarks/`) measuring tokens/s or memory for the engine on CPU
-- Write a notebook walking through one mechanism (e.g., how MLA weight absorption works, with the equivalence test as a live demo)
 - Fix a `TODO`/`FIXME` you find in the source
 
 ## Development workflow
