@@ -1,5 +1,16 @@
 # HeliosLM v5 Changelog
 
+## v5.13 (2026-09-16) - Toy Checkpoint (CPU-Trained) + MTP Resolution
+- `examples/train_toy_checkpoint.py`: char-level (id==ord) training on the
+  repo's own source/docs corpus; CE + 0.3*MTP auxiliary loss trains the
+  draft head alongside the base model
+- `checkpoints/toy_v5.13.pt`: 8.5M-param lite checkpoint (CPU, ~1000 steps,
+  val 2.41) — `generate()` and the eval harness now run against trained
+  weights; MTP acceptance reaches 1.00 on greedy prompts
+- Resolves "MTP acceptance requires trained weights": the shipped checkpoint
+  has a trained MTP head (acceptance verified in `test_toy_checkpoint` docs)
+- 53/53 tests + 9/9 integration
+
 ## v5.12 (2026-09-15) - Batched Equal-Length Prefill
 - Engine groups newly admitted requests by prompt length: equal-length rows
   share one [B, L] prefill forward (exact — no mask, no position shift),

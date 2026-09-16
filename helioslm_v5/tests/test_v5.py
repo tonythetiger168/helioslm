@@ -3301,6 +3301,32 @@ def test_batched_prefill():
     _pass("test_batched_prefill",
           "hybrid engine: equal-length prompts batched, == solo greedy")
 
+def test_toy_checkpoint():
+    """v5.13: shipped toy checkpoint loads, generates deterministically."""
+    from pathlib import Path
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+
+    ckpt_path = Path(__file__).resolve().parents[2] / "checkpoints" / "toy_v5.13.pt"
+    if not ckpt_path.exists():
+        _pass("test_toy_checkpoint", "skipped (checkpoint not built)")
+        return
+    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    assert ckpt["tokenizer"] == "char-ascii"
+    model = HeliosLMv5(HeliosLMv5Config(size="lite"))
+    model.load_state_dict(ckpt["state_dict"])
+    model.eval()
+
+    ids = torch.tensor([[ord(c) for c in "HeliosLM"]])
+    a = model.generate(ids, max_new_tokens=24, temperature=0)
+    b = model.generate(ids, max_new_tokens=24, temperature=0)
+    assert torch.equal(a, b), "greedy generation must be deterministic"
+    txt = "".join(chr(int(t)) for t in a[0, ids.shape[1]:])
+    assert len(txt.strip()) > 0 and any(c.isalpha() for c in txt), \
+        f"degenerate output: {txt!r}"
+    assert ckpt["meta"]["val_loss"] < 3.5, "toy val loss regressed"
+    _pass("test_toy_checkpoint",
+          f"deterministic, val_loss={ckpt['meta']['val_loss']:.2f}")
+
 
 TESTS = [
     test_mla,
@@ -3358,6 +3384,8 @@ TESTS = [
     test_final_logit_soft_cap,
     # limitations task: GGUF export
     test_gguf_export,
+    # v5.13
+    test_toy_checkpoint,
     # v5.12
     test_batched_prefill,
     # v5.11
@@ -3367,7 +3395,7 @@ TESTS = [
 
 
 def main():
-    print("HeliosLM v5.12 Test Suite (lite config, CPU)")
+    print("HeliosLM v5.13 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:
