@@ -3328,6 +3328,67 @@ def test_toy_checkpoint():
           f"deterministic, val_loss={ckpt['meta']['val_loss']:.2f}")
 
 
+def _mpdp_stage_builder(rank: int):
+    """Deterministic per-rank stage builder (module level: spawn pickling)."""
+    from helioslm_v5.src.training.dualpipe import DualPipeStage
+    torch.manual_seed(1234 + rank)
+    return DualPipeStage(nn.ModuleList([
+        nn.Linear(32, 32), nn.ReLU(),
+        nn.Linear(32, 32 if rank == 0 else 16),
+    ]))
+
+
+def test_multi_process_dualpipe():
+    """v5.14: multi-process DualPipe == single-process scheduler.
+
+    Two spawn workers, three micro-batches: outputs, input grads, and
+    per-stage parameter grads must match DualPipeScheduler.run_forward +
+    run_backward to fp32 rounding.
+    """
+    from helioslm_v5.src.training.dualpipe import (DualPipeScheduler,
+                                                   DualPipeStage)
+    from helioslm_v5.src.training.multi_process_dualpipe import (
+        MultiProcessDualPipeRunner)
+
+    # single-process reference
+    torch.manual_seed(1234)
+    stages = [_mpdp_stage_builder(r) for r in range(2)]
+    for st in stages:
+        st.train()
+    gen = torch.Generator().manual_seed(42)
+    inputs = [torch.randn(2, 32, generator=gen) for _ in range(3)]
+    ggen = torch.Generator().manual_seed(43)
+    grad_outs = [torch.randn(2, 16, generator=ggen) for _ in range(3)]
+    ref = DualPipeScheduler(stages, num_micro_batches=len(inputs))
+    ref_outs = ref.run_forward(inputs)
+    ref_in_grads = ref.run_backward(grad_outs)
+    ref_stage_grads = [{n: p.grad.clone() for n, p in st.named_parameters()}
+                       for st in stages]
+
+    # multi-process pipeline
+    runner = MultiProcessDualPipeRunner(_mpdp_stage_builder, num_stages=2,
+                                        init_seed=1234)
+    try:
+        outs = runner.run_forward(inputs)
+        in_grads = runner.run_backward(grad_outs)
+        stage_grads = runner.collect_grads()
+    finally:
+        runner.shutdown()
+
+    for i in range(3):
+        assert (outs[i] - ref_outs[i]).abs().max().item() < 1e-5, \
+            f"mb{i}: output mismatch"
+        assert (in_grads[i] - ref_in_grads[i]).abs().max().item() < 1e-5, \
+            f"mb{i}: input grad mismatch"
+    for r in range(2):
+        for name, g in stage_grads[r].items():
+            rg = ref_stage_grads[r][name]
+            assert (g - rg).abs().max().item() < 1e-5, \
+                f"stage{r}.{name}: param grad mismatch"
+    _pass("test_multi_process_dualpipe",
+          "2 ranks x 3 micro-batches: outputs/grads == single-process <1e-5")
+
+
 TESTS = [
     test_mla,
     test_mla_absorption,
@@ -3384,6 +3445,8 @@ TESTS = [
     test_final_logit_soft_cap,
     # limitations task: GGUF export
     test_gguf_export,
+    # v5.14
+    test_multi_process_dualpipe,
     # v5.13
     test_toy_checkpoint,
     # v5.12
@@ -3395,7 +3458,7 @@ TESTS = [
 
 
 def main():
-    print("HeliosLM v5.13 Test Suite (lite config, CPU)")
+    print("HeliosLM v5.14 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:

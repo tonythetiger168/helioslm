@@ -105,12 +105,15 @@ Contributions are very welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Issue
 
 ## Known Limitations
 
-Single-process DualPipe simulation; CPU-verified (CUDA paths static-checked); hybrid (linear-attention) models support packed sequences via doc-boundary state reset; hybrid models use unpadded prefill batching in the engine. See `docs/V5.5_FEATURES_REPORT.md` for details.
+All five previously known limitations are resolved as of v5.14. Remaining
+hardware-dependent item: CUDA end-to-end verification (CPU-verified paths
+are static-checked) — tracked as a community issue.
 
 ## Version history
 
 Headlines (full details in [CHANGELOG.md](helioslm_v5/CHANGELOG.md)):
 
+- **v5.14** — Multi-process DualPipe (one stage per process, phased queue protocol, gradient-exact vs single-process)
 - **v5.13** — CPU-trained toy char-level checkpoint (MTP aux loss, acceptance 1.00 on greedy) + train_toy_checkpoint.py
 - **v5.12** — Batched equal-length prefill in the engine (hybrid recurrent-state models included)
 - **v5.11** — Fused dequant×matmul kernels (AWQ/GPTQ/MXFP4), MXFP4 decode fix, eval loglikelihood harness

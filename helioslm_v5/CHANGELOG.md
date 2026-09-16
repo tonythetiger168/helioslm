@@ -1,5 +1,20 @@
 # HeliosLM v5 Changelog
 
+## v5.14 (2026-09-16) - Multi-Process DualPipe
+- `helioslm_v5/src/training/multi_process_dualpipe.py`: one DualPipeStage
+  per OS process (spawn), exchanging detached activations/gradients over
+  mp.Queue with a phased fwd -> bwd -> control protocol and sentinel
+  propagation; recompute-based backward with RNG capture — same
+  self-consistency scheme as the single-process scheduler
+- Semantics == DualPipeScheduler.run_forward + run_backward (all-F then
+  all-B): outputs, input grads, and per-stage param grads match <1e-5
+  (test_multi_process_dualpipe: 2 ranks x 3 micro-batches)
+- Resolves "Single-process DualPipe": the pipeline now spans process
+  boundaries; attn-res threading hooks are wired for k3-style LayerWrap
+  stages. All five known limitations are now addressed (CUDA end-to-end
+  verification remains hardware-dependent — tracked as a community issue)
+- 54/54 tests + 9/9 integration
+
 ## v5.13 (2026-09-16) - Toy Checkpoint (CPU-Trained) + MTP Resolution
 - `examples/train_toy_checkpoint.py`: char-level (id==ord) training on the
   repo's own source/docs corpus; CE + 0.3*MTP auxiliary loss trains the
