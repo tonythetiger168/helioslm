@@ -32,3 +32,12 @@ logs/
 # Large files
 *.bin
 *.safetensors
+
+# Toy checkpoint is shipped with the repo (v5.13)
+!checkpoints/toy_v5.13.pt
+!checkpoints/toy_v5.13.json
+
+# Toy checkpoint ships with the repo (v5.13)
+!checkpoints/
+!checkpoints/toy_v5.13.pt
+!checkpoints/toy_v5.13.json

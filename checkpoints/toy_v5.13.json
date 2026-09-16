@@ -1,0 +1,9 @@
+{
+  "val_loss": 2.4140310287475586,
+  "samples": {
+    "HeliosLM": "v5Config.\n                                                                                                              ",
+    "# HeliosLM v5.13": "  assert torch.\n                                                                                                        "
+  },
+  "mtp_acceptance": 1.0,
+  "params_M": 8.5
+}
