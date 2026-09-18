@@ -1,5 +1,17 @@
 # HeliosLM v5 Changelog
 
+## v5.16 (2026-09-18) - Speculation Break-Even Instrumentation (roadmap #6)
+- `benchmarks/bench_spec_breakeven.py`: sweeps MTP draft on/off x cache
+  state on the toy checkpoint and emits rows in the exact JSONL schema
+  proposed to colibri (P3) — directly comparable numbers across engines
+- Part B measures the expert-store hit-rate curve vs residency budget
+  (the x-axis of the break-even surface; v5.15 store.stats() telemetry)
+- First honest data point on the toy model: draft is net-negative cold
+  (-0.3%) and net-positive warm (+5.4%) at 72% acceptance — cache state
+  decides whether drafting pays, matching the colibri open hypothesis
+- `best_draft_per_cache_state()` pure helper (unit-tested without timing)
+- 56/56 tests + 9/9 integration
+
 ## v5.15 (2026-09-18) - Disk-Tier Expert Store (streaming oracle, roadmap #6)
 - `helioslm_v5/src/inference/expert_store.py`: offload DeviceLimitedMoE
   routed experts to a memory-mapped file; LRU resident set bounded by

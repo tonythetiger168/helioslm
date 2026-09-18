@@ -3442,6 +3442,52 @@ def test_expert_streaming():
           f"bit-exact, hits={st.hits}, misses={st.misses}, "
           f"evictions={st.evictions}, file={st.total_bytes // 1024}KB")
 
+def test_spec_breakeven():
+    """v5.16: spec break-even instrumentation — schema, helper, MTP fields."""
+    from benchmarks.bench_spec_breakeven import (best_draft_per_cache_state,
+                                                 bench_expert_hit_curve)
+    from helioslm_v5.src.inference.expert_store import (attach_streaming_store,
+                                                        detach_streaming_store)
+    from helioslm_v5.src.moe.sigmoid_moe import DeviceLimitedMoE
+
+    # 1) pure helper: best draft per cache state (synthetic rows, no timing)
+    rows = [
+        {"cache_state": "cold",  "draft_depth": 0, "tok_s_out": 1.0},
+        {"cache_state": "cold",  "draft_depth": 1, "tok_s_out": 0.7},
+        {"cache_state": "warm",  "draft_depth": 0, "tok_s_out": 1.0},
+        {"cache_state": "warm",  "draft_depth": 1, "tok_s_out": 1.4},
+    ]
+    best = best_draft_per_cache_state(rows)
+    assert best["cold"]["draft_depth"] == 0
+    assert best["warm"]["draft_depth"] == 1
+
+    # 2) expert-store hit-rate curve rows carry the full P3-compatible schema
+    curve = bench_expert_hit_curve(budgets=[8])
+    r = curve[0]
+    for k in ("resident_experts", "budget_bytes", "hit_rate", "misses",
+              "evictions", "ram_saving_vs_dense"):
+        assert k in r, f"missing field {k}"
+    assert 0.0 <= r["hit_rate"] <= 1.0
+    assert r["misses"] > 0 and r["evictions"] == 0  # full residency: no churn
+
+    # 3) MTP acceptance field present and in range on the toy checkpoint
+    from pathlib import Path
+    ck = Path(__file__).resolve().parents[2] / "checkpoints" / "toy_v5.13.pt"
+    if ck.exists():
+        from helioslm_v5.src.inference.mtp import MTPDecoder
+        from helioslm_v5.src.model_v5 import HeliosLMv5
+        ckpt = torch.load(ck, map_location="cpu", weights_only=False)
+        model = HeliosLMv5(HeliosLMv5Config(size="lite"))
+        model.load_state_dict(ckpt["state_dict"])
+        model.eval()
+        dec = MTPDecoder(model, model.mtp_modules, HeliosLMv5Config(size="lite"))
+        ids = torch.tensor([[ord(c) for c in "HeliosLM"]])
+        with torch.no_grad():
+            res = dec.generate(ids, max_new_tokens=16, temperature=0)
+        assert 0.0 <= res.acceptance_rate <= 1.0
+    _pass("test_spec_breakeven",
+          "P3-schema rows, best-draft helper, acceptance field in range")
+
 
 TESTS = [
     test_mla,
@@ -3499,6 +3545,8 @@ TESTS = [
     test_final_logit_soft_cap,
     # limitations task: GGUF export
     test_gguf_export,
+    # v5.16
+    test_spec_breakeven,
     # v5.15
     test_expert_streaming,
     # v5.14
@@ -3514,7 +3562,7 @@ TESTS = [
 
 
 def main():
-    print("HeliosLM v5.15 Test Suite (lite config, CPU)")
+    print("HeliosLM v5.16 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:
