@@ -1,158 +1,141 @@
-# Launch posts — r/LocalLLaMA and r/MachineLearning variants
+# Launch posts — r/LocalLLaMA / r/MachineLearning / HN variants
 
-Updated for v5.14 (2026-09-16): GGUF export, benchmark suite, fused quant
-kernels, batched prefill, CPU-trained toy checkpoint, multi-process
-DualPipe. 54 unit + 9 integration tests, all five known limitations
-resolved.
+Updated for **v5.18** (2026-09-18): roadmap #6 ("a verifiable colibri") is
+feature-complete — disk-tier expert streaming, speculation break-even
+telemetry, engine-agnostic stream scorer, content-addressed prefix pool.
+58 unit + 9 integration tests, all five known limitations resolved.
 
 ## Variant A — r/LocalLLaMA
 
 **Title options:**
-- `[Project] HeliosLM — DeepSeek-V3-style LLM stack in pure PyTorch, GGUF export included, runs on CPU`
-- `I rebuilt the DeepSeek-V3 stack in pure PyTorch on my laptop — MLA, hybrid linear attention, MTP (acceptance 1.00), GGUF export, 99.2% KV-cache savings`
+- `[Project] HeliosLM — the audit layer for consumer-scale LLM serving: bit-exact expert streaming, prefix pool, MTP break-even data`
+- `I built the verifiable complement to colibri: DeepSeek-V3-style stack in pure PyTorch where every serving trick has a bit-exactness oracle`
 
 **Body:**
 
-Hey r/LocalLLaMA — I've been rebuilding the DeepSeek-V3/K3-class stack from
-scratch in pure PyTorch, designed so every component is inspectable,
-verifiable on CPU, and hackable. Two days ago it still had five known
-limitations; as of v5.14, all five are resolved. Highlights:
+Hey r/LocalLLaMA — colibri made frontier MoE serving on consumer hardware
+credible by streaming experts from disk. What's been missing on the audit
+side: when you tier weights, prune experts, or toggle speculative decoding,
+**how do you know the answer didn't change?** HeliosLM v5.18 is my answer:
+a pure-PyTorch DeepSeek-V3/K3-style stack where every serving optimization
+ships with a verification oracle.
 
-**Inference / serving**
-- **MLA with weight absorption** — latent-only KV cache; the full config
-  holds **99.2% less KV-cache memory than MHA at 128k context** (2.0 GB vs
-  257.7 GB, analytically verified, chart in the repo)
-- **Hybrid linear attention** — Gated Delta Rule layers interleaved with
-  MLA, fixed ~1 MB recurrent state per layer regardless of context; decode
-  bit-equivalent to one-shot (<2e-7)
-- **vLLM-style engine** — paged KV, copy-on-write forks, watermark batching,
-  and as of v5.12 **batched equal-length prefill** (exact, mask-free — the
-  only batched prefill path available to recurrent-state models)
-- **MTP speculative decoding** with strict (p−q)₊ verification — and a
-  shipped CPU-trained toy checkpoint where greedy decoding hits **100%
-  MTP acceptance** (11/11)
+**The audit stack (all landed today, roadmap #6 complete):**
+- **Disk-tier expert store** (v5.15): routed experts offloaded to a
+  memory-mapped file, LRU residency with hit/miss/eviction telemetry.
+  Streaming forward is **bitwise-identical** to the dense forward — even
+  under eviction churn (oracle-asserted, incl. detach/reattach cycles)
+- **Speculation break-even instrumentation** (v5.16): sweep emits the exact
+  JSONL schema proposed to colibri. First honest data point on the toy
+  checkpoint: MTP drafting is **−0.3% net cold, +5.4% net warm** at 72%
+  acceptance — cache state decides whether drafting pays
+- **Engine-agnostic stream scorer** (v5.17): score (prompt, output) JSONL
+  from *any* engine — colibri, vLLM, llama.cpp — under a reference model;
+  A/B compare with bootstrap CI. Built for exactly the gs64-vs-per-row
+  container question: quality deltas belong in tables, not anecdotes
+- **Content-addressed prefix pool** (v5.18): cross-session prefix reuse,
+  keyed by blake2b(token block + config fingerprint — quant scheme included,
+  so a stale/different container can never be served). Pooled greedy ==
+  from-scratch greedy, bitwise, for hits/misses/evictions alike
 
-**Training**
-- FP8 trainer (native float8 + STE), GRPO with k3 KL, Muon (per-head
-  Newton–Schulz), QAT
-- **DualPipe** — gradient-exact schedule simulation, and as of v5.14 it runs
-  **one stage per OS process** (phased queue protocol, gradients match the
-  single-process scheduler <1e-5)
+**The stack underneath** (all CPU-verified, 58 tests):
+MLA with weight absorption (−99.2% KV-cache vs MHA at 128k, analytic),
+hybrid Gated-Delta linear attention (bit-equivalent decode), sigmoid MoE
+with auxiliary-loss-free balancing, strict MTP verification, vLLM-style
+paged engine (batched equal-length prefill — exact, mask-free), FP8
+training + GRPO + Muon, **multi-process DualPipe** (one stage per process,
+gradients match single-process <1e-5), fused AWQ/GPTQ/MXFP4 kernels
+(exposed and fixed a latent MXFP4 decode bug), GGUF v3 export/import
+(83/83 bit-exact round-trip), CPU benchmark suite, loglikelihood harness,
+and a char-level toy checkpoint with a trained MTP head (greedy acceptance
+1.00).
 
-**Quantization & export**
-- True GPTQ (Hessian OBS + error compensation + act-order), AWQ, MXFP4 —
-  all with **fused group-wise dequant×matmul kernels** since v5.11 (dense
-  weight never materialized; the fused rewrite also exposed and fixed a
-  latent MXFP4 decode bug)
-- **GGUF v3 export/import** — spec-faithful writer + reader, 83/83 bit-exact
-  round-trip, cross-checked against the official gguf reader
-
-**Verification culture**
-54 unit tests + 9 integration tests; key paths (MLA absorption, hybrid
-decode, DualPipe grads, GGUF round-trip) are checked bitwise or at tight
-tolerance, not "loss went down". A CPU benchmark suite and a
-log-likelihood eval harness (`python -m helioslm_v5.eval.harness`) are
-included.
-
-Honest positioning: correctness-focused reference implementation, not a
-throughput competitor to llama.cpp/vLLM. The toy checkpoint is char-level
-and clearly a toy (trained on the repo's own source, ~10 CPU-minutes) —
-it's there to make `generate()`, MTP, and the harness runnable out of the
-box, not to be useful.
+Honest positioning: correctness-first reference implementation, not a
+throughput competitor. The toy checkpoint is a toy — it's there so
+generate()/MTP/harness run against trained weights out of the box.
 
 Repo: https://github.com/tonythetiger168/helioslm
+Demo (after HF upload): https://huggingface.co/spaces/tonythetiger168/helioslm-demo
 
 Questions for the community:
-1. For GGUF: would you rather see a llama.cpp-compatible MLA layout
-  mapping, or keep the spec-faithful container and let converters handle
-  layout?
-2. The hybrid linear-attention state is bf16 [heads, 128, 128] per layer —
-  is there appetite for FP8 recurrent states in this community?
-3. What's the most useful next checkpoint: bigger toy, or a real tokenizer
-  + small BPE vocab?
+1. Would you wire the stream scorer into your eval pipeline? What record
+  format does your engine already emit (prompt/output JSONL)?
+2. For the prefix pool: is block-level (16–64 tokens) the right reuse
+  granularity for agentic multi-turn workloads, or do you want
+  session-scoped pooling?
+3. What's the most useful next oracle: FP8 expert streaming, or act-order
+  GPTQ under eviction?
 
 ---
 
 ## Variant B — r/MachineLearning
 
-**Title:** [P] HeliosLM — from-scratch, CPU-testable DeepSeek-V3/K3-style stack; v5.14 adds multi-process DualPipe + fused quant kernels + CPU-trained checkpoint
+**Title:** [P] HeliosLM v5.18 — "verifiable serving": every inference optimization ships with a bit-exactness oracle (streaming experts, prefix pooling, MTP break-even)
 
 **Body:**
 
-Hi r/MachineLearning — I maintain a pure-PyTorch reference implementation
-of the modern LLM stack where the emphasis is *verified correctness you can
-read*. Recent two-day push (v5.10 → v5.14) closed all five known
-limitations:
+HeliosLM is a pure-PyTorch DeepSeek-V3/K3-style reference stack with a
+verification culture (bitwise/tolerance oracles on MLA, hybrid decode,
+DualPipe gradients, GGUF round-trips; 58 unit + 9 integration tests).
+Today's v5.15–v5.18 push completes roadmap #6 — the audit layer for
+weight-tiered serving:
 
-- **Multi-process DualPipe** (v5.14): one `DualPipeStage` per spawn'd
-  process; phased fwd/bwd queue protocol with sentinel propagation;
-  recompute-based backward with RNG capture. Outputs, input grads, and
-  per-stage parameter grads match the single-process scheduler <1e-5
-  (2 ranks × 3 micro-batches test).
-- **Fused group-wise dequant×matmul** (v5.11) for AWQ/GPTQ/MXFP4 — the
-  dense [out, in] weight is never materialized; GPTQ slices by maximal
-  runs of constant `g_idx` (act-order safe). The fused rewrite exposed a
-  latent reference bug: the MXFP1 magnitude table was built on a long
-  tensor, silently truncating (0.5, 1.5) — decode is now the exact inverse
-  of encode.
-- **Batched equal-length prefill** (v5.12) in the vLLM-style engine:
-  exact (no mask, no position shift), and the only batched prefill path
-  for recurrent-state (Gated Delta Rule) models.
-- **CPU-trained toy checkpoint** (v5.13): char-level, CE + 0.3·MTP aux
-  loss; greedy MTP acceptance 1.00 — makes `generate()` and the
-  log-likelihood harness runnable against trained weights.
-- **Benchmark suite** (v5.10): analytic KV-cache accounting — full config
-  2.0 GB vs 257.7 GB MHA at 128k — plus wall-clock CPU generation numbers,
-  reproducible via `python benchmarks/bench_cpu.py`.
-
-Older core (all tolerance/bitwise-verified): MLA weight absorption,
-hybrid Gated-Delta attention with doc-boundary packed-sequence training,
-auxiliary-loss-free MoE balancing, strict MTP verification, FP8 training
-with E5M2 gradient hooks, DualPipe gradient-exactness vs naive schedule,
-NaViT + streaming audio encoders.
+- **Disk-tier expert store**: mmap + LRU residency; streaming forward is
+  bitwise-equal to dense under eviction. Two implementation bugs found by
+  the oracle itself: LRU eviction during detach leaving empty params, and
+  full-prefix past snapshots double-counting future positions (fixed via
+  per-block incremental prefill).
+- **Break-even telemetry**: first measured point — MTP drafting −0.3% cold
+  / +5.4% warm at 72% acceptance on an 8.5M toy model; emitted in the
+  colibri-P3 JSONL schema for cross-engine comparability.
+- **Stream scorer + A/B bootstrap CI**: quality-gates any engine's token
+  stream (greedy NLL 0.38 vs random 7.26 on the toy model — the
+  discrimination direction is correct).
+- **Prefix pool**: content-hash keyed KV snapshots with config fingerprint
+  guarding; four oracle scenarios (full/partial hit, fingerprint miss,
+  post-eviction) all bitwise-equal to from-scratch.
 
 Repo: https://github.com/tonythetiger168/helioslm
 
-Would especially appreciate critical eyes on:
-1. The phased-queue multiprocess protocol: the sentinel-propagation
-   design trades a third control phase for determinism — better patterns?
-2. GPTQ fused slicing by g_idx runs vs. per-column gather: any accuracy
-   or performance concerns I'm missing?
+Critical questions:
+1. Per-block incremental prefill snapshots cost O(L²/B) copies — is there
+  a smarter immutable-past structure for prefix pools?
+2. For break-even tables: is a toy-model data point useful methodology
+  evidence, or only noise until measured at frontier scale?
 
 ---
 
 ## Variant C — Hacker News (Show HN)
 
-> **Show HN: HeliosLM – DeepSeek-V3-style LLM stack in pure PyTorch, all 5 known limitations closed**
+> **Show HN: HeliosLM v5.18 – every LLM serving optimization ships with a bit-exactness oracle**
 >
-> Pure-PyTorch reference implementation of the modern LLM stack, built to be
-> read and verified on a CPU: MLA with weight absorption (99.2% KV-cache
-> savings vs MHA at 128k), hybrid Gated-Delta linear attention, strict MTP
-> speculative decoding, FP8 training, GRPO, DualPipe (now multi-process,
-> one stage per OS process), fused AWQ/GPTQ/MXFP4 kernels, GGUF v3
-> export/import (83/83 bit-exact round-trip), vLLM-style engine with
-> batched prefill, a CPU-trained toy checkpoint (greedy MTP acceptance
-> 1.00), benchmark suite, and a log-likelihood eval harness.
+> Pure-PyTorch DeepSeek-V3-style stack. When you stream experts from disk,
+> pool KV prefixes across sessions, or toggle speculative decoding, how do
+> you know the answer didn't change? Here each optimization has an oracle:
+> streaming forward == dense forward bitwise (even under LRU eviction),
+> pooled greedy == from-scratch greedy bitwise, MTP draft net-gain measured
+> per cache state (−0.3% cold / +5.4% warm), and a standalone scorer
+> quality-gates any engine's output with A/B bootstrap CIs.
 >
-> 54 unit + 9 integration tests; key paths checked bitwise or at tight
-> tolerance.
+> 58 unit + 9 integration tests; multi-process DualPipe; fused AWQ/GPTQ/
+> MXFP4 kernels (found a latent MXFP4 decode bug); GGUF v3 round-trip
+> bit-exact; CPU benchmark suite; CPU-trained toy checkpoint with a trained
+> MTP head.
 >
 > Feedback wanted:
-> 1. For a correctness-first repo, what's the most valuable next
->    component: CUDA end-to-end verification, or a real tokenizer?
-> 2. Any interest in a writeup of the multiprocess pipeline protocol?
+> 1. Which serving optimization most needs an external audit layer today?
+> 2. Writeup interest: the three bugs the oracles caught (eviction-during-
+>    detach, future-position past snapshots, long-dtype magnitude table)?
 >
 > GitHub: https://github.com/tonythetiger168/helioslm
 
 ---
 
 ### Posting tips
-- Post Tuesday–Thursday, 8–10am US Eastern; reply to every comment in the
-  first 3–4 hours
-- Lead with the demo GIF in the README; the 99.2% KV-cache chart is the
-  strongest single image for ML audiences
-- The GGUF export + fused kernels are the strongest hooks for
-  r/LocalLLaMA; the multiprocess DualPipe protocol + MXFP4 bug story are
-  the strongest hooks for HN
-- Don't ask for stars; the community questions above invite technical
-  discussion, which is what these communities reward
+- Best window: Tue–Thu 08:00–10:00 US Eastern (20:00–22:00 HKT); Friday
+  nights bury threads — hold for next week if missed
+- Reply to every comment in the first 3–4 hours; the three questions above
+  are chosen to surface technical discussion, not star-begging
+- Lead images: the 99.2% KV-cache chart (ML crowd), the demo GIF (general)
+- The "three bugs the oracles caught" hook is the strongest HN angle —
+  engineers love post-mortems more than features
