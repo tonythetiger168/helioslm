@@ -3488,6 +3488,43 @@ def test_spec_breakeven():
     _pass("test_spec_breakeven",
           "P3-schema rows, best-draft helper, acceptance field in range")
 
+def test_score_stream():
+    """v5.17: standalone token-stream scorer — engine-agnostic quality gate."""
+    from pathlib import Path
+    from helioslm_v5.eval.score_stream import score_record
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+
+    ck = Path(__file__).resolve().parents[2] / "checkpoints" / "toy_v5.13.pt"
+    if not ck.exists():
+        _pass("test_score_stream", "skipped (checkpoint not built)")
+        return
+    ckpt = torch.load(ck, map_location="cpu", weights_only=False)
+    model = HeliosLMv5(HeliosLMv5Config(size="lite"))
+    model.load_state_dict(ckpt["state_dict"])
+    model.eval()
+    vocab = ckpt["vocab_size"]
+
+    prompt = "HeliosLM"
+    ids = torch.tensor([[ord(c) for c in prompt]])
+    with torch.no_grad():
+        greedy = "".join(chr(int(t)) for t in
+                         model.generate(ids, max_new_tokens=16,
+                                        temperature=0)[0, len(prompt):])
+    rng = torch.Generator().manual_seed(5)
+    import random as _r
+    _r.seed(5)
+    noise = "".join(chr(_r.randint(97, 122)) for _ in range(16))
+
+    s_greedy = score_record(model, prompt, greedy, vocab)
+    s_noise = score_record(model, prompt, noise, vocab)
+    assert s_greedy["nll_per_token"] < s_noise["nll_per_token"], \
+        "model's own greedy output must score better than random chars"
+    assert s_greedy["n_tokens"] == 16 and s_greedy["ppl"] > 0
+    assert set(s_greedy) >= {"sum_logprob", "n_tokens", "nll_per_token", "ppl"}
+    _pass("test_score_stream",
+          f"greedy nll={s_greedy['nll_per_token']:.2f} < noise "
+          f"nll={s_noise['nll_per_token']:.2f}; schema complete")
+
 
 TESTS = [
     test_mla,
@@ -3545,6 +3582,8 @@ TESTS = [
     test_final_logit_soft_cap,
     # limitations task: GGUF export
     test_gguf_export,
+    # v5.17
+    test_score_stream,
     # v5.16
     test_spec_breakeven,
     # v5.15
@@ -3562,7 +3601,7 @@ TESTS = [
 
 
 def main():
-    print("HeliosLM v5.16 Test Suite (lite config, CPU)")
+    print("HeliosLM v5.17 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:

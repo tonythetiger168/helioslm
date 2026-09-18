@@ -1,5 +1,15 @@
 # HeliosLM v5 Changelog
 
+## v5.17 (2026-09-18) - Standalone Token-Stream Scorer (roadmap #6)
+- `helioslm_v5/eval/score_stream.py`: score (prompt, output) JSONL records
+  from ANY engine (colibri / vLLM / llama.cpp / HeliosLM) under a
+  reference model — per-record sum_logprob / nll_per_token / ppl
+- `--compare` A/B mode: paired records -> per-id deltas + bootstrap CI,
+  the table-format counterpart of colibri's container A/B findings
+- Char-level with the toy checkpoint (ASCII enforced, loud error) — the
+  file format is the deliverable; swap checkpoints for real text
+- 57/57 tests + 9/9 integration
+
 ## v5.16 (2026-09-18) - Speculation Break-Even Instrumentation (roadmap #6)
 - `benchmarks/bench_spec_breakeven.py`: sweeps MTP draft on/off x cache
   state on the toy checkpoint and emits rows in the exact JSONL schema
