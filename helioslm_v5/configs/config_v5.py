@@ -1,4 +1,4 @@
-"""HeliosLM v5.17 Configuration
+"""HeliosLM v5.18 Configuration
 
 Two sizes are supported via ``HeliosLMv5Config(size=...)``:
   - ``"lite"``: small CPU-friendly config for smoke tests (seconds per step).
@@ -207,7 +207,7 @@ class GRPOConfig:
 
 @dataclass
 class HeliosLMv5Config:
-    model_name: str = "HeliosLM-v5.17"
+    model_name: str = "HeliosLM-v5.18"
     size: str = "full"  # "full" (production defaults) or "lite" (CPU smoke tests)
     vocab_size: int = 160000
     max_position_embeddings: int = 1048576

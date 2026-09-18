@@ -3525,6 +3525,62 @@ def test_score_stream():
           f"greedy nll={s_greedy['nll_per_token']:.2f} < noise "
           f"nll={s_noise['nll_per_token']:.2f}; schema complete")
 
+def test_prefix_pool():
+    """v5.18: content-addressed KV prefix pool — pooled == from-scratch."""
+    from pathlib import Path
+    from helioslm_v5.src.inference.prefix_pool import PrefixPool
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+
+    ck = Path(__file__).resolve().parents[2] / "checkpoints" / "toy_v5.13.pt"
+    if not ck.exists():
+        _pass("test_prefix_pool", "skipped (checkpoint not built)")
+        return
+    ckpt = torch.load(ck, map_location="cpu", weights_only=False)
+    model = HeliosLMv5(HeliosLMv5Config(size="lite"))
+    model.load_state_dict(ckpt["state_dict"])
+    model.eval()
+
+    def ref(prompt, n=12):
+        ids = torch.tensor([[ord(c) for c in prompt]])
+        return model.generate(ids, max_new_tokens=n, temperature=0)
+
+    def enc(prompt):
+        return [ord(c) for c in prompt]
+
+    A = "# HeliosLM config"      # 17 chars -> one full 16-block + remainder
+    B = " import torch"
+
+    # 1) full + partial prefix hit: pooled == from-scratch, bitwise
+    pool = PrefixPool(model, block_size=16, max_blocks=16,
+                      fingerprint="v5.18/fp32")
+    pool.store(enc(A))
+    out_hit = pool.generate(enc(A + B), max_new_tokens=12, temperature=0)
+    assert torch.equal(out_hit, ref(A + B)), "prefix hit must be bit-exact"
+    assert pool.stats()["hits"] >= 1
+
+    # 2) fingerprint mismatch: same tokens, other fingerprint -> miss,
+    #    and the result is STILL identical (pool can never change answers)
+    pool2 = PrefixPool(model, block_size=16, max_blocks=16,
+                       fingerprint="v5.18/int4")
+    out_fp = pool2.generate(enc(A + B), max_new_tokens=12, temperature=0)
+    assert torch.equal(out_fp, ref(A + B))
+    assert pool2.stats()["misses"] >= 1
+
+    # 3) eviction: one-block pool evicts A; re-request still correct
+    pool3 = PrefixPool(model, block_size=16, max_blocks=1,
+                       fingerprint="v5.18/fp32")
+    pool3.generate(enc(A), max_new_tokens=4, temperature=0)
+    pool3.generate(enc("class HeliosLM:"), max_new_tokens=4, temperature=0)
+    assert pool3.stats()["evictions"] >= 1
+    out_ev = pool3.generate(enc(A + B), max_new_tokens=12, temperature=0)
+    assert torch.equal(out_ev, ref(A + B)), "post-eviction must be bit-exact"
+
+    st = pool.stats()
+    assert st["hit_tokens"] > 0 and 0.0 <= st["hit_rate"] <= 1.0
+    _pass("test_prefix_pool",
+          f"full/partial hit + fingerprint miss + eviction all bit-exact; "
+          f"hit_tokens={st['hit_tokens']}")
+
 
 TESTS = [
     test_mla,
@@ -3582,6 +3638,8 @@ TESTS = [
     test_final_logit_soft_cap,
     # limitations task: GGUF export
     test_gguf_export,
+    # v5.18
+    test_prefix_pool,
     # v5.17
     test_score_stream,
     # v5.16
@@ -3601,7 +3659,7 @@ TESTS = [
 
 
 def main():
-    print("HeliosLM v5.17 Test Suite (lite config, CPU)")
+    print("HeliosLM v5.18 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:

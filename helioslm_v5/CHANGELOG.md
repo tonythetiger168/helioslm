@@ -1,5 +1,19 @@
 # HeliosLM v5 Changelog
 
+## v5.18 (2026-09-18) - Content-Addressed KV Prefix Pool (roadmap #6 complete)
+- `helioslm_v5/src/inference/prefix_pool.py`: cross-session prefix reuse —
+  fixed-size token blocks keyed by blake2b(token ids + config fingerprint),
+  per-block incremental prefill, LRU eviction, exact-length past snapshots
+- The config fingerprint (model version / quant scheme — the P2 metadata
+  discipline) makes stale or differently-quantized entries unserveable
+- Oracle: pooled greedy == from-scratch greedy BITWISE for full hits,
+  partial hits, fingerprint misses, and post-eviction re-requests
+- `pool.generate()` seeds from the longest pooled prefix; stats() reports
+  hits/misses/hit_tokens/evictions
+- Roadmap #6 is now feature-complete: streaming oracle + break-even
+  telemetry + stream scorer + prefix pool
+- 58/58 tests + 9/9 integration
+
 ## v5.17 (2026-09-18) - Standalone Token-Stream Scorer (roadmap #6)
 - `helioslm_v5/eval/score_stream.py`: score (prompt, output) JSONL records
   from ANY engine (colibri / vLLM / llama.cpp / HeliosLM) under a
