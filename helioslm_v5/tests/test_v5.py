@@ -3388,6 +3388,60 @@ def test_multi_process_dualpipe():
     _pass("test_multi_process_dualpipe",
           "2 ranks x 3 micro-batches: outputs/grads == single-process <1e-5")
 
+def test_expert_streaming():
+    """v5.15: disk-tier expert store — streaming forward is bit-exact vs dense."""
+    from helioslm_v5.src.inference.expert_store import (attach_streaming_store,
+                                                        detach_streaming_store)
+    from helioslm_v5.src.moe.sigmoid_moe import DeviceLimitedMoE
+
+    def small_moe():
+        cfg = HeliosLMv5Config(size="lite")
+        cfg.hidden_size = 32
+        cfg.moe.num_experts = 8
+        cfg.moe.num_shared_experts = 0
+        cfg.moe.num_activated_experts = 2
+        cfg.moe.expert_hidden_size = 64
+        m = DeviceLimitedMoE(cfg)
+        m.eval()
+        return m
+
+    torch.manual_seed(1515)
+    moe = small_moe()
+    x = torch.randn(2, 5, 32)
+    dense = moe(x)
+    ref_state = {k: v.clone() for k, v in moe.state_dict().items()}
+
+    # full working set resident: repeat pass must hit
+    store = attach_streaming_store(moe, budget_bytes=8 * 64 * 32 * 3 * 4)
+    stream = moe(x)
+    assert torch.equal(dense, stream), "streaming forward must be bit-exact"
+    assert store.misses > 0, "experts must page in from disk"
+    hits_after_first = store.hits
+    _ = moe(x)   # same routing -> resident hits
+    assert store.hits > hits_after_first, "repeat pass should hit residents"
+    detach_streaming_store(moe, store)
+
+    # eviction path: tiny budget forces churn; correctness must survive
+    moe2 = small_moe()
+    moe2.load_state_dict(ref_state)   # captured pre-attach (attached list hides expert keys)
+    moe2.eval()
+    st = attach_streaming_store(moe2, budget_bytes=64 * 32 * 3 * 4 + 256)
+    for trial in range(6):
+        xt = torch.randn(2, 5, 32, generator=torch.Generator().manual_seed(trial))
+        out = moe2(xt)
+        assert out.shape == xt.shape
+    assert st.evictions > 0, "tiny budget must evict"
+    detach_streaming_store(moe2, st)   # no-eviction reload
+    xt = torch.randn(2, 5, 32, generator=torch.Generator().manual_seed(99))
+    dense_xt = moe2(xt)
+    st2 = attach_streaming_store(moe2, budget_bytes=64 * 32 * 3 * 4 + 256)
+    stream_xt = moe2(xt)
+    detach_streaming_store(moe2, st2)
+    assert torch.equal(dense_xt, stream_xt), "eviction path must stay bit-exact"
+    _pass("test_expert_streaming",
+          f"bit-exact, hits={st.hits}, misses={st.misses}, "
+          f"evictions={st.evictions}, file={st.total_bytes // 1024}KB")
+
 
 TESTS = [
     test_mla,
@@ -3445,6 +3499,8 @@ TESTS = [
     test_final_logit_soft_cap,
     # limitations task: GGUF export
     test_gguf_export,
+    # v5.15
+    test_expert_streaming,
     # v5.14
     test_multi_process_dualpipe,
     # v5.13
@@ -3458,7 +3514,7 @@ TESTS = [
 
 
 def main():
-    print("HeliosLM v5.14 Test Suite (lite config, CPU)")
+    print("HeliosLM v5.15 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:

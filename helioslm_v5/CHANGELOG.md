@@ -1,5 +1,21 @@
 # HeliosLM v5 Changelog
 
+## v5.15 (2026-09-18) - Disk-Tier Expert Store (streaming oracle, roadmap #6)
+- `helioslm_v5/src/inference/expert_store.py`: offload DeviceLimitedMoE
+  routed experts to a memory-mapped file; LRU resident set bounded by
+  budget_bytes; router/shared experts stay resident (the colibri
+  division: weights as data to stage)
+- Bit-exactness contract: raw dtype-preserving storage + verbatim restore
+  into the same modules => streaming forward == dense forward BITWISE
+  (asserted by test_expert_streaming, incl. the eviction and
+  detach/reattach paths)
+- `verify_streaming()` oracle helper; hit/miss/eviction/bytes telemetry
+  via store.stats()
+- bf16 handled via uint16 bit-pattern views (numpy has no bf16)
+- detach_streaming_store reloads all experts without LRU eviction
+  (budget temporarily expanded — detach is not the hot path)
+- 55/55 tests + 9/9 integration
+
 ## v5.14 (2026-09-16) - Multi-Process DualPipe
 - `helioslm_v5/src/training/multi_process_dualpipe.py`: one DualPipeStage
   per OS process (spawn), exchanging detached activations/gradients over
