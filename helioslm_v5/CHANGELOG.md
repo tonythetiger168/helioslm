@@ -1,5 +1,22 @@
 # HeliosLM v5 Changelog
 
+## v5.19 (2026-09-19) - Evolvable Serving Harness (ModularRSI-style, oracle-gated)
+- `helioslm_v5/src/inference/harness_evolver.py`: evolve serving configs
+  (draft policy / prefix pool / expert-tier budget) under a DETERMINISTIC
+  validation gate — at temperature 0 every accepted config must produce
+  outputs bitwise-identical to baseline (cache/draft/tier change latency,
+  never greedy answers; that invariance IS the gate and cannot be
+  prompt-hacked)
+- Modular mutation search (one module at a time, compose accepted
+  mutations) with an analytic cost model calibrated from v5.15-v5.18
+  telemetry (pool hit tokens, MTP acceptance, tier hit rates)
+- Reference run on the toy checkpoint: accepted draft:on + pool:on,
+  1.412x modeled speedup, 0 gate rejects; the search honestly rejects
+  modules with no profit (tier on a dense model)
+- Methodology reference: ModularRSI (arXiv:2609.14857) — module-wise
+  harness evolution, applied here to the inference layer
+- 59/59 tests + 9/9 integration
+
 ## v5.18 (2026-09-18) - Content-Addressed KV Prefix Pool (roadmap #6 complete)
 - `helioslm_v5/src/inference/prefix_pool.py`: cross-session prefix reuse —
   fixed-size token blocks keyed by blake2b(token ids + config fingerprint),

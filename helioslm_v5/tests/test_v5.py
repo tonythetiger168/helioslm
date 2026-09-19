@@ -3581,6 +3581,49 @@ def test_prefix_pool():
           f"full/partial hit + fingerprint miss + eviction all bit-exact; "
           f"hit_tokens={st['hit_tokens']}")
 
+def test_harness_evolver():
+    """v5.19: oracle-gated serving-harness evolution (ModularRSI-style)."""
+    from pathlib import Path
+    from helioslm_v5.src.inference.harness_evolver import HarnessEvolver
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+
+    ck = Path(__file__).resolve().parents[2] / "checkpoints" / "toy_v5.13.pt"
+    if not ck.exists():
+        _pass("test_harness_evolver", "skipped (checkpoint not built)")
+        return
+    ckpt = torch.load(ck, map_location="cpu", weights_only=False)
+    model = HeliosLMv5(HeliosLMv5Config(size="lite"))
+    model.load_state_dict(ckpt["state_dict"])
+    model.eval()
+
+    # shared-prefix workload: pool=on should be profitable; overlapping
+    # prompts mirror the agentic multi-turn setting the paper targets
+    base = "# HeliosLM v5.19 config"
+    workload = [[ord(c) for c in base + suffix] for suffix in
+                (" import torch", " attention", " moe router", " engine")]
+
+    ev = HarnessEvolver(model, workload, max_new=6)
+    report = ev.evolve()
+
+    # invariants: the oracle can never accept a math-changing config
+    assert report["gate_rejects"] == 0, \
+        "temp-0 invariance: cache/draft/tier must not change greedy outputs"
+    for row in report["contrastive"]:
+        assert row["gate_passed"], "every evaluated config must pass the gate"
+
+    # structure + the search actually evaluated candidates
+    assert report["evaluations"] == 3
+    assert report["cost_best"] <= report["cost_baseline"]
+    assert report["speedup"] >= 1.0
+    assert report["best_config"]["draft"] in (True, False)
+    # draft was accepted or rejected on data, both fine — but if the
+    # workload shares prefixes, the pool should have been accepted
+    labels = [a["config"] for a in report["accepted"]]
+    assert "pool:on" in labels, "shared-prefix workload must profit from pool"
+    _pass("test_harness_evolver",
+          f"best={report['best_label'] or 'baseline'} "
+          f"speedup={report['speedup']}x accepted={labels}")
+
 
 TESTS = [
     test_mla,
@@ -3638,6 +3681,8 @@ TESTS = [
     test_final_logit_soft_cap,
     # limitations task: GGUF export
     test_gguf_export,
+    # v5.19
+    test_harness_evolver,
     # v5.18
     test_prefix_pool,
     # v5.17
@@ -3659,7 +3704,7 @@ TESTS = [
 
 
 def main():
-    print("HeliosLM v5.18 Test Suite (lite config, CPU)")
+    print("HeliosLM v5.19 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:
