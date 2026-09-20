@@ -73,12 +73,15 @@ class HarnessEvolver:
     """
 
     def __init__(self, model, workload: List[List[int]], max_new: int = 8,
-                 block_size: int = 16):
+                 block_size: int = 16, memory_budget: float = None):
         self.model = model
         self.model.eval()
         self.workload = [list(w) for w in workload]
         self.max_new = max_new
         self.block_size = block_size
+        # v5.20: second axis. None = unconstrained. Pool blocks and tier
+        # residency consume memory; drafting does not (weights resident).
+        self.memory_budget = memory_budget
         self.gate_rejects = 0
         self.evaluations = 0
 
@@ -123,8 +126,19 @@ class HarnessEvolver:
             outputs.append(list(out))
             telemetry["tokens"] += len(ids) + len(out)
         if pool is not None:
-            telemetry["pool_hit_tokens"] = pool.stats()["hit_tokens"]
+            st = pool.stats()
+            telemetry["pool_hit_tokens"] = st["hit_tokens"]
+            telemetry["pool_blocks"] = st["blocks_resident"]
+        else:
+            telemetry["pool_blocks"] = 0
         return outputs, telemetry
+
+    @staticmethod
+    def _memory(cfg: HarnessConfig, telemetry: dict) -> float:
+        """Memory footprint (relative units): pooled KV blocks + tier
+        residency. Drafting costs zero (no extra state)."""
+        return float(telemetry.get("pool_blocks", 0)) \
+            + float(cfg.tier_resident_experts)
 
     # ------------------------------------------------------------------
     # Analytic cost model (per-probe calibration; units are relative).
@@ -153,12 +167,21 @@ class HarnessEvolver:
     # ------------------------------------------------------------------
     # Modular search: per module, try each alternative against the gate.
     # ------------------------------------------------------------------
-    def evolve(self) -> dict:
+    def evolve(self, start_from: "HarnessConfig" = None) -> dict:
         baseline = HarnessConfig(label="baseline")
         base_outputs, base_tel = self._run(baseline)
         base_cost = self._cost(baseline, base_tel, 0)
-        current = baseline
-        current_cost = base_cost
+        # AdaptationLoop seeds the search from a transferred config: the
+        # baseline for ACCEPTANCE decisions is still the zero config (its
+        # cost), but mutations compose onto the seed.
+        seed = start_from or HarnessConfig()
+        seed_outputs, seed_tel = self._run(seed)
+        seed_cost = self._cost(seed, seed_tel, 0)
+        # the oracle must hold for the seed itself on this workload
+        seed_ok = all(torch.equal(torch.tensor(a), torch.tensor(b))
+                      for a, b in zip(seed_outputs, base_outputs))
+        current = seed if seed_ok else HarnessConfig()
+        current_cost = seed_cost if seed_ok else base_cost
 
         modules = {
             "draft": [HarnessConfig(draft=True, label="draft:on")],
@@ -168,6 +191,7 @@ class HarnessEvolver:
 
         accepted: List[dict] = []
         contrastive: List[dict] = []
+        evaluated: List[dict] = []   # for the Pareto frontier
         for mod, candidates in modules.items():
             for cand in candidates:
                 # build candidate on top of the current config
@@ -183,20 +207,48 @@ class HarnessEvolver:
                 ok = all(torch.equal(torch.tensor(a), torch.tensor(b))
                          for a, b in zip(out, base_outputs))
                 cost = self._cost(trial, tel, 0)
+                mem = self._memory(trial, tel)
+                evaluated.append({"module": mod, "label": trial.label,
+                                  "cost": round(cost, 2),
+                                  "memory": round(mem, 2), "gate": ok})
+                mem_ok = (self.memory_budget is None
+                          or mem <= self.memory_budget)
                 contrastive.append({
                     "module": mod, "config": trial.label,
                     "gate_passed": ok,
                     "cost": round(cost, 2),
+                    "memory": round(mem, 2),
+                    "memory_budget_ok": mem_ok,
                     "delta_vs_current": round(cost - current_cost, 2),
                 })
                 if not ok:
                     # the oracle caught a math-changing "optimization"
                     self.gate_rejects += 1
                     continue
+                if not mem_ok:
+                    # v5.20: latency is not the only axis — a config that
+                    # saves time by blowing the memory budget is rejected
+                    # (the efficiency-redemption failure mode)
+                    continue
                 if cost < current_cost:
                     current, current_cost = trial, cost
                     accepted.append({"module": mod, "config": trial.label,
-                                     "cost": round(cost, 2)})
+                                     "cost": round(cost, 2),
+                                     "memory": round(mem, 2)})
+
+        # Pareto frontier over ALL gate-passing evaluations:
+        # minimize (cost, memory); a point is kept if nothing dominates it.
+        pareto = []
+        for p in evaluated:
+            if not p["gate"]:
+                continue
+            dominated = any(
+                q is not p and q["gate"]
+                and q["cost"] <= p["cost"] and q["memory"] <= p["memory"]
+                and (q["cost"] < p["cost"] or q["memory"] < p["memory"])
+                for q in evaluated)
+            if not dominated:
+                pareto.append(p)
 
         return {
             "best_config": current.as_dict(),
@@ -206,8 +258,57 @@ class HarnessEvolver:
             "speedup": round(base_cost / max(current_cost, 1e-9), 3),
             "accepted": accepted,
             "contrastive": contrastive,
+            "pareto": pareto,
+            "memory_budget": self.memory_budget,
             "gate_rejects": self.gate_rejects,
             "evaluations": self.evaluations,
             "oracle": "greedy outputs bitwise-identical to baseline "
                       "(temperature 0 invariance)",
+        }
+
+
+class AdaptationLoop:
+    """Transfer an evolved harness across workloads (the inference-layer
+    analog of ModularRSI's cross-model generalization): seed a new evolver
+    with the source best config on a target workload, re-run the module
+    mutations, and report which modules survived the transfer.
+
+    The gate is re-validated on the target workload — a transferred config
+    is never trusted, only re-proven.
+    """
+
+    def __init__(self, model, rounds: int = 1):
+        self.model = model
+        self.rounds = rounds
+
+    def transfer(self, source_report: dict, target_workload,
+                 max_new: int = 8, memory_budget=None) -> dict:
+        seed = HarnessConfig(**source_report["best_config"])
+        decisions = []
+        reaccepted = set()
+        for r in range(self.rounds):
+            ev = HarnessEvolver(self.model, target_workload,
+                                max_new=max_new,
+                                memory_budget=memory_budget)
+            rep = ev.evolve(start_from=seed)
+            for a in rep["accepted"]:
+                reaccepted.add(a["module"])
+            decisions.append({"round": r, "accepted": rep["accepted"],
+                              "gate_rejects": rep["gate_rejects"]})
+        # intersection: a seed module survives only if the target workload
+        # re-accepts it (and it fits the target memory budget)
+        adapted = {"draft": seed.draft and "draft" in reaccepted,
+                   "pool": seed.pool and "pool" in reaccepted,
+                   "tier_resident_experts": seed.tier_resident_experts
+                   if "tier" in reaccepted else 0}
+        dropped = [m for m, on in (("draft", seed.draft), ("pool", seed.pool))
+                   if on and not adapted[m]]
+        return {
+            "source_config": seed.as_dict(),
+            "adapted_config": adapted,
+            "dropped_modules": dropped,
+            "target_memory_budget": memory_budget,
+            "decisions": decisions,
+            "note": "transferred modules must be re-accepted under the "
+                    "target workload's gate; unprofitable ones are dropped",
         }

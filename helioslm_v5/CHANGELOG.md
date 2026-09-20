@@ -1,5 +1,20 @@
 # HeliosLM v5 Changelog
 
+## v5.20 (2026-09-20) - Pareto-Aware Integration + Adaptation Loop
+- `harness_evolver.py` gains a memory axis: pool blocks + tier residency
+  count toward `memory_budget` (None = unconstrained); configs that buy
+  latency by blowing the budget are rejected — the efficiency-redemption
+  failure mode (ModularRSI Table 5's lost StepNum gains)
+- Report now includes the Pareto frontier over all gate-passing
+  evaluations (minimize cost AND memory)
+- `AdaptationLoop.transfer()`: cross-workload harness transfer with
+  re-validation — seed modules must be RE-ACCEPTED under the target
+  workload's gate or they are dropped. Cold/prefix-free targets
+  correctly shed both draft and pool, matching the v5.16 break-even data
+- Reference: ModularRSI gaps 2 (integration) and 3 (transfer decay),
+  closed at the inference layer
+- 60/60 tests + 9/9 integration
+
 ## v5.19 (2026-09-19) - Evolvable Serving Harness (ModularRSI-style, oracle-gated)
 - `helioslm_v5/src/inference/harness_evolver.py`: evolve serving configs
   (draft policy / prefix pool / expert-tier budget) under a DETERMINISTIC

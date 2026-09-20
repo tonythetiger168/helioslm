@@ -3624,6 +3624,63 @@ def test_harness_evolver():
           f"best={report['best_label'] or 'baseline'} "
           f"speedup={report['speedup']}x accepted={labels}")
 
+def test_evolver_pareto_adaptation():
+    """v5.20: memory axis + Pareto frontier + cross-workload adaptation."""
+    from pathlib import Path
+    from helioslm_v5.src.inference.harness_evolver import (AdaptationLoop,
+                                                           HarnessEvolver)
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+
+    ck = Path(__file__).resolve().parents[2] / "checkpoints" / "toy_v5.13.pt"
+    if not ck.exists():
+        _pass("test_evolver_pareto_adaptation", "skipped (checkpoint not built)")
+        return
+    ckpt = torch.load(ck, map_location="cpu", weights_only=False)
+    model = HeliosLMv5(HeliosLMv5Config(size="lite"))
+    model.load_state_dict(ckpt["state_dict"])
+    model.eval()
+
+    base = "# HeliosLM v5.20 config"
+    warm_wl = [[ord(c) for c in base + suf] for suf in
+               (" import torch", " attention", " moe router", " engine")]
+
+    # 1) Pareto frontier over evaluated configs: all entries non-dominated
+    ev = HarnessEvolver(model, warm_wl, max_new=6)
+    rep = ev.evolve()
+    assert rep["gate_rejects"] == 0
+    for p in rep["pareto"]:
+        assert p["gate"]
+        for q in rep["pareto"]:
+            assert not (q is not p and q["cost"] <= p["cost"]
+                        and q["memory"] <= p["memory"]
+                        and (q["cost"] < p["cost"] or q["memory"] < p["memory"]))
+
+    # 2) memory budget: zero budget rejects pool, draft (memory-free) survives
+    ev_m = HarnessEvolver(model, warm_wl, max_new=6, memory_budget=0.0)
+    rep_m = ev_m.evolve()
+    assert all(a["module"] != "pool" for a in rep_m["accepted"]), \
+        "zero memory budget must reject the pool module"
+    for row in rep_m["contrastive"]:
+        if row["module"] == "pool":
+            assert row["memory"] > 0 and not row["memory_budget_ok"]
+
+    # 3) adaptation: source (rich prefix overlap, generous memory) ->
+    #    target (no shared prefixes, zero memory) drops the pool module
+    src = HarnessEvolver(model, warm_wl, max_new=6, memory_budget=None)
+    src_rep = src.evolve()
+    assert src_rep["best_config"]["pool"], "source workload must profit from pool"
+    cold_wl = [[ord(c) for c in w] for w in
+               ("xyz alpha", "qrs beta", "mno gamma", "jkl delta")]
+    loop = AdaptationLoop(model, rounds=1)
+    tr = loop.transfer(src_rep, cold_wl, max_new=6, memory_budget=0.0)
+    assert "pool" in tr["dropped_modules"], \
+        "pool must be dropped on a prefix-free, zero-memory target"
+    assert tr["adapted_config"]["pool"] is False
+    assert tr["decisions"][0]["gate_rejects"] == 0
+    _pass("test_evolver_pareto_adaptation",
+          f"pareto={len(rep['pareto'])}pts, memory-budget rejects pool, "
+          f"adaptation dropped={tr['dropped_modules']}")
+
 
 TESTS = [
     test_mla,
@@ -3681,6 +3738,8 @@ TESTS = [
     test_final_logit_soft_cap,
     # limitations task: GGUF export
     test_gguf_export,
+    # v5.20
+    test_evolver_pareto_adaptation,
     # v5.19
     test_harness_evolver,
     # v5.18
@@ -3704,7 +3763,7 @@ TESTS = [
 
 
 def main():
-    print("HeliosLM v5.19 Test Suite (lite config, CPU)")
+    print("HeliosLM v5.20 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:
