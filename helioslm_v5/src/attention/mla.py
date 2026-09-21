@@ -290,6 +290,13 @@ class MLA(nn.Module):
             getattr(config.attention, "use_absorption", True)
         )
 
+        # v5.22 NoPE (Kimi-K3 direction): skip RoPE entirely; q_rope /
+        # k_rope keep their projected (unrotated) values and position_ids
+        # only drive the causal mask / cache length. The rope_head_dim
+        # split is retained so checkpoints and cache layouts are
+        # unchanged — only the rotation is dropped.
+        self.nope = bool(getattr(config.attention, "nope", False))
+
         # Q compression: d_model -> d_c' -> num_heads * head_dim
         self.q_a_proj = nn.Linear(self.hidden_size, self.q_lora_rank, bias=False)
         self.q_b_proj = nn.Linear(self.q_lora_rank, self.num_heads * self.head_dim, bias=False)
@@ -465,9 +472,13 @@ class MLA(nn.Module):
 
         # RoPE applied ONLY to the rope dims of q and the shared k_rope,
         # at the correct absolute positions. V is never rotated.
-        cos, sin = self.rope(position_ids)
-        q_rope = apply_rotary(q_rope, cos, sin)
-        k_rope = apply_rotary(k_rope, cos, sin)
+        # v5.22 NoPE: with attention.nope the rotation is skipped
+        # entirely (Kimi-K3 direction); q_rope/k_rope pass through
+        # unrotated and the rope cache registers stay untouched.
+        if not self.nope:
+            cos, sin = self.rope(position_ids)
+            q_rope = apply_rotary(q_rope, cos, sin)
+            k_rope = apply_rotary(k_rope, cos, sin)
         return q_nope, q_rope, c_kv, k_rope
 
     def _w_uk_w_uv(self):

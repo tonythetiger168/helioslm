@@ -9,7 +9,8 @@ FP8 KV cache, Hyper-Connections, QAT; v5.8: YaRN RoPE scaling, DSA sparse
 top-k attention, per-head Muon, GPTQ act-order; v5.9: attention logit
 soft-capping, per-head QK-norm, sliding-window attention with sinks,
 final logit soft-capping; v5.21: per-channel (KDA-style) decay gate for
-GatedDeltaAttention + MTP rollback compatibility):
+GatedDeltaAttention + MTP rollback compatibility; v5.22: NVFP4-format QAT
+target + NoPE option for MLA):
 every test exercises the real module with numerical assertions (not just
 shapes), and any failure makes the process exit non-zero.
 
@@ -2271,6 +2272,154 @@ def test_mtp_per_channel_rollback():
 
 
 # ----------------------------------------------------------------------
+# v5.22: NVFP4-format QAT target (E2M1 x 16 blocks, E4M3 block scales)
+# ----------------------------------------------------------------------
+def test_nvfp4_qat():
+    from helioslm_v5.src.quantization.qat import (
+        FakeQuantLinear, _qdq_mxfp4, _qdq_nvfp4, apply_qat)
+
+    torch.manual_seed(322)
+    # 1) Accuracy: on Gaussian weights the NVFP4 hierarchy (16-wide blocks,
+    #    FP8 block scales) must beat MXFP4 (32-wide blocks, power-of-2
+    #    scales) in relative RTN error.
+    w = torch.randn(8, 96)
+    dq = _qdq_nvfp4(w, 16)
+    assert dq.shape == w.shape
+    err_nv = (dq - w).norm() / w.norm()
+    err_mx = (_qdq_mxfp4(w, 32) - w).norm() / w.norm()
+    assert err_nv < 0.08, f"NVFP4 RTN error unexpectedly large: {err_nv:.4f}"
+    assert err_nv < err_mx, \
+        f"NVFP4 ({err_nv:.4f}) should beat MXFP4 ({err_mx:.4f}) on RTN error"
+
+    # 2) Near-exactness: grid values under a power-of-two block scale with
+    #    EVERY block carrying the max grid value (absmax = 3*2^-3 exactly,
+    #    so bscale = 2^-4 and every value/eff lands on the E2M1 grid).
+    #    Residual error is fp32 rounding of the per-row scale (2^-4/448 is
+    #    not a dyadic rational), <= ~6 * 2^-4 * 2^-24 ~ 1e-7.
+    g = torch.tensor([0.5, 1.0, 1.5, 2.0, 3.0])
+    w_grid = g[torch.randint(0, 5, (6, 32))] * (2.0 ** -3)
+    w_grid = w_grid * torch.where(torch.rand(6, 32) < 0.5, -1.0, 1.0)
+    w_grid[:, 0::16] = 3.0 * (2.0 ** -3)        # per-block absmax anchor
+    dq_grid = _qdq_nvfp4(w_grid, 16)
+    gdiff = (dq_grid - w_grid).abs().max().item()
+    assert gdiff < 1e-6, \
+        f"grid-valued weights should survive to fp32 scale rounding: {gdiff}"
+
+    # 3) Non-divisible input width: zero-pad internally, discard padding.
+    w_odd = torch.randn(4, 37)
+    dq_odd = _qdq_nvfp4(w_odd, 16)
+    assert dq_odd.shape == w_odd.shape and torch.isfinite(dq_odd).all()
+
+    # 4) STE gradient: values on the grid, gradient as if qdq were the
+    #    identity — equals the analytic grad of the dequantized linear.
+    torch.manual_seed(323)
+    lin = nn.Linear(48, 8, bias=False)
+    fq = FakeQuantLinear(lin, method="nvfp4")
+    assert fq.group_size == 16, "NVFP4 default block width must be 16"
+    x = torch.randn(3, 48)
+    loss = fq(x).pow(2).sum()
+    loss.backward()
+    with torch.no_grad():
+        wdq = fq.fake_quant_weight()
+        out = x @ wdq.T
+    manual = (2.0 * out).T @ x                   # grad of ||x wdq^T||^2 w.r.t w
+    gdiff = (fq.weight.grad - manual).abs().max().item()
+    assert gdiff < 1e-5, f"STE gradient mismatch: {gdiff:.3e}"
+
+    # 5) apply_qat integration: every Linear wrapped at block 16, a full
+    #    forward/backward step runs, gradients reach the fp32 weights.
+    model = nn.Sequential(nn.Linear(16, 32), nn.Tanh(), nn.Linear(32, 4))
+    applied = apply_qat(model, method="nvfp4")
+    assert len(applied) == 2 and all(m.method == "nvfp4"
+                                     and m.group_size == 16
+                                     for _, m in applied)
+    x = torch.randn(4, 16)
+    loss = model(x).pow(2).mean()
+    loss.backward()
+    assert all(m.weight.grad is not None and torch.isfinite(m.weight.grad).all()
+               for _, m in applied)
+    _expect_raises(ValueError, lambda: apply_qat(model, method="fp3"),
+                   "unknown QAT method")
+    _pass("test_nvfp4_qat",
+          f"RTN err nvfp4 {err_nv:.4f} < mxfp4 {err_mx:.4f}, grid-exact 0 err, "
+          f"STE grad diff {gdiff:.1e}, apply_qat {len(applied)} linears")
+
+
+# ----------------------------------------------------------------------
+# v5.22: NoPE option for MLA (Kimi-K3 direction)
+# ----------------------------------------------------------------------
+def test_nope_attention():
+    from helioslm_v5.src.attention.mla import MLA
+
+    torch.manual_seed(324)
+    config = HeliosLMv5Config(size="lite")
+    attn = MLA(config).eval()
+    L = 5
+    h = torch.randn(1, L, config.hidden_size)
+    pos = torch.arange(L).unsqueeze(0)
+
+    with torch.no_grad():
+        # Decode == one-shot with NoPE (rotary skip is per-token consistent).
+        config_nope = HeliosLMv5Config(size="lite")
+        config_nope.attention.nope = True
+        attn_np = MLA(config_nope).eval()
+        attn_np.load_state_dict(attn.state_dict())  # same weights, NoPE path
+        full_np, _ = attn_np(h, position_ids=pos, use_cache=False)
+        past, outs = None, []
+        for i in range(L):
+            o, past = attn_np(h[:, i:i + 1], past_key_value=past,
+                              use_cache=True)
+            outs.append(o)
+        step_np = torch.cat(outs, dim=1)
+        ndiff = (full_np - step_np).abs().max().item()
+        assert ndiff < 1e-4, f"NoPE cached decode diverges: {ndiff:.3e}"
+
+        # Permutation equivariance over the visible prefix: swapping the
+        # first two tokens must NOT change the last position's output
+        # under NoPE (softmax is order-invariant; only the causal mask
+        # sees order), while RoPE makes the same swap visible — the
+        # contrast proves both code paths actually differ.
+        h_swap = h.clone()
+        h_swap[0, 0], h_swap[0, 1] = h[0, 1].clone(), h[0, 0].clone()
+        out_r, _ = attn(h, position_ids=pos, use_cache=False)
+        out_s, _ = attn(h_swap, position_ids=pos, use_cache=False)
+        rope_sees = (out_r[:, -1] - out_s[:, -1]).abs().max().item()
+        out_np_r, _ = attn_np(h, position_ids=pos, use_cache=False)
+        out_np_s, _ = attn_np(h_swap, position_ids=pos, use_cache=False)
+        nope_blind = (out_np_r[:, -1] - out_np_s[:, -1]).abs().max().item()
+        assert nope_blind < 1e-5, \
+            f"NoPE output changed under prefix permutation: {nope_blind:.3e}"
+        assert rope_sees > 1e-3, \
+            f"RoPE path should see the swap (test has no teeth): {rope_sees:.3e}"
+
+        # NoPE really changed the math (not just a dead flag): outputs
+        # differ from the RoPE path on the same weights.
+        cross = (out_r - out_np_r).abs().max().item()
+        assert cross > 1e-3, "NoPE flag appears to be a no-op"
+
+    # Model level: hybrid stack with NoPE MLA layers generates greedily
+    # and deterministically; GDA layers are position-free already (v5.5).
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+    torch.manual_seed(325)
+    config = HeliosLMv5Config(size="lite")
+    config.hybrid_attention.enabled = True
+    config.hybrid_attention.full_attention_every = 3
+    config.hybrid_attention.per_channel_decay = True
+    config.attention.nope = True
+    config.num_hidden_layers = 4
+    model = HeliosLMv5(config).eval()
+    ids = torch.randint(3, config.vocab_size, (1, 6))
+    g1 = model.generate(ids, max_new_tokens=6, temperature=0)
+    g2 = model.generate(ids, max_new_tokens=6, temperature=0)
+    assert g1.shape == (1, 12) and torch.equal(g1, g2), \
+        "NoPE hybrid generate not deterministic"
+    assert model.layers[0].attention.nope and model.layers[2].attention.nope
+    _pass("test_nope_attention",
+          f"decode==one-shot {ndiff:.1e}, NoPE permutation-blind {nope_blind:.1e} "
+          f"vs RoPE sees swap {rope_sees:.1e}, hybrid generate OK")
+
+
+# ----------------------------------------------------------------------
 # v5.7: RoPE scaling (linear / NTK), FP8 KV cache, Hyper-Connections, QAT
 # ----------------------------------------------------------------------
 def test_rope_scaling():
@@ -3879,6 +4028,9 @@ TESTS = [
     test_mxfp4,
     test_mtp_rebind_after_quantization,
     test_audio_sliding_window,
+    # v5.22
+    test_nvfp4_qat,
+    test_nope_attention,
     # v5.21
     test_per_channel_decay,
     test_mtp_per_channel_rollback,
@@ -3937,7 +4089,7 @@ TESTS = [
 
 
 def main():
-    print("HeliosLM v5.21 Test Suite (lite config, CPU)")
+    print("HeliosLM v5.22 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:

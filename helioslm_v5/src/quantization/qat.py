@@ -8,10 +8,10 @@ Bengio et al. 2013:
     backward:  dL/dw := dL/d(w_dq)       (identity — the "straight through")
 
 where qdq(w) quantize-dequantizes w onto the target grid (MXFP4 E2M1
-blocks or AWQ 4-bit groups, reusing the exact kernels from
-``standard_quant``), so the TRAINING forward sees the quantized weights the
-deployed model will use, while the optimizer still moves the underlying
-full-precision w.
+blocks, AWQ 4-bit groups, or — v5.22 — the NVFP4 E2M1/E4M3 two-level
+hierarchy, reusing no external kernels), so the TRAINING forward sees the
+quantized weights the deployed model will use, while the optimizer still
+moves the underlying full-precision w.
 
 Simplifications and deviations, honestly stated:
   - The fake-quant grid is recomputed from w on every forward (no cached
@@ -79,9 +79,66 @@ def _qdq_awq(weight: torch.Tensor, group_size: int) -> torch.Tensor:
     return q._dequantize().to(weight.dtype)
 
 
+# v5.22: NVFP4-format QAT target (NVIDIA Blackwell direction, also the
+# verl/DeepSeek-V4-class QAT recipe). E2M1 values in blocks of 16 with an
+# FP8 (E4M3) scale per block under a full-precision scale per output row.
+# Two honest deviations from spec NVFP4, both FINER than the spec:
+#   - the top-level scale is per OUTPUT ROW, not per tensor (the standard
+#     GEMM-weight variant; a row's block scales share one fp32 factor);
+#   - round-to-nearest on the E2M1 grid breaks ties toward the SMALLER
+#     magnitude (argmin picks the first grid point), not RNE.
+_E2M1_MAX = 6.0            # largest magnitude on the E2M1 grid
+_E4M3_MAX = 448.0          # largest finite magnitude of FP8 E4M3
+
+
+def _round_e2m1(x: torch.Tensor) -> torch.Tensor:
+    """Round non-negative magnitudes to the nearest E2M1 grid point.
+
+    Grid: {0, .5, 1, 1.5, 2, 3, 4, 5, 6} (the E2M1 mantissa step doubles
+    past the 1.0 boundary, hence the non-uniform spacing). Ties go to the
+    smaller magnitude (documented deviation; RTN either way).
+    """
+    grid = x.new_tensor([0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0])
+    d = (x.unsqueeze(-1) - grid).abs()          # [..., 9]
+    return grid[d.argmin(dim=-1)]
+
+
+def _qdq_nvfp4(weight: torch.Tensor, block_size: int = 16) -> torch.Tensor:
+    """Quantize-dequantize onto the NVFP4 grid (scale-free helper).
+
+    Blocks run along the input dimension (zero-padded to a multiple of
+    ``block_size``; padding contributes zero to absmax and is discarded).
+    Per block: scale_b = absmax/6 clamped up, stored as E4M3 under a per-row
+    fp32 scale (row_scale = max(scale_b)/448 clamped up). Values are rounded
+    to E2M1 against the EFFECTIVE scale row_scale*scale_b(E4M3), so the
+    dequantized tensor is exactly what an NVFP4 kernel would reconstruct.
+    """
+    out_f, in_f = weight.shape
+    pad = (-in_f) % block_size
+    w = F.pad(weight.detach(), (0, pad))
+    blocks = w.view(out_f, -1, block_size)
+    absmax = blocks.abs().amax(dim=-1, keepdim=True)
+    bscale = (absmax / _E2M1_MAX).clamp_min(1e-12)          # fp32, per block
+    # Two-level hierarchy: E4M3 block scales under a per-row fp32 scale.
+    row_scale = (bscale.amax(dim=-2, keepdim=True) / _E4M3_MAX).clamp_min(1e-12)
+    bscale_e4m3 = (bscale / row_scale).clamp(max=_E4M3_MAX) \
+        .to(torch.float8_e4m3fn).to(torch.float32)
+    eff = (row_scale * bscale_e4m3).clamp_min(1e-12)        # [out, nblk, 1]
+    mag = _round_e2m1((blocks / eff).abs())
+    deq = (torch.sign(blocks) * mag * eff).view(out_f, -1)[:, :in_f]
+    return deq.to(weight.dtype)
+
+
 _QDQ = {
     "mxfp4": _qdq_mxfp4,
     "awq": _qdq_awq,
+    "nvfp4": _qdq_nvfp4,
+}
+
+_QDQ_DEFAULT_GROUP = {
+    "mxfp4": 32,
+    "nvfp4": 16,   # NVFP4 spec block width
+    "awq": 128,
 }
 
 
@@ -105,7 +162,7 @@ class FakeQuantLinear(nn.Module):
         self.out_features = linear.out_features
         self.method = method
         if group_size is None:
-            group_size = 32 if method == "mxfp4" else 128
+            group_size = _QDQ_DEFAULT_GROUP[method]
         self.group_size = group_size
         self.weight = nn.Parameter(linear.weight.detach().clone())
         if linear.bias is not None:

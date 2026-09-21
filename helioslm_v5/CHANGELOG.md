@@ -1,5 +1,35 @@
 # HeliosLM v5 Changelog
 
+## v5.22 (2026-09-21, second round) - NVFP4 QAT Target + NoPE Option
+- `quantization/qat.py`: new QAT fake-quant target `method="nvfp4"` —
+  the NVFP4 hierarchy (E2M1 values in 16-wide blocks, FP8-E4M3 block
+  scales under a full-precision per-output-row scale), the format
+  NVIDIA/verl/DeepSeek-V4-class recipes QAT-train against. Documented
+  deviations, both FINER than spec: per-row (not per-tensor) top-level
+  scale; ties on the E2M1 grid round toward the smaller magnitude.
+  Default block width 16 via `_QDQ_DEFAULT_GROUP`
+- `configs/config_v5.py`: `attention.nope` (default False, bit-identical).
+  When True, MLA skips RoPE entirely — q_rope/k_rope pass through
+  unrotated and position_ids drive only the causal mask / cache length
+  (Kimi-K3 direction; the rope_head_dim split and cache layout are
+  unchanged, only the rotation is dropped). GDA layers were already
+  position-free (v5.5)
+- Oracle coverage (`test_nvfp4_qat`): RTN error 0.0776 < MXFP4's 0.1078
+  on Gaussian weights; grid-valued weights survive to fp32 per-row-scale
+  rounding (< 1e-6, quantified bound in the test); non-divisible widths
+  pad cleanly; STE gradient matches the analytic dequantized-linear
+  gradient to 0.0; `apply_qat(model, method="nvfp4")` wraps at block 16
+  and a full forward/backward step runs
+- Oracle coverage (`test_nope_attention`): cached decode == one-shot
+  (3.7e-07); prefix-permutation blindness at the last position (8.9e-08)
+  vs the RoPE path seeing the same swap (2.6e-02) — the contrast proves
+  both paths differ; NoPE hybrid + per-channel-decay model generates
+  greedily and deterministically
+- Motivation: 2026-09-21 landscape — FP4 QAT is the live training-side
+  frontier (verl NVFP4 QAT, DeepSeek-V4 MXFP4 QAT on Ascend, Nemotron 3
+  Ultra NVFP4), and K3 shipped NoPE across the stack
+- 64/64 tests + 9/9 integration
+
 ## v5.21 (2026-09-21) - KDA-Style Per-Channel Decay Gate
 - `configs/config_v5.py`: `hybrid_attention.per_channel_decay` (default
   False). When True, `GatedDeltaAttention`'s decay gate emits one sigmoid

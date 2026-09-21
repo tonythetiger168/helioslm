@@ -1,4 +1,4 @@
-# HeliosLM v5.21 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.22 - DeepSeek/K3-Style Architecture
 
 Reference LLM implementation with DeepSeek-V3-style efficiency techniques.
 All modules below are implemented and exercised by a CPU test suite with
@@ -18,6 +18,20 @@ misbehaving (see CHANGELOG). v5.5 is a feature release aligned with
 Kimi-K3-class architecture mechanisms: hybrid linear attention, LatentMoE,
 quantile balancing, cross-layer attention residuals, and SiTU-GLU (see
 CHANGELOG; unit suite now 44 tests).
+
+## v5.22 (2026-09-21, second round): Daily Improvement — NVFP4 QAT + NoPE
+
+Two landscape-driven additions (2026-09-21 scan). **NVFP4 QAT target**
+(`apply_qat(model, method="nvfp4")`): the FP4 training format the field
+converged on in 2026 (E2M1 values in 16-wide blocks, FP8-E4M3 block
+scales under a per-row fp32 scale — the verl/DeepSeek-V4-class recipe);
+RTN error beats MXFP4 (0.078 vs 0.108 on Gaussian weights) and the STE
+gradient is verified against the analytic dequantized-linear gradient.
+**NoPE option** (`attention.nope`, default False = bit-identical): MLA
+layers skip RoPE entirely — permutation-blind over the visible prefix
+(verified: 8.9e-08 under a prefix swap vs 2.6e-02 with RoPE), the
+Kimi-K3 direction; GDA layers were already position-free. Unit suite
+62 → 64 tests. Full details: [CHANGELOG](CHANGELOG.md).
 
 ## v5.21 (2026-09-21): Daily Improvement — KDA-Style Per-Channel Decay Gate
 

@@ -1,4 +1,4 @@
-"""HeliosLM v5.21 Configuration
+"""HeliosLM v5.22 Configuration
 
 Two sizes are supported via ``HeliosLMv5Config(size=...)``:
   - ``"lite"``: small CPU-friendly config for smoke tests (seconds per step).
@@ -72,6 +72,18 @@ class AttentionConfig:
     # "beta_fast" (32), "beta_slow" (1), "attention_factor" (default
     # 0.1*ln(factor)+1, applied to cos/sin).
     rope_scaling: Optional[dict] = None
+    # NoPE (v5.22, Kimi-K3 direction): when True, MLA layers skip RoPE
+    # entirely — q_rope / k_rope stay unrotated and position_ids only
+    # drive the causal mask and cache bookkeeping. Attention becomes
+    # permutation-equivariant over the visible prefix (order enters only
+    # through the causal mask), so position information must come from
+    # elsewhere in the stack — in K3-class hybrids the recurrent
+    # (GatedDeltaAttention) layers and higher-level structure carry it.
+    # GDA layers are already position-free (v5.5). False = v5.4 behaviour
+    # (bit-identical). Mutually exclusive with rope_scaling: NoPE wins and
+    # rope_scaling is ignored (loud warning-free by design: the config
+    # simply has no rotary to scale).
+    nope: bool = False
     # KV-cache storage dtype (v5.7): "auto" keeps the compute dtype;
     # "fp8" stores the absorbed mode's c_kv cache in float8_e4m3fn
     # (saturating cast, scale-free — post-RMSNorm latents are O(1), and the
@@ -215,7 +227,7 @@ class GRPOConfig:
 
 @dataclass
 class HeliosLMv5Config:
-    model_name: str = "HeliosLM-v5.21"
+    model_name: str = "HeliosLM-v5.22"
     size: str = "full"  # "full" (production defaults) or "lite" (CPU smoke tests)
     vocab_size: int = 160000
     max_position_embeddings: int = 1048576
