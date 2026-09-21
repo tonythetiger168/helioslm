@@ -1,9 +1,10 @@
 # Launch posts — r/LocalLLaMA / r/MachineLearning / HN variants
 
-Updated for **v5.18** (2026-09-18): roadmap #6 ("a verifiable colibri") is
-feature-complete — disk-tier expert streaming, speculation break-even
-telemetry, engine-agnostic stream scorer, content-addressed prefix pool.
-58 unit + 9 integration tests, all five known limitations resolved.
+Updated for **v5.20** (2026-09-20): roadmap #6 ("a verifiable colibri") complete,
+plus oracle-gated harness evolution — ModularRSI-style module-wise config
+search with a deterministic bitwise gate, Pareto-aware memory axis, and
+cross-workload adaptation. 60 unit + 9 integration tests, all five known
+limitations resolved.
 
 ## Variant A — r/LocalLLaMA
 
@@ -37,8 +38,16 @@ ships with a verification oracle.
   keyed by blake2b(token block + config fingerprint — quant scheme included,
   so a stale/different container can never be served). Pooled greedy ==
   from-scratch greedy, bitwise, for hits/misses/evictions alike
+- **Oracle-gated config evolution** (v5.19–v5.20): ModularRSI-style
+  module-wise search over draft/pool/tier configs, but the validation
+  gate is *deterministic* — at temp 0 every accepted config must be
+  bitwise-identical to baseline (LLM-judged gates can't be prompt-hacked
+  when the gate is math). Pareto-aware memory axis; cross-workload
+  adaptation loop. First run: draft+pool accepted, 1.41x modeled
+  speedup; cold/prefix-free workloads correctly shed both — matching
+  the measured break-even data
 
-**The stack underneath** (all CPU-verified, 58 tests):
+**The stack underneath** (all CPU-verified, 60 tests):
 MLA with weight absorption (−99.2% KV-cache vs MHA at 128k, analytic),
 hybrid Gated-Delta linear attention (bit-equivalent decode), sigmoid MoE
 with auxiliary-loss-free balancing, strict MTP verification, vLLM-style
