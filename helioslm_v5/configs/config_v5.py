@@ -98,6 +98,29 @@ class AttentionConfig:
     # unchanged; when sparse_top_k >= kv_len the output is bit-identical
     # to dense attention.
     sparse_top_k: Optional[int] = None
+    # Indexer choice for sparse_top_k (limitations round 2026-09-21):
+    #   "head_mean": v5.8 "free" indexer — the head-mean of the true
+    #     absorbed score terms. Default, bit-identical to v5.8.
+    #   "learned": a dedicated LEARNED lightning indexer
+    #     (attention/lightning_indexer.py) — H_idx low-dim heads score
+    #     every cached token as sum_h w_h * relu(q_h . k_h); keys are
+    #     derived from the cached latent c_kv by a learned projection so
+    #     the (c_kv, k_rope) cache contract is untouched. Requires
+    #     sparse_top_k. Top-k selection is discrete, so the indexer is
+    #     NOT trained by the LM loss: train it with the DSA-style
+    #     distillation helper MLA.indexer_distill_loss() (teacher = the
+    #     detached head-mean true-score distribution).
+    sparse_indexer: str = "head_mean"
+    # Learned-indexer shape: few small heads keep all-L scoring cheap
+    # relative to main attention (the "lightning" property).
+    indexer_num_heads: int = 4
+    indexer_head_dim: int = 32
+    # Sparse prefill (same round): when True and sparse_top_k is set,
+    # PREFILL also selects top-k keys per query in index space (the v5.8
+    # simplification kept prefill dense). Queries with fewer visible keys
+    # than k degrade exactly to dense over the visible set; k >= kv_len is
+    # bit-identical to dense prefill. Default False = v5.8 behaviour.
+    sparse_prefill: bool = False
     # Attention logit soft-capping (v5.9, Gemma-2/3 & GLM-4.5 style):
     # when a positive float, attention scores are soft-capped as
     # ``cap * tanh(score / cap)`` after the softmax scale and before the
@@ -458,6 +481,34 @@ class HeliosLMv5Config:
                     "(the top-k selection runs over the shared latent "
                     "cache; the expanded per-head cache is not supported)"
                 )
+        if a.sparse_indexer not in ("head_mean", "learned"):
+            raise ValueError(
+                f"attention.sparse_indexer must be 'head_mean' or "
+                f"'learned', got {a.sparse_indexer!r}"
+            )
+        if a.sparse_indexer == "learned" and a.sparse_top_k is None:
+            raise ValueError(
+                "attention.sparse_indexer='learned' requires "
+                "attention.sparse_top_k to be set (the learned lightning "
+                "indexer only exists to pick the top-k set)"
+            )
+        for _name in ("indexer_num_heads", "indexer_head_dim"):
+            _value = getattr(a, _name)
+            if not isinstance(_value, int) or _value <= 0:
+                raise ValueError(
+                    f"attention.{_name} must be a positive integer, got "
+                    f"{_value!r}"
+                )
+        if not isinstance(a.sparse_prefill, bool):
+            raise ValueError(
+                f"attention.sparse_prefill must be a bool, got "
+                f"{a.sparse_prefill!r}"
+            )
+        if a.sparse_prefill and a.sparse_top_k is None:
+            raise ValueError(
+                "attention.sparse_prefill=True requires "
+                "attention.sparse_top_k to be set"
+            )
         if a.kv_cache_dtype not in ("auto", "fp8"):
             raise ValueError(
                 f"attention.kv_cache_dtype must be 'auto' or 'fp8', got "

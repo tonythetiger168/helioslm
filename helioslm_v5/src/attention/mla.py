@@ -258,7 +258,12 @@ class MLA(nn.Module):
     quantized values that are stored.
 
     ``config.attention.sparse_top_k`` (v5.8) enables DSA-style top-k
-    decode over the latent cache; ``config.attention.logit_soft_cap``
+    decode over the latent cache; ``config.attention.sparse_indexer``
+    (limitations round 2026-09-21) picks the selector: the v5.8 head-mean
+    "free" indexer or a dedicated learned lightning indexer
+    (lightning_indexer.py), and ``config.attention.sparse_prefill`` opts
+    into per-query top-k at prefill (v5.8 kept prefill dense);
+    ``config.attention.logit_soft_cap``
     (v5.9) soft-caps attention logits Gemma-style; ``config.attention.
     qk_norm`` (v5.9) RMSNorms the per-head query parts and the shared
     k_rope before RoPE; ``config.attention.sliding_window`` /
@@ -360,6 +365,41 @@ class MLA(nn.Module):
                     "per-head selection and is not supported. Set "
                     "attention.use_absorption=True or sparse_top_k=None"
                 )
+
+        # Limitations round (2026-09-21): indexer choice for the top-k
+        # selection. "head_mean" is the v5.8 free indexer (bit-identical
+        # default); "learned" builds a dedicated LearnedLightningIndexer
+        # whose key side reads the cached latent c_kv, leaving the
+        # (c_kv, k_rope) cache contract untouched.
+        self.sparse_indexer = getattr(
+            config.attention, "sparse_indexer", "head_mean")
+        self.sparse_prefill = bool(
+            getattr(config.attention, "sparse_prefill", False))
+        if self.sparse_indexer not in ("head_mean", "learned"):
+            raise ValueError(
+                f"sparse_indexer must be 'head_mean' or 'learned', got "
+                f"{self.sparse_indexer!r}"
+            )
+        if self.sparse_indexer == "learned":
+            if self.sparse_top_k is None:
+                raise ValueError(
+                    "sparse_indexer='learned' requires sparse_top_k to be "
+                    "set (the learned indexer only exists to pick the "
+                    "top-k set)"
+                )
+            from helioslm_v5.src.attention.lightning_indexer import (
+                LearnedLightningIndexer,
+            )
+            self.indexer = LearnedLightningIndexer(
+                self.hidden_size,
+                self.kv_latent_dim,
+                int(getattr(config.attention, "indexer_num_heads", 4)),
+                int(getattr(config.attention, "indexer_head_dim", 32)),
+            )
+        if self.sparse_prefill and self.sparse_top_k is None:
+            raise ValueError(
+                "sparse_prefill=True requires sparse_top_k to be set"
+            )
 
         # v5.9: Gemma-2/3 & GLM-4.5 style attention logit soft-capping.
         # Validated eagerly in the config; re-checked here for hand-built
@@ -711,46 +751,88 @@ class MLA(nn.Module):
                     attn_mask = attn_mask.index_select(-1, idx)
                 kv_len = keep
 
-        # DSA-style sparse top-k selection (v5.8): at DECODE (seq == 1) a
-        # lightning-indexer-style score picks the top-`sparse_top_k` cached
-        # tokens and attention runs only over them. The index score is the
-        # head-mean of the TRUE score terms (a "free" indexer reusing the
-        # absorbed projections — a real DSA indexer is a dedicated learned
-        # scorer; see README). Selection is order-preserving (indices are
-        # sorted), the cache tensors themselves are NOT modified (gathered
-        # copies only), and the current token is always force-selected.
-        # Prefill (seq > 1) stays dense by design — per-query top-k over
-        # the full sequence costs O(L^2), defeating the point.
-        if (self.sparse_top_k is not None and seq == 1
-                and kv_len > self.sparse_top_k):
-            index_scores = torch.matmul(
-                q_absorbed.mean(dim=1, keepdim=True), c_kv.transpose(-2, -1)
-            ) + torch.matmul(
-                q_rope.mean(dim=1, keepdim=True), k_rope.transpose(-2, -1)
-            )  # [B, 1, seq, kv_len] with seq == 1
-            if attn_mask is not None:
-                # Never select keys the causal/padding mask excludes.
-                index_scores = index_scores.masked_fill(
-                    ~attn_mask, float("-inf"))
-            # The current (last) token must always attend to itself.
-            index_scores[..., -1] = float("inf")
+        # DSA-style sparse top-k selection (v5.8 decode; 2026-09-21
+        # limitations round: learned indexer + opt-in sparse prefill). The
+        # index score picks the top-`sparse_top_k` cached tokens and
+        # attention runs only over them. Selection is order-preserving
+        # (indices are sorted), the cache tensors themselves are NOT
+        # modified (gathered copies only), and at decode the current token
+        # is always force-selected. Two regimes:
+        #   decode (seq == 1): one query scores the whole cache.
+        #   prefill (seq > 1, only when sparse_prefill=True): per-query
+        #     top-k inside the causal/padding-visible set. Queries with
+        #     fewer than k visible keys degrade EXACTLY to dense over the
+        #     visible set: the unreachable slots of the top-k gather
+        #     masked (-inf) entries, which get zero softmax weight, and
+        #     adding exact 0.0 exp terms leaves the softmax sum bit-
+        #     identical. The v5.8 behaviour kept prefill dense
+        #     unconditionally (documented simplification, now opt-in).
+        # Index scores: "head_mean" reuses the absorbed projections (the
+        # v5.8 "free" indexer); "learned" runs the LearnedLightningIndexer
+        # over hidden_states x cached latents (see lightning_indexer.py).
+        sparse_decode = (self.sparse_top_k is not None and seq == 1
+                         and kv_len > self.sparse_top_k)
+        sparse_prefill = (self.sparse_prefill
+                          and self.sparse_top_k is not None and seq > 1
+                          and kv_len > self.sparse_top_k)
+        if sparse_decode or sparse_prefill:
+            if self.sparse_indexer == "learned":
+                # [B, 1, seq, kv_len]; keys re-derived from the cache.
+                index_scores = self.indexer(hidden_states, c_kv)
+            else:
+                index_scores = torch.matmul(
+                    q_absorbed.mean(dim=1, keepdim=True), c_kv.transpose(-2, -1)
+                ) + torch.matmul(
+                    q_rope.mean(dim=1, keepdim=True), k_rope.transpose(-2, -1)
+                )  # [B, 1, seq, kv_len]
+            if attn_mask is None:
+                # The gather below needs an explicit per-query mask even on
+                # the fast path (bottom-right causal, same as the dense
+                # fallback builds afterwards).
+                attn_mask = torch.ones(
+                    B, 1, seq, kv_len, dtype=torch.bool,
+                    device=c_kv.device).tril(diagonal=kv_len - seq)
+            # Never select keys the causal/padding mask excludes.
+            index_scores = index_scores.masked_fill(
+                ~attn_mask, float("-inf"))
+            if sparse_decode:
+                # The current (last) token must always attend to itself.
+                index_scores[..., -1] = float("inf")
             top_idx = torch.topk(index_scores, self.sparse_top_k, dim=-1
-                                 ).indices.sort(dim=-1).values  # [B,1,1,k]
-            # gather along the sequence dim: index [B, 1, k, d]
-            gidx = top_idx.squeeze(2).unsqueeze(-1)
-            c_kv = torch.gather(
-                c_kv, 2, gidx.expand(-1, -1, -1, c_kv.shape[-1]))
-            k_rope = torch.gather(
-                k_rope, 2, gidx.expand(-1, -1, -1, k_rope.shape[-1]))
-            if attn_mask is not None:
+                                 ).indices.sort(dim=-1).values  # [B,1,seq,k]
+            if sparse_decode:
+                # Shared-key gather along the sequence dim: [B, 1, k, d].
+                gidx = top_idx.squeeze(2).unsqueeze(-1)
+                c_kv = torch.gather(
+                    c_kv, 2, gidx.expand(-1, -1, -1, c_kv.shape[-1]))
+                k_rope = torch.gather(
+                    k_rope, 2, gidx.expand(-1, -1, -1, k_rope.shape[-1]))
                 attn_mask = torch.gather(attn_mask, -1, top_idx)
-            kv_len = self.sparse_top_k
+                kv_len = self.sparse_top_k
+            else:
+                # Per-query gather: [B, 1, seq, k, d]; the score and
+                # weighted-sum contractions below switch to the per-query
+                # einsum branch on c_kv.dim() == 5.
+                gidx = top_idx.unsqueeze(-1)
+                c_kv = torch.gather(
+                    c_kv.unsqueeze(2).expand(-1, -1, seq, -1, -1), 3,
+                    gidx.expand(-1, -1, -1, -1, c_kv.shape[-1]))
+                k_rope = torch.gather(
+                    k_rope.unsqueeze(2).expand(-1, -1, seq, -1, -1), 3,
+                    gidx.expand(-1, -1, -1, -1, k_rope.shape[-1]))
+                attn_mask = torch.gather(attn_mask, -1, top_idx)
 
         # Scores in latent space + the decoupled-RoPE term. c_kv / k_rope
-        # have head dim 1 and broadcast over H.
-        scores = torch.matmul(q_absorbed, c_kv.transpose(-2, -1))
-        scores = scores + torch.matmul(q_rope, k_rope.transpose(-2, -1))
-        scores = scores * self.softmax_scale  # [B, H, seq, kv_len]
+        # have head dim 1 and broadcast over H. After a sparse-prefill
+        # gather they carry a per-query key axis and use einsum instead.
+        if c_kv.dim() == 5:
+            scores = torch.einsum("bhqc,bhqkc->bhqk", q_absorbed, c_kv)
+            scores = scores + torch.einsum(
+                "bhqr,bhqkr->bhqk", q_rope, k_rope)
+        else:
+            scores = torch.matmul(q_absorbed, c_kv.transpose(-2, -1))
+            scores = scores + torch.matmul(q_rope, k_rope.transpose(-2, -1))
+        scores = scores * self.softmax_scale  # [B, H, seq, kv_len|k]
         # v5.9: soft-cap after the scale, before the mask (masked
         # positions still become exactly -inf below).
         scores = self._soft_cap(scores)
@@ -779,7 +861,11 @@ class MLA(nn.Module):
         # (W_UV: H*d_v*d_c) + (o_proj: H*d_v*hidden) and would prevent
         # training-time weight updates from being reflected in a precomputed
         # fused matrix. The two-matmul form is what DeepSeek uses at decode.
-        out_latent = torch.matmul(probs, c_kv)  # [B, H, seq, d_c]
+        if c_kv.dim() == 5:
+            # Sparse-prefill gathered keys: per-query weighted sum.
+            out_latent = torch.einsum("bhqk,bhqkc->bhqc", probs, c_kv)
+        else:
+            out_latent = torch.matmul(probs, c_kv)  # [B, H, seq, d_c]
         out = torch.einsum("bhqc,hvc->bqhv", out_latent, w_uv)
         output = self.o_proj(out.reshape(B, seq, self.num_heads * self.v_head_dim))
         return output, present_key_value
@@ -909,3 +995,125 @@ class MLA(nn.Module):
             "reduction_vs_mha_pct": (1 - mla / mha) * 100,
             "absorbed_reduction_vs_mha_pct": (1 - latent / mha) * 100,
         }
+
+    def get_sparse_attention_stats(self, seq_len):
+        """Analytic key-selection accounting for ``sparse_top_k`` (values,
+        not wall-clock — no unmeasured speed claims).
+
+        Reports, for a hypothetical sequence of ``seq_len`` tokens:
+          decode: attended keys per step = min(k, L) vs dense L.
+          prefill: SELECTED (query, key) slots when ``sparse_prefill`` is
+            on — sum_q min(k, visible_q) = k(k+1)/2 + (L-k)k for L > k —
+            vs the dense causal count L(L+1)/2. With sparse_prefill off
+            prefill stays dense and the two are equal.
+          indexer: mode ("head_mean" adds zero parameters and zero extra
+            projections — it reuses the absorbed score terms; "learned"
+            adds q/k projections + per-head weights and scores each
+            (query, key) pair at 2*H_idx*d_idx FLOPs, with keys re-derived
+            from the latent cache at O(L*d_c*H_idx*d_idx) per step — see
+            lightning_indexer.py deviation 3).
+        """
+        if self.sparse_top_k is None:
+            raise ValueError(
+                "get_sparse_attention_stats requires sparse_top_k to be "
+                "set; dense attention has no key-selection to account"
+            )
+        if not isinstance(seq_len, int) or seq_len <= 0:
+            raise ValueError(
+                f"seq_len must be a positive integer, got {seq_len!r}"
+            )
+        L = seq_len
+        k = self.sparse_top_k
+        dense_pairs = L * (L + 1) // 2
+        selected_pairs = (sum(min(k, i + 1) for i in range(L))
+                          if self.sparse_prefill else dense_pairs)
+        stats = {
+            "seq_len": L,
+            "sparse_top_k": k,
+            "indexer": self.sparse_indexer,
+            "decode_attended_keys_per_step": min(k, L),
+            "decode_dense_keys_per_step": L,
+            "decode_key_ratio": min(k, L) / L,
+            "sparse_prefill": self.sparse_prefill,
+            "prefill_selected_pairs": selected_pairs,
+            "prefill_dense_pairs": dense_pairs,
+            "prefill_pair_ratio": selected_pairs / dense_pairs,
+            "indexer_params": (
+                sum(p.numel() for p in self.indexer.parameters())
+                if self.sparse_indexer == "learned" else 0
+            ),
+            "indexer_flops_per_scored_pair": (
+                2 * self.indexer.num_heads * self.indexer.head_dim
+                if self.sparse_indexer == "learned" else 0
+            ),
+        }
+        return stats
+
+    def indexer_distill_loss(self, hidden_states, attention_mask=None,
+                             position_ids=None):
+        """DSA-style distillation loss for the learned lightning indexer.
+
+        Top-k selection is discrete, so the LM loss never reaches the
+        indexer. DeepSeek-V3.2 trains its indexer by distilling the main
+        attention distribution into it; here the teacher is the detached
+        head-mean of the TRUE absorbed score terms — exactly the v5.8
+        "free" indexer — so a fully-distilled learned indexer reproduces
+        the free indexer's selections (the teacher ceiling). Returns the
+        masked cross-entropy
+
+            loss = mean_q  -sum_j  p_j * log q_j
+
+        with p = softmax(teacher scores) and log q = log_softmax(index
+        scores), both over the causal/padding-visible keys. The teacher
+        score terms are detached; gradients flow to the indexer and, as in
+        joint training, through the latent projections to the model — to
+        train the indexer alone, optimize ``self.indexer.parameters()``.
+
+        Prefill-only: pass a batch WITHOUT a KV cache. With an fp8 cache
+        config the served index keys are E4M3-rounded while this loss sees
+        the unrounded latents — a documented train/serve skew, bounded by
+        the 6.25% E4M3 element error.
+
+        Loud errors: sparse_indexer must be "learned"; past_key_value
+        decode is not supported here (distill on prefill batches).
+        """
+        if self.sparse_indexer != "learned":
+            raise ValueError(
+                "indexer_distill_loss requires sparse_indexer='learned'; "
+                f"the {self.sparse_indexer!r} indexer has no trainable "
+                "parameters"
+            )
+        B, seq, _ = hidden_states.shape
+        position_ids, custom_positions = self._resolve_positions(
+            hidden_states, 0, position_ids)
+        q_nope, q_rope, c_kv, k_rope = self._project_new_tokens(
+            hidden_states, position_ids)
+        c_kv = c_kv.unsqueeze(1)  # [B, 1, seq, d_c]
+        kv_len = c_kv.shape[2]
+        w_uk, _ = self._w_uk_w_uv()
+        q_absorbed = torch.einsum("bhqd,hdc->bhqc", q_nope, w_uk)
+        attn_mask = self._build_attn_mask(
+            position_ids, kv_len, attention_mask, 0, seq, B,
+            custom_positions)
+        if attn_mask is None:
+            attn_mask = torch.ones(
+                B, 1, seq, kv_len, dtype=torch.bool,
+                device=c_kv.device).tril(diagonal=kv_len - seq)
+        # Teacher: the v5.8 free indexer's scores, detached.
+        teacher = (torch.matmul(q_absorbed.mean(dim=1, keepdim=True),
+                                c_kv.transpose(-2, -1))
+                   + torch.matmul(q_rope.mean(dim=1, keepdim=True),
+                                  k_rope.transpose(-2, -1))).detach()
+        student = self.indexer(hidden_states, c_kv)
+        neg = ~attn_mask
+        teacher = teacher.masked_fill(neg, float("-inf"))
+        student = student.masked_fill(neg, float("-inf"))
+        # Fully-masked (padded) query rows softmax to NaN; they contribute
+        # exactly 0 to the mean below.
+        p = torch.nan_to_num(F.softmax(teacher, dim=-1))
+        log_q = F.log_softmax(student, dim=-1)
+        # 0 * -inf = NaN for masked keys; zero those log-terms first (p is
+        # exactly 0 there, so the product is 0 either way).
+        log_q = log_q.masked_fill(neg, 0.0)
+        xent = -(p * log_q).sum(dim=-1)  # [B, 1, seq]
+        return xent.mean()
