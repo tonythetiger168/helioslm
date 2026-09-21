@@ -5,7 +5,7 @@ A from-scratch PyTorch reference implementation of a modern LLM stack: MLA atten
 > **One-liner:** If you want to understand (or hack on) how DeepSeek-V3/K3-class models actually work — without needing a GPU cluster first — this repo is for you.
 
 [![CI](https://github.com/tonythetiger168/helioslm/actions/workflows/ci.yml/badge.svg)](https://github.com/tonythetiger168/helioslm/actions)
-![Tests](https://img.shields.io/badge/tests-48%20unit%20%2B%209%20integration-brightgreen)
+![Tests](https://img.shields.io/badge/tests-62%20unit%20%2B%209%20integration-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![PyTorch](https://img.shields.io/badge/framework-PyTorch%20(pure)-ee4c2c)
 
@@ -48,7 +48,7 @@ Nothing sells an LLM repo like showing it produce tokens. -->
 
 | Area | Implementation |
 | --- | --- |
-| **Attention** | MLA with **weight absorption** — latent-only KV cache, **−97.7% memory vs MHA** (full config), verified equivalent to the expanded path (<1e-4). Hybrid linear attention: Gated Delta Rule layers interleaved with MLA, fixed-size recurrent state cache, decode ≡ one-shot (<2e-7). RoPE scaling: linear / NTK / YaRN. DSA-style sparse top-k decode over the latent cache (k≥L exactly dense). Sliding-window attention with StreamingLLM sinks (O(W) decode), per-head QK-norm, Gemma-style logit soft-capping. |
+| **Attention** | MLA with **weight absorption** — latent-only KV cache, **−97.7% memory vs MHA** (full config), verified equivalent to the expanded path (<1e-4). Hybrid linear attention: Gated Delta Rule layers interleaved with MLA (3:1 default), fixed-size recurrent state cache, decode ≡ one-shot (<2e-7), optional per-channel (KDA-style) decay gate so state rows forget at independent rates (v5.21). RoPE scaling: linear / NTK / YaRN. DSA-style sparse top-k decode over the latent cache (k≥L exactly dense). Sliding-window attention with StreamingLLM sinks (O(W) decode), per-head QK-norm, Gemma-style logit soft-capping. |
 | **MoE** | Sigmoid-gated fine-grained experts with **auxiliary-loss-free** load balancing (selection-only bias, heuristic or quantile updates). **LatentMoE**: routed experts in a shared latent space. **SiTU-GLU** tanh soft-capped activation. |
 | **Cross-layer** | **Attention Residuals** — per-layer gated injection of accumulated lower-layer attention outputs, threaded through DualPipe (gradient-exact, bitwise-verified). |
 | **Speculative decoding** | DeepSeek-style MTP with **strict verification** (residual (p−q)₊ resampling), batch support, O(1) cache-truncation rollback; hybrid recurrent-state rollback via restore+replay. |
@@ -119,6 +119,7 @@ are static-checked) — tracked as a community issue.
 
 Headlines (full details in [CHANGELOG.md](helioslm_v5/CHANGELOG.md)):
 
+- **v5.21** — KDA-style per-channel decay gate: linear-attention state rows forget at independent rates (Kimi Linear / GLM-5.3-Flash direction), bit-identical default, rollback-safe
 - **v5.20** — Pareto-aware integration (memory axis) + cross-workload adaptation loop — ModularRSI gaps 2/3 closed at the inference layer
 - **v5.19** — Evolvable serving harness: ModularRSI-style module-wise search (draft/pool/tier) behind a deterministic bitwise oracle gate
 - **v5.18** — Content-addressed KV prefix pool: cross-session prefix reuse, fingerprint-guarded, bit-exact oracle (roadmap #6 complete)

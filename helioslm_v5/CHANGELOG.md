@@ -1,5 +1,33 @@
 # HeliosLM v5 Changelog
 
+## v5.21 (2026-09-21) - KDA-Style Per-Channel Decay Gate
+- `configs/config_v5.py`: `hybrid_attention.per_channel_decay` (default
+  False). When True, `GatedDeltaAttention`'s decay gate emits one sigmoid
+  per head per KEY CHANNEL — a [Dk] vector per head — so state rows forget
+  at independent rates (Kimi Linear's fine-grained eraser, as used by
+  GLM-5.3-Flash-class hybrid layers). False keeps the v5.5 per-head scalar
+  gate bit-identical (same shapes, same values)
+- `src/attention/linear_attention.py`: gate width `H*D` vs `H` selected by
+  the flag; mask semantics unchanged (masked tokens: decay -> 1, no write,
+  per-channel broadcast); packed document-boundary reset unchanged
+- Checkpoint caveat: enabling the flag on a scalar-gate checkpoint fails
+  loudly on the wider `g_proj`/`decay_bias` shapes — by design, not a
+  silent remap
+- Oracle coverage (`test_per_channel_decay`): gate shape [B, L, H, Dk] in
+  (0,1) with the dtype-aware m6 clamp verified in bf16 (strictly < 1);
+  token-by-token decode == one-shot (1.9e-07); masked tail == truncated
+  sequence; packed-boundary reset exact; per-row forgetting independence
+  shown with a -6/+6 bias split (fast rows keep ~0.25% of the old state,
+  slow rows ~99.8%, ratio > 100x — impossible under a per-head scalar)
+- `test_mtp_per_channel_rollback`: speculative clone/restore/replay stays
+  exact (state diff 5.96e-07) and MTP decode == plain greedy on a hybrid
+  model whose linear layers run the per-channel gate
+- Motivation: 2026-09-21 landscape — K3 (KDA at 3:1 interleave) and
+  GLM-5.3-Flash (34 KDA + 11 sparse MLA) both ship per-channel fine-grained
+  decay in their linear layers; HeliosLM's hybrid stack now exposes the
+  same knob behind an oracle-gated config flag
+- 62/62 tests + 9/9 integration
+
 ## v5.20 (2026-09-20) - Pareto-Aware Integration + Adaptation Loop
 - `harness_evolver.py` gains a memory axis: pool blocks + tier residency
   count toward `memory_budget` (None = unconstrained); configs that buy

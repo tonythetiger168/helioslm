@@ -1,4 +1,4 @@
-"""HeliosLM v5.20 Configuration
+"""HeliosLM v5.21 Configuration
 
 Two sizes are supported via ``HeliosLMv5Config(size=...)``:
   - ``"lite"``: small CPU-friendly config for smoke tests (seconds per step).
@@ -168,6 +168,14 @@ class HybridAttentionConfig:
     full_attention_every: int = 4
     linear_num_heads: int = 32
     linear_head_dim: int = 128
+    # v5.21: KDA-style per-channel decay gate. False keeps the v5.5 per-head
+    # scalar gate (bit-identical). True makes the gate emit one sigmoid per
+    # head per key channel ([Dk] vector per head), so state rows forget at
+    # independent rates — the fine-grained eraser used by Kimi Linear /
+    # GLM-5.3-Flash-class hybrid layers. Checkpoint caveat: enabling it on
+    # an existing scalar-gate checkpoint fails loudly on the wider
+    # g_proj/decay_bias shapes (by design; retrain or remap the gate).
+    per_channel_decay: bool = False
 
 
 @dataclass
@@ -207,7 +215,7 @@ class GRPOConfig:
 
 @dataclass
 class HeliosLMv5Config:
-    model_name: str = "HeliosLM-v5.20"
+    model_name: str = "HeliosLM-v5.21"
     size: str = "full"  # "full" (production defaults) or "lite" (CPU smoke tests)
     vocab_size: int = 160000
     max_position_embeddings: int = 1048576

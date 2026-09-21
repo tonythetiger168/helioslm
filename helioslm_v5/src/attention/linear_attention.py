@@ -7,7 +7,10 @@ growing K/V sequence.
 
 Math (per head h, per token t):
     k_t = L2_normalize(W_k x_t)          q_t = W_q x_t / sqrt(Dk)
-    decay_t = sigmoid(W_g x_t + b_g)     in (0, 1), per-head scalar
+    decay_t = sigmoid(W_g x_t + b_g)     in (0, 1); per-head scalar, or a
+                                         per-CHANNEL [Dk] vector when
+                                         hybrid_attention.per_channel_decay
+                                         is set (v5.21, KDA direction)
     r_t   = k_t . S_{t-1}                (retrieval, [B, H, Dv])
     S_t   = decay_t * S_{t-1} + k_t (x) (v_t - r_t)     (delta-rule write)
     o_t   = q_t . S_t                    (readout from the UPDATED state)
@@ -124,26 +127,41 @@ class GatedDeltaAttention(nn.Module):
         self.q_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=False)
         self.k_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=False)
         self.v_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=False)
-        # Per-head scalar decay gate; bias-free Linear + a raw bias parameter
-        # initialized to +4 so decay ~= sigmoid(4) ~= 0.982 at init. A raw
-        # Parameter is used because HeliosLMv5._init_weights zeroes every
-        # Linear bias.
-        self.g_proj = nn.Linear(self.hidden_size, self.num_heads, bias=False)
-        self.decay_bias = nn.Parameter(torch.full((self.num_heads,), 4.0))
+        # KDA-style per-channel decay (v5.21, config
+        # .hybrid_attention.per_channel_decay): when True the gate emits one
+        # sigmoid per head per KEY CHANNEL (decay becomes a [Dk] vector per
+        # head, so state rows forget at independent rates — Kimi Linear's
+        # fine-grained eraser, as used by GLM-5.3-Flash); when False the
+        # v5.5 per-head scalar gate is kept (bit-identical).
+        self.per_channel_decay = bool(
+            getattr(config.hybrid_attention, "per_channel_decay", False))
+        gate_width = self.num_heads * self.head_dim \
+            if self.per_channel_decay else self.num_heads
+        # Bias-free Linear + a raw bias parameter initialized to +4 so
+        # decay ~= sigmoid(4) ~= 0.982 at init. A raw Parameter is used
+        # because HeliosLMv5._init_weights zeroes every Linear bias.
+        self.g_proj = nn.Linear(self.hidden_size, gate_width, bias=False)
+        self.decay_bias = nn.Parameter(
+            torch.full((gate_width,), 4.0))
 
         self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False)
         self.q_scale = 1.0 / math.sqrt(self.head_dim)
 
     def decay_gate(self, hidden_states):
-        """Per-token per-head decay in the open interval (0, 1): [B, seq, H].
+        """Per-token decay in the open interval (0, 1).
 
-        Sigmoid output is clamped away from exact 0/1 (fp saturation), which
-        also keeps the state contraction strictly below 1. The margin is
-        dtype-aware (m6): m = max(1e-6, finfo(dtype).eps) — in fp16/bf16 a
-        fixed 1 - 1e-6 upper bound would round to exactly 1.0; fp32 keeps
-        the historical [1e-6, 1 - 1e-6] bounds.
+        Returns [B, seq, H] (per-head scalar, v5.5) or [B, seq, H, Dk]
+        (per-channel, v5.21 KDA direction). Sigmoid output is clamped away
+        from exact 0/1 (fp saturation), which also keeps the state
+        contraction strictly below 1. The margin is dtype-aware (m6):
+        m = max(1e-6, finfo(dtype).eps) — in fp16/bf16 a fixed 1 - 1e-6
+        upper bound would round to exactly 1.0; fp32 keeps the historical
+        [1e-6, 1 - 1e-6] bounds.
         """
         g = torch.sigmoid(self.g_proj(hidden_states) + self.decay_bias)
+        if self.per_channel_decay:
+            B, seq, _ = g.shape
+            g = g.view(B, seq, self.num_heads, self.head_dim)
         m = max(1e-6, torch.finfo(g.dtype).eps)
         return g.clamp(min=m, max=1.0 - m)
 
@@ -222,14 +240,18 @@ class GatedDeltaAttention(nn.Module):
         k = F.normalize(k.transpose(1, 2), dim=-1)          # [B, H, seq, Dk]
         q = q.transpose(1, 2) * self.q_scale                # [B, H, seq, Dk]
         v = v.transpose(1, 2)                               # [B, H, seq, Dv]
-        decay = self.decay_gate(hidden_states).transpose(1, 2)  # [B, H, seq]
+        decay = self.decay_gate(hidden_states).transpose(1, 2)
+        # [B, H, seq] (per-head) or [B, H, seq, Dk] (per-channel)
 
         if attention_mask is not None:
             keep = attention_mask[:, -seq:].to(decay.dtype)  # [B, seq]
             keep = keep[:, None, :]                          # [B, 1, seq]
             # Masked token: decay -> 1 (no forgetting) and no write; the
             # state passes through unchanged.
-            decay = 1.0 + (decay - 1.0) * keep
+            if self.per_channel_decay:
+                decay = 1.0 + (decay - 1.0) * keep[..., None]
+            else:
+                decay = 1.0 + (decay - 1.0) * keep
         else:
             keep = None
 
@@ -248,7 +270,8 @@ class GatedDeltaAttention(nn.Module):
             delta = v_t - r_t
             if keep is not None:
                 delta = delta * keep[:, :, t, None]
-            d_t = decay[:, :, t, None, None]                  # [B, H, 1, 1]
+            d_t = decay[:, :, t, None, None] if not self.per_channel_decay \
+                else decay[:, :, t, :, None]  # [B,H,1,1] or [B,H,Dk,1]
             state = d_t * state + k_t.unsqueeze(-1) * delta.unsqueeze(-2)
             o_t = torch.einsum("bhk,bhkv->bhv", q[:, :, t], state)
             outs.append(o_t)

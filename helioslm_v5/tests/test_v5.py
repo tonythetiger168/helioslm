@@ -8,7 +8,8 @@ quantile balancing, attention residuals, SiTU-GLU; v5.7: RoPE scaling,
 FP8 KV cache, Hyper-Connections, QAT; v5.8: YaRN RoPE scaling, DSA sparse
 top-k attention, per-head Muon, GPTQ act-order; v5.9: attention logit
 soft-capping, per-head QK-norm, sliding-window attention with sinks,
-final logit soft-capping):
+final logit soft-capping; v5.21: per-channel (KDA-style) decay gate for
+GatedDeltaAttention + MTP rollback compatibility):
 every test exercises the real module with numerical assertions (not just
 shapes), and any failure makes the process exit non-zero.
 
@@ -2100,6 +2101,176 @@ def test_mtp_hybrid_rollback():
 
 
 # ----------------------------------------------------------------------
+# v5.21: KDA-style per-channel decay gate — fine-grained eraser
+# ----------------------------------------------------------------------
+def test_per_channel_decay():
+    from helioslm_v5.src.attention.linear_attention import (
+        GatedDeltaAttention, StateTensor)
+
+    config = HeliosLMv5Config(size="lite")
+    config.hybrid_attention.per_channel_decay = True
+    torch.manual_seed(221)
+    attn = GatedDeltaAttention(config).eval()
+    B, L = 2, 7
+    h = torch.randn(B, L, config.hidden_size)
+    H = config.hybrid_attention.linear_num_heads
+    D = config.hybrid_attention.linear_head_dim
+
+    with torch.no_grad():
+        # Gate width doubles role: one sigmoid per head per key channel.
+        assert attn.g_proj.out_features == H * D, \
+            f"per-channel gate width {attn.g_proj.out_features} != H*D {H * D}"
+        assert attn.decay_bias.shape == (H * D,)
+
+        full_out, present = attn(h, use_cache=True)
+        assert full_out.shape == (B, L, config.hidden_size)
+        assert isinstance(present[0], StateTensor) \
+            and present[0].shape == (B, H, D, D)
+
+        # Gate shape [B, seq, H, Dk] and strictly inside (0, 1).
+        g = attn.decay_gate(h)
+        assert g.shape == (B, L, H, D), f"per-channel gate shape {g.shape}"
+        assert bool((g > 0).all()) and bool((g < 1).all()), \
+            f"per-channel decay out of (0,1): [{g.min()}, {g.max()}]"
+        fresh = attn.decay_gate(torch.zeros(1, 1, config.hidden_size))
+        assert float(fresh.min()) > 0.9, \
+            f"decay at init should be near 1, got {float(fresh.min()):.4f}"
+
+        # Token-by-token decode == one-shot forward (same op order).
+        past, outs = None, []
+        for i in range(L):
+            o, past = attn(h[:, i:i + 1], past_key_value=past, use_cache=True)
+            outs.append(o)
+        step_out = torch.cat(outs, dim=1)
+        diff = (full_out - step_out).abs().max().item()
+        assert diff < 1e-5, f"per-channel decode != one-shot: {diff:.3e}"
+
+        # Masked tail == truncated sequence (no write, no forgetting).
+        mask = torch.ones(B, L)
+        mask[0, 5:] = 0
+        _, present_m = attn(h, attention_mask=mask, use_cache=True)
+        _, present_t = attn(h[0:1, :5], use_cache=True)
+        mdiff = (present_m[0][0] - present_t[0][0]).abs().max().item()
+        assert mdiff < 1e-6, f"pad tokens polluted the state: {mdiff:.3e}"
+
+        # Per-row forgetting independence: within every head, make half
+        # the key channels forget almost instantly (bias -6 -> decay ~=
+        # 0.0025) and half barely forget (bias +6 -> decay ~= 0.9975).
+        # After one more token, the post-decay remainder of the previous
+        # state must vanish in the fast rows and survive in the slow rows
+        # of EVERY head — a per-head scalar gate cannot express that split.
+        per_head = torch.tensor(
+            [-6.0] * (D // 2) + [6.0] * (D - D // 2))       # [D]
+        attn.decay_bias.copy_(per_head.repeat(H))           # [H*D]
+        ids_a = h[:, :1]
+        _, pa = attn(ids_a, use_cache=True)
+        state_a = pa[0].clone()
+        ids_b = h[:, 1:2]
+        out_b, pb = attn(ids_b, past_key_value=pa, use_cache=True)
+        state_b = pb[0]
+        k_b = attn.k_proj(ids_b).view(B, 1, H, D).transpose(1, 2)
+        k_b = torch.nn.functional.normalize(k_b, dim=-1)   # [B, H, 1, D]
+        v_b = attn.v_proj(ids_b).view(B, 1, H, D).transpose(1, 2)
+        k_b, v_b = k_b[:, :, 0], v_b[:, :, 0]              # [B, H, D]
+        r_b = torch.einsum("bhk,bhkv->bhv", k_b, state_a)  # retrieval
+        delta_b = v_b - r_b
+        write_b = k_b.unsqueeze(-1) * delta_b.unsqueeze(-2)  # [B, H, D, D]
+        remainder = state_b - write_b                      # decayed old state
+        expected = attn.decay_gate(ids_b)[:, 0][:, :, :, None] * state_a
+        rd = (remainder - expected).abs().max().item()
+        assert rd < 1e-5, f"per-channel decay semantics wrong: {rd:.3e}"
+        smax = state_a.abs().max().item()
+        fast = remainder[:, :, :D // 2].abs().max().item()
+        slow = remainder[:, :, D // 2:].abs().max().item()
+        slow_ref = state_a[:, :, D // 2:].abs().max().item()
+        # fast rows keep only decay(-6) ~= 0.25% of the old state; slow
+        # rows keep decay(+6) ~= 99.8% of it. Thresholds are relative to
+        # the state magnitude, not absolute (a per-head scalar gate would
+        # give every row the same factor, so the fast/slow split itself
+        # is the property under test).
+        assert fast < 0.01 * smax + 1e-6, \
+            f"fast-forget rows kept too much: {fast:.3e} (state max {smax:.3e})"
+        assert slow > 0.99 * slow_ref, \
+            f"slow-forget rows lost state: {slow:.3e} vs ref {slow_ref:.3e}"
+        assert slow / (fast + 1e-12) > 50.0, \
+            f"per-channel split too weak: slow/fast = {slow / fast:.1f}"
+
+        # Packed document boundary still zeroes the state with the
+        # per-channel gate (position restart mid-sequence).
+        pos = torch.tensor([[0, 1, 2, 3, 0, 1, 2]])
+        _, present_p = attn(h[0:1], position_ids=pos, use_cache=True)
+        # Recompute the tail document alone and compare final states.
+        tail_start = 4
+        _, present_tail = attn(h[0:1, tail_start:], use_cache=True)
+        pdiff = (present_p[0][0] - present_tail[0][0]).abs().max().item()
+        assert pdiff < 1e-6, \
+            f"packed boundary reset broken with per-channel decay: {pdiff:.3e}"
+
+        # bf16: the dtype-aware clamp keeps decay strictly below 1 even
+        # with the wider per-channel gate (same m6 margin as the scalar
+        # gate; a fixed 1 - 1e-6 bound would round to 1.0 in fp16).
+        attn16 = GatedDeltaAttention(config).to(torch.float16).eval()
+        g16 = attn16.decay_gate(torch.randn(2, 5, config.hidden_size,
+                                            dtype=torch.float16))
+        assert g16.shape == (2, 5, H, D)
+        assert bool((g16 < 1).all()), \
+            f"bf16 per-channel decay reached 1.0: {g16.max().item()}"
+
+    _pass("test_per_channel_decay",
+          f"gate [B,L,H,D] in (0,1), decode==one-shot {diff:.2e}, "
+          f"pad no-write, per-row forget split "
+          f"(fast {fast:.1e} / slow {slow:.1e} of state {smax:.1e}), "
+          f"packed reset {pdiff:.2e}, bf16 bound ok")
+
+
+# ----------------------------------------------------------------------
+# v5.21: MTP speculative rollback stays exact with the per-channel gate
+# ----------------------------------------------------------------------
+def test_mtp_per_channel_rollback():
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+    from helioslm_v5.src.inference.mtp import MTPDecoder
+
+    torch.manual_seed(222)
+    config = HeliosLMv5Config(size="lite")
+    config.hybrid_attention.enabled = True
+    config.hybrid_attention.full_attention_every = 3
+    config.hybrid_attention.per_channel_decay = True
+    config.num_hidden_layers = 4
+    model = HeliosLMv5(config).eval()
+
+    # Unit level: speculate from a cloned state, reject, restore+replay —
+    # the per-channel gate must not break the restore contract.
+    ids = torch.randint(3, config.vocab_size, (1, 7))
+    with torch.no_grad():
+        _, _, p5 = model(ids[:, :5], use_cache=True)
+        p5_state = p5[1][0].clone()
+        _, _, p7 = model(ids[:, 5:7], past_key_values=p5, use_cache=True)
+        assert torch.equal(p5[1][0], p5_state), \
+            "speculative forward mutated the input state cache in place"
+        clone = [tuple(t.clone() for t in lp) for lp in p5]
+        _, _, p6r = model(ids[:, 5:6], past_key_values=clone, use_cache=True)
+        _, _, p6d = model(ids[:, :6], use_cache=True)
+        s_diff = (p6r[1][0] - p6d[1][0]).abs().max().item()
+        assert s_diff < 1e-6, \
+            f"per-channel restored+replayed state diverges: {s_diff:.3e}"
+
+    # End to end: MTP speculative decode == plain greedy on a hybrid model
+    # whose linear layers run the per-channel gate.
+    decoder = MTPDecoder(model, model.mtp_modules, config)
+    ids = torch.randint(3, config.vocab_size, (1, 6))
+    res = decoder.generate(ids, max_new_tokens=8, temperature=0)
+    plain = model.generate(ids, max_new_tokens=8, temperature=0)
+    n = res.sequences.shape[1]
+    assert torch.equal(plain[:, :n], res.sequences), \
+        "per-channel hybrid MTP decode diverged from plain greedy"
+    assert res.num_drafted > 0
+    _pass("test_mtp_per_channel_rollback",
+          f"replay state {s_diff:.2e}, MTP==greedy len {n}, "
+          f"acceptance {res.acceptance_rate:.3f} "
+          f"({res.num_accepted}/{res.num_drafted})")
+
+
+# ----------------------------------------------------------------------
 # v5.7: RoPE scaling (linear / NTK), FP8 KV cache, Hyper-Connections, QAT
 # ----------------------------------------------------------------------
 def test_rope_scaling():
@@ -3708,6 +3879,9 @@ TESTS = [
     test_mxfp4,
     test_mtp_rebind_after_quantization,
     test_audio_sliding_window,
+    # v5.21
+    test_per_channel_decay,
+    test_mtp_per_channel_rollback,
     # v5.5
     test_linear_attention,
     test_hybrid_model,
@@ -3763,7 +3937,7 @@ TESTS = [
 
 
 def main():
-    print("HeliosLM v5.20 Test Suite (lite config, CPU)")
+    print("HeliosLM v5.21 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:

@@ -1,4 +1,4 @@
-# HeliosLM v5.9 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.21 - DeepSeek/K3-Style Architecture
 
 Reference LLM implementation with DeepSeek-V3-style efficiency techniques.
 All modules below are implemented and exercised by a CPU test suite with
@@ -18,6 +18,34 @@ misbehaving (see CHANGELOG). v5.5 is a feature release aligned with
 Kimi-K3-class architecture mechanisms: hybrid linear attention, LatentMoE,
 quantile balancing, cross-layer attention residuals, and SiTU-GLU (see
 CHANGELOG; unit suite now 44 tests).
+
+## v5.21 (2026-09-21): Daily Improvement — KDA-Style Per-Channel Decay Gate
+
+Landscape-driven (2026-09-21 scan): Kimi K3 (KDA at 3:1 interleave) and
+GLM-5.3-Flash (34 KDA + 11 sparse MLA) both ship per-channel fine-grained
+decay in their linear-attention layers. HeliosLM's hybrid stack now exposes
+the same knob: `hybrid_attention.per_channel_decay` (default False keeps
+the v5.5 per-head scalar gate bit-identical; True widens the gate to one
+sigmoid per head per key channel so state rows forget at independent
+rates). Mask semantics, packed document-boundary reset, and the m6
+dtype-aware clamp are unchanged; MTP speculative rollback is verified
+exact on top of the per-channel state. Enabling the flag on a
+scalar-gate checkpoint fails loudly on shape mismatch (by design).
+Unit suite 60 → 62 tests. Full details: [CHANGELOG](CHANGELOG.md).
+
+## v5.10-v5.20 (2026-09-16 .. 2026-09-20): Roadmap #6 + ModularRSI Wave
+
+This README fell behind the daily cadence between v5.9 and v5.21; the
+authoritative per-version entries live in [CHANGELOG](CHANGELOG.md).
+Headlines: CPU benchmark suite + fused quant kernels + eval loglikelihood
+harness (v5.10-v5.11), batched prefill (v5.12), CPU-trained toy char
+checkpoint (v5.13), multi-process DualPipe (v5.14), mmap disk-tier expert
+store with bit-exact streaming oracle (v5.15), speculation break-even
+instrumentation in the colibri-P3 schema (v5.16), standalone token-stream
+scorer with A/B bootstrap CI (v5.17), content-addressed KV prefix pool
+(roadmap #6 complete, v5.18), ModularRSI-style oracle-gated harness
+evolver (v5.19), and Pareto-aware integration with cross-workload
+adaptation (v5.20).
 
 ## v5.9 (2026-09-15): Daily Improvement Round 4 — Logit Soft-Capping, QK-Norm, Sliding Window, Final Logit Cap
 
