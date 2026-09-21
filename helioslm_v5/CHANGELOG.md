@@ -1,5 +1,21 @@
 # HeliosLM v5 Changelog
 
+## v5.21 (2026-09-21) - Certified top-delta Sparse Decode
+- `attention/certified_sparse_decode.py`: FFD-style (ICML 2026) sparse
+  decode with a RUNTIME certificate — per-step output bound
+  |sparse-dense|_inf <= 2*v_max*r/(1+r), r = n_dropped*exp(-(delta-g))
+- g = pseudo-max gap surfaced per step: g>0 degrades delta to delta-g
+  (the paper's empirical Fig-5 assumption becomes an executable check);
+  g<0 is the safe direction and tightens the bound
+- argmax/sinks/local always retained; MLA-latent scores injectable
+  (logits linear in latent cache => the bound carries over; V-side
+  absorbs ||W_UV|| into v_max)
+- First extension of the gate spectrum: bitwise invariance (cache/draft/
+  tier) -> delta-certificate (sparsity SHOULD change the math)
+- Measured on the adversarial tail probe: 112 dropped, bound holds with
+  ~4e4 margin (deliberately conservative bound — margin is data)
+- 61/61 tests + 9/9 integration
+
 ## v5.20 (2026-09-20) - Pareto-Aware Integration + Adaptation Loop
 - `harness_evolver.py` gains a memory axis: pool blocks + tier residency
   count toward `memory_budget` (None = unconstrained); configs that buy

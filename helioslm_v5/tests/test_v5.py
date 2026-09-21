@@ -3681,6 +3681,60 @@ def test_evolver_pareto_adaptation():
           f"pareto={len(rep['pareto'])}pts, memory-budget rejects pool, "
           f"adaptation dropped={tr['dropped_modules']}")
 
+def test_certified_sparse_decode():
+    """v5.21: top-delta sparse decode with runtime output certificate."""
+    from helioslm_v5.src.attention.certified_sparse_decode import (
+        certified_sparse_attention, CertReport)
+
+    torch.manual_seed(2121)
+    H, D, L = 2, 32, 256
+    q = torch.randn(H, D)
+    k = torch.randn(L, H, D)
+    v = torch.randn(L, H, 32)
+    # long tail: keys anti-aligned with each head's query -> scores ~ -11,
+    # far below the m-5 threshold, so the drop path is genuinely exercised
+    k[L // 2:] = (-2.0 * q).unsqueeze(0)
+    v[L // 2:] *= 0.05
+
+    # 1) certified mode: certificate holds AND is monotone in delta
+    _, r5 = certified_sparse_attention(q, k, v, delta=5.0, certified=True)
+    _, r7 = certified_sparse_attention(q, k, v, delta=7.0, certified=True)
+    assert isinstance(r5, CertReport)
+    assert r5.bound_holds, "certificate must upper-bound the real error"
+    assert r5.certified_ok and r5.g == 0.0
+    assert r5.dropped_tokens > 0, "tail construction must exercise dropping"
+    assert r7.output_bound <= r5.output_bound, "larger delta => tighter bound"
+    assert r7.dropped_tokens >= r5.dropped_tokens
+    assert r5.actual_error <= r5.output_bound
+    s_full = torch.einsum("hd,lhd->hl", q.float(), k.float()) / (D ** 0.5)
+    assert (s_full.argmax(1) // 16).unique().numel() <= r5.kept_blocks
+
+    # 2) pseudo-max mode: gap semantics. g<0 (underestimate) is the SAFE
+    #    direction (superset selection, delta_true > delta); g>0
+    #    (overestimate) is the paper's empirical risk and must surface as
+    #    a degraded delta_true with an explanatory note.
+    k2 = k.clone()
+    mid = L // 2 + 3
+    k2[mid] = q[0] * 10.0          # huge mid-sequence key for head 0
+    _, rp = certified_sparse_attention(q, k2, v, delta=5.0, certified=False,
+                                       n_sink=1, local_window=4)
+    assert rp.bound_holds
+    if rp.g > 0:
+        assert rp.delta_true < 5.0
+        assert any("pseudo-max" in n for n in rp.notes)
+    else:
+        assert rp.delta_true >= 5.0
+
+    # 3) MLA-latent path: precomputed scores give identical selection
+    _, r_mla = certified_sparse_attention(q, k, v, delta=5.0, certified=True,
+                                          scores=s_full)
+    assert r_mla.dropped_tokens == r5.dropped_tokens
+    assert r_mla.bound_holds
+    _pass("test_certified_sparse_decode",
+          f"d=5: dropped={r5.dropped_tokens} bound={r5.output_bound:.2e} "
+          f"actual={r5.actual_error:.2e} "
+          f"margin={r5.output_bound/max(r5.actual_error,1e-12):.0f}x")
+
 
 TESTS = [
     test_mla,
@@ -3738,6 +3792,8 @@ TESTS = [
     test_final_logit_soft_cap,
     # limitations task: GGUF export
     test_gguf_export,
+    # v5.21
+    test_certified_sparse_decode,
     # v5.20
     test_evolver_pareto_adaptation,
     # v5.19
@@ -3763,7 +3819,7 @@ TESTS = [
 
 
 def main():
-    print("HeliosLM v5.20 Test Suite (lite config, CPU)")
+    print("HeliosLM v5.21 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:
