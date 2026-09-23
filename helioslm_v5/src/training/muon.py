@@ -14,6 +14,9 @@ Keller Jordan lineage:
   3. Non-matrix parameters (biases, norm gains, 1-D tensors) do not have a
      well-defined orthogonalization; they fall back to an internal AdamW
      update so a single ``Muon`` instance can optimize a whole model.
+     A group with ``adam_fallback=False`` opts out of that routing: a
+     non-2-D param with a gradient then raises ValueError at step() time
+     (loud) instead of being silently AdamW-updated.
   4. Optional per-group flag ``muon=False`` routes a group to the AdamW
      path explicitly (the K3 recipe keeps embeddings / LM head on Adam).
 
@@ -72,7 +75,10 @@ class Muon(torch.optim.Optimizer):
         params: iterable of parameters or param groups. Group keys:
             ``lr`` (required-ish, default 0.02), ``momentum`` (0.95),
             ``nesterov`` (True), ``ns_steps`` (5), ``adam_fallback``
-            (True — non-2-D params in the group use AdamW), ``betas`` /
+            (True — non-2-D params in the group use AdamW; False makes the
+            group strict: such a param raises ValueError at step() time
+            instead of being silently routed to AdamW — move it to an
+            Adam-routed group), ``betas`` /
             ``eps`` for the fallback path, ``muon`` (True; set False to
             force a 2-D group onto the AdamW path, e.g. embeddings or the
             LM head per the K3 recipe), ``per_head_dim`` (None; v5.8 — the
@@ -170,6 +176,15 @@ class Muon(torch.optim.Optimizer):
                 else:
                     # AdamW fallback for non-matrix params (biases, norms,
                     # embeddings/head when the group opts out via muon=False).
+                    if g.ndim != 2 and not group["adam_fallback"]:
+                        raise ValueError(
+                            f"Muon: a param with shape {tuple(g.shape)} in a "
+                            "group with adam_fallback=False has no defined "
+                            "update (Muon orthogonalization requires 2-D "
+                            "gradients). Move the param to a group that "
+                            "routes it to AdamW (default adam_fallback=True, "
+                            "or muon=False for an explicit 2-D Adam group)."
+                        )
                     if "exp_avg" not in state:
                         state["exp_avg"] = torch.zeros_like(g)
                         state["exp_avg_sq"] = torch.zeros_like(g)

@@ -327,6 +327,17 @@ class HeliosLMv5(nn.Module):
             position_ids = torch.arange(
                 past_len, past_len + total_len, device=hidden_states.device
             ).unsqueeze(0).expand(B, total_len)
+        elif prefix_len > 0 and position_ids.shape[-1] != total_len:
+            # Multimodal prefixes prepend tokens the caller's text-length
+            # position_ids cannot cover — without this guard the layers
+            # later fail with a cryptic broadcast RuntimeError.
+            raise ValueError(
+                f"position_ids length {position_ids.shape[-1]} does not "
+                f"match the full sequence length {total_len} "
+                f"({prefix_len} multimodal prefix tokens + {seq} text "
+                "tokens); pass position_ids covering the whole sequence "
+                "(prefix included) or None for the default layout"
+            )
 
         if attention_mask is not None and prefix_len > 0:
             # Extend the caller's text mask with ones for the prefix tokens.
@@ -428,13 +439,16 @@ class HeliosLMv5(nn.Module):
             # forwards; early-stopped rows are right-padded with
             # pad_token_id, matching this method's freezing convention.
             decoder = MTPDecoder(self, self.mtp_modules, self.config)
-            # Pass top_p through when the installed MTPDecoder supports it
-            # (F5: silently dropping it changes the sampling distribution).
+            # Pass top_p and attention_mask through when the installed
+            # MTPDecoder supports them (F5: silently dropping top_p changes
+            # the sampling distribution; the mask keeps pad tokens out of
+            # the MTP path exactly like the plain path below).
             mtp_params = inspect.signature(MTPDecoder.generate).parameters
             if "top_p" in mtp_params:
                 result = decoder.generate(
                     input_ids, max_new_tokens=max_new_tokens,
                     temperature=temperature, top_p=top_p,
+                    attention_mask=attention_mask,
                 )
             else:
                 if top_p is not None and temperature is not None and temperature > 0:

@@ -18,11 +18,21 @@ v5.9: ``attention.logit_soft_cap`` (Gemma-style score capping),
   attention with StreamingLLM sinks), ``final_logit_soft_cap`` (Gemma-2
   style LM-head capping).
 
-``None`` on ``hybrid.enabled`` / ``use_attention_residuals`` /
-``moe.latent_dim`` means "follow the size default": the "full" size turns
-hybrid / residuals on and sets latent_dim=1024; the "lite" size keeps the
-v5.4 behaviour (all off / full-width experts) so the existing test suite is
-bit-identical. Explicit True/False/int values always win.
+``None`` means "follow the size" on every size-dependent field: the v5.5+
+switches (``hybrid.enabled`` / ``use_attention_residuals`` /
+``moe.latent_dim`` / ``moe.balance_strategy`` / ``use_hyper_connections``)
+and the architecture dims the size presets scale — ``vocab_size``,
+``max_position_embeddings``, ``hidden_size``, ``num_hidden_layers``,
+``intermediate_size``, the attention head/latent dims,
+``moe.num_experts`` / ``moe.num_activated_experts`` /
+``moe.device_group_size``, ``mtp.num_modules``, the hybrid
+linear-attention dims and ``multimodal.enabled``. The "full" size fills
+them with the production defaults, the "lite" size with the CPU smoke-test
+preset (see ``HeliosLMv5Config._SIZE_PRESETS``), so the existing test
+suite stays bit-identical. Explicit values always win: any non-``None``
+value a caller passes is kept verbatim and validated exactly like the
+"full" path — ``HeliosLMv5Config(size="lite", hidden_size=...)`` can no
+longer be silently re-sized by the preset.
 
 ``__post_init__`` validates structural constraints (divisibility etc.) and
 raises ``ValueError`` immediately on an invalid configuration instead of
@@ -50,13 +60,16 @@ class AttentionConfig:
       - False: the cache stores expanded per-head K_nope + V (v5.1
         behaviour), kept as a numerical reference and fallback.
     """
-    num_attention_heads: int = 64  # was 96, but 4096 % 96 != 0 (M4)
-    num_key_value_heads: int = 8   # GQA baseline reference for cache-size stats
-    kv_latent_dim: int = 512       # d_c: KV compression latent dim
-    q_lora_rank: int = 1536        # d_c': Q compression latent dim
-    no_rope_head_dim: int = 128    # per-head q/k dims WITHOUT RoPE
-    rope_head_dim: int = 64        # per-head q/k dims WITH RoPE (shared k_rope)
-    v_head_dim: int = 128          # per-head value dim (never rotated)
+    # Size-dependent dims: None = "follow the size" (filled from
+    # HeliosLMv5Config._SIZE_PRESETS in __post_init__; the values below are
+    # the "full" production defaults, explicit values always win).
+    num_attention_heads: Optional[int] = None  # full: 64 (was 96, but 4096 % 96 != 0, M4)
+    num_key_value_heads: Optional[int] = None  # full: 8 (GQA baseline reference for cache-size stats)
+    kv_latent_dim: Optional[int] = None        # full: 512 (d_c: KV compression latent dim)
+    q_lora_rank: Optional[int] = None          # full: 1536 (d_c': Q compression latent dim)
+    no_rope_head_dim: Optional[int] = None     # full: 128 (per-head q/k dims WITHOUT RoPE)
+    rope_head_dim: Optional[int] = None        # full: 64 (per-head q/k dims WITH RoPE, shared k_rope)
+    v_head_dim: Optional[int] = None           # full: 128 (per-head value dim, never rotated)
     attention_dropout: float = 0.0
     use_absorption: bool = True    # MLA weight absorption (latent KV cache)
     # RoPE position scaling (v5.7): None = vanilla RoPE; otherwise a dict
@@ -121,15 +134,18 @@ class AttentionConfig:
 
 @dataclass
 class MoEConfig:
-    num_experts: int = 256
-    num_shared_experts: int = 1
-    num_activated_experts: int = 8  # top-k
+    # Size-dependent: None = "follow the size" (filled from
+    # HeliosLMv5Config._SIZE_PRESETS in __post_init__; the values below are
+    # the "full" production defaults, explicit values always win).
+    num_experts: Optional[int] = None  # full: 256
+    num_shared_experts: int = 1        # same for both sizes
+    num_activated_experts: Optional[int] = None  # full: 8 (top-k)
     # None -> defaults to HeliosLMv5Config.intermediate_size (resolved in
     # HeliosLMv5Config.__post_init__)
     expert_hidden_size: Optional[int] = None
     # Number of devices across which experts are partitioned for
     # device-limited routing (experts_per_device = num_experts / device_group_size).
-    device_group_size: int = 8
+    device_group_size: Optional[int] = None  # full: 8; None = follow size
     # Fixed step size for the aux-free load-balancing bias update.
     bias_update_rate: float = 1e-3
     # LatentMoE (v5.5): when an int, routed experts operate in a shared
@@ -166,14 +182,16 @@ class HybridAttentionConfig:
     # None -> follow size (full: True, lite: False, i.e. v5.4 behaviour).
     enabled: Optional[bool] = None
     full_attention_every: int = 4
-    linear_num_heads: int = 32
-    linear_head_dim: int = 128
+    # Size-dependent: None = "follow the size" (see MoEConfig).
+    linear_num_heads: Optional[int] = None      # full: 32
+    linear_head_dim: Optional[int] = None       # full: 128
 
 
 @dataclass
 class MTPConfig:
     enabled: bool = True
-    num_modules: int = 2
+    # Size-dependent: None = "follow the size" (full: 2, lite: 1).
+    num_modules: Optional[int] = None
 
 
 @dataclass
@@ -185,7 +203,9 @@ class PagedAttentionConfig:
 
 @dataclass
 class MultimodalConfig:
-    enabled: bool = True
+    # Size-dependent: None = "follow the size" (full: True, lite: False —
+    # the lite model skips the heavy vision/audio encoders).
+    enabled: Optional[bool] = None
     vision_patch_size: int = 14
     vision_hidden_size: int = 1024
     vision_num_layers: int = 12
@@ -204,17 +224,45 @@ class GRPOConfig:
     kl_coef: float = 0.01
     lr: float = 1e-6
 
+    def __post_init__(self):
+        self._validate()
+
+    def _validate(self):
+        # group_size == 1 makes every group-normalized advantage exactly 0
+        # (each sample is its own baseline), so the policy-gradient term
+        # vanishes; grpo.py documents group_size >= 2 in practice.
+        if self.group_size < 2:
+            raise ValueError(
+                f"grpo.group_size must be >= 2, got {self.group_size} "
+                "(with group_size == 1 every advantage is exactly 0 and "
+                "the policy-gradient loss vanishes)"
+            )
+        if not (0.0 < self.epsilon < 1.0):
+            raise ValueError(
+                f"grpo.epsilon must be in (0, 1), got {self.epsilon}"
+            )
+        if self.kl_coef < 0:
+            raise ValueError(
+                f"grpo.kl_coef must be non-negative, got {self.kl_coef}"
+            )
+        if self.lr <= 0:
+            raise ValueError(f"grpo.lr must be positive, got {self.lr}")
+
 
 @dataclass
 class HeliosLMv5Config:
     model_name: str = "HeliosLM-v5.20"
     size: str = "full"  # "full" (production defaults) or "lite" (CPU smoke tests)
-    vocab_size: int = 160000
-    max_position_embeddings: int = 1048576
-    hidden_size: int = 4096
-    num_hidden_layers: int = 48
+    # Size-dependent architecture dims: None = "follow the size" (filled
+    # from _SIZE_PRESETS in __post_init__; the values below are the "full"
+    # production defaults, explicit values always win — see the module
+    # docstring).
+    vocab_size: Optional[int] = None  # full: 160000
+    max_position_embeddings: Optional[int] = None  # full: 1048576
+    hidden_size: Optional[int] = None  # full: 4096
+    num_hidden_layers: Optional[int] = None  # full: 48
     # Default source for MoE expert hidden size and MTP feed-forward dim.
-    intermediate_size: int = 14336
+    intermediate_size: Optional[int] = None  # full: 14336
     rms_norm_eps: float = 1e-6
     eos_token_id: int = 2
     bos_token_id: int = 1
@@ -252,44 +300,77 @@ class HeliosLMv5Config:
     # behaviour, bit-identical).
     final_logit_soft_cap: Optional[float] = None
 
+    # Size presets for the architecture fields declared Optional above. A
+    # field still None at __post_init__ time ("follow the size") is filled
+    # from this table; an explicit non-None value always wins and reaches
+    # _validate unchanged. Fields with one value across both sizes (e.g.
+    # moe.num_shared_experts) keep plain defaults and are not listed.
+    _SIZE_PRESETS = {
+        "full": {
+            "vocab_size": 160000,
+            "max_position_embeddings": 1048576,
+            "hidden_size": 4096,
+            "num_hidden_layers": 48,
+            "intermediate_size": 14336,
+            "attention.num_attention_heads": 64,
+            "attention.num_key_value_heads": 8,
+            "attention.kv_latent_dim": 512,
+            "attention.q_lora_rank": 1536,
+            "attention.no_rope_head_dim": 128,
+            "attention.rope_head_dim": 64,
+            "attention.v_head_dim": 128,
+            "moe.num_experts": 256,
+            "moe.num_activated_experts": 8,
+            "moe.device_group_size": 8,
+            "mtp.num_modules": 2,
+            "hybrid_attention.linear_num_heads": 32,
+            "hybrid_attention.linear_head_dim": 128,
+            "multimodal.enabled": True,
+        },
+        "lite": {
+            "vocab_size": 1024,
+            "max_position_embeddings": 2048,
+            "hidden_size": 256,
+            "num_hidden_layers": 2,
+            "intermediate_size": 512,
+            "attention.num_attention_heads": 4,
+            "attention.num_key_value_heads": 4,
+            "attention.kv_latent_dim": 64,
+            "attention.q_lora_rank": 128,
+            "attention.no_rope_head_dim": 24,
+            "attention.rope_head_dim": 8,  # head_dim = 24 + 8 = 32
+            "attention.v_head_dim": 32,
+            "moe.num_experts": 8,
+            "moe.num_activated_experts": 2,
+            "moe.device_group_size": 2,
+            "mtp.num_modules": 1,
+            "hybrid_attention.linear_num_heads": 4,
+            "hybrid_attention.linear_head_dim": 32,
+            "multimodal.enabled": False,  # skip heavy vision/audio encoders
+        },
+    }
+
     def __post_init__(self):
         if self.size not in ("full", "lite"):
             raise ValueError(f"unknown size {self.size!r}; expected 'full' or 'lite'")
-        if self.size == "lite":
-            self._apply_lite_overrides()
+        self._apply_size_defaults()
         self._resolve_defaults()
         self._validate()
 
-    def _apply_lite_overrides(self):
-        """Small CPU-runnable config: forward/backward in seconds."""
-        self.vocab_size = 1024
-        self.max_position_embeddings = 2048
-        self.hidden_size = 256
-        self.num_hidden_layers = 2
-        self.intermediate_size = 512
+    def _apply_size_defaults(self):
+        """Fill size-dependent fields left at None ("follow the size").
 
-        self.attention.num_attention_heads = 4
-        self.attention.num_key_value_heads = 4
-        self.attention.kv_latent_dim = 64
-        self.attention.q_lora_rank = 128
-        self.attention.no_rope_head_dim = 24
-        self.attention.rope_head_dim = 8  # head_dim = 24 + 8 = 32
-        self.attention.v_head_dim = 32
-
-        self.moe.num_experts = 8
-        self.moe.num_shared_experts = 1
-        self.moe.num_activated_experts = 2
-        self.moe.expert_hidden_size = None  # -> intermediate_size
-        self.moe.device_group_size = 2
-
-        # Small hybrid linear-attention dims (used only when a test enables
-        # hybrid_attention explicitly).
-        self.hybrid_attention.linear_num_heads = 4
-        self.hybrid_attention.linear_head_dim = 32
-
-        self.mtp.num_modules = 1
-        # Keep the lite model small: skip building heavy vision/audio encoders.
-        self.multimodal.enabled = False
+        Only fields the caller did NOT set (still None) are replaced by the
+        size preset; explicit values always win and flow into _validate
+        unchanged (see the module docstring and _SIZE_PRESETS).
+        """
+        for dotted, value in self._SIZE_PRESETS[self.size].items():
+            obj = self
+            for part in dotted.split(".")[:-1]:
+                obj = getattr(obj, part)
+            name = dotted.rsplit(".", 1)[-1]
+            if getattr(obj, name) is None:
+                setattr(obj, name, value)
 
     def _resolve_defaults(self):
         if self.moe.expert_hidden_size is None:
@@ -375,6 +456,9 @@ class HeliosLMv5Config:
                 f"mtp.num_modules must be a positive integer, got "
                 f"{self.mtp.num_modules}"
             )
+        # GRPO training hyper-parameters (validated eagerly in GRPOConfig
+        # too; re-checked here for configs mutated after construction).
+        self.grpo._validate()
         # v5.5: hybrid interleave / LatentMoE / balancing / activation.
         h = self.hybrid_attention
         if h.full_attention_every < 2:

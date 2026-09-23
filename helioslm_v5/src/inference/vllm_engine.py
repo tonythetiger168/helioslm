@@ -16,7 +16,7 @@ only when the optional ``prometheus_client`` package is installed.
 """
 import math
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import torch
 
@@ -77,10 +77,13 @@ class VLLMEngine:
       - Batched stepping (v5.2): decode-phase requests that only need to feed
         ONE new token are merged into a single [B, 1] forward per step.
       - Batched prefill (v5.12): newly admitted requests are grouped by
-        prompt length; equal-length rows share one [B, L] forward (exact —
-        no mask, no position shift). For recurrent-state (hybrid) models —
-        which cannot use watermark pad prefixes — this is the only batched
-        prefill path; singleton groups keep the solo forward.
+        (prompt length, prompt_pad); equal-length unpadded rows share one
+        [B, L] forward (exact — no mask, no position shift). Rows with a
+        watermark pad prefix (prompt_pad > 0) cannot share one unmasked
+        forward — each keeps the solo masked ``_prefill`` path. For
+        recurrent-state (hybrid) models — which cannot use watermark pad
+        prefixes — this grouping is the only batched prefill path;
+        singleton groups keep the solo forward.
 
     Batched-decode alignment strategy (v5.2, watermark padding):
       The attention stack uses ``position_ids`` for BOTH RoPE and the causal
@@ -334,7 +337,9 @@ class VLLMEngine:
         return logits[0, -1]
 
     def _prefill_group(self, reqs: List[Request], device):
-        """Batched prefill for requests sharing prompt length (v5.12).
+        """Batched prefill for requests sharing prompt length AND pad
+        (v5.12) — only ever called for prompt_pad == 0 groups (padded rows
+        take the solo masked ``_prefill``; see ``step``).
 
         Rows of equal length need no padding mask and no position shifting:
         the causal forward scores each row independently, so one [B, L]
@@ -431,19 +436,25 @@ class VLLMEngine:
         outputs: Dict[int, int] = {}
         device = next(self.model.parameters()).device
         with torch.no_grad():
-            # 1) Prefill newly admitted requests, grouped by prompt length
-            #    (v5.12): equal-length rows batch into one forward (exact —
-            #    no mask, no position shift); singletons keep the solo path.
-            #    For recurrent-state (hybrid) models this grouping is the
-            #    only batched prefill available (pad prefixes are unusable).
-            #    A prefilled request joins decode batches next step.
+            # 1) Prefill newly admitted requests, grouped by
+            #    (prompt length, prompt_pad) (v5.12): equal-length UNPADDED
+            #    rows batch into one forward (exact — no mask, no position
+            #    shift); rows with a watermark pad prefix (prompt_pad > 0)
+            #    each take the solo masked prefill — their per-row pad
+            #    regions cannot be expressed in one unmasked [B, L] forward.
+            #    For recurrent-state (hybrid) models prompt_pad is always 0,
+            #    making this grouping the only batched prefill available
+            #    (pad prefixes are unusable for them). A prefilled request
+            #    joins decode batches next step.
             pending = [r for r in self.running_requests
                        if r.past_key_values is None]
-            prefill_groups: Dict[int, List[Request]] = {}
+            prefill_groups: Dict[Tuple[int, int], List[Request]] = {}
             for req in pending:
-                prefill_groups.setdefault(len(req.prompt_token_ids), []).append(req)
-            for length in sorted(prefill_groups):
-                group = prefill_groups[length]
+                prefill_groups.setdefault(
+                    (len(req.prompt_token_ids), req.prompt_pad), []
+                ).append(req)
+            for (length, pad) in sorted(prefill_groups):
+                group = prefill_groups[(length, pad)]
                 # O2: a failed prefill must not hold its blocks forever —
                 # retire the request(s) (error recorded, blocks freed) and
                 # re-raise; the remaining requests keep their state and the
@@ -451,10 +462,11 @@ class VLLMEngine:
                 # batched-forward failure cannot be attributed to one row,
                 # so the whole group is retired together.
                 try:
-                    if len(group) == 1:
-                        logits_rows = [self._prefill(group[0], device)]
-                    else:
+                    if pad == 0 and len(group) >= 2:
                         logits_rows = self._prefill_group(group, device)
+                    else:
+                        logits_rows = [self._prefill(r, device)
+                                       for r in group]
                 except Exception as exc:
                     for req in group:
                         self._finish(req, error=exc)
@@ -497,6 +509,11 @@ class VLLMEngine:
         Returns {request_id: generated_token_ids}."""
         steps = 0
         while self.request_queue or self.running_requests:
+            # Check the budget BEFORE consuming a step so that
+            # max_steps=0 means exactly 0 steps (previously the check ran
+            # only after self.step(), forcing at least one step).
+            if max_steps is not None and steps >= max_steps:
+                break
             if not self.running_requests:
                 self.schedule()
             # Retire requests that are done before consuming a step
@@ -509,8 +526,6 @@ class VLLMEngine:
                 continue
             self.step()
             steps += 1
-            if max_steps is not None and steps >= max_steps:
-                break
         return {r.request_id: list(r.generated_token_ids)
                 for r in self.finished_requests}
 

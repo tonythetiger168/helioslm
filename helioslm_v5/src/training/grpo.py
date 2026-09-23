@@ -331,6 +331,13 @@ class GRPOTrainer:
                 prompt_ids,
                 max_new_tokens=self.max_new_tokens,
                 temperature=1.0,
+                # top_p=1.0 (no nucleus filter): old_logprob and the
+                # importance ratio score the plain softmax distribution, so
+                # the behavior policy must sample from exactly that
+                # distribution — the default top_p=0.9 filter would make
+                # sampling and logprobs disagree (real off-policy bias
+                # whenever the filter binds).
+                top_p=1.0,
             )
             if gen.dim() == 1:
                 gen = gen.unsqueeze(0)

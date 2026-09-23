@@ -102,11 +102,17 @@ class DualPipeScheduler:
     """
 
     def __init__(self, stages: List[DualPipeStage], num_micro_batches: int = 8):
+        self.stages = list(stages)
+        if len(self.stages) == 0:
+            raise ValueError(
+                "DualPipeScheduler requires at least one stage; got an "
+                "empty stages list (run_forward/run_backward would be "
+                "identity and run_dual would index a nonexistent last "
+                "stage)")
+        self.num_stages = len(self.stages)
         if num_micro_batches < 1:
             raise ValueError(
                 f"num_micro_batches must be >= 1, got {num_micro_batches}")
-        self.stages = list(stages)
-        self.num_stages = len(stages)
         # Declared micro-batch count; run_dual validates its input list
         # against this so the parameter is load-bearing, not decorative.
         self.num_micro_batches = num_micro_batches

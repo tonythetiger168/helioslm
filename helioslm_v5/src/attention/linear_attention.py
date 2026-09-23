@@ -46,10 +46,18 @@ positions), the recurrent state is ZEROED at each document boundary before
 that document's first token is processed, so documents never leak into each
 other. The packed layout is then exactly equivalent to running each
 document as its own sequence (verified in the test suite, mirroring the
-MLA packed-isolation test). A restart while a non-empty ``past_key_value``
-is supplied (cached decode with a position restart) is still a loud
+MLA packed-isolation test). 1D ``[seq]`` position_ids follow the shared
+layer contract (same resolution as MLA's ``_resolve_positions``): they are
+unsqueezed to ``[1, seq]`` so packed detection and boundary validation
+apply uniformly. A document start while a non-empty ``past_key_value``
+is supplied (cached decode at a document boundary) is still a loud
 ``ValueError``: continuing from a carried-over state and resetting it at
-the same time is contradictory.
+the same time is contradictory. Explicit positions supplied against a
+carried state must CONTINUE the cache — strictly increasing, starting at
+or past the cached length (e.g. chunked-prefill ``past_len..past_len+seq-1``)
+— never restart at 0; the recurrence has no access to the cached length
+(the state carries no sequence axis), so any restart/fresh-document layout
+is rejected outright rather than risk leaking the old document's state.
 """
 import math
 
@@ -106,7 +114,8 @@ class GatedDeltaAttention(nn.Module):
     used ONLY for packed-sequence handling — a position restart marks a
     document boundary at which the recurrent state is reset to zero (see the
     module docstring). Normal prefill positions (0..T-1) and decode positions
-    (past_len.., strictly increasing) are accepted untouched.
+    (past_len.., strictly increasing) are accepted untouched; a 1D ``[seq]``
+    layout is accepted as a single row (shared layer contract, same as MLA).
 
     ``is_recurrent_attention = True`` lets the model/engine/MTP recognize
     the layer type without importing this module.
@@ -177,26 +186,49 @@ class GatedDeltaAttention(nn.Module):
         # document boundary. The fixed-size state cannot be segmented, so
         # it is ZEROED at each boundary instead — the packed layout becomes
         # exactly equivalent to running each document as its own sequence.
+        # 1D [seq] position_ids follow the shared layer contract (same
+        # resolution as MLA._resolve_positions): unsqueeze to [1, seq] so
+        # packed detection and boundary validation apply uniformly.
+        if position_ids is not None and position_ids.dim() == 1:
+            position_ids = position_ids.unsqueeze(0).expand(B, seq)
         seg_start = None
-        if position_ids is not None and seq > 1 \
-                and position_ids.dim() == 2 and position_ids.shape[1] == seq:
-            restart = (position_ids[:, 1:] < position_ids[:, :-1])  # [B, seq-1]
-            if bool(restart.any()):
-                if past_key_value is not None:
+        if position_ids is not None and position_ids.dim() == 2 \
+                and position_ids.shape[1] == seq:
+            if past_key_value is not None:
+                # The carried state covers at least one token (a state
+                # cache only exists after a forward processed tokens), so a
+                # legitimate continuation — a cached decode step or chunked
+                # prefill — is strictly increasing and starts at or past
+                # the cached length. A position restart (a decreasing step,
+                # or a fresh document starting at 0) would silently leak the
+                # old document's state into the new one; MLA rejects the
+                # same layouts in _build_attn_mask. The recurrence cannot
+                # recover the exact cached length (the state has no
+                # sequence axis), so any restart is rejected outright.
+                restart = (position_ids[:, 1:] < position_ids[:, :-1])
+                if (seq > 1 and bool(restart.any())) \
+                        or bool((position_ids[:, 0] == 0).any()):
                     raise ValueError(
-                        "GatedDeltaAttention: position_ids restart mid-"
-                        "sequence while a non-empty past_key_value is "
-                        "supplied (cached decode at a document boundary). "
-                        "Continuing from a carried-over state and resetting "
-                        "it at the same time is contradictory; prefill each "
-                        "document separately."
+                        "GatedDeltaAttention: position_ids do not continue "
+                        "the cached recurrent state (a non-empty "
+                        "past_key_value is supplied): positions must be "
+                        "strictly increasing and start at or past the "
+                        "cached length (chunked-prefill continuation, e.g. "
+                        "past_len..past_len+seq-1, is fine), but a "
+                        "position restart starting a new document was "
+                        "given. Continuing from the carried-over state "
+                        "would leak the old document into the new one; "
+                        "prefill each document separately."
                     )
-                seg_start = torch.zeros(B, seq, dtype=torch.bool,
-                                        device=hidden_states.device)
-                seg_start[:, 0] = True
-                seg_start[:, 1:] = restart
-                # Defensive: a true restart always has pos[t] < pos[t-1] but
-                # segment starts may also begin at 0; both are resets.
+            elif seq > 1:
+                restart = (position_ids[:, 1:] < position_ids[:, :-1])  # [B, seq-1]
+                if bool(restart.any()):
+                    seg_start = torch.zeros(B, seq, dtype=torch.bool,
+                                            device=hidden_states.device)
+                    seg_start[:, 0] = True
+                    seg_start[:, 1:] = restart
+                    # Defensive: a true restart always has pos[t] < pos[t-1] but
+                    # segment starts may also begin at 0; both are resets.
 
         if past_key_value is not None:
             if len(past_key_value) != 1:

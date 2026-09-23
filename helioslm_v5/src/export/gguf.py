@@ -398,6 +398,14 @@ class GGUFFile:
     def tensor_bytes(self, name):
         for t in self.tensors:
             if t.name == name:
+                if t.ggml_type not in _GGML_TORCH_DTYPE:
+                    # Unknown/quantized GGML types have no known payload
+                    # size (nbytes == -1), which would slice to b"" —
+                    # fail as loudly as get_tensor instead.
+                    raise ValueError(
+                        f"tensor {name!r} has GGML type {t.ggml_type}; only "
+                        "F32/F16 payloads can be read as raw bytes"
+                    )
                 start = self._data_start + t.offset
                 return bytes(self._raw[start:start + t.nbytes])
         raise ValueError(f"no tensor named {name!r} in file")

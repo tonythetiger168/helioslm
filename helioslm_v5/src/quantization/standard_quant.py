@@ -507,6 +507,10 @@ class GPTQLinear(nn.Module):
                     f"calibration_data last dim {calibration_data.shape[-1]} "
                     f"!= linear.in_features {in_f}")
             X = calibration_data.detach().float().reshape(-1, in_f).to(W.device)
+            if X.shape[0] == 0:
+                # Same guard as the AWQ path: an empty calibration tensor
+                # would divide by zero at the Hessian's 2/N scale.
+                raise ValueError("calibration activations must be non-empty")
             q, scales, zeros, g_idx = cls._gptq_quantize(
                 W, X, group_size, bits, percdamp, act_order=act_order)
             num_groups = (in_f + group_size - 1) // group_size

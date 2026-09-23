@@ -75,10 +75,16 @@ def certified_sparse_attention(
     """Sparse decode with a per-step certificate. Returns (out, report).
 
     Retained set: sink blocks + local blocks + the argmax block + every
-    block whose max score satisfies s >= m̃ - delta.
+    block whose max score satisfies s >= m̃ - delta. ``n_sink=0`` /
+    ``local_window=0`` mean "no sinks" / "no local window"; ``block_size``
+    must be >= 1 and ``delta`` must be >= 0 (loud ValueError otherwise).
     """
     H, D = q.shape
     L = k.shape[0]
+    if block_size < 1:
+        raise ValueError(f"block_size must be >= 1, got {block_size}")
+    if delta < 0:
+        raise ValueError(f"delta must be >= 0, got {delta}")
     if scores is None:
         s = torch.einsum("hd,lhd->hl", q.float(), k.float()) / math.sqrt(D)
     else:
@@ -88,12 +94,19 @@ def certified_sparse_attention(
     if certified:
         m_tilde = m_true.clone()
     else:
-        # pseudo-max: sinks + local context only (no global sync)
+        # pseudo-max: sinks + local context only (no global sync). Zero
+        # n_sink / local_window means "no sinks" / "no local window"; with
+        # neither, the pseudo-max is -inf and every block is retained.
         n_local = min(local_window, L)
-        m_tilde = torch.maximum(
-            s[:, :n_sink].amax(dim=1),
-            s[:, L - n_local:].amax(dim=1),
-        )
+        parts = []
+        if n_sink > 0:
+            parts.append(s[:, :n_sink].amax(dim=1))
+        if n_local > 0:
+            parts.append(s[:, L - n_local:].amax(dim=1))
+        if parts:
+            m_tilde = torch.stack(parts).amax(dim=0)
+        else:
+            m_tilde = torch.full_like(m_true, float("-inf"))
     g = float((m_tilde - m_true).max())
 
     # block max scores
@@ -105,10 +118,15 @@ def certified_sparse_attention(
     # union over heads: keep a block if ANY head wants it
     keep_block = block_max.ge(
         (m_tilde - delta).unsqueeze(1)).any(dim=0)                # [B]
-    # always retain: sinks, local window, argmax block
-    keep_block[: max(1, (n_sink + block_size - 1) // block_size)] = True
-    n_local_blocks = max(1, (local_window + block_size - 1) // block_size)
-    keep_block[-n_local_blocks:] = True
+    # always retain: sink blocks, local-window blocks, argmax block.
+    # Zero n_sink / local_window contributes nothing — and keep_block[-0:]
+    # would alias the WHOLE tensor, so the local slice must be guarded.
+    n_sink_blocks = (n_sink + block_size - 1) // block_size
+    if n_sink_blocks:
+        keep_block[:n_sink_blocks] = True
+    n_local_blocks = (local_window + block_size - 1) // block_size
+    if n_local_blocks:
+        keep_block[-n_local_blocks:] = True
     argmax_block = (s.argmax(dim=1) // block_size)
     keep_block[argmax_block] = True
 

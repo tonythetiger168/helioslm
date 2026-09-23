@@ -659,7 +659,12 @@ class MLA(nn.Module):
             # preserve dtype. Attention always runs over the SAME quantized
             # values that are stored (current tokens included).
             stored_c_kv = c_kv.detach().to(torch.float8_e4m3fn)
-            c_kv = stored_c_kv.to(compute_dtype)
+            # Straight-through estimator: the VALUE is the quantized
+            # latent (bit-identical to the no-grad inference path) while
+            # the GRADIENT flows back unchanged into kv_a_proj / norm_kv —
+            # without it a grad-requiring forward stores a detached cache
+            # and the KV projections silently stop training.
+            c_kv = stored_c_kv.to(compute_dtype) + c_kv - c_kv.detach()
 
         present_key_value = (stored_c_kv, k_rope) if use_cache else None
         kv_len = c_kv.shape[2]

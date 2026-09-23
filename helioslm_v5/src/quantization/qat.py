@@ -154,4 +154,20 @@ def apply_qat(model: nn.Module, method: str = "mxfp4", group_size: int = None):
         parent = modules[parent_name] if parent_name else model
         setattr(parent, child_name, wrapper)
         applied.append((name, wrapper))
+
+    # Re-bind MTP shared modules: wrapping replaces model.lm_head with a
+    # FakeQuantLinear, leaving mtp_modules[i].lm_head pointing at the OLD
+    # nn.Linear (a silent break of the weight tying — MTP aux-loss training
+    # would forward an unquantized head while the main head is fake-quantized).
+    # Same re-bind QuantizationManager.quantize_model performs after module
+    # replacement. Defensive getattr: model may not have MTP.
+    mtp_modules = getattr(model, "mtp_modules", None)
+    if mtp_modules is not None:
+        lm_head = getattr(model, "lm_head", None)
+        embed_tokens = getattr(model, "embed_tokens", None)
+        for mtp in mtp_modules:
+            if lm_head is not None and hasattr(mtp, "lm_head"):
+                mtp.lm_head = lm_head
+            if embed_tokens is not None and hasattr(mtp, "embed_tokens"):
+                mtp.embed_tokens = embed_tokens
     return applied

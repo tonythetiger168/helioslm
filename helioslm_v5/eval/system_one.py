@@ -54,12 +54,19 @@ class MockSystemOne:
     random directions; the model sees the vector plus noise. Logit
     temperature > 1 degrades calibration systematically (overconfidence
     or underconfidence), letting the metrics discriminate.
+
+    Determinism: buckets AND the injected noise are drawn from per-instance
+    seeded generators (never the global RNG), so a ``seed`` fully
+    reproduces an audit run — two fresh instances with the same seed give
+    identical outputs, and ``routing_gate``/``evolve_threshold`` numbers
+    are comparable across processes.
     """
 
     def __init__(self, n_buckets: int = 4, dim: int = 16, noise: float = 0.4,
                  temperature: float = 1.0, seed: int = 7):
         g = torch.Generator().manual_seed(seed)
         self.buckets = torch.randn(n_buckets, dim, generator=g)
+        self._noise_gen = torch.Generator().manual_seed(seed)
         self.noise = noise
         self.temperature = temperature
         self.n_buckets = n_buckets
@@ -69,7 +76,8 @@ class MockSystemOne:
         """Returns {probs [B, K], correct [B] (bool), gold [B]}."""
         logits = x @ self.buckets.T / math.sqrt(self.dim)
         gold = logits.argmax(dim=-1)
-        noisy = x + torch.randn_like(x) * self.noise
+        noisy = x + torch.randn(x.shape, generator=self._noise_gen,
+                                dtype=x.dtype) * self.noise
         model_logits = noisy @ self.buckets.T / math.sqrt(self.dim)
         probs = torch.softmax(model_logits / self.temperature, dim=-1)
         pred = probs.argmax(dim=-1)
