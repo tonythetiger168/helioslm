@@ -1,5 +1,25 @@
 # HeliosLM v5 Changelog
 
+## v5.26 (2026-09-24) - Stage A: Real-Model Integration Oracles (T15)
+- `tests/test_v5_stage_a.py`: the v5.23-v5.25 toy oracles verified against the
+  REAL model (torch 2.8 CPU, 3/3 PASS):
+  - T15a AttnRes migration gate: zero-init `attn_res_gate` reproduces
+    `use_attention_residuals=False` BITWISE on HeliosLMv5
+  - T15b DSA sparse decode oracle: `sparse_top_k >= kv_len` is bit-identical
+    to dense (matches the config contract); k < kv_len asserts selection
+    validity (causal, current token force-selected, width K) + determinism;
+    greedy flips (7/8 on random weights) are REPORTED, not asserted —
+  the claim is narrowed to what is provable (same discipline as the DSA
+    two-layer oracle)
+  - T15c agent-loop smoke with the real toy checkpoint: loop runs with
+    model_fn backed by checkpoints/toy_v5.13.pt; PARSE_ERROR recovery 3/3
+    is the expected path (checkpoint not tool-trained; Stage B replaces it)
+- Key implementation facts established: sparse decode engages only at
+  seq==1 AND kv_len > k (prefill is always bit-identical); MoE router also
+  calls torch.topk (k=2) so selection instrumentation must filter by k
+- 3/3 stage-A tests (T15a/T15b/T15c)
+
+
 ## v5.25 (2026-09-23) - Disagg Evolver Module (Mooncake-style, oracle-gated)
 - `agent/disagg.py`: prefill/decode disaggregation as an evolvable serving
   module — greedy cache-aware routing, sojourn-latency model, DisaggConfig
