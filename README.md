@@ -51,6 +51,7 @@ Nothing sells an LLM repo like showing it produce tokens. -->
 | **Attention** | MLA with **weight absorption** — latent-only KV cache, **−97.7% memory vs MHA** (full config), verified equivalent to the expanded path (<1e-4). Hybrid linear attention: Gated Delta Rule layers interleaved with MLA, fixed-size recurrent state cache, decode ≡ one-shot (<2e-7). RoPE scaling: linear / NTK / YaRN. DSA-style sparse top-k decode over the latent cache (k≥L exactly dense). Sliding-window attention with StreamingLLM sinks (O(W) decode), per-head QK-norm, Gemma-style logit soft-capping. |
 | **MoE** | Sigmoid-gated fine-grained experts with **auxiliary-loss-free** load balancing (selection-only bias, heuristic or quantile updates). **LatentMoE**: routed experts in a shared latent space. **SiTU-GLU** tanh soft-capped activation. |
 | **Cross-layer** | **Attention Residuals** — per-layer gated injection of accumulated lower-layer attention outputs, threaded through DualPipe (gradient-exact, bitwise-verified). |
+| **Agent** | v5.23 agent layer: strict tool-call schema/parser (16 error classes), deterministic sandboxed tools, trajectory bitwise-replay oracle, ground-truth-by-construction toy envs, routing gates (v5.22 decision-audit discipline) in the agent loop; v5.26 real-model oracles (T15) verify it against HeliosLMv5 itself |
 | **Speculative decoding** | DeepSeek-style MTP with **strict verification** (residual (p−q)₊ resampling), batch support, O(1) cache-truncation rollback; hybrid recurrent-state rollback via restore+replay. |
 | **Serving** | vLLM-style engine: paged KV accounting, copy-on-write forks, watermark-aligned continuous batching. |
 | **Training** | FP8 trainer (native float8 + STE, E5M2 gradient hooks, AdamW master weights), DualPipe schedule simulation (recompute-based, gradient-exact), GRPO (real sampling, k3 KL, answer-extraction rewards), Muon optimizer (Newton–Schulz orthogonalized momentum, optional per-head blocks), QAT straight-through fake-quant training. |
@@ -89,10 +90,10 @@ latent (512 + 64 values/token). Full numbers and methodology:
 ## Repository layout
 
 ```
-helioslm_v5/          # source (configs, src/{attention,moe,inference,training,vision,audio,quantization}, tests)
+helioslm_v5/          # source (configs, src/{attention,moe,inference,training,vision,audio,quantization}, agent/, tests)
 docs/                 # code review reports + per-version fix reports
 integration_test_v51.py
-CHANGELOG.md          # full version history (v5.0 → v5.9)
+CHANGELOG.md          # full version history (v5.0 → v5.26)
 ```
 
 ## Roadmap
@@ -119,6 +120,11 @@ are static-checked) — tracked as a community issue.
 
 Headlines (full details in [CHANGELOG.md](helioslm_v5/CHANGELOG.md)):
 
+- **v5.26** — Stage A real-model oracles (T15): zero-gate attention residuals bitwise-verified on HeliosLMv5; sparse top-k decode oracle (k≥L bit-identical, selection validity + determinism); agent-loop smoke on the real toy checkpoint
+- **v5.25** — Disagg evolver module: Mooncake-style prefill/decode separation as a HarnessEvolver search module, monotonicity gate, three-axis Pareto (makespan / workers / worker-seconds)
+- **v5.24** — Attention variants with two-layer oracles: DSA sparse decode (fp32 certificate ⇒ fp64 gate), AttnRes mixing (zero-init ⇒ bitwise migration gate)
+- **v5.23** — Agent layer: strict tool-call schema + parser, deterministic sandboxed tools, trajectory bitwise-replay oracle, ground-truth-by-construction envs, routing gates in the agent loop
+- **v5.22** — Decision-layer audit toolkit: calibration metrics (ECE / Brier) against constructed ground truth — no reference LLM required
 - **v5.20** — Pareto-aware integration (memory axis) + cross-workload adaptation loop — ModularRSI gaps 2/3 closed at the inference layer
 - **v5.19** — Evolvable serving harness: ModularRSI-style module-wise search (draft/pool/tier) behind a deterministic bitwise oracle gate
 - **v5.18** — Content-addressed KV prefix pool: cross-session prefix reuse, fingerprint-guarded, bit-exact oracle (roadmap #6 complete)
