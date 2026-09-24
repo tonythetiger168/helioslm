@@ -1,5 +1,52 @@
 # HeliosLM v5 Changelog
 
+## v5.25 (2026-09-23) - Disagg Evolver Module (Mooncake-style, oracle-gated)
+- `agent/disagg.py`: prefill/decode disaggregation as an evolvable serving
+  module — greedy cache-aware routing, sojourn-latency model, DisaggConfig
+  duck-typed into HarnessEvolver's search space (three-axis Pareto:
+  makespan / n_workers / worker_seconds)
+- Monotonicity gate: on a FIXED workload fingerprint, adding workers must
+  never increase modeled makespan — violations are model bugs, not
+  trade-offs (the v5.22 routing-gate discipline applied to serving)
+- `agent/longctx.py`: needle/RULER probes with planted ground truth and
+  seeded corpora, comparable across model variants
+- Fix history (5 real-execution debug rounds, R1–R5): zero-divisor
+  generators, layer-0 AttnRes IndexError, SYSTEM.format brace trap,
+  workload/worker correlation in synthetic data, per-task alternation —
+  all caught by real runs on Windows / Python 3.14, fixed idempotently
+- 15/15 tests (incl. T13 disagg module, T16 longctx probes)
+
+## v5.24 (2026-09-23) - Attention Variants (two-layer oracles)
+- `agent/dsa.py`: DSA-style sparse top-k decode with a TWO-LAYER oracle:
+  fp32 certificate (pseudo-max gap => dropped mass < 2^-40) gating an
+  fp64 check (<=1e-9 vs dense decode). We do NOT claim fp32 bitwise
+  equivalence — the claim is narrowed to what is provable
+- `agent/attn_res.py`: AttnRes-style layer-output mixing
+  x_{l+1} = x_l + y_l + sum_i alpha[l][i] * y_i with alpha zero-init =>
+  bitwise migration gate against vanilla residual; post-training =>
+  determinism gate. Named attn_res_mixing pending K3 report alignment
+- 15/15 tests (incl. T11 DSA two-layer oracle, T12 AttnRes oracles)
+
+## v5.23 (2026-09-23) - Agent Layer (verifiable tool calling)
+- `agent/schema.py`: strict tool-call wire format and parser — 16 error
+  classes, JSON depth/size caps, parallel-call interface reserved
+- `agent/tools.py`: deterministic tools (AST-whitelist calc, str_op,
+  sandboxed file I/O, finish) — no network, no nondeterminism
+- `agent/trajectory.py`: trajectory serde + verify_replay — same ids =>
+  same observations, bitwise; tampering always caught (T5 hard oracle)
+- `agent/envs/`: calc / str / compose toy environments, ground truth by
+  construction (no LLM judge)
+- `agent/gate.py`: Fixed / Oracle / ThresholdGate(tau) + routing
+  monotonicity gate carried over from v5.22's decision-audit discipline
+- `agent/loop.py`: plan->act->observe loop with PARSE_ERROR recovery;
+  three-mode benchmark (direct / routed / oracle) on one task set:
+  direct <= routed <= oracle (T7)
+- `agent/benchmark.py` + `agent/finetune_data.py`: score_stream JSONL
+  export and tool-tuning data pipeline (teacher = scripted policy,
+  one sample per step — learn local mappings first, the loop composes)
+- 15/15 tests (T1–T9 agent layer oracles)
+
+
 ## v5.22 (2026-09-21) - Decision-Layer Audit Toolkit
 - `eval/system_one.py`: calibration metrics (ECE / Brier / reliability
   curve) against CONSTRUCTED ground truth — no reference LLM required,
