@@ -1,6 +1,6 @@
 # HeliosLM v5.23–v5.25 專案交接文件
 
-> 更新時間：2026-09-24 16:50｜狀態：**已交付並驗證，PR #6 待 merge，main 已推進至 09-24 基線**
+> 更新時間：2026-09-24 19:35｜狀態：**v5.23–25 已 merge 進 main（PR #6）；A 階段 T15 真模型 oracle 3/3 PASS；下一階段 B：tool-tuned checkpoint**
 > 本文件自成一體，新 session / 新協作者只需要這一份即可接手。
 
 ---
@@ -78,7 +78,7 @@
 
 | 項目 | 狀態 |
 |---|---|
-| 真 `model_v5.py` 整合（DSA decode 掛點、AttnRes 掛 forward、T15） | **未做**——A 階段文件已備好，需要 repo 實際 forward 程式碼逐行對位 |
+| ~~真 model_v5.py 整合~~ **T15 真模型 oracle（09-24 完成）** | ✅ `tests/test_v5_stage_a.py` 3/3 PASS（torch 2.8 CPU）：T15a 零閘 AttnRes ⇒ vanilla **bitwise**；T15b `k≥kv_len` sparse ⇒ dense **bitwise**（與 config 契約一致）+ selection 有效性/確定性（k<K 的 greedy 翻轉 7/8 為近似行為，**報告不斷言**——宣稱縮小到可證範圍）；T15c 真 toy checkpoint 驅動 agent loop（未 tool-tuned ⇒ PARSE_ERROR recovery 3/3，預期路徑，Stage B 解） |
 | Tool-tuned checkpoint（PR-8） | 未做——`train_tool_tuned.py`（自包含 torch 版）已交付 |
 | K3 報告對齊 | 未做——5 規格點萃取表 + instrumentation 已備好 |
 | PR #6 merge | **待處理**——本文件 + CHANGELOG v5.23–25 條目已備好隨 merge 進 main |
@@ -88,12 +88,12 @@
 ```
 ✅ v5.23–25 交付（15/15 測試全綠）──→ ① merge PR #6 到 main（含 CHANGELOG + 本文件）
                                         │
-② A 階段：model_v5.py 真整合（需 forward 原始碼）──┐
+✅ ② A 階段：T15 真模型 oracle 完成（test_v5_stage_a.py, 3/3）──┐
 ③ B 階段：tool-tuned HeliosLMv5（train_tool_tuned）─┼─→ ④ C 階段：端到端 demo（真模型跑 benchmark 三模式）
 ⑤ D 階段：K3 對齊實驗 ──→ ⑥ E 階段：AttnRes 定稿
 ⑦ F：env 擴張（3 → N）→ ⑧ G：agentic RL（rlvr_toy 接 trainer）
 ```
-②③④ 約一週，完成後 HeliosLM 具備「K3 風格架構 + agent 能力 + 可驗證 serving」完整最小閉環。
+③④約一週，完成後 HeliosLM 具備「K3 風格架構 + agent 能力 + 可驗證 serving」完整最小閉環。
 
 ## 8. 交接操作指引
 
