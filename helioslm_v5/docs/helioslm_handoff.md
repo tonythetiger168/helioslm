@@ -1,103 +1,67 @@
-# HeliosLM v5.23–v5.25 專案交接文件
+# HeliosLM 交接文件 — 2026-09-25 全日工作封存
 
-> 更新時間：2026-09-24 19:35｜狀態：**v5.23–25 已 merge 進 main（PR #6）；A 階段 T15 真模型 oracle 3/3 PASS；下一階段 B：tool-tuned checkpoint**
-> 本文件自成一體，新 session / 新協作者只需要這一份即可接手。
+> 狀態： v5.23–v5.29 全部在 GitHub main（11 commits 今日）。
+> 下一個工作日從 §6「下次開工接點」開始。本文件取代舊版 handoff（v5.26 版）。
 
----
+## 1. 版本線總表
 
-## 1. 背景與目標（v5.23–25 目標，09-24 更新版）
-
-- **起點（09-22）**：HeliosLM v5.22（tonythetiger168/helioslm，Apache-2.0，DeepSeek-V3/K3 風格的 correctness-first 參考實作）被確認**完全不支援 agent**——v5.22 的 "Decision audit" 是審計 agent 決策模型的工具，而非 agent 能力本身。
-- **v5.23–25 目標（本版交付完成 ✅）**：
-  1. **P0 agent layer**——嚴格 tool-call schema、確定性工具、bitwise trajectory replay、v5.22 決策稽核 gate 接入 agent loop → **完成，9 測試**
-  2. **P1 注意力變體**——DSA sparse decode（兩層 oracle）、AttnRes mixing（零初始化 ⇒ bitwise 遷移 gate）→ **完成，2 測試**
-  3. **P2 disagg evolver 模組**——Mooncake-style prefill/decode 分析模型納入 HarnessEvolver 搜尋空間 → **完成，4 測試**
-  4. 全程維持 HeliosLM「每個能力附可執行 oracle」哲學，對齊 DeepSeek V4 / Kimi K3 的架構與 serving 思路
-- **驗證狀態**：**15/15 gated 測試全綠**（Windows 11 / Python 3.14 實機，經 5 輪真實 debug）
-- **v5.23–25 後續目標（下一階段，見 §7）**：merge PR #6 → A 階段 model_v5.py 真整合 → tool-tuned checkpoint → 端到端 demo
-
-## 2. 交付物位置（三件，互相獨立可復原）
-
-| 平台 | 位置 | 內容 |
+| 版本 | 內容 | 驗證 |
 |---|---|---|
-| GitHub | `tonythetiger168/helioslm` branch `v5.23-agent-layer`，**PR #6**（未 merge） | 21 檔案歸位至 `helioslm_v5/agent/`、`helioslm_v5/tests/`、`helioslm_v5/docs/`，三個 commit（v5.23 / v5.24 / v5.25） |
-| Hugging Face | `chienhsinlin/helioslm-agent` | 同一批 21 檔（`agent/`、`tests/`、`docs/`）+ 本交接文件；`test_v5.py` 為誤傳可刪 |
-| 本地（chien 的機器） | `C:\Users\chien\helioslm_tools\` + `helioslm\` working clone | 工具腳本與訊息檔 |
+| v5.23 | Agent layer（schema/tools/trajectory/envs/gate/loop） | 9 測試 |
+| v5.24 | DSA sparse decode（兩層 oracle）+ AttnRes（零閘 bitwise 遷移） | T11/T12 |
+| v5.25 | Disagg evolver 模組 + longctx 探針 | T13/T16 |
+| v5.26 | T15 真模型 oracle（AttnRes 零閘 bitwise、k≥L sparse bitwise、agent loop 真權重煙霧） | 3/3 |
+| v5.27 | Tool-tuned checkpoint + T17 end-to-end + **TOOL_ERROR recovery** + replay mirror | T17 PASS |
+| v5.27.1 | **ep2 訓練**：parse 0.15→**0.67**、finish 1/9→**4/6**、loss 0.48→0.25 | T17 重測 |
+| v5.28 | Disagg 三軸 Pareto 搜尋 + **cache-aware 反單調發現**（記錄不隱藏） | T18 3/3 |
+| v5.29 | **三模式 benchmark**（真實信心 τ 曲線嚴格單調、gate PASS）+ **錯答案信心 0.944** 頭條發現 | T19 1/1 |
 
-**復原方式**：HF 或 GitHub branch 任一處拉下 21 檔即完整；測試純 stdlib，`python3 tests/test_agent.py` 等 7 個檔即驗證。
+## 2. 關鍵數字（全部實測、seeded artifact 可復現）
 
-**main 現狀（09-24）**：CHANGELOG 停在 v5.22；`v5.23-agent-layer` 分支未 merge——本文件與 CHANGELOG v5.23–25 條目已備好（見同步腳本），隨 PR #6 merge 進 main。
-
-## 3. 交付內容總覽
-
-### P0 — Agent layer（v5.23，9 測試）
-| 模組 | 職責 | Oracle / Gate |
+| 指標 | 值 | 出處 |
 |---|---|---|
-| `agent/schema.py` | 嚴格 tool-call wire format + 解析（16 類錯誤、深度/大小上限、並行介面預留） | T1 往返、T2 十六錯誤案例 |
-| `agent/tools.py` | 確定性工具：AST 白名單 calc、str_op、sandbox 檔案 I/O、finish | T3 等價性 |
-| `agent/trajectory.py` | Trajectory serde + `verify_replay` | **T5 硬 oracle**：同 ids ⇒ 同 observations，bitwise；竄改必抓 |
-| `agent/envs/toy_envs.py` | calc / str / compose 環境 | T9：ground truth by construction |
-| `agent/gate.py` | Fixed / Oracle / ThresholdGate(τ) + routing monotonicity gate | **T6 硬 oracle**：τ-grid 單調，竄改必抓 |
-| `agent/loop.py` | plan→act→observe，PARSE_ERROR 恢復 | T4 / T7（direct ≤ routed ≤ oracle）/ T8 |
-| `agent/benchmark.py` | 三模式同題集對比 + score_stream JSONL 匯出 | — |
-| `agent/finetune_data.py` | tool-tuning 資料管線（teacher = scripted policy） | — |
+| tool protocol parse（ep2） | 0.67（12/18） | T17 dense |
+| sparse K=4 vs dense parse | 0.147 vs 0.15 | T17 sparse_k4 |
+| τ 曲線（0.5→0.95 correctness） | 0.000→0.083→0.250→0.333→1.000，嚴格單調 | three_modes_2026-09-25.json |
+| 過度自信（錯答案最大信心） | 0.944 | 同上 |
+| KV cache 節省（MLA vs MHA） | 71.9% | benchmarks_kv_cache.png（v5.28 重跑） |
+| disagg Pareto | cache_heavy 16.2s@2w → 9.4s@12w | disagg_pareto_2026-09-25.json |
+| cache-aware 反單調 | 4P4D→6P6D makespan +4.3% | 同上 findings |
 
-### P1 — 注意力變體（v5.24，2 測試）
-- `agent/dsa.py`：DSA-style sparse top-k decode，**兩層 oracle**——fp32 證書（pseudo-max gap ⇒ dropped mass < 2⁻⁴⁰）⇒ fp64 gate（≤1e-9 vs dense）。明確不宣稱 fp32 bitwise。T11。
-- `agent/attn_res.py`：AttnRes-style 層輸出混合，**α 零初始化 ⇒ 與 vanilla residual bitwise 相等（遷移 gate）**；訓練後 ⇒ 確定性 gate。T12。命名 `attn_res_mixing`，待 K3 報告對齊。
+## 3. 四大發現（品牌敘事素材，已在 blog 草稿）
 
-### P2 — Disagg evolver 模組（v5.25，4 測試含工具）
-- `agent/disagg.py`：Mooncake-style prefill/decode 分離的分析模型（greedy cache-aware 路由 + sojourn 延遲），`DisaggConfig` duck-type 加入 HarnessEvolver 搜尋空間；monotonicity gate（固定 workload 指紋）；三軸 Pareto（makespan / n_workers / worker_seconds）。T13。
-- `agent/longctx.py`：needle/RULER 探針（planted ground truth、seeded corpus 跨變體可比）。T16。
+1. **錯答案信心 0.944**——toy 模型系統性過度自信；routing 有效只因信心有區分度（str 0.65–0.86 vs calc 0.92–0.94）。v5.22 decision-audit 框架的存在意義被自證。
+2. **cache-aware routing 的 worker 反單調**——同 key 序列化在 holder；gate 收斂到 RR ladder，發現記錄不隱藏。
+3. **sparse decode agent 場景不塌縮**——K=4 ≈ dense，成本軸可用。
+4. **parse 4.4× 證明協議學習是資料/步數問題；correct=0 是 8.5M 骨架的複製上限**——下一步是資料擴量或更大模型，不是更多 epoch。
 
-## 4. 驗證與修復歷程（證明這套東西真的跑過）
+## 4. 產品線狀態
 
-15/15 ALL PASS，經歷 **5 輪真機 debug**——全部失敗都是交付側 bug，被 Windows/Python 3.14 真實執行抓住：
+- **HeliosLM**：main @ v5.29；26 項測試全綠；文件 9 份（docs/：product_roadmap、benchmark_alignment、blog_correctness_first、product_line_kimi_vs_deepseek、competitive_intel_2026-09-25、glm53_raw_claims、k3_alignment_targets+CSV、helioslm_handoff、p0_agent_design）
+- **genforge**：定價工程 P0 三項已定案（cache 階梯價 ≤1/10、錯位峰谷 UTC 01–04/06–10 off-peak 5 折、走量檔 ≤$0.30/$1.20），待實作；對標 Seedance 差距已收斂至 30 秒單次生成，待 LTX 2.5 上限
+- **情報資產**：Kimi vs DeepSeek 比對（K3 $3/$15 vs V4 Pro $0.66/$1.98；走量檔 DeepSeek 便宜 6×）；AA v4.3 全榜 + GDPVal + LMArena + OpenRouter；GLM-5.3 原始 claim 對照（1769→1655 修正）
+- **自動化**：cron 每日 09:00 追蹤 AA 收錄 Hy4（task id 1a0d77ed，state 在 /mnt/automation/）
 
-| 輪 | Bug | 類型 |
-|---|---|---|
-| R1 | `//`/`%` 零除數產生器（×2）、AttnRes 第 0 層 IndexError、行數算錯、tuple seed、DC_B 過高 | 實作疏漏 |
-| R3 | `SYSTEM.format` 大括號陷阱（`{"calls"}` 被當佔位符）；StrEnv 尾端空白 | 潛伏 bug，被前置錯誤遮蔽 |
-| R4 | **disagg workload 缺陷**：`prefix=i%8` 與 `worker=i%2` 完全相關，round_robin 免費滿命中率 | 測試設計教訓：合成資料要檢查與系統結構的隱含相關 |
-| R5 | T7 每次呼叫交替 vs 每 task 交替（finish 首呼叫終止 episode）；benchmark verify 單側 strip | 對執行語義的假設錯誤 |
+## 5. 環境與操作知識（重要）
 
-工程教訓：fix 腳本要冪等；**不要用 PowerShell `Set-Content` 改程式檔**（Windows ANSI 編碼會毀 UTF-8 中文）；`git apply` 的 patch 要 LF 行尾。
+- **沙箱**：clone 在 `/mnt/agents/output/hlwork/main`（跨 session 持久）；ep2 checkpoint 在 `checkpoints/tool_tuned_v5.27.pt`（**已是 ep2 權重，v5.27 原始權重已被覆蓋**）
+- **GitHub push**：沙箱 git push 上傳通道會卡死——一律用 REST API（contents PUT + pulls merge），token 目前用 09-18 那支（`ghp_rmch…`，**已出現在對話中，待 rotate**）
+- **HF**：沙箱連不上 huggingface.co——checkpoint 快照需本機 push（token `hf_WosE…`，**待 rotate**；命令見 2026-09-25 16:38 訊息）
+- **長訓練**：孤兒行程會被隨機回收——trainer 已內建每 50 步存檔 + resume（本日驗證可跨多次 kill 無縫續跑）
+- **背景任務**：`nohup python3 -u X > log 2>&1 &` + 輪詢 log 檔；pgrep 用 `[t]rain_xxx` 括號技巧防自我匹配
 
-## 5. 關鍵設計決策（ADR 摘要）
+## 6. 下次開工接點（依 product_roadmap.md）
 
-1. 每個能力附可執行 oracle，agent 層最優先（最難驗證）
-2. Toy 環境 ground truth by construction，不用 LLM judge
-3. Wire format 預留並行呼叫，行為漸進到位
-4. DSA 兩層 oracle：宣稱範圍縮小但為真
-5. AttnRes α 零初始化 ⇒ 最強的遷移 gate（bitwise == vanilla）
-6. Disagg 效率 claim 用「固定 workload 指紋上的經驗單調性」
-7. Tool-tuning 一個 step 一個樣本（先學局部映射，loop 負責組合）
-8. 層正確性用 scripted policy 證明，真模型是後續 milestone（誠實 caveat）
+1. **里程碑 13**：env 擴張（3→N）+ agentic RL（rlvr_toy 接 trainer）
+2. **genforge P0**：定價工程三項實作（cache 階梯/錯位峰谷/走量檔）
+3. **blog 發布**：`docs/blog_correctness_first.md` 潤稿發 Medium
+4. **Phase 3**：correctness oracle → agent 審計 API 設計
+5. **ep2 checkpoint → HF 快照**（本機，優先——目前權重只有沙箱一份）
 
-## 6. 已知限制與未解阻塞
+## 7. 待使用者處理（阻塞項）
 
-| 項目 | 狀態 |
+| 事項 | 狀態 |
 |---|---|
-| ~~真 model_v5.py 整合~~ **T15 真模型 oracle（09-24 完成）** | ✅ `tests/test_v5_stage_a.py` 3/3 PASS（torch 2.8 CPU）：T15a 零閘 AttnRes ⇒ vanilla **bitwise**；T15b `k≥kv_len` sparse ⇒ dense **bitwise**（與 config 契約一致）+ selection 有效性/確定性（k<K 的 greedy 翻轉 7/8 為近似行為，**報告不斷言**——宣稱縮小到可證範圍）；T15c 真 toy checkpoint 驅動 agent loop（未 tool-tuned ⇒ PARSE_ERROR recovery 3/3，預期路徑，Stage B 解） |
-| Tool-tuned checkpoint（PR-8） | 未做——`train_tool_tuned.py`（自包含 torch 版）已交付 |
-| K3 報告對齊 | 未做——5 規格點萃取表 + instrumentation 已備好 |
-| PR #6 merge | **待處理**——本文件 + CHANGELOG v5.23–25 條目已備好隨 merge 進 main |
-
-## 7. 下一步路線圖（優先序，09-24 更新版）
-
-```
-✅ v5.23–25 交付（15/15 測試全綠）──→ ① merge PR #6 到 main（含 CHANGELOG + 本文件）
-                                        │
-✅ ② A 階段：T15 真模型 oracle 完成（test_v5_stage_a.py, 3/3）──┐
-③ B 階段：tool-tuned HeliosLMv5（train_tool_tuned）─┼─→ ④ C 階段：端到端 demo（真模型跑 benchmark 三模式）
-⑤ D 階段：K3 對齊實驗 ──→ ⑥ E 階段：AttnRes 定稿
-⑦ F：env 擴張（3 → N）→ ⑧ G：agentic RL（rlvr_toy 接 trainer）
-```
-③④約一週，完成後 HeliosLM 具備「K3 風格架構 + agent 能力 + 可驗證 serving」完整最小閉環。
-
-## 8. 交接操作指引
-
-- **新 session 接手**：說「接手 HeliosLM，讀 PR #6 與 `chienhsinlin/helioslm-agent`」即可取得全部上下文
-- **跑測試**：任一目錄下 `python3 tests/test_agent.py`（7 個測試檔，共 15 測試，零依賴）
-- **繼續開發**：以 GitHub PR #6 為 base；commit message 範本在 `helioslm_tools/commit_v5*.txt`
-- **同步 main**：依 `sync_v523_to_main.ps1` 操作（docs/CHANGELOG 更新 + push）
+| GitHub token rotate（ghp_rmch… 已暴露） | 待辦 |
+| HF token rotate（hf_WosE… 已暴露） | 待辦 |
+| checkpoint HF 快照（本機 push，命令在 16:38 訊息） | 待辦 |
