@@ -32,6 +32,10 @@
   verify_replay mirrors TOOL_ERROR (T5 oracle consistency)
 - Known improvement path: epoch 2 + more data (resume supported);
   content-copying weakness is the toy model's honest ceiling
+- v5.27.1 (2026-09-25): epoch-2 training via resume across sandbox kill
+  windows (loss 0.48 -> 0.25). T17 re-measured: parse 0.67 (12/18),
+  finish 4/6 -- 4.4x protocol gain confirms the bottleneck is data/steps,
+  not the wire format; correct stays 0 (content copying = skeleton limit)
 
 
 ## v5.26 (2026-09-24) - Stage A: Real-Model Integration Oracles (T15)
