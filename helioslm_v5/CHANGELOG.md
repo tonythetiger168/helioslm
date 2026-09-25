@@ -1,5 +1,23 @@
 # HeliosLM v5 Changelog
 
+## v5.29 (2026-09-25) - C Stage: Three-Mode Benchmark on the Real Checkpoint
+- `examples/benchmark_three_modes.py`: one model pass per task records
+  (answer, confidence); the tau-routing curve is computed offline by
+  thresholding -- the v5.22 routing-monotonicity discipline applied to a
+  REAL model with REAL confidence (geometric-mean token probability)
+- Measured (12 tasks, ep2 weights): direct=0.000, oracle=1.000,
+  tau curve 0.000 -> 0.083 -> 0.250 -> 0.333 -> 1.000 strictly monotone,
+  routing gate PASS
+- Headline finding (recorded, not hidden): the toy checkpoint is
+  SYSTEMATICALLY overconfident on wrong answers (max conf 0.944) --
+  routing still helps because confidences DIFFER across envs (str tasks
+  0.65-0.86 vs calc 0.92-0.94), but absolute calibration is poor. This is
+  exactly the failure class the v5.22 decision-audit toolkit exists to
+  measure (ECE/Brier); T19 asserts the finding is present
+- T19 (1/1): report structure, seeded reproducibility, tau-grid
+  monotonicity, overconfidence presence
+
+
 ## v5.28 (2026-09-25) - Cost-Axis Alignment: Disagg Pareto Sweep
 - `examples/disagg_pareto.py`: three-axis (makespan / workers / worker-seconds)
   Pareto sweep of the v5.25 disagg module across cache_heavy / cold / mixed
