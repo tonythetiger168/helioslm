@@ -1,6 +1,6 @@
 # HeliosLM 交接文件 — 2026-09-25 全日工作封存
 
-> 狀態： v5.23–v5.30 全部在 GitHub main（v5.30 = chat 能力，2026-09-25 晚）。
+> 狀態： v5.23–v5.30.1 全部在 GitHub main（v5.30 = chat 能力；v5.30.1 = follow-up gate + 復原權重，2026-09-25 深夜）。
 > 下一個工作日從 §6「下次開工接點」開始。本文件取代舊版 handoff（v5.26 版）。
 
 ## 1. 版本線總表
@@ -14,6 +14,7 @@
 | v5.27 | Tool-tuned checkpoint + T17 end-to-end + **TOOL_ERROR recovery** + replay mirror | T17 PASS |
 | v5.27.1 | **ep2 訓練**：parse 0.15→**0.67**、finish 1/9→**4/6**、loss 0.48→0.25 | T17 重測 |
 | v5.28 | Disagg 三軸 Pareto 搜尋 + **cache-aware 反單調發現**（記錄不隱藏） | T18 3/3 |
+| v5.30.1 | **follow-up calc-gate**（executor 自驗證）+ 雙 checkpoint 復原推 HF | T20 10/10、T19 復原 artifact PASS |
 | v5.30 | **Chat 能力**：雙模態協議（text 直通、gate 只管 tool）+ ChatSession + chat SFT 資料 | T20 10/10 |
 | v5.29 | **三模式 benchmark**（真實信心 τ 曲線嚴格單調、gate PASS）+ **錯答案信心 0.944** 頭條發現 | T19 1/1 |
 
@@ -53,7 +54,7 @@
 
 ## 6. 下次開工接點（依 product_roadmap.md）
 
-0. **chat SFT 訓練**：用 `build_chat_dataset` 產資料接 `examples/train_tool_tuned.py` pipeline 練 v5.30 chat-tuned checkpoint（優先，延續今日 v5.30 程式碼）
+0. **v5.30.2**：dataset 過濾器改截斷（<700 砍掉 magic-word 文字樣本的偏差）+ greedy decode 重測 mode-choice；之後才是 chat SFT 追加訓練。chat SFT v1 已完成（loss 0.3153，mode-choice 0/40 已記錄）：用 `build_chat_dataset` 產資料接 `examples/train_tool_tuned.py` pipeline 練 v5.30 chat-tuned checkpoint（優先，延續今日 v5.30 程式碼）
 
 1. **里程碑 13**：env 擴張（3→N）+ agentic RL（rlvr_toy 接 trainer）
 2. **genforge P0**：定價工程三項實作（cache 階梯/錯位峰谷/走量檔）
@@ -66,6 +67,6 @@
 | 事項 | 狀態 |
 |---|---|
 | GitHub token rotate（09-25 19:38 已换新 PAT，舊 ghp_rmch… 作廢） | 完成 |
-| HF token rotate（09-25 已换 `hf_dCBj…`） | 完成 |
-| checkpoint HF 快照（新 token `hf_dCBj…` 已給，沙箱走 hf-mirror 可推） | 待辦 |
-| ep2 checkpoint 復原（舊沙箱已消失，用 `examples/train_tool_tuned.py` 重跑，seeded 可復現） | 進行中 |
+| HF token rotate（09-26 最終版 `hf_ZOye…`，chienhsinlin 帳號） | 完成 |
+| checkpoint HF 快照（`chienhsinlin/helioslm`：README+雙 pt+雙 json；`helioslm-toy` 亦有一份） | 完成 |
+| ep2 checkpoint 復原（重跑完成，loss 0.2693，已推 HF `chienhsinlin/helioslm`） | 完成 |

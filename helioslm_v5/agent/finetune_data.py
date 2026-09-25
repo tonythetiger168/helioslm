@@ -100,7 +100,20 @@ def gen_chat_episode(env, rng, system: str | None = None,
     samples: list = []
     task = env.sample(rng)
     drive(task.text, task.step_budget)
-    if rng.random() < followup_p:
+    # follow-up "multiply by 2" is only well-posed when the answer is a
+    # legal calc operand: use the executor's own validator as the gate
+    # (float("017") passes but ast.parse rejects leading zeros — str/compose
+    # envs can produce such strings via reverse)
+    try:
+        from .tools import calc as _calc
+    except ImportError:
+        from tools import calc as _calc
+    try:
+        _calc(f"{task.answer} * 2")
+        numeric = True
+    except Exception:
+        numeric = False
+    if numeric and rng.random() < followup_p:
         drive(FOLLOWUP_TEXT, 2)
     w = rng.choice(MAGIC_WORDS)
     turns.append((ROLE_USER, f"The magic word is {w}. What is the magic word?"))

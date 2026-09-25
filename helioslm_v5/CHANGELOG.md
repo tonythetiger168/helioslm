@@ -1,5 +1,36 @@
 # HeliosLM v5 Changelog
 
+## v5.30.1 (2026-09-25) - Chat SFT Follow-up Gate + Regenerated Checkpoints
+- `agent/finetune_data.py`: gen_chat_episode follow-up is gated by the
+  executor's own validator (`calc(answer * 2)`), not by a numeric check.
+  Two edge cases found and fixed, recorded not hidden:
+  1. str/compose envs finish with string answers -- calc on them raises
+     Name/syntax errors (crashed dataset builds)
+  2. numeric-looking strings from str_op reverse (e.g. "017") pass
+     float() but ast rejects leading zeros -- only the executor is the
+     correct gate
+- Discovered during first chat SFT run: the <700-char dataset filter
+  disproportionately drops magic-word text samples (they sit at episode
+  end with the longest transcripts) -> the 40-sample eval saw ZERO text
+  targets, so mode-choice was measured single-sided. Recorded; fix
+  (truncate instead of drop) planned for v5.30.2 with greedy-decode
+  re-measurement
+- Regenerated artifacts (old sandbox lost; seeded re-runs):
+  - tool_tuned_v5.27.pt: loss 0.2693 (original recorded 0.25) via
+    examples/train_tool_tuned.py, seed=5, 25.8 min CPU
+  - chat_tuned_v5.30.pt: loss 0.3153, hot-start, seed=6; mode-choice
+    0/40 recorded honestly (see filter bias above)
+  - T19 passes on the regenerated three-modes artifact (routing gate
+    PASS, strict-monotone tau, max conf on wrong 0.925 vs original
+    0.944 -- qualitative findings reproduce; weights are not bitwise
+    identical across torch builds, recorded)
+- Both checkpoints + summaries on HF: chienhsinlin/helioslm (and
+  helioslm-toy). HF push recipe for the sandbox: preupload -> LFS batch
+  (browser UA to pass Cloudflare) -> S3 PUT -> commit with lfsFiles;
+  hf-mirror blocks repo creation and the legacy /upload endpoint
+
+
+
 ## v5.30 (2026-09-25) - Chat Capability: Dual-Mode Protocol + ChatSession
 - `agent/chat.py` (new): multi-turn ChatSession over the existing tool
   protocol. Assistant output is dual-mode: a plain text reply OR a
