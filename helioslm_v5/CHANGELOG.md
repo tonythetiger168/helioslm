@@ -1,5 +1,20 @@
 # HeliosLM v5 Changelog
 
+## v5.28 (2026-09-25) - Cost-Axis Alignment: Disagg Pareto Sweep
+- `examples/disagg_pareto.py`: three-axis (makespan / workers / worker-seconds)
+  Pareto sweep of the v5.25 disagg module across cache_heavy / cold / mixed
+  workloads; report artifact under benchmarks/ (seeded, reproducible)
+- Gate discipline refined with evidence: monotonicity gate holds on the
+  round_robin nested ladder, but cache_aware anti-monotonicity (~4%) is a
+  STRUCTURAL finding (same-key requests serialize on their cache holder,
+  so more workers can add makespan) -- recorded in the report, not hidden
+- T18 (3/3): pareto_front dominance logic, RR-ladder gate, report
+  reproducibility; the cache_aware finding is asserted-present for
+  cache_heavy workloads
+- This is the v5.28 cost-axis alignment artifact for spec-level comparison
+  against production serving cards (see docs/benchmark_alignment.md)
+
+
 ## v5.27 (2026-09-25) - Tool-Tuned Checkpoint + Real-Model Hardening (Stage B)
 - `examples/train_tool_tuned.py`: train a tool-tuned lite checkpoint on
   agent-loop replays (data format == inference format by construction);
