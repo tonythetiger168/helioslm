@@ -109,3 +109,21 @@ def parse_tool_call(text: str, registry=None) -> list:
             registry.spec(call.name).validate_args(call.args)
         out.append(call)
     return out
+
+
+def parse_chat_turn(text, registry=None) -> tuple:
+    """Dual-mode assistant output (v5.30 chat protocol).
+
+    Returns ("tool", [ToolCall, ...]) when the output is a well-formed tool
+    block, ("text", str) for a plain-language reply. Any occurrence of a
+    tool marker forces strict block parsing — a malformed block is an error,
+    never silently demoted to text ("never swallowed silently").
+    """
+    if not isinstance(text, str):
+        raise ToolCallError("assistant output must be a string")
+    s = text.strip()
+    if not s:
+        raise ToolCallError("empty assistant reply")
+    if MARK_OPEN in s or MARK_CLOSE in s:
+        return "tool", parse_tool_call(s, registry)
+    return "text", s

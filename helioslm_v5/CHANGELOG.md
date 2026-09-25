@@ -1,5 +1,36 @@
 # HeliosLM v5 Changelog
 
+## v5.30 (2026-09-25) - Chat Capability: Dual-Mode Protocol + ChatSession
+- `agent/chat.py` (new): multi-turn ChatSession over the existing tool
+  protocol. Assistant output is dual-mode: a plain text reply OR a
+  @@tool@@ block (schema.parse_chat_turn). Text replies bypass the gate
+  entirely -- the gate governs tool routing only. Transcript markers
+  (##user##/##assistant##/##tool##) are printable ASCII because the vocab
+  is ord(c) < 1024 char-level. Recovery mirrors loop.py (PARSE_ERROR /
+  TOOL_ERROR enter the transcript, never a crash); verify_chat_replay
+  mirrors trajectory.verify_replay (DIRECT routing contract)
+- `agent/schema.py`: +parse_chat_turn() -- strict block parse whenever any
+  tool marker appears (never silently demoted to text), ("text", str)
+  otherwise; parse_tool_call unchanged
+- `agent/finetune_data.py`: +gen_chat_episode/build_chat_dataset -- chat
+  SFT samples whose prompts are the exact inference-time render (no
+  train/serve skew); episodes mix tool task + follow-up (transcript
+  memory) + direct text answer so the model learns to CHOOSE the output
+  mode (~3:1 tool:text)
+- scripted_chat_policy: chat-native correct policy covering all three env
+  task types + magic-word direct reply + follow-up referencing the FINISH
+  answer (shared by tests and SFT data generation)
+- T20 (10/10): dual-mode protocol, marker never-swallowed, calc/compose
+  chat tasks, ExplodingGate proves text bypasses the gate, parse/tool
+  error recovery, follow-up transcript memory, replay roundtrip + tamper
+  detection, T17 re-run regression. Full local suite: 15/15 test groups
+- Design records (chosen, not hidden): text reply = no actionable
+  commitment -> nothing to route/escalate (gate-on-text rejected);
+  escalate observations stay outside replay scope (same contract as
+  trajectories)
+
+
+
 ## v5.29 (2026-09-25) - C Stage: Three-Mode Benchmark on the Real Checkpoint
 - `examples/benchmark_three_modes.py`: one model pass per task records
   (answer, confidence); the tau-routing curve is computed offline by

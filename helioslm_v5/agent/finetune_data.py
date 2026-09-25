@@ -44,3 +44,90 @@ def build_dataset(path: str, n_per_env: int = 2000, seed: int = 8) -> None:
                     assert all(ord(c) < 1024
                                for c in s["prompt"] + s["response"])
                     f.write(json.dumps(s, ensure_ascii=False) + "\n")
+
+
+# --- v5.30 chat SFT data ----------------------------------------------------
+
+MAGIC_WORDS = ["kiwi", "falcon", "ember", "quartz", "meadow", "onyx",
+               "harbor", "saffron", "birch", "cobalt"]
+ROLE_USER, ROLE_ASSISTANT, ROLE_TOOL = "##user##", "##assistant##", "##tool##"
+
+
+def gen_chat_episode(env, rng, system: str | None = None,
+                     followup_p: float = 0.5) -> list:
+    """One multi-turn chat episode -> list of {"prompt", "response"} samples.
+
+    Each prompt is the full transcript (system + ##role## turns) exactly as
+    ChatSession.build_prompt renders it at inference; each response is the
+    assistant output — a tool block or a plain text reply. The episode mixes
+    three intents so the model learns to CHOOSE the output mode:
+    1. env tool task (calc/str/compose) -> tool blocks
+    2. follow-up question referencing the previous answer -> tool blocks
+       driven by transcript memory
+    3. direct question -> plain text reply (no tool needed)
+    """
+    try:
+        from .chat import (CHAT_SYSTEM, FOLLOWUP_TEXT, scripted_chat_policy)
+        from .loop import render_tool_docs
+        from .schema import parse_chat_turn
+    except ImportError:
+        from chat import (CHAT_SYSTEM, FOLLOWUP_TEXT, scripted_chat_policy)
+        from loop import render_tool_docs
+        from schema import parse_chat_turn
+    reg, impls = build_default_registry()
+    system = system or CHAT_SYSTEM.replace("%%TOOLS%%",
+                                           render_tool_docs(reg))
+    turns: list = []
+
+    def prompt_text() -> str:
+        return "\n".join([system] + [f"{r} {c}" for r, c in turns])
+
+    def drive(user_text: str, budget: int) -> None:
+        turns.append((ROLE_USER, user_text))
+        for step in range(budget):
+            prompt = prompt_text()
+            resp = scripted_chat_policy(prompt, 0, step)
+            kind, payload = parse_chat_turn(resp, reg)
+            assert kind == "tool", f"expected tool block, got {kind}: {resp}"
+            call = payload[0]
+            samples.append({"prompt": prompt, "response": resp})
+            obs = execute(call, reg, impls)
+            turns.append((ROLE_ASSISTANT, resp))
+            turns.append((ROLE_TOOL, obs))
+            if call.name == "finish":
+                break
+
+    samples: list = []
+    task = env.sample(rng)
+    drive(task.text, task.step_budget)
+    if rng.random() < followup_p:
+        drive(FOLLOWUP_TEXT, 2)
+    w = rng.choice(MAGIC_WORDS)
+    turns.append((ROLE_USER, f"The magic word is {w}. What is the magic word?"))
+    prompt = prompt_text()
+    resp = scripted_chat_policy(prompt, 0, 0)
+    kind, _ = parse_chat_turn(resp, reg)
+    assert kind == "text", "direct question must get a text reply"
+    samples.append({"prompt": prompt, "response": resp})
+    return samples
+
+
+def build_chat_dataset(path: str, n_per_env: int = 2000, seed: int = 8,
+                       followup_p: float = 0.5) -> None:
+    """Chat SFT dataset; followup_p overrides the in-episode follow-up rate."""
+    try:
+        from .envs import make_envs
+    except ImportError:
+        from envs import make_envs
+    rng = random.Random(seed)
+    with open(path, "w", encoding="utf-8") as f:
+        for env in make_envs():
+            for _ in range(n_per_env):
+                episode = gen_chat_episode(
+                    env, rng,
+                    system=None,
+                    followup_p=followup_p)
+                for s in episode:
+                    assert all(ord(c) < 1024
+                               for c in s["prompt"] + s["response"])
+                    f.write(json.dumps(s, ensure_ascii=False) + "\n")

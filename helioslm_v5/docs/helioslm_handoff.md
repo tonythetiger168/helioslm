@@ -1,6 +1,6 @@
 # HeliosLM 交接文件 — 2026-09-25 全日工作封存
 
-> 狀態： v5.23–v5.29 全部在 GitHub main（11 commits 今日）。
+> 狀態： v5.23–v5.30 全部在 GitHub main（v5.30 = chat 能力，2026-09-25 晚）。
 > 下一個工作日從 §6「下次開工接點」開始。本文件取代舊版 handoff（v5.26 版）。
 
 ## 1. 版本線總表
@@ -14,6 +14,7 @@
 | v5.27 | Tool-tuned checkpoint + T17 end-to-end + **TOOL_ERROR recovery** + replay mirror | T17 PASS |
 | v5.27.1 | **ep2 訓練**：parse 0.15→**0.67**、finish 1/9→**4/6**、loss 0.48→0.25 | T17 重測 |
 | v5.28 | Disagg 三軸 Pareto 搜尋 + **cache-aware 反單調發現**（記錄不隱藏） | T18 3/3 |
+| v5.30 | **Chat 能力**：雙模態協議（text 直通、gate 只管 tool）+ ChatSession + chat SFT 資料 | T20 10/10 |
 | v5.29 | **三模式 benchmark**（真實信心 τ 曲線嚴格單調、gate PASS）+ **錯答案信心 0.944** 頭條發現 | T19 1/1 |
 
 ## 2. 關鍵數字（全部實測、seeded artifact 可復現）
@@ -44,13 +45,15 @@
 
 ## 5. 環境與操作知識（重要）
 
-- **沙箱**：clone 在 `/mnt/agents/output/hlwork/main`（跨 session 持久）；ep2 checkpoint 在 `checkpoints/tool_tuned_v5.27.pt`（**已是 ep2 權重，v5.27 原始權重已被覆蓋**）
+- **沙箱**：clone 在 `/mnt/agents/output/hlwork/main`（⚠️ 2026-09-25 實測：session 結束後遺失，重要檔案當日推送 GitHub）；ep2 checkpoint 在 `checkpoints/tool_tuned_v5.27.pt`（**已是 ep2 權重，v5.27 原始權重已被覆蓋**）
 - **GitHub push**：沙箱 git push 上傳通道會卡死——一律用 REST API（contents PUT + pulls merge），token 目前用 09-18 那支（`ghp_rmch…`，**已出現在對話中，待 rotate**）
 - **HF**：沙箱連不上 huggingface.co——checkpoint 快照需本機 push（token `hf_WosE…`，**待 rotate**；命令見 2026-09-25 16:38 訊息）
 - **長訓練**：孤兒行程會被隨機回收——trainer 已內建每 50 步存檔 + resume（本日驗證可跨多次 kill 無縫續跑）
 - **背景任務**：`nohup python3 -u X > log 2>&1 &` + 輪詢 log 檔；pgrep 用 `[t]rain_xxx` 括號技巧防自我匹配
 
 ## 6. 下次開工接點（依 product_roadmap.md）
+
+0. **chat SFT 訓練**：用 `build_chat_dataset` 產資料接 `examples/train_tool_tuned.py` pipeline 練 v5.30 chat-tuned checkpoint（優先，延續今日 v5.30 程式碼）
 
 1. **里程碑 13**：env 擴張（3→N）+ agentic RL（rlvr_toy 接 trainer）
 2. **genforge P0**：定價工程三項實作（cache 階梯/錯位峰谷/走量檔）
@@ -62,6 +65,7 @@
 
 | 事項 | 狀態 |
 |---|---|
-| GitHub token rotate（ghp_rmch… 已暴露） | 待辦 |
-| HF token rotate（hf_WosE… 已暴露） | 待辦 |
-| checkpoint HF 快照（本機 push，命令在 16:38 訊息） | 待辦 |
+| GitHub token rotate（09-25 19:38 已换新 PAT，舊 ghp_rmch… 作廢） | 完成 |
+| HF token rotate（09-25 已换 `hf_dCBj…`） | 完成 |
+| checkpoint HF 快照（新 token `hf_dCBj…` 已給，沙箱走 hf-mirror 可推） | 待辦 |
+| ep2 checkpoint 復原（舊沙箱已消失，用 `examples/train_tool_tuned.py` 重跑，seeded 可復現） | 進行中 |
