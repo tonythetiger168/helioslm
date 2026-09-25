@@ -37,13 +37,17 @@ v5.24 DSA sparse decode（T15b oracle 驗證）+ v5.25 disagg evolver 正是這�
 
 ## 當前 HeliosLM 數字（v5.27 baseline，供未來對照）
 
-| 軸 | 數字 | 出處 |
-|---|---|---|
-| tool protocol parse | 0.15 | T17 dense |
-| tool protocol finish | 1/9 | T17 dense |
-| sparse(K=4) vs dense | parse 0.147 vs 0.15 | T17 sparse_k4 |
-| oracle 完整性 | 15/15 + T15 3/3 + T17 | v5.23–v5.27 測試 |
-| 訓練 loss | 0.48（1 epoch CPU） | trainer log |
+| 軸 | ep1 (v5.27) | ep2 (09-25) | 出處 |
+|---|---|---|---|
+| tool protocol parse | 0.15 | **0.67**（12/18） | T17 dense |
+| tool protocol finish | 1/9 | **4/6** | T17 dense |
+| correct | 0/9 | 0/6（複製瓶頸未變） | T17 |
+| sparse(K=4) vs dense | parse 0.147 vs 0.15 | — | T17 sparse_k4 |
+| oracle 完整性 | 15/15 + T15 3/3 + T17 + T18 3/3 | | v5.23–v5.28 測試 |
+| 訓練 loss | 0.48 | 0.25（ep2 中途） | trainer log |
+
+ep2 = 1.2 epoch 額外訓練（resume 週期存檔跨 kill window 完成）。parse 4.4× 提升證明
+協議學習是資料/步數問題；correct=0 確認內容複製是模型骨架上限，需資料擴量或更大模型。
 
 ## 下一個可對齊動作
 
