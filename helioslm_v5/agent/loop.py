@@ -17,7 +17,7 @@ SYSTEM = ("You are an agent. Answer by emitting exactly one tool block of "
 def render_tool_docs(registry: ToolRegistry) -> str:
     return "; ".join(
         f"{n}({', '.join(f'{k}: {t.__name__}' for k, t in s.params.items())})"
-        f" — {s.description}" for n, s in registry.specs.items())
+        f" - {s.description}" for n, s in registry.specs.items())
 
 
 class AgentLoop:
@@ -50,9 +50,13 @@ class AgentLoop:
                                       if self.confidence_fn else None)}
                 route = self.gate.decide(call, ctx)
                 route_s = route.value
-                obs = (self.gate.escalate(call, ctx)
-                       if route == Route.ESCALATE
-                       else execute(call, self.registry, self.impls))
+                if route == Route.ESCALATE:
+                    obs = self.gate.escalate(call, ctx)
+                else:
+                    try:
+                        obs = execute(call, self.registry, self.impls)
+                    except ToolCallError as e:
+                        obs = f"TOOL_ERROR: {e}"  # recovery, not crash
             traj.steps.append(Step(i, text_to_ids(prompt),
                                    text_to_ids(gen_text), call, perr,
                                    route_s, obs))
