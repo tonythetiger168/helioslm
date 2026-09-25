@@ -1,0 +1,10 @@
+﻿Benchmark,分數,備註
+GPQA Diamond,92.3,"Thinking High, no tools"
+Terminal-Bench 2.1,85.4,當時開源最高分，約追平 GPT-5.6 Sol
+SWE-bench Multilingual,82.9,repo-level
+SWE-bench Pro,65.7,
+DeepSWE,64.3,
+MCP-Atlas,83.7,tool use
+SkillsBench V1.1,62.9,
+Apex Agents,37.1,
+HLE (w/ tools),55.4,
