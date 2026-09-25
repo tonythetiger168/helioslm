@@ -1,6 +1,7 @@
 # K3 Alignment Targets — Frontier Benchmark Reference (2026-09-25)
 
-> 對齊標的： frontier model benchmark scorecard（使用者提供原始 CSV）。
+> 對齊標的： frontier model benchmark scorecard。原始 CSV：
+> [`k3_alignment_targets.csv`](k3_alignment_targets.csv)（與本表同步，以 CSV 為準）。
 > 用途： HeliosLM v5.x roadmap「K3 對齊實驗」階段的量化目標參照。
 > 說明： 本表為**外部標的**，非 HeliosLM 實測數據；HeliosLM 現況為 toy-scale
 > 驗證（v5.23–v5.27），兩者差距即 roadmap 的收斂空間。
