@@ -1,0 +1,110 @@
+{
+  "seed": 20260925,
+  "n_tasks": 12,
+  "model": "tool_tuned_v5.27 (ep2 weights)",
+  "correctness": {
+    "direct": 0.0,
+    "oracle": 1.0,
+    "tau_grid": [
+      {
+        "tau": 0.5,
+        "correctness": 0.0
+      },
+      {
+        "tau": 0.6,
+        "correctness": 0.0
+      },
+      {
+        "tau": 0.7,
+        "correctness": 0.08333333333333333
+      },
+      {
+        "tau": 0.8,
+        "correctness": 0.25
+      },
+      {
+        "tau": 0.9,
+        "correctness": 0.3333333333333333
+      },
+      {
+        "tau": 0.95,
+        "correctness": 1.0
+      }
+    ]
+  },
+  "routing_gate": "PASS",
+  "tasks": [
+    {
+      "env": "CalcEnv",
+      "correct": false,
+      "conf": 0.9195494327307807,
+      "finished": true
+    },
+    {
+      "env": "CalcEnv",
+      "correct": false,
+      "conf": 0.9342915928919926,
+      "finished": true
+    },
+    {
+      "env": "CalcEnv",
+      "correct": false,
+      "conf": 0.9389389190445072,
+      "finished": true
+    },
+    {
+      "env": "CalcEnv",
+      "correct": false,
+      "conf": 0.9361389437305371,
+      "finished": true
+    },
+    {
+      "env": "StrEnv",
+      "correct": false,
+      "conf": 0.6530577412343671,
+      "finished": false
+    },
+    {
+      "env": "StrEnv",
+      "correct": false,
+      "conf": 0.7325061085219617,
+      "finished": false
+    },
+    {
+      "env": "StrEnv",
+      "correct": false,
+      "conf": 0.8642683557218761,
+      "finished": false
+    },
+    {
+      "env": "StrEnv",
+      "correct": false,
+      "conf": 0.707144589354228,
+      "finished": false
+    },
+    {
+      "env": "ComposeEnv",
+      "correct": false,
+      "conf": 0.9431976733475717,
+      "finished": true
+    },
+    {
+      "env": "ComposeEnv",
+      "correct": false,
+      "conf": 0.941481189751105,
+      "finished": true
+    },
+    {
+      "env": "ComposeEnv",
+      "correct": false,
+      "conf": 0.9440834146303009,
+      "finished": true
+    },
+    {
+      "env": "ComposeEnv",
+      "correct": false,
+      "conf": 0.9414007089497589,
+      "finished": true
+    }
+  ]
+}
