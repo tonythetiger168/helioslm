@@ -35,6 +35,21 @@
 v5.24 DSA sparse decode（T15b oracle 驗證）+ v5.25 disagg evolver 正是這條軸
 的架構答案，**v5.28 優先級最高的對齊方向**。
 
+## v5.29 三模式補充（HeliosLM 版 Intelligence Index 方法論最小實作）
+
+| tau | direct 比例 | correctness |
+|---|---|---|
+| 0.50–0.60 | 1.00 | 0.000 |
+| 0.70 | 0.92 | 0.083 |
+| 0.80 | 0.75 | 0.250 |
+| 0.90 | 0.67 | 0.333 |
+| 0.95 | 0.00 | 1.000 |
+
+routing gate **PASS**（真實信心、嚴格單調）。發現：錯誤答案信心高達 0.944
+（系統性過度自信）——routing 有效因為信心**有區分度**（str 0.65–0.86 vs
+calc 0.92–0.94），但絕對校準差。這正是 v5.22 decision-audit 框架的存在意義，
+也是 Phase 2「correctness-first 品牌」技術 blog 的核心素材。
+
 ## 當前 HeliosLM 數字（v5.27 baseline，供未來對照）
 
 | 軸 | ep1 (v5.27) | ep2 (09-25) | 出處 |
