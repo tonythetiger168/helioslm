@@ -1,5 +1,24 @@
 # HeliosLM v5 Changelog
 
+## v5.27 (2026-09-25) - Tool-Tuned Checkpoint + Real-Model Hardening (Stage B)
+- `examples/train_tool_tuned.py`: train a tool-tuned lite checkpoint on
+  agent-loop replays (data format == inference format by construction);
+  char tokenizer (ord<1024, BOS=1023/EOS=1022/PAD=1021); periodic save +
+  resume for fragile training environments
+- `tests/test_v5_stage_b.py` (T17): end-to-end agent loop with the real
+  checkpoint on fresh tasks. Measured v5.27 baseline (1-epoch CPU): parse
+  0.15, finish 1/9, correct 0/9 -- floors are regression guards, magnitudes
+  reported not gated. Bottleneck is content copying, not the wire protocol
+- Sparse attention validated in the agent inference path: sparse_top_k=4
+  gives parse 0.147 / finish 1/9 / correct 0/9 ~= dense -- the v5.8 DSA
+  decode does not collapse the tool protocol end-to-end
+- Agent layer hardened by real-model findings (Stage B's purpose):
+  loop.py TOOL_ERROR recovery + ASCII-safe tool docs; trajectory.py
+  verify_replay mirrors TOOL_ERROR (T5 oracle consistency)
+- Known improvement path: epoch 2 + more data (resume supported);
+  content-copying weakness is the toy model's honest ceiling
+
+
 ## v5.26 (2026-09-24) - Stage A: Real-Model Integration Oracles (T15)
 - `tests/test_v5_stage_a.py`: the v5.23-v5.25 toy oracles verified against the
   REAL model (torch 2.8 CPU, 3/3 PASS):
