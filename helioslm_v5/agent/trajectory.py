@@ -88,8 +88,13 @@ def verify_replay(traj: Trajectory, registry: ToolRegistry,
             raise ReplayMismatch(f"step {s.index}: parsed call differs")
         if perr != s.parse_error:
             raise ReplayMismatch(f"step {s.index}: parse error differs")
-        obs = f"PARSE_ERROR: {perr}" if call is None \
-            else execute(call, registry, impls)
+        if call is None:
+            obs = f"PARSE_ERROR: {perr}"
+        else:
+            try:
+                obs = execute(call, registry, impls)
+            except ToolCallError as e:
+                obs = f"TOOL_ERROR: {e}"  # mirror loop.py recovery
         if obs != s.observation:
             raise ReplayMismatch(f"step {s.index}: observation differs:\n"
                                  f"  replay  : {obs!r}\n"
