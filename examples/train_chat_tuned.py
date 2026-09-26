@@ -103,8 +103,14 @@ def main():
 
     cfg = HeliosLMv5Config(size="lite")
     model = HeliosLMv5(cfg)
-    out_dir = Path(__file__).resolve().parent.parent / "checkpoints"
-    out_dir.mkdir(exist_ok=True)
+    # Checkpoint dir: overridable because a periodic sandbox cleanup re-
+    # chowns files inside the repo tree to root, breaking later saves
+    # (observed 2026-09-26 twice). Default keeps the historical location.
+    import os
+    out_dir = Path(os.environ.get(
+        "HELIOS_CKPT_DIR",
+        str(Path(__file__).resolve().parent.parent / "checkpoints")))
+    out_dir.mkdir(exist_ok=True, parents=True)
     ckpt = out_dir / "chat_tuned_v5.30.2.pt"
     init = out_dir / "tool_tuned_v5.27.pt"
     if not init.exists():
@@ -112,9 +118,22 @@ def main():
                  "run examples/train_tool_tuned.py first")
     model.load_state_dict(torch.load(init, map_location="cpu"))
     print(f"hot-start from {init}", flush=True)
+    # v5.30.2 resume: if a saved ckpt + .step exist, continue from there.
+    # Shuffles are seeded per epoch, so skipping the first `start_step`
+    # batches replays the identical order — seamless after SIGKILL.
+    step_file = out_dir / "chat_tuned_v5.30.2.step"
+    start_step = int(step_file.read_text()) if (ckpt.exists()
+                                                and step_file.exists()) else 0
+    if start_step:
+        model.load_state_dict(torch.load(ckpt, map_location="cpu"))
+        print(f"RESUME from step {start_step} ({ckpt})", flush=True)
     opt = torch.optim.AdamW(model.parameters(), lr=LR)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(
         opt, T_max=EPOCHS * math.ceil(len(train) / BATCH))
+    if start_step:
+        # fast-forward the LR schedule so it matches an uninterrupted run
+        for _ in range(start_step):
+            sched.step()
     model.train()
     t0 = time.time()
     step = 0
@@ -124,6 +143,9 @@ def main():
         rng.shuffle(order)
         tot_loss, nb = 0.0, 0
         for b0 in range(0, len(order), BATCH):
+            if start_step and step < start_step:
+                step += 1
+                continue  # resume: skip already-done batches (no compute)
             chunk = [encode(*train[i]) for i in order[b0:b0 + BATCH]]
             input_ids, labels, attn = collate(chunk)
             logits, _, _ = model(input_ids, attention_mask=attn)

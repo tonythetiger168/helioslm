@@ -243,73 +243,87 @@ class GRPOTrainer:
                         "prompt_len": prompt_len,
                     })
 
-            all_responses = [s["response"] for s in samples]
-
-            # 2. Rewards — each of the G responses of question i is scored
-            #    against answers[i] (repeat-interleaved alignment).
-            all_answers = [a for a in answers for _ in range(self.group_size)]
-            rewards = self.compute_rewards(all_responses, all_answers)
-
-            # 3. Group-normalized advantages.
-            rewards = rewards.view(batch_size, self.group_size)
-            mean_rewards = rewards.mean(dim=1, keepdim=True)
-            std_rewards = rewards.std(dim=1, unbiased=False, keepdim=True) \
-                .clamp(min=1e-8)
-            advantages = (rewards - mean_rewards) / std_rewards
-            # NOTE: with group_size == 1 every advantage is exactly 0 (each
-            # sample is its own baseline), so the policy-gradient term
-            # vanishes; use group_size >= 2 in practice.
-            advantages_flat = advantages.reshape(-1).detach()
-
-            # 4. Reference model log-probs (frozen, no grad, flat order).
-            ref_logprobs = self._get_ref_logprobs(samples).detach()
-
-            # 5. Grad-carrying training forwards MUST run in train mode so
-            #    dropout and other train-only behavior are active.
-            self.model.train()
-
-            self.optimizer.zero_grad()
-            policy_loss_total = 0.0
-            kl_total = 0.0
-            for i, s in enumerate(samples):
-                new_lp = self._sequence_logprob(
-                    self.model, s["full_ids"], s["prompt_len"])
-
-                # Ratio against the OLD policy (the ref model only enters
-                # the KL term). Sequence-level ratio — see module docstring
-                # for the difference vs DeepSeekMath's per-token objective.
-                # Clamp the log-ratio before exp() so a diverged policy can
-                # never produce inf/overflow ratios (m3).
-                log_ratio = (new_lp - s["old_logprob"]).clamp(-20.0, 20.0)
-                ratio = torch.exp(log_ratio)
-                adv = advantages_flat[i]
-                surr1 = ratio * adv
-                surr2 = torch.clamp(ratio, 1 - self.epsilon,
-                                    1 + self.epsilon) * adv
-                policy_i = -torch.min(surr1, surr2)
-
-                # KL penalty with DeepSeekMath's k3 estimator:
-                # exp(logr) - logr - 1 >= 0 pointwise for
-                # logr = log pi_ref - log pi_new. expm1 avoids the
-                # catastrophic cancellation of exp(logr) - 1 near
-                # logr == 0 (m4); the clamp only guards against inf at
-                # absurdly large logr.
-                logr = (ref_logprobs[i] - new_lp).clamp(max=60.0)
-                kl_i = self.kl_coef * (torch.expm1(logr) - logr)
-
-                # 1/N scaling: accumulated grads == single batched mean.
-                loss_i = (policy_i + kl_i) / n_samples
-                loss_i.backward()
-                policy_loss_total += policy_i.item() / n_samples
-                kl_total += kl_i.item() / n_samples
-
-            # Update
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
-            self.optimizer.step()
+            return self._learn_from_samples(samples, answers)
         finally:
             # Restore the caller's original training mode (M-T1).
             self.model.train(prev_training)
 
+    def _learn_from_samples(self, samples: list, answers: list) -> dict:
+        """Steps 2-8 of GRPO: rewards, group advantages, reference log-probs,
+        PPO-style clipped update with the k3 KL estimator, optimizer step.
+
+        Extracted from train_step so the math exists EXACTLY ONCE: the
+        synchronous trainer and AsyncGRPO (v5.31, GLM-5 direction) share
+        this method — async only changes WHO produces the samples and WHEN,
+        never the update. `samples` is the flat, repeat-interleaved list
+        (batch_size * group_size entries) in the same shape train_step
+        builds; `answers` is per-question (len == len(samples)/group_size).
+        """
+        batch_size = len(samples) // self.group_size
+        n_samples = len(samples)
+
+        all_responses = [s["response"] for s in samples]
+        # Rewards — each of the G responses of question i is scored against
+        # answers[i] (repeat-interleaved alignment).
+        all_answers = [a for a in answers for _ in range(self.group_size)]
+        rewards = self.compute_rewards(all_responses, all_answers)
+
+        # Group-normalized advantages.
+        rewards = rewards.view(batch_size, self.group_size)
+        mean_rewards = rewards.mean(dim=1, keepdim=True)
+        std_rewards = rewards.std(dim=1, unbiased=False, keepdim=True) \
+            .clamp(min=1e-8)
+        advantages = (rewards - mean_rewards) / std_rewards
+        # NOTE: with group_size == 1 every advantage is exactly 0 (each
+        # sample is its own baseline), so the policy-gradient term
+        # vanishes; use group_size >= 2 in practice.
+        advantages_flat = advantages.reshape(-1).detach()
+
+        # Reference model log-probs (frozen, no grad, flat order).
+        ref_logprobs = self._get_ref_logprobs(samples).detach()
+
+        # Grad-carrying training forwards MUST run in train mode so
+        # dropout and other train-only behavior are active.
+        self.model.train()
+
+        self.optimizer.zero_grad()
+        policy_loss_total = 0.0
+        kl_total = 0.0
+        for i, s in enumerate(samples):
+            new_lp = self._sequence_logprob(
+                self.model, s["full_ids"], s["prompt_len"])
+
+            # Ratio against the OLD policy (the ref model only enters the
+            # KL term). Sequence-level ratio — see module docstring for the
+            # difference vs DeepSeekMath's per-token objective. Clamp the
+            # log-ratio before exp() so a diverged policy can never produce
+            # inf/overflow ratios (m3).
+            log_ratio = (new_lp - s["old_logprob"]).clamp(-20.0, 20.0)
+            ratio = torch.exp(log_ratio)
+            adv = advantages_flat[i]
+            surr1 = ratio * adv
+            surr2 = torch.clamp(ratio, 1 - self.epsilon,
+                                1 + self.epsilon) * adv
+            policy_i = -torch.min(surr1, surr2)
+
+            # KL penalty with DeepSeekMath's k3 estimator:
+            # exp(logr) - logr - 1 >= 0 pointwise for
+            # logr = log pi_ref - log pi_new. expm1 avoids the
+            # catastrophic cancellation of exp(logr) - 1 near logr == 0
+            # (m4); the clamp only guards against inf at absurdly large
+            # logr.
+            logr = (ref_logprobs[i] - new_lp).clamp(max=60.0)
+            kl_i = self.kl_coef * (torch.expm1(logr) - logr)
+
+            # 1/N scaling: accumulated grads == single batched mean.
+            loss_i = (policy_i + kl_i) / n_samples
+            loss_i.backward()
+            policy_loss_total += policy_i.item() / n_samples
+            kl_total += kl_i.item() / n_samples
+
+        # Update
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+        self.optimizer.step()
         return {
             "loss": policy_loss_total + kl_total,
             "policy_loss": policy_loss_total,

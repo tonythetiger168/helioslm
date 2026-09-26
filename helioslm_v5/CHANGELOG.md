@@ -1,5 +1,53 @@
 # HeliosLM v5 Changelog
 
+## v5.31 (2026-09-26) - Frontier Gap-Fill: five reference modules
+Fills every gap found in the 2026-09-26 Qwen3-Max / DeepSeek-V4 / GLM-5
+comparison (all toy-scale, correctness-first, deviations recorded in
+docstrings, full local suite 16/16 green):
+
+- `src/blocks/mhc.py` + T22: manifold-constrained hyper-connections
+  (DS-V4 direction). HC core (T-path expansion + 3-path per-channel
+  mixing) + sqrt(3)-Lipschitz manifold constraint (row-normalized
+  mixing). Residual-equivalent init = migration starting point. V4's
+  exact form is unpublished; ours is the documented reference variant.
+- `src/attention/kv_compress.py` + T23: compressed attention (DS-V4
+  direction). HCA-style chunk-pooled memory slots (exclusive cumsum,
+  causality exact) + CSA-style top-k indexer. FP4 indexer simulated by
+  a linear head; learned compressors replaced by mean pooling (recorded).
+- `agent/envs/file_env.py` + T24: long-horizon env (GLM-5 direction).
+  Three families (write_read/write_transform/accumulate) with budgets
+  8/10/14 (vs 2-4 for toy envs) over the existing file tools; verified
+  end-to-end through AgentLoop + replay. Deliberately not in make_envs()
+  (SFT coverage is milestone-13 work).
+- `agent/think.py` + T25: tri-mode protocol (think/tool/text) +
+  ExperienceStore (Qwen3-Max direction). Think steps bypass the gate,
+  are transcript-visible, replay via verify_think_replay. Protocol-level
+  whole-thought reuse across turns (vs Qwen's token-level intra-generation
+  reuse -- recorded deviation). Earlier claim that verify_chat_replay
+  suffices for think steps was WRONG (parse_chat_turn chokes on think
+  markers); correction recorded.
+- `src/training/async_grpo.py` + T26: asynchronous GRPO skeleton
+  (GLM-5 direction). Rollout workers -> bounded queue -> learner calling
+  the SAME _learn_from_samples used by sync train_step (grpo.py refactored:
+  update math exists exactly once). Parity oracle: single worker/question
+  reproduces train_step loss bitwise (loss delta = 0.000000) and params
+  torch.equal. Back-pressure-aware put so stop() cannot be pinned by a
+  full queue. Thread-level skeleton; process/GPU-actor fleet is
+  milestone-13 infra.
+- `examples/train_chat_tuned.py` hardened: kill-safe resume (seeded
+  batch-order replay + LR fast-forward) + HELIOS_CKPT_DIR escape hatch
+  (periodic sandbox re-chown to root broke in-tree saves twice today).
+
+Bug patterns recorded (found by the new tests, fixed, worth not
+repeating): (1) reshaping einsum outputs without aligning semantic dims
+first (kv_compress, 5x); (2) eager-list construction side effects
+(file_env _phase -> thunk dispatch); (3) __len__ making a container
+falsy so `store or ExperienceStore()` silently swapped instances;
+(4) plain Queue.put pinning a worker against stop() under back-pressure;
+(5) sandbox periodic re-chown breaking long-training saves.
+
+
+
 ## v5.30.1 (2026-09-25) - Chat SFT Follow-up Gate + Regenerated Checkpoints
 - `agent/finetune_data.py`: gen_chat_episode follow-up is gated by the
   executor's own validator (`calc(answer * 2)`), not by a numeric check.
