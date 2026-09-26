@@ -1,5 +1,28 @@
 # HeliosLM v5 Changelog
 
+## v5.30.2 (2026-09-27) - Chat SFT on Unbiased Data: text channel learns
+- Dataset filter fix: PROMPT_CAP=1500 (matches generate()'s window)
+  replaces <700 total-char filter, which had silently dropped every
+  magic-word text sample (longest transcripts); eval now stratified
+  20 tool + 20 text targets; T21 guards eval_mode_tool/text existence
+- Retrained: 4716 samples, final loss 0.2001 (v1: 0.3153 on biased data)
+- **mode-choice 11/40 (tool 0/20, text 11/20)**: the text channel IS
+  learned (55% correct mode choice on unseen prompts); tool-mode
+  production on long chat transcripts is a toy-model capacity limit
+  (short-prompt parse rate is 0.67, T17). Planned fix: BPE tokenizer
+  (P3 roadmap), not more char-level data. v1's 0/40 recorded as a
+  measurement artifact, not a model result
+- train_chat_tuned hardened for sandbox warfare: kill-safe resume
+  (seeded batch-order replay + LR fast-forward), HELIOS_CKPT_DIR escape
+  hatch, and _hf_sync (every save mirrored to HF; the sandbox re-chowns
+  the output tree to root ~hourly and wipes /tmp — HF is the source of
+  truth). Final checkpoint on chienhsinlin/helioslm
+- HF tooling note: the commits-API `files[].content` must be RAW text;
+  an earlier base64-as-content bug corrupted small-file uploads
+  (READMEs/jsons), fixed 2026-09-27
+
+
+
 ## v5.31 (2026-09-26) - Frontier Gap-Fill: five reference modules
 Fills every gap found in the 2026-09-26 Qwen3-Max / DeepSeek-V4 / GLM-5
 comparison (all toy-scale, correctness-first, deviations recorded in
