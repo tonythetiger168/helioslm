@@ -346,8 +346,15 @@ class DeviceLimitedMoE(nn.Module):
                         )
                     outs.append(self.experts[eid](chunk)[:n_real])
                 expert_out = outs[0] if len(outs) == 1 else torch.cat(outs, dim=0)
+                # fp32 accumulation regardless of the expert compute dtype:
+                # under bf16 autocast expert outputs are bf16 while z (a
+                # norm output) stays fp32 -- index_add_ demands matching
+                # dtypes. First caught on a real GPU (v5.33 mid run); CPU
+                # fp32 never exercised this path.
                 output_z.index_add_(
-                    0, idx, expert_out * sorted_weights[start : start + cnt].unsqueeze(-1)
+                    0, idx,
+                    (expert_out * sorted_weights[start : start + cnt].unsqueeze(-1))
+                    .to(output_z.dtype)
                 )
             start += cnt
 

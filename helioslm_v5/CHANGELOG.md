@@ -1,5 +1,15 @@
 # HeliosLM v5 Changelog
 
+## v5.33 P1c (2026-09-28) - MoE bf16 Autocast Fix (first real GPU bug)
+- sigmoid_moe.py: expert outputs cast to the fp32 accumulator's dtype on
+  index_add_. Under bf16 autocast the expert block emits bf16 while z (a
+  norm output) stays fp32; CPU fp32 training never exercised the mixed
+  path. Caught on the first real-GPU run (RTX 4060, v5.33 mid); verified
+  both ways: lite fp32 fwd+bwd unchanged, CPU bf16 autocast forward
+  passes (would have reproduced the failure pre-fix)
+
+
+
 ## v5.33 P1b (2026-09-28) - Local-Run Kit for mid Training
 - examples/train_mid_sft.py: one-command local GPU run -- HeliosBPE
   training (trimmed corpus, recorded), chat-SFT data via gen_chat_episode,
