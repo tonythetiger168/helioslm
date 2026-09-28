@@ -1,5 +1,18 @@
 # HeliosLM v5 Changelog
 
+## v5.33 P1 (2026-09-28) - "mid" Preset: Third Deployment Rung
+- config_v5.py: size="mid" (360M params, hidden 1024 x 8 layers, 32K
+  BPE vocab, 4 experts/2 active, CPU-runnable at bf16 ~720MB). Three
+  rungs now: lite (protocol/audit research, $0), mid (scale validation),
+  full (architecture spec). No spectrum theater: each rung has one
+  recorded reason to exist (README "Deployment tiers")
+- T32 4/4: instantiation + forward inside the declared 150-400M band,
+  BPE pairing (HeliosBPE vocab fits the mid budget, protocol strings
+  roundtrip), inference economics (<1GB bf16 promise), unknown-size
+  rejection
+
+
+
 ## v5.33 P0 (2026-09-28) - Byte-Level BPE Tokenizer (mid-size foundation)
 - src/tokenizer/bpe.py: pure-python byte-level BPE (GPT-2 style byte
   map; any byte encodes/decodes, OOV impossible by construction), trained

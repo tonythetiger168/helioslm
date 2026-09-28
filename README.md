@@ -21,6 +21,20 @@ A from-scratch PyTorch reference implementation of a modern LLM stack: MLA atten
 
 **Honest positioning:** this is a correctness-focused reference implementation, not a throughput-optimized production engine (see [Known Limitations](#known-limitations)).
 
+## Deployment tiers
+
+Three rungs, each with one recorded reason to exist (no spectrum theater):
+
+| Tier | Params | Vocab | Weights (bf16) | Deployment RAM | Why it exists |
+|---|---|---|---|---|---|
+| **lite** | 8.5M | 1,024 char-level | ~17 MB | **<500 MB, CPU, millisecond latency** | Protocol/audit research at $0: agent, chat, decision layer, replay verification |
+| **mid** (v5.33) | 360M | 32,768 BPE (HeliosBPE, T31) | ~720 MB | ~1.5 GB, CPU-runnable inference | **Scale validation**: separate toy artifacts from scale-invariant findings (acceptance oracles T32; GPU training run pending) |
+| **full** | DeepSeek-V3/Kimi-K3-class spec | 160,000 | fp8 still needs hundreds of GB HBM | H200/B200-class servers | Architecture decision reference (MLA + MoE + FP8 + MTP), not a local target |
+
+Any intermediate size is constructible by explicit field overrides --
+caller-provided non-None values always win over presets and are validated
+in `__post_init__` (no silent truncation).
+
 ## Quick Start
 
 ```bash

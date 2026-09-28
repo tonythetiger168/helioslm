@@ -348,11 +348,36 @@ class HeliosLMv5Config:
             "hybrid_attention.linear_head_dim": 32,
             "multimodal.enabled": False,  # skip heavy vision/audio encoders
         },
+        # v5.33 "mid": the scale-validation rung (BPE vocab). Purpose
+        # (recorded): separate toy artifacts from scale-invariant
+        # findings -- acceptance oracles in tests/test_v533_mid.py.
+        "mid": {
+            "vocab_size": 32768,      # pairs with HeliosBPE (v5.33 P0)
+            "max_position_embeddings": 8192,
+            "hidden_size": 1024,
+            "num_hidden_layers": 8,
+            "intermediate_size": 2048,
+            "attention.num_attention_heads": 16,
+            "attention.num_key_value_heads": 4,
+            "attention.kv_latent_dim": 256,
+            "attention.q_lora_rank": 512,
+            "attention.no_rope_head_dim": 64,
+            "attention.rope_head_dim": 32,   # head_dim = 64 + 32 = 96
+            "attention.v_head_dim": 96,
+            "moe.num_experts": 4,
+            "moe.num_activated_experts": 2,
+            "moe.device_group_size": 4,
+            "mtp.num_modules": 1,
+            "hybrid_attention.linear_num_heads": 8,
+            "hybrid_attention.linear_head_dim": 64,
+            "multimodal.enabled": False,
+        },
     }
 
     def __post_init__(self):
-        if self.size not in ("full", "lite"):
-            raise ValueError(f"unknown size {self.size!r}; expected 'full' or 'lite'")
+        if self.size not in ("full", "lite", "mid"):
+            raise ValueError(
+                f"unknown size {self.size!r}; expected 'full', 'mid' or 'lite'")
         self._apply_size_defaults()
         self._resolve_defaults()
         self._validate()
