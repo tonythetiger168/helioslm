@@ -1,5 +1,22 @@
 # HeliosLM v5 Changelog
 
+## v5.33 P0 (2026-09-28) - Byte-Level BPE Tokenizer (mid-size foundation)
+- src/tokenizer/bpe.py: pure-python byte-level BPE (GPT-2 style byte
+  map; any byte encodes/decodes, OOV impossible by construction), trained
+  on the repo's OWN corpus (sources + tool/chat protocol + env task
+  texts -- domain-matched by design). Spaces attach to the following
+  word; _pretokenize shared by train and encode so vocab and encoding
+  cannot drift. Additive: the char-level pipeline is untouched.
+- T31 7/7: domain roundtrips, separator fidelity (incl. '  ' and
+  newlines), OOV bytes, specials stability, save/load exactness,
+  deterministic training, corpus coverage
+- Next: mid preset (~150-300M, hidden 1024 x 12-16) with this vocab --
+  purpose: separate toy artifacts from scale-invariant findings
+  (acceptance: tool parse >0.8, mode-choice text AND tool >0.6, tau
+  curves still monotone); training needs a rented GPU
+
+
+
 ## v5.32.2 (2026-09-28) - CalibratedRouter: Head Serves the Gate
 - calibrated_router.py: DecisionHead-backed Gate — decide() from the
   trained head, ask_batch() answers the FULL pi-warden preset in ONE
