@@ -100,8 +100,7 @@ def main():
         out_b, conf_b = gen(cs_prompt)
         print(f"  gen(train_prompt): {out_a[:120]!r} conf={conf_a:.3f}",
               flush=True)
-        print(f"  gen(cs_prompt)   : {out_b[:120]!f}" if False else
-              f"  gen(cs_prompt)   : {out_b[:120]!r} conf={conf_b:.3f}",
+        print(f"  gen(cs_prompt)   : {out_b[:120]!r} conf={conf_b:.3f}",
               flush=True)
         report["gens"].append({"task": task.text[:80],
                                "train_out": out_a[:200], "cs_out": out_b[:200]})
