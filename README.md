@@ -5,7 +5,7 @@ A from-scratch PyTorch reference implementation of a modern LLM stack: MLA atten
 > **One-liner:** If you want to understand (or hack on) how DeepSeek-V3/K3-class models actually work — without needing a GPU cluster first — this repo is for you.
 
 [![CI](https://github.com/tonythetiger168/helioslm/actions/workflows/ci.yml/badge.svg)](https://github.com/tonythetiger168/helioslm/actions)
-![Tests](https://img.shields.io/badge/tests-79%20unit%20%2B%20integration%20%2B%20oracle-brightgreen)
+![Tests](https://img.shields.io/badge/tests-115%2B%20unit%20%2B%20integration%20%2B%20oracle-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![PyTorch](https://img.shields.io/badge/framework-PyTorch%20(pure)-ee4c2c)
 
@@ -15,7 +15,7 @@ A from-scratch PyTorch reference implementation of a modern LLM stack: MLA atten
 
 | You are... | What HeliosLM gives you |
 |---|---|
-| **A learner** who wants to understand MLA, MoE routing, DualPipe, speculative decoding | Annotated, review-hardened PyTorch with 48 unit tests that act as executable documentation |
+| **A learner** who wants to understand MLA, MoE routing, DualPipe, speculative decoding | Annotated, review-hardened PyTorch with 115+ tests (T11-T28) that act as executable documentation |
 | **A researcher** who wants a stack to modify, ablate, and extend quickly | Single-process, CPU-iterable training + serving code — change one file, run one test |
 | **A practitioner** evaluating serving/quantization techniques | vLLM-style paged engine, GPTQ/AWQ/FP8/MXFP4 quantization, MTP speculative decoding — all inspectable |
 
@@ -31,6 +31,14 @@ python -m helioslm_v5.tests.test_agent  # 9 agent-layer oracles (v5.23)
 python -m helioslm_v5.tests.test_v5_stage_a   # T15 real-model oracles (v5.26)
 python -m helioslm_v5.tests.test_v5_stage_b   # T17 tool-tuned end-to-end (v5.27)
 python -m helioslm_v5.tests.test_disagg_pareto  # T18 Pareto sweep oracles (v5.28)
+python helioslm_v5/tests/test_chat.py            # T20 chat capability oracles (v5.30)
+python helioslm_v5/tests/test_mhc.py             # T22 mHC oracles (v5.31)
+python helioslm_v5/tests/test_kv_compress.py     # T23 compressed-attention causality (v5.31)
+python helioslm_v5/tests/test_file_env.py        # T24 long-horizon env (v5.31)
+python helioslm_v5/tests/test_think.py           # T25 think + experience reuse (v5.31)
+python helioslm_v5/tests/test_async_grpo.py      # T26 async GRPO sync-parity (v5.31)
+python helioslm_v5/tests/test_decision.py        # T27 typed decision primitives (v5.32)
+python helioslm_v5/tests/test_decision_head.py   # T28 DecisionHead calibration (v5.32)
 ```
 
 ```python
@@ -55,7 +63,11 @@ Nothing sells an LLM repo like showing it produce tokens. -->
 | **Attention** | MLA with **weight absorption** — latent-only KV cache, **−97.7% memory vs MHA** (full config), verified equivalent to the expanded path (<1e-4). Hybrid linear attention: Gated Delta Rule layers interleaved with MLA, fixed-size recurrent state cache, decode ≡ one-shot (<2e-7). RoPE scaling: linear / NTK / YaRN. DSA-style sparse top-k decode over the latent cache (k≥L exactly dense). Sliding-window attention with StreamingLLM sinks (O(W) decode), per-head QK-norm, Gemma-style logit soft-capping. |
 | **MoE** | Sigmoid-gated fine-grained experts with **auxiliary-loss-free** load balancing (selection-only bias, heuristic or quantile updates). **LatentMoE**: routed experts in a shared latent space. **SiTU-GLU** tanh soft-capped activation. |
 | **Cross-layer** | **Attention Residuals** — per-layer gated injection of accumulated lower-layer attention outputs, threaded through DualPipe (gradient-exact, bitwise-verified). |
-| **Agent** | v5.23 agent layer: strict tool-call schema/parser (16 error classes), deterministic sandboxed tools, trajectory bitwise-replay oracle, ground-truth-by-construction toy envs, routing gates (v5.22 decision-audit discipline); v5.26 real-model oracles (T15); v5.27 **tool-tuned checkpoint** trained on agent-loop replays (data format == inference by construction) — T17 end-to-end baseline parse 0.15 / finish 1/9, `sparse_top_k=4` ~= dense; hardened by real-model findings (TOOL_ERROR recovery, ASCII-safe docs) |
+| **Agent** | v5.23 agent layer: strict tool-call schema/parser (16 error classes), deterministic sandboxed tools, trajectory bitwise-replay oracle, ground-truth-by-construction toy envs, routing gates (v5.22 decision-audit discipline); v5.26 real-model oracles (T15); v5.27 **tool-tuned checkpoint** trained on agent-loop replays (data format == inference by construction) — T17 end-to-end baseline parse 0.15 / finish 1/9, `sparse_top_k=4` ~= dense; hardened by real-model findings (TOOL_ERROR recovery, ASCII-safe docs) ; v5.29 three-modes benchmark with strict-monotone tau routing curves and a recorded overconfidence finding (max conf 0.925-0.944 on wrong answers), artifact oracles T19 |
+| **Chat** | v5.30: dual-mode protocol (plain text OR @@tool@@ block; text bypasses the gate, gate governs tools only), multi-turn ChatSession with transcript replay, chat SFT data with inference-identical prompts; v5.30.2 fixed a dataset filter bias that had hidden the text channel (mode-choice: text 11/20) — T20/T21 |
+| **Frontier references** | v5.31: five readable toy-scale references distilled from the 2026 frontier — manifold-constrained hyper-connections (DS-V4), HCA/CSA-style compressed attention with exact causality, long-horizon file env (8-14 steps), think-mode + experience reuse (Qwen3-Max direction), async GRPO with bitwise sync-parity (GLM-5 direction) — T22-T26 |
+| **Decision layer** | v5.32: typed decision primitives Choice/Score/Noul (System One / Jev direction) with schema enforcement, gate ask/ask_batch extension point, non-autoregressive DecisionHead answering K questions in one pass, outcome-targeted Brier calibration (RLCD direction; the label-targeted variant is provably redundant with CE — recorded) — T27/T28 |
+| **Benchmarks** | Top-10 LLM position paper with verified leaderboard data and the calibration/replay axes no vendor publishes (`helioslm_v5/docs/benchmark_top5_2026-09-27.md`); probe suite (toy + file-env + chat) with scripted oracles, runnable against any API |
 | **Disaggregation** | v5.25 Mooncake-style prefill/decode module behind a monotonicity gate; v5.28 three-axis **Pareto sweep** (makespan / workers / worker-seconds) with latency-cost curves per workload — cache-aware anti-monotonicity recorded as a structural finding, not hidden |
 | **Speculative decoding** | DeepSeek-style MTP with **strict verification** (residual (p−q)₊ resampling), batch support, O(1) cache-truncation rollback; hybrid recurrent-state rollback via restore+replay. |
 | **Serving** | vLLM-style engine: paged KV accounting, copy-on-write forks, watermark-aligned continuous batching. |
