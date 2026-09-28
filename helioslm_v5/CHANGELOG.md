@@ -1,5 +1,21 @@
 # HeliosLM v5 Changelog
 
+## v5.33 P3 (2026-09-28) - Format Skew: the 0/12 Was Not a Verdict
+- eval_mid_agent v1 (AgentLoop 'Task:/step i:' harness): 0/12 correct,
+  parse_rate 0.0, conf_on_wrong 1.0. Diagnosis: train/serve FORMAT SKEW
+  -- mid SFT data renders chat transcripts (##user## family), the v1
+  harness never did. Lite's T17 parse 0.67 came from AgentLoop-format
+  training data: data format decides capability ownership, not parameter
+  count (same trap family as v5.30.1's filter bias)
+- Standing finding: OOD format -> confidence mean 1.000 while producing
+  zero parseable output. Third scale confirming the pattern (lite 0.94,
+  Qwen3-0.6B 1.0, mid 1.0); the calibration case for CalibratedRouter
+  strengthens at every scale tested
+- examples/eval_mid_agent_v2.py: agency test driven by ChatSession (the
+  training distribution) -- the honest in-format verdict
+
+
+
 ## v5.33 P2 (2026-09-28) - mid First Real Run: the Char-Level Ceiling Falls
 - Local RTX 4060 8GB run (user machine, 63 min, 4 epochs): loss 2.54 ->
   0.47; eval_exact 30/40 (lite: 0/40); mode-choice tool 20/20 (lite:
