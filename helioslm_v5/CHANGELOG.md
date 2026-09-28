@@ -1,5 +1,18 @@
 # HeliosLM v5 Changelog
 
+## v5.33 P2 (2026-09-28) - mid First Real Run: the Char-Level Ceiling Falls
+- Local RTX 4060 8GB run (user machine, 63 min, 4 epochs): loss 2.54 ->
+  0.47; eval_exact 30/40 (lite: 0/40); mode-choice tool 20/20 (lite:
+  0/20); text 20/20 (lite: 11/20). All acceptance targets passed
+- FINDING (settles a 3-day open question): the tool-channel zero was the
+  char-level tokenizer ceiling, NOT the protocol, data, or architecture.
+  Same protocol + BPE + 360M -> perfect mode choice
+- examples/eval_mid_agent.py: the real agency test (multi-step AgentLoop,
+  replay-verified) -- the wall Qwen3-0.6B hit at 0/15. Three-point scale
+  line completes when its json lands
+
+
+
 ## v5.33 P1c (2026-09-28) - MoE bf16 Autocast Fix (first real GPU bug)
 - sigmoid_moe.py: expert outputs cast to the fp32 accumulator's dtype on
   index_add_. Under bf16 autocast the expert block emits bf16 while z (a
