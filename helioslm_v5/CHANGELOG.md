@@ -1,5 +1,19 @@
 # HeliosLM v5 Changelog
 
+## v5.33 P1b (2026-09-28) - Local-Run Kit for mid Training
+- examples/train_mid_sft.py: one-command local GPU run -- HeliosBPE
+  training (trimmed corpus, recorded), chat-SFT data via gen_chat_episode,
+  mid config (360M), bf16 autocast, AdamW+cosine, resume + HELIOS_CKPT_DIR
+  + _hf_sync discipline, stratified eval printing the v5.33 acceptance
+  metrics (tool parse / mode-choice text+tool / exact-match)
+- Env knobs: MID_BATCH (4060 8GB: use 4), MID_EPOCHS, MID_EPISODES,
+  MID_EVAL, HELIOS_CKPT_DIR, HELIOS_HF_SYNC
+- Sandbox finding: CPU smoke cannot reach the first optimizer step --
+  360M fp32 AdamW footprint ~5.8GB exceeds the ~5GB sandbox RAM
+  (weights+build+forward all validated; step itself is GPU-only by design)
+
+
+
 ## v5.33 P1 (2026-09-28) - "mid" Preset: Third Deployment Rung
 - config_v5.py: size="mid" (360M params, hidden 1024 x 8 layers, 32K
   BPE vocab, 4 experts/2 active, CPU-runnable at bf16 ~720MB). Three
