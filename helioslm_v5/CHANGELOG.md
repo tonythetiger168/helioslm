@@ -1,5 +1,19 @@
 # HeliosLM v5 Changelog
 
+## v5.32.2 (2026-09-28) - CalibratedRouter: Head Serves the Gate
+- calibrated_router.py: DecisionHead-backed Gate — decide() from the
+  trained head, ask_batch() answers the FULL pi-warden preset in ONE
+  forward pass (T30 counts passes, not assumes), escalate() stays
+  oracle-only (a trained head never fabricates oracle observations),
+  unregistered questions fail LOUD
+- v5.32.1 floor finding made actionable: `certainty` Score question
+  escapes the binary Choice confidence floor (1/K = 0.5) — demonstrated
+  in T30 (route_conf=1.00 floor vs risky certainty 0.01 vs clean 0.99)
+- decision_head.forward is now inference-only (@torch.no_grad)
+- T30 4/4; full decision suite 12/12; local regression 8/8 groups
+
+
+
 ## v5.32.1 (2026-09-28) - RLCD Outcome Loop Closed
 - decision_data.py: RecordingGate (logs routing decisions with confidence
   claims), records_from_runs (attaches env.verify outcomes as

@@ -53,7 +53,10 @@ class DecisionHead(nn.Module):
         x = self.emb(text_ids)
         return self.body(x.mean(dim=0))
 
+    @torch.no_grad()
     def forward(self, text_ids):
+        """Inference-only: returns {name: (answer, confidence)}. Training
+        goes through fit(); this path never builds a graph."""
         z = self.encode(text_ids)
         out = {}
         for name in self.qnames:
