@@ -1,5 +1,23 @@
 # HeliosLM v5 Changelog
 
+## v5.32 (2026-09-28) - Typed Decision Layer (System One / Jev direction)
+- decision.py: Choice/Score/Noul schema-enforced primitives + pi-warden
+  guardrail preset; gate.py gains additive ask/ask_batch (T11-T19
+  contract unchanged, verified)
+- decision_head.py: non-autoregressive head answering K questions in one
+  pass; CE + OUTCOME-targeted Brier calibration. FINDING: Brier against
+  train-label correctness is provably redundant with CE (identical
+  confidences, A/B-verified); the term only bites against replay-verified
+  outcomes (RLCD) -- P2 wiring point defined
+- T27 5/5, T28 4/4
+- First real cross-scale anchor: Qwen3-0.6B (pure-torch hand-rolled
+  runner, no transformers) on the HeliosLM probe suites -- 0/15 tool,
+  0/3 file-env, 6/6 chat mode-choice; conf on wrong mean 0.893 max 1.000
+  (docs/qwen3_0.6b_anchor_2026-09-28.md). Overconfidence is
+  scale-invariant; agency is the wall, not mode selection
+
+
+
 ## v5.30.2 (2026-09-27) - Chat SFT on Unbiased Data: text channel learns
 - Dataset filter fix: PROMPT_CAP=1500 (matches generate()'s window)
   replaces <700 total-char filter, which had silently dropped every
