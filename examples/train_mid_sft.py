@@ -147,6 +147,9 @@ def main():
     out_dir = Path(os.environ.get("HELIOS_CKPT_DIR", "checkpoints"))
     out_dir.mkdir(exist_ok=True, parents=True)
     ckpt = out_dir / f"{OUT_NAME}.pt"
+    # tokenizer travels WITH the checkpoint: eval processes must load
+    # this file, never retrain (tokenizer train/serve skew, 2026-09-28)
+    tok.save(out_dir / f"{OUT_NAME}.tok.json")
     step_file = out_dir / f"{OUT_NAME}.step"
     start_step = int(step_file.read_text()) if (ckpt.exists()
                                                 and step_file.exists()) else 0

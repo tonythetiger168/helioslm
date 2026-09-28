@@ -44,11 +44,19 @@ from tools import build_default_registry
 def main():
     torch.manual_seed(0)
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    corpus = build_corpus()
-    tok = HeliosBPE.train([corpus[-30000:] + corpus[:170000]], vocab_size=16000)
+    ck = Path(os.environ.get("HELIOS_CKPT_DIR", "checkpoints"))
+    tok_path = ck / "mid_sft_v5.33.tok.json"
+    if tok_path.exists():
+        tok = HeliosBPE.load(str(tok_path))
+        print("loaded paired tokenizer from checkpoint", flush=True)
+    else:
+        print("WARNING: no saved tokenizer -- retraining (may mismatch!",
+              flush=True)
+        corpus = build_corpus()
+        tok = HeliosBPE.train([corpus[-30000:] + corpus[:170000]],
+                              vocab_size=16000)
     bos = tok.vocab[BOS]
     model = HeliosLMv5(HeliosLMv5Config(size="mid")).to(device)
-    ck = Path(os.environ.get("HELIOS_CKPT_DIR", "checkpoints"))
     model.load_state_dict(torch.load(ck / "mid_sft_v5.33.pt",
                                      map_location=device))
     model.eval()

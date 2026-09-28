@@ -67,12 +67,16 @@ def build_corpus(repo_root=None):
     if repo_root is None:
         repo_root = Path(__file__).resolve().parents[2]
     parts = []
-    for p in Path(repo_root).rglob("*.py"):
+    # SORTED file lists: rglob order is filesystem-dependent and NOT
+    # stable across processes on some systems (found 2026-09-28 -- a
+    # tokenizer retrained in an eval process diverged from the training
+    # process one, producing confident garbage on a healthy checkpoint)
+    for p in sorted(Path(repo_root).rglob("*.py")):
         try:
             parts.append(p.read_text(encoding="utf-8", errors="ignore"))
         except OSError:
             pass
-    for p in Path(repo_root).rglob("*.md"):
+    for p in sorted(Path(repo_root).rglob("*.md")):
         try:
             parts.append(p.read_text(encoding="utf-8", errors="ignore")[:20000])
         except OSError:

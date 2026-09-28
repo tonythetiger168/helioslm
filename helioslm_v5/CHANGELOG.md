@@ -1,5 +1,25 @@
 # HeliosLM v5 Changelog
 
+## v5.33 P4 (2026-09-28) - Tokenizer Train/Serve Skew: Third of the Skew Family
+- v3 prompt-diff oracle: prompts byte-identical (prompt_equal=True), yet
+  the model emitted structurally-tool-block-shaped id sequences that
+  decoded to source-code soup at confidence 1.0. Mechanism: eval
+  processes RETRAINED the BPE tokenizer; build_corpus() rglob order is
+  filesystem-dependent, so the retrained vocab assigned different ids to
+  the same strings -- a healthy checkpoint decoding through a mismatched
+  table produces confident garbage (ids of never-trained embeddings sit
+  at init)
+- Fixes: build_corpus() sorts file lists (root cause); train_mid_sft
+  saves the tokenizer WITH the checkpoint (.tok.json); eval scripts load
+  the paired tokenizer first, retrain only as a warned fallback
+- Skew family now three: v5.30.1 dataset filter bias -> v5.33 format
+  mismatch -> v5.33 tokenizer mismatch. Standing rule: NOTHING between
+  train and serve may rely on 'should be the same'
+- The prior checkpoint (no saved tokenizer) needs one retrain (~1 h) to
+  pair; v2 agency numbers after the retrain are the first honest ones
+
+
+
 ## v5.33 P3 (2026-09-28) - Format Skew: the 0/12 Was Not a Verdict
 - eval_mid_agent v1 (AgentLoop 'Task:/step i:' harness): 0/12 correct,
   parse_rate 0.0, conf_on_wrong 1.0. Diagnosis: train/serve FORMAT SKEW
