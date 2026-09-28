@@ -1,5 +1,18 @@
 # HeliosLM v5 Changelog
 
+## v5.33 P5 (2026-09-29) - Resume Guard: Tokenizer Fingerprint Mismatch
+- Found on the user's second run: RESUME loaded step-4600 weights
+  (old-tokenizer run) while the process had trained a NEW tokenizer
+  (sorted-rglob fix); 88 mismatch steps drove final loss 0.47 -> 15.0
+  and wiped exact-match (30/40 -> 0/40). The corrupted checkpoint also
+  carried a 'paired' tokenizer that does not match its weights
+- train_mid_sft.py: tokenizer sha256 fingerprint (.tokfp) written with
+  the checkpoint; resume REFUSES on any difference (loud exit, never
+  silent). Companion to the .tok.json pairing: pairing protects eval,
+  fingerprinting protects training
+
+
+
 ## v5.33 P4 (2026-09-28) - Tokenizer Train/Serve Skew: Third of the Skew Family
 - v3 prompt-diff oracle: prompts byte-identical (prompt_equal=True), yet
   the model emitted structurally-tool-block-shaped id sequences that

@@ -149,8 +149,23 @@ def main():
     ckpt = out_dir / f"{OUT_NAME}.pt"
     # tokenizer travels WITH the checkpoint: eval processes must load
     # this file, never retrain (tokenizer train/serve skew, 2026-09-28)
-    tok.save(out_dir / f"{OUT_NAME}.tok.json")
+    tok_path = out_dir / f"{OUT_NAME}.tok.json"
+    tok.save(tok_path)
+    # RESUME GUARD (found 2026-09-29): resuming old weights against a
+    # newly trained tokenizer silently corrupts the model (88 mismatch
+    # steps drove loss 0.47 -> 15.0). Fingerprint the tokenizer; refuse
+    # to resume on any difference -- loud, never silent.
+    import hashlib
+    tok_fp = hashlib.sha256(tok_path.read_bytes()).hexdigest()
+    fp_file = out_dir / f"{OUT_NAME}.tokfp"
     step_file = out_dir / f"{OUT_NAME}.step"
+    if ckpt.exists() and step_file.exists() and fp_file.exists() \
+            and fp_file.read_text() != tok_fp:
+        sys.exit("REFUSING to resume: tokenizer fingerprint differs from "
+                 "the checkpoint's training tokenizer. Move/delete the old "
+                 "checkpoints and run fresh (or point HELIOS_CKPT_DIR "
+                 "elsewhere).")
+    fp_file.write_text(tok_fp)
     start_step = int(step_file.read_text()) if (ckpt.exists()
                                                 and step_file.exists()) else 0
     if start_step:
