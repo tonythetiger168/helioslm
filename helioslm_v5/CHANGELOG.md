@@ -1,5 +1,23 @@
 # HeliosLM v5 Changelog
 
+## v5.32.1 (2026-09-28) - RLCD Outcome Loop Closed
+- decision_data.py: RecordingGate (logs routing decisions with confidence
+  claims), records_from_runs (attaches env.verify outcomes as
+  route__target_conf -- the signal T28 proved necessary), and
+  rlcd_reward_adjustment (pure reward shaping for the milestone-13
+  agentic-GRPO loop)
+- T29 3/3: end-to-end RLCD oracle -- an overconfident confidence_fn
+  (0.95 everywhere) drives ThresholdGate runs; broken tasks are RISKY-
+  prefixed so outcomes are learnable from state text; the Brier-trained
+  head pulls RISKY-state confidence from 1.0 toward the floor while a
+  lambda=0 twin pins at 1.0
+- FINDING: binary Choice confidence (max softmax prob) has a HARD FLOOR
+  at 1/K = 0.5 -- it cannot express sub-50% certainty. Sub-floor
+  uncertainty needs the Noul/Score primitives (documented; this is why
+  Jev ships three types)
+
+
+
 ## v5.32 (2026-09-28) - Typed Decision Layer (System One / Jev direction)
 - decision.py: Choice/Score/Noul schema-enforced primitives + pi-warden
   guardrail preset; gate.py gains additive ask/ask_batch (T11-T19
