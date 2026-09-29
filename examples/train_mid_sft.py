@@ -166,7 +166,19 @@ def main():
     # check below silently passed and re-corrupted the model again. Also
     # compare against the checkpoint's OWN saved .tok.json whenever it
     # exists -- no trust in sidecar freshness.
-    if ckpt.exists():
+    if os.environ.get("MID_FRESH") == "1":
+        # v5.36: FRESH MODE PRE-EMPTs all resume checks -- clear state
+        # first, skip every fingerprint comparison. Found on the user's
+        # copy-curriculum run: the guard refused a MID_FRESH run because
+        # the refusal logic ran BEFORE the fresh cleanup.
+        start_step = 0
+        for stale in (ckpt, step_file, fp_file,
+                      out_dir / f"{OUT_NAME}.tok.json"):
+            if stale.exists():
+                stale.unlink()
+        print("MID_FRESH=1: cleared resume state, starting from step 0",
+              flush=True)
+    elif ckpt.exists():
         legacy_tok = out_dir / f"{OUT_NAME}.tok.json"
         if legacy_tok.exists() \
                 and hashlib.sha256(legacy_tok.read_bytes()).hexdigest() != tok_fp:
@@ -183,14 +195,7 @@ def main():
     # exactly the confusion seen 2026-09-29 (a corrupted checkpoint was
     # re-evaluated repeatedly because 'delete the old files first' is a
     # silent prerequisite). Fresh runs should ALWAYS use MID_FRESH=1.
-    if os.environ.get("MID_FRESH") == "1":
-        start_step = 0
-        for stale in (ckpt, step_file):
-            if stale.exists():
-                stale.unlink()
-        print("MID_FRESH=1: cleared resume state, starting from step 0",
-              flush=True)
-    else:
+    if True:
         start_step = int(step_file.read_text()) if (ckpt.exists()
                                                     and step_file.exists()) else 0
     if start_step:
