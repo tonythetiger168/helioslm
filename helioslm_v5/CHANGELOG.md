@@ -1,5 +1,19 @@
 # HeliosLM v5 Changelog
 
+## v5.33 P7 (2026-09-29) - Autopsy: Content Confabulation at 0.9999 Confidence
+- v4 full-capture eval (mid, healthy ckpt): all 12 finish answers are
+  hallucinated content, not copy failures -- calc obs carried the right
+  answer and was ignored; reverse tasks produced length-matched
+  degenerate repeats (IIIIIIIII, 2v2v2v2v2v): shape statistics learned,
+  input-output grounding absent
+- Mid's regime named: FORM perfect, GROUNDING missing -- the purest
+  demonstration yet that fluency != correctness, and the exact target
+  profile for the certified-confidence line
+- Menu: copy-curriculum data / policy-in-code grounding for DIRECT
+  finish (deployable today) / RLCD on the (conf 0.9999, wrong) pairs
+
+
+
 ## v5.33 P6 (2026-09-29) - Clean Run: the Three-Point Scale Line Closes
 - Third training run (MID_FRESH=1, post-reboot): 3676s, final loss
   0.3675, SFT eval 30/40 exact + 40/40 mode (reproduces the first run)

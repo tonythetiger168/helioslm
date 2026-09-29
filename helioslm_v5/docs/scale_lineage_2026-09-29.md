@@ -42,6 +42,33 @@ definition (softmax max, greedy) at every point.
 - MoE bf16 autocast dtype fix (first real GPU bug)
 - single-tensor AdamW workaround (RTX 4060 foreach/driver interaction)
 
+## Autopsy: mid's 0/12 is content confabulation, not copy failure
+
+The v4 full-capture eval (same seed as v2, directly comparable) shows
+the finish answers across all 12 tasks:
+
+| kind | expected | final | reading |
+|---|---|---|---|
+| calc | 30 | -15 | unrelated number |
+| calc | -1748 | -108 | wrong magnitude |
+| reverse | MHYIDE9KQ (9 chars) | IIIIIIII (8 chars) | length-matched degenerate repeat |
+| reverse | Sba2GTvEmCwA (12) | 2v2v2v2v2v (10) | same -- shape statistics, no transformation |
+| write_read | 134 | 8088 | plausible magnitude, wrong digits |
+
+The calc obs returned the correct answer into the transcript; the
+finish call ignored it. Diagnosis: the model treats the finish answer
+as a language-modeling continuation (a plausible-shaped token string),
+not as retrieval from the tool observation. It learned output SHAPE
+statistics (string length, number magnitude) but not input-output
+grounding. Confidence on all of this: 0.9999.
+
+Therapeutic menu (recorded): (1) data -- weight finish=last-obs
+samples, add copy-specific episodes; (2) inference -- System-One
+intervention: for DIRECT-routed finish calls, policy-in-code forces
+answer == last tool observation when the task is retrieval-shaped;
+(3) training -- RLCD pressure directly on the (0.9999 conf, wrong)
+pairs. Option 2 is deployable today with the existing gate.
+
 ## Next
 
 - Inspect mid's finish answers vs expected (json per-task results) --
