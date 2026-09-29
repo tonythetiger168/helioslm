@@ -2,68 +2,115 @@
   "n": 12,
   "correct": "12/12",
   "grounded": true,
-  "source": "reconstructed from console paste (user local file not uploaded)",
   "compare": "mid_agent_eval_v4.json was 0/12 ungrounded",
   "results": [
     {
       "family": "Task",
+      "task": "Compute the value of: 41 + -28 - 77 + 94",
+      "expected": "30",
+      "final": "30",
       "correct": true,
-      "final": "30"
+      "steps": 2,
+      "conf": 0.9999552965164185
     },
     {
       "family": "Task",
+      "task": "Compute the value of: -9 * 60 % -49",
+      "expected": "-1",
+      "final": "-1",
       "correct": true,
-      "final": "-1"
+      "steps": 2,
+      "conf": 0.99994957447052
     },
     {
       "family": "Task",
+      "task": "Compute the value of: 19 * -92",
+      "expected": "-1748",
+      "final": "-1748",
       "correct": true,
-      "final": "-1748"
+      "steps": 2,
+      "conf": 0.9999558925628662
     },
     {
       "family": "Task",
+      "task": "Apply upper to the string: \"mhyIdE9KQ\"",
+      "expected": "MHYIDE9KQ",
+      "final": "MHYIDE9KQ",
       "correct": true,
-      "final": "MHYIDE9KQ"
+      "steps": 2,
+      "conf": 0.9999561309814453
     },
     {
       "family": "Task",
+      "task": "Apply reverse to the string: \"AwCmEvTG2abS\"",
+      "expected": "Sba2GTvEmCwA",
+      "final": "Sba2GTvEmCwA",
       "correct": true,
-      "final": "Sba2GTvEmCwA"
+      "steps": 2,
+      "conf": 0.9999539852142334
     },
     {
       "family": "Task",
+      "task": "Apply reverse to the string: \"gDFa922clUPv\"",
+      "expected": "vPUlc229aFDg",
+      "final": "vPUlc229aFDg",
       "correct": true,
-      "final": "vPUlc229aFDg"
+      "steps": 2,
+      "conf": 0.999902606010437
     },
     {
       "family": "Task",
+      "task": "First compute: -76 % -83. Then apply reverse to the digits of the result.",
+      "expected": "67-",
+      "final": "67-",
       "correct": true,
-      "final": "67-"
+      "steps": 3,
+      "conf": 0.999922513961792
     },
     {
       "family": "Task",
+      "task": "First compute: -5 + 74 + 72. Then apply reverse to the digits of the result.",
+      "expected": "141",
+      "final": "141",
       "correct": true,
-      "final": "141"
+      "steps": 3,
+      "conf": 0.999964714050293
     },
     {
       "family": "Task",
+      "task": "First compute: -46 + 99 * 93 - 38. Then apply reverse to the digits of the resul",
+      "expected": "3219",
+      "final": "3219",
       "correct": true,
-      "final": "3219"
+      "steps": 3,
+      "conf": 0.9999449253082275
     },
     {
       "family": "write_read",
+      "task": "Compute the value of: 7 * 18 + 8. Write the result to f.txt, then read f.txt and",
+      "expected": "134",
+      "final": "134",
       "correct": true,
-      "final": "134"
+      "steps": 2,
+      "conf": 0.9999542236328125
     },
     {
       "family": "write_read",
+      "task": "Compute the value of: 25 * 18 + 47. Write the result to f.txt, then read f.txt a",
+      "expected": "497",
+      "final": "497",
       "correct": true,
-      "final": "497"
+      "steps": 2,
+      "conf": 0.9999581575393677
     },
     {
       "family": "write_read",
+      "task": "Compute the value of: 20 * 11 + 25. Write the result to f.txt, then read f.txt a",
+      "expected": "245",
+      "final": "245",
       "correct": true,
-      "final": "245"
+      "steps": 2,
+      "conf": 0.9999468326568604
     }
   ]
 }
