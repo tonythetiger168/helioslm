@@ -1,5 +1,23 @@
 # HeliosLM v5 Changelog
 
+## v5.35d (2026-09-29) - TypeSafe/Jev Alignment Report
+- docs/typesafe_alignment_2026-09-29.md: calibration of our open-source
+  reference against the canonical vendor impl + the RLCDAlignBench
+  paper (ICLR 2027 under review). Concept layer fully aligned (three
+  primitives, one-forward batching, confidence tiers, risk-scaled
+  thresholds); three design differences recorded
+- ADOPT (triple-evidenced): Noul -> continuous P(yes) in [0,1], no
+  independent confidence (our binary-choice 1/K floor + official spec
+  + AlignBench readout all point the same way)
+- Positioning: AlignBench is the task-INTER branch (detecting failures
+  in OTHER LLMs, 7193 instances, 0.886 median AUROC zero-shot); we are
+  the task-INTRA branch (an agent trusting its own tool calls). Same
+  RLCD methodology, mutually reinforcing conclusions
+- Two implementation adoptions queued: question ID/content split;
+  select-vs-score data split for multi-question evals
+
+
+
 ## v5.35c (2026-09-29) - Copy Curriculum: the Training-Side Therapy
 - agent/copy_curriculum.py: EchoEnv ('Repeat back exactly: "{s}"' ->
   plain-text reply, random high-entropy payloads so pattern completion
