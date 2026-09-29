@@ -1,5 +1,19 @@
 # HeliosLM v5 Changelog
 
+## v5.34.2 (2026-09-29) - THE VERDICT: 12/12 Grounded (was 0/12)
+- mid_agent_eval_v5 on the real mid checkpoint with GroundingGate:
+  12/12 correct, finals matching expected verbatim (v4 same seed was
+  0/12 with every answer confabulated at 0.9999 confidence). The
+  before/after pair (benchmarks/mid_agent_eval_v4.json vs _v5.json)
+  closes the loop: policy-in-code is sufficient therapy for the
+  copy-shaped failure, at this scale and grammar
+- docs/grounding_report_2026-09-29.md: the full narrative -- disease at
+  scale, autopsy, therapy, synthetic proof (T33), real verdict, and the
+  honest boundaries (therapy not cure; retirement path = copy
+  curriculum + RLCD, both queued)
+
+
+
 ## v5.34.1 (2026-09-29) - Code Review: Semantic Finish Grounding
 - HIGH finding fixed: finish grounding was keyed to the sequence's
   LAST EVENT; a mid-sequence deviation (accumulate without the closing

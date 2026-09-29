@@ -1,0 +1,69 @@
+{
+  "n": 12,
+  "correct": "12/12",
+  "grounded": true,
+  "source": "reconstructed from console paste (user local file not uploaded)",
+  "compare": "mid_agent_eval_v4.json was 0/12 ungrounded",
+  "results": [
+    {
+      "family": "Task",
+      "correct": true,
+      "final": "30"
+    },
+    {
+      "family": "Task",
+      "correct": true,
+      "final": "-1"
+    },
+    {
+      "family": "Task",
+      "correct": true,
+      "final": "-1748"
+    },
+    {
+      "family": "Task",
+      "correct": true,
+      "final": "MHYIDE9KQ"
+    },
+    {
+      "family": "Task",
+      "correct": true,
+      "final": "Sba2GTvEmCwA"
+    },
+    {
+      "family": "Task",
+      "correct": true,
+      "final": "vPUlc229aFDg"
+    },
+    {
+      "family": "Task",
+      "correct": true,
+      "final": "67-"
+    },
+    {
+      "family": "Task",
+      "correct": true,
+      "final": "141"
+    },
+    {
+      "family": "Task",
+      "correct": true,
+      "final": "3219"
+    },
+    {
+      "family": "write_read",
+      "correct": true,
+      "final": "134"
+    },
+    {
+      "family": "write_read",
+      "correct": true,
+      "final": "497"
+    },
+    {
+      "family": "write_read",
+      "correct": true,
+      "final": "245"
+    }
+  ]
+}
