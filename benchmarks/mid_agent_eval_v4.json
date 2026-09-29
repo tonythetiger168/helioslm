@@ -1,0 +1,189 @@
+{
+  "n": 12,
+  "correct": "0/12",
+  "results": [
+    {
+      "family": "Task",
+      "task": "Compute the value of: 41 + -28 - 77 + 94",
+      "expected": "30",
+      "final": "-15",
+      "correct": false,
+      "steps": 2,
+      "budget": 2,
+      "conf": 0.9999468326568604,
+      "gens": [
+        "@@tool@@{\"calls\": [{\"name\": \"calc\", \"args\": {\"expr\": \"94 + -7 + -74 + -28\"}}]}@@end@@",
+        "@@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"-15\"}}]}@@end@@"
+      ],
+      "transcript_tail": "##user## Compute the value of: 41 + -28 - 77 + 94\n##assistant## @@tool@@{\"calls\": [{\"name\": \"calc\", \"args\": {\"expr\": \"94 + -7 + -74 + -28\"}}]}@@end@@\n##tool## -15\n##assistant## @@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"-15\"}}]}@@end@@\n##tool## FINISH: -15"
+    },
+    {
+      "family": "Task",
+      "task": "Compute the value of: -9 * 60 % -49",
+      "expected": "-1",
+      "final": "-890",
+      "correct": false,
+      "steps": 2,
+      "budget": 2,
+      "conf": 0.999915361404419,
+      "gens": [
+        "@@tool@@{\"calls\": [{\"name\": \"calc\", \"args\": {\"expr\": \"-99 * -9 * -9\"}}]}@@end@@",
+        "@@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"-890\"}}]}@@end@@"
+      ],
+      "transcript_tail": "##user## Compute the value of: -9 * 60 % -49\n##assistant## @@tool@@{\"calls\": [{\"name\": \"calc\", \"args\": {\"expr\": \"-99 * -9 * -9\"}}]}@@end@@\n##tool## -8019\n##assistant## @@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"-890\"}}]}@@end@@\n##tool## FINISH: -890"
+    },
+    {
+      "family": "Task",
+      "task": "Compute the value of: 19 * -92",
+      "expected": "-1748",
+      "final": "-108",
+      "correct": false,
+      "steps": 2,
+      "budget": 2,
+      "conf": 0.9999569654464722,
+      "gens": [
+        "@@tool@@{\"calls\": [{\"name\": \"calc\", \"args\": {\"expr\": \"12 * -9\"}}]}@@end@@",
+        "@@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"-108\"}}]}@@end@@"
+      ],
+      "transcript_tail": "##user## Compute the value of: 19 * -92\n##assistant## @@tool@@{\"calls\": [{\"name\": \"calc\", \"args\": {\"expr\": \"12 * -9\"}}]}@@end@@\n##tool## -108\n##assistant## @@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"-108\"}}]}@@end@@\n##tool## FINISH: -108"
+    },
+    {
+      "family": "Task",
+      "task": "Apply upper to the string: \"mhyIdE9KQ\"",
+      "expected": "MHYIDE9KQ",
+      "final": "IIIIIIII",
+      "correct": false,
+      "steps": 2,
+      "budget": 2,
+      "conf": 0.9999527931213379,
+      "gens": [
+        "@@tool@@{\"calls\": [{\"name\": \"str_op\", \"args\": {\"s\": \"wIIIIIIK9\", \"op\": \"upper\", \"n\": 0}}]}@@end@@",
+        "@@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"IIIIIIII\"}}]}@@end@@"
+      ],
+      "transcript_tail": "##user## Apply upper to the string: \"mhyIdE9KQ\"\n##assistant## @@tool@@{\"calls\": [{\"name\": \"str_op\", \"args\": {\"s\": \"wIIIIIIK9\", \"op\": \"upper\", \"n\": 0}}]}@@end@@\n##tool## WIIIIIIK9\n##assistant## @@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"IIIIIIII\"}}]}@@end@@\n##tool## FINISH: IIIIIIII"
+    },
+    {
+      "family": "Task",
+      "task": "Apply reverse to the string: \"AwCmEvTG2abS\"",
+      "expected": "Sba2GTvEmCwA",
+      "final": "2v2v2v2v2v",
+      "correct": false,
+      "steps": 2,
+      "budget": 2,
+      "conf": 0.9999496936798096,
+      "gens": [
+        "@@tool@@{\"calls\": [{\"name\": \"str_op\", \"args\": {\"s\": \"wv2v2v2v2v2\", \"op\": \"reverse\", \"n\": 0}}]}@@end@@",
+        "@@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"2v2v2v2v2v\"}}]}@@end@@"
+      ],
+      "transcript_tail": "##user## Apply reverse to the string: \"AwCmEvTG2abS\"\n##assistant## @@tool@@{\"calls\": [{\"name\": \"str_op\", \"args\": {\"s\": \"wv2v2v2v2v2\", \"op\": \"reverse\", \"n\": 0}}]}@@end@@\n##tool## 2v2v2v2v2vw\n##assistant## @@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"2v2v2v2v2v\"}}]}@@end@@\n##tool## FINISH: 2v2v2v2v2v"
+    },
+    {
+      "family": "Task",
+      "task": "Apply reverse to the string: \"gDFa922clUPv\"",
+      "expected": "vPUlc229aFDg",
+      "final": "r2l2r2tw2",
+      "correct": false,
+      "steps": 2,
+      "budget": 2,
+      "conf": 0.9999326467514038,
+      "gens": [
+        "@@tool@@{\"calls\": [{\"name\": \"str_op\", \"args\": {\"s\": \"wl2l222lvl\", \"op\": \"reverse\", \"n\": 0}}]}@@end@@",
+        "@@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"r2l2r2tw2\"}}]}@@end@@"
+      ],
+      "transcript_tail": "##user## Apply reverse to the string: \"gDFa922clUPv\"\n##assistant## @@tool@@{\"calls\": [{\"name\": \"str_op\", \"args\": {\"s\": \"wl2l222lvl\", \"op\": \"reverse\", \"n\": 0}}]}@@end@@\n##tool## lvl222l2lw\n##assistant## @@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"r2l2r2tw2\"}}]}@@end@@\n##tool## FINISH: r2l2r2tw2"
+    },
+    {
+      "family": "Task",
+      "task": "First compute: -76 % -83. Then apply reverse to the digits of the result.",
+      "expected": "67-",
+      "final": "2",
+      "correct": false,
+      "steps": 3,
+      "budget": 4,
+      "conf": 0.9999507665634155,
+      "gens": [
+        "@@tool@@{\"calls\": [{\"name\": \"calc\", \"args\": {\"expr\": \"-78 % -76\"}}]}@@end@@",
+        "@@tool@@{\"calls\": [{\"name\": \"str_op\", \"args\": {\"s\": \"-2\", \"op\": \"reverse\", \"n\": 0}}]}@@end@@",
+        "@@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"2\"}}]}@@end@@"
+      ],
+      "transcript_tail": "##assistant## @@tool@@{\"calls\": [{\"name\": \"calc\", \"args\": {\"expr\": \"-78 % -76\"}}]}@@end@@\n##tool## -2\n##assistant## @@tool@@{\"calls\": [{\"name\": \"str_op\", \"args\": {\"s\": \"-2\", \"op\": \"reverse\", \"n\": 0}}]}@@end@@\n##tool## 2-\n##assistant## @@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"2\"}}]}@@end@@\n##tool## FINISH: 2"
+    },
+    {
+      "family": "Task",
+      "task": "First compute: -5 + 74 + 72. Then apply reverse to the digits of the result.",
+      "expected": "141",
+      "final": "67",
+      "correct": false,
+      "steps": 3,
+      "budget": 4,
+      "conf": 0.999957799911499,
+      "gens": [
+        "@@tool@@{\"calls\": [{\"name\": \"calc\", \"args\": {\"expr\": \"75 + 74 + 7\"}}]}@@end@@",
+        "@@tool@@{\"calls\": [{\"name\": \"str_op\", \"args\": {\"s\": \"76\", \"op\": \"reverse\", \"n\": 0}}]}@@end@@",
+        "@@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"67\"}}]}@@end@@"
+      ],
+      "transcript_tail": "##assistant## @@tool@@{\"calls\": [{\"name\": \"calc\", \"args\": {\"expr\": \"75 + 74 + 7\"}}]}@@end@@\n##tool## 156\n##assistant## @@tool@@{\"calls\": [{\"name\": \"str_op\", \"args\": {\"s\": \"76\", \"op\": \"reverse\", \"n\": 0}}]}@@end@@\n##tool## 67\n##assistant## @@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"67\"}}]}@@end@@\n##tool## FINISH: 67"
+    },
+    {
+      "family": "Task",
+      "task": "First compute: -46 + 99 * 93 - 38. Then apply reverse to the digits of the result.",
+      "expected": "3219",
+      "final": "86861",
+      "correct": false,
+      "steps": 3,
+      "budget": 4,
+      "conf": 0.9999289512634277,
+      "gens": [
+        "@@tool@@{\"calls\": [{\"name\": \"calc\", \"args\": {\"expr\": \"-46 * 93 * -38 - -34\"}}]}@@end@@",
+        "@@tool@@{\"calls\": [{\"name\": \"str_op\", \"args\": {\"s\": \"16898\", \"op\": \"reverse\", \"n\": 0}}]}@@end@@",
+        "@@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"86861\"}}]}@@end@@"
+      ],
+      "transcript_tail": "##assistant## @@tool@@{\"calls\": [{\"name\": \"calc\", \"args\": {\"expr\": \"-46 * 93 * -38 - -34\"}}]}@@end@@\n##tool## 162598\n##assistant## @@tool@@{\"calls\": [{\"name\": \"str_op\", \"args\": {\"s\": \"16898\", \"op\": \"reverse\", \"n\": 0}}]}@@end@@\n##tool## 89861\n##assistant## @@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"86861\"}}]}@@end@@\n##tool## FINISH: 86861"
+    },
+    {
+      "family": "write_read",
+      "task": "Compute the value of: 7 * 18 + 8. Write the result to f.txt, then read f.txt and finish with its exact content.",
+      "expected": "134",
+      "final": "8088",
+      "correct": false,
+      "steps": 2,
+      "budget": 8,
+      "conf": 0.999951958656311,
+      "gens": [
+        "@@tool@@{\"calls\": [{\"name\": \"calc\", \"args\": {\"expr\": \"8 + 85 * 88 - - -8\"}}]}@@end@@",
+        "@@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"8088\"}}]}@@end@@"
+      ],
+      "transcript_tail": "##user## Compute the value of: 7 * 18 + 8. Write the result to f.txt, then read f.txt and finish with its exact content.\n##assistant## @@tool@@{\"calls\": [{\"name\": \"calc\", \"args\": {\"expr\": \"8 + 85 * 88 - - -8\"}}]}@@end@@\n##tool## 7480\n##assistant## @@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"8088\"}}]}@@end@@\n##tool## FINISH: 8088"
+    },
+    {
+      "family": "write_read",
+      "task": "Compute the value of: 25 * 18 + 47. Write the result to f.txt, then read f.txt and finish with its exact content.",
+      "expected": "497",
+      "final": "8567",
+      "correct": false,
+      "steps": 2,
+      "budget": 8,
+      "conf": 0.9999583959579468,
+      "gens": [
+        "@@tool@@{\"calls\": [{\"name\": \"calc\", \"args\": {\"expr\": \"7 + 47 * 45 * 4\"}}]}@@end@@",
+        "@@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"8567\"}}]}@@end@@"
+      ],
+      "transcript_tail": "##user## Compute the value of: 25 * 18 + 47. Write the result to f.txt, then read f.txt and finish with its exact content.\n##assistant## @@tool@@{\"calls\": [{\"name\": \"calc\", \"args\": {\"expr\": \"7 + 47 * 45 * 4\"}}]}@@end@@\n##tool## 8467\n##assistant## @@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"8567\"}}]}@@end@@\n##tool## FINISH: 8567"
+    },
+    {
+      "family": "write_read",
+      "task": "Compute the value of: 20 * 11 + 25. Write the result to f.txt, then read f.txt and finish with its exact content.",
+      "expected": "245",
+      "final": "23",
+      "correct": false,
+      "steps": 2,
+      "budget": 8,
+      "conf": 0.9999570846557617,
+      "gens": [
+        "@@tool@@{\"calls\": [{\"name\": \"calc\", \"args\": {\"expr\": \"2 + 21 + - 22 + 22\"}}]}@@end@@",
+        "@@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"23\"}}]}@@end@@"
+      ],
+      "transcript_tail": "##user## Compute the value of: 20 * 11 + 25. Write the result to f.txt, then read f.txt and finish with its exact content.\n##assistant## @@tool@@{\"calls\": [{\"name\": \"calc\", \"args\": {\"expr\": \"2 + 21 + - 22 + 22\"}}]}@@end@@\n##tool## 23\n##assistant## @@tool@@{\"calls\": [{\"name\": \"finish\", \"args\": {\"answer\": \"23\"}}]}@@end@@\n##tool## FINISH: 23"
+    }
+  ]
+}

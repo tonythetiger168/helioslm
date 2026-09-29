@@ -55,19 +55,32 @@ the finish answers across all 12 tasks:
 | reverse | Sba2GTvEmCwA (12) | 2v2v2v2v2v (10) | same -- shape statistics, no transformation |
 | write_read | 134 | 8088 | plausible magnitude, wrong digits |
 
-The calc obs returned the correct answer into the transcript; the
-finish call ignored it. Diagnosis: the model treats the finish answer
-as a language-modeling continuation (a plausible-shaped token string),
-not as retrieval from the tool observation. It learned output SHAPE
-statistics (string length, number magnitude) but not input-output
-grounding. Confidence on all of this: 0.9999.
+CORRECTION (v4 full transcripts; the console summary had hidden this):
+the failure is TWO-LAYERED brittle copying, dominant at the INPUT side.
 
-Therapeutic menu (recorded): (1) data -- weight finish=last-obs
-samples, add copy-specific episodes; (2) inference -- System-One
-intervention: for DIRECT-routed finish calls, policy-in-code forces
-answer == last tool observation when the task is retrieval-shaped;
-(3) training -- RLCD pressure directly on the (0.9999 conf, wrong)
-pairs. Option 2 is deployable today with the existing gate.
+Layer 1 -- task -> ARGS corruption (primary): the model does not copy
+the task's expression/string into the tool call; it confabulates a
+shape-similar replacement ("19 * -92" -> "12 * -9"; "mhyIdE9KQ" ->
+"wIIIIIIK9"; "7 * 18 + 8" -> "8 + 85 * 88 - - -8"). The obs then
+faithfully answers the WRONG question.
+
+Layer 2 -- obs -> finish copying mostly works: ~7/12 finishes copied or
+nearly copied the last obs (-108 OK, 67 OK, 2v2v2v2v2v missing one
+trailing char, 86861 a digit-swap of obs 89861). Outliers regenerate
+(WIIIIIIK9 -> IIIIIIII, -8019 -> -890).
+
+Diagnosis refined: copying is unreliable at both ends of the pipeline;
+the model learned output SHAPE statistics but not input grounding. The
+earlier "finish ignores the obs" framing held for only a minority of
+cases. Confidence on all of this: 0.9999.
+
+Therapeutic menu (recorded, upgraded): (1) data -- copy curriculum on
+BOTH ends (task->args episodes weighted); (2) inference -- the full
+System-One architecture, deployable today: deterministic policy-in-code
+fills BOTH ends (parse the expr/string out of the task text and
+overwrite tool args; finish answer = last obs), leaving the model only
+the tool-SEQUENCE decision; (3) training -- RLCD on the
+(0.9999 conf, wrong) pairs.
 
 ## Next
 

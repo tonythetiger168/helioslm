@@ -1,5 +1,19 @@
 # HeliosLM v5 Changelog
 
+## v5.33 P8 (2026-09-29) - Autopsy CORRECTED: Two-Layer Brittle Copying
+- Full v4 transcripts (benchmarks/mid_agent_eval_v4.json) refine P7: the
+  dominant failure is task->ARGS confabulation ("19 * -92" -> "12 * -9";
+  "mhyIdE9KQ" -> "wIIIIIIK9") -- the obs faithfully answers the wrong
+  question. obs->finish copying works in ~7/12 (near-copies with dropped
+  chars / digit swaps). The earlier "finish ignores obs" held only for a
+  minority
+- Menu upgrade: the System-One architecture now fills BOTH ends
+  deterministically (policy parses task-derived args; finish = last
+  obs) -- the model keeps only the tool-sequence decision. Deployable
+  today with the existing gate
+
+
+
 ## v5.33 P7 (2026-09-29) - Autopsy: Content Confabulation at 0.9999 Confidence
 - v4 full-capture eval (mid, healthy ckpt): all 12 finish answers are
   hallucinated content, not copy failures -- calc obs carried the right
