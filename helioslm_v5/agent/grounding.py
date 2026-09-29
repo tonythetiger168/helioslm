@@ -38,9 +38,11 @@ from dataclasses import dataclass, field
 
 try:
     from .gate import Gate, Route
+    from .task_grammar import parse as parse_task
     from .tools import calc, str_op
 except ImportError:
     from gate import Gate, Route
+    from task_grammar import parse as parse_task
     from tools import calc, str_op
 
 
@@ -48,55 +50,17 @@ except ImportError:
 class GroundingGate(Gate):
     inner: Gate
     # per-task state: task_text -> {"obs": [predicted obs, ...],
-    #                               "writes": n, "reads": n}
+    #                               "files": {path: content},
+    #                               "reads": [...], "writes": 0, "last"}
     _state: dict = field(default_factory=dict)
 
-    _RX = {
-        "calc": re.compile(r"Compute the value of: (.*)"),
-        "str": re.compile(r'Apply (\w+)(?: (\d+) times)? to the string: "(.*)"'),
-        "compose": re.compile(
-            r"First compute: (.*?)\. Then apply (\w+) to the digits of the "
-            r"result\."),
-        "write_read": re.compile(
-            r"Compute the value of: (.*?)\. Write the result to (\S+?), then"),
-        "write_transform": re.compile(
-            r'Write the string "(.*?)" to (\S+)\. Then apply (\w+)'
-            r"(?: (\d+) times)? to it and write the result to (\S+)\."),
-        "accumulate": re.compile(
-            r"Compute the value of: (.*?) and write the result to (\S+)\. "
-            r"Compute the value of: (.*?) and write the result to (\S+)\. "),
-    }
-
     def _parse(self, task):
-        # ORDER MATTERS: task texts often START with "Compute the value
-        # of:" and continue with file instructions -- the greedy calc
-        # pattern must be tried LAST (found 2026-09-29: write_read was
-        # parsed as calc with the entire task text as the expression).
-        # File-env patterns use .match() because the task text has
-        # trailing instructions after the captured part.
-        m = self._RX["str"].fullmatch(task)
-        if m:
-            return {"kind": "str", "op": m.group(1),
-                    "n": int(m.group(2) or 0), "s": m.group(3)}
-        m = self._RX["compose"].fullmatch(task)
-        if m:
-            return {"kind": "compose", "expr": m.group(1), "op": m.group(2)}
-        m = self._RX["write_read"].match(task)
-        if m:
-            return {"kind": "write_read", "expr": m.group(1),
-                    "path": m.group(2)}
-        m = self._RX["write_transform"].match(task)
-        if m:
-            return {"kind": "write_transform", "s": m.group(1),
-                    "a": m.group(2), "op": m.group(3), "b": m.group(5)}
-        m = self._RX["accumulate"].match(task)
-        if m:
-            return {"kind": "accumulate", "e1": m.group(1), "p1": m.group(2),
-                    "e2": m.group(3), "p2": m.group(4)}
-        m = self._RX["calc"].fullmatch(task)
-        if m:
-            return {"kind": "calc", "expr": m.group(1)}
-        return None
+        # v5.35: the grammar now lives in ONE place (task_grammar.py);
+        # the v5.34 regex table -- and its whole debug chain -- was
+        # deleted in favor of the shared table that envs also render
+        # through. Drift between producer and consumer is now
+        # structurally impossible (T34 guards the roundtrip).
+        return parse_task(task)
 
     def groundable(self, task_text):
         return self._parse(task_text) is not None

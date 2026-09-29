@@ -1,5 +1,21 @@
 # HeliosLM v5 Changelog
 
+## v5.35 (2026-09-29) - TASK_GRAMMAR: One Table, Render and Parse
+- agent/task_grammar.py: the single source of truth for the task-text
+  grammar (calc/str/compose/write_read/write_transform/accumulate/echo).
+  Envs RENDER through it; grounding and test policies PARSE through it.
+  The v5.34 debug chain fixed the same drift class three times in three
+  copies; this makes producer/consumer skew structurally impossible
+- Consumers refactored: grounding's regex table deleted (delegates to
+  task_grammar.parse); the T33 confabulator lost all its regexes;
+  toy_envs and file_env now build task text via grammar.render
+- T34 4/4: roundtrip identity per kind, cross-kind contamination
+  (write_read must not parse as calc), live-env agreement, echo kind
+- Fixed-point oracle: every env-sampled task text satisfies
+  render(parse(text)) == text (120/120); full regression 11/11 groups
+
+
+
 ## v5.34.2 (2026-09-29) - THE VERDICT: 12/12 Grounded (was 0/12)
 - mid_agent_eval_v5 on the real mid checkpoint with GroundingGate:
   12/12 correct, finals matching expected verbatim (v4 same seed was

@@ -20,6 +20,14 @@ import random
 import re
 from dataclasses import dataclass
 
+# v5.35: task texts render through the shared grammar (parse consumers
+# use the same table -- producer/consumer drift is structurally
+# impossible, T34)
+try:
+    from .. import task_grammar as _G
+except ImportError:
+    import task_grammar as _G
+from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class FileTask:
@@ -54,10 +62,7 @@ class FileLongHorizonEnv:
             return FileTask(text, _str_op(s, op, n), 10, family)
         e1 = f"{rng.randint(-20, 20)} * {rng.randint(2, 9)}"
         e2 = f"{rng.randint(-20, 20)} + {rng.randint(1, 40)}"
-        text = (f"Compute the value of: {e1} and write the result to a.txt. "
-                f"Compute the value of: {e2} and write the result to b.txt. "
-                f"Read both files, compute the sum of the two values, and "
-                f"finish with the sum.")
+        text = _G.render("accumulate", e1=e1, p1="a.txt", e2=e2, p2="b.txt")
         return FileTask(text, repr(eval(e1) + eval(e2)), 14, "accumulate")
 
     def verify(self, task: FileTask, final_answer: str) -> bool:

@@ -19,6 +19,7 @@ from gate import FixedGate, Gate, Route
 from grounding import GroundingGate
 from loop import AgentLoop
 from schema import ToolCall, render_tool_call
+from task_grammar import parse as parse_task
 from tools import build_default_registry
 
 
@@ -33,35 +34,31 @@ def raises(exc):
 
 def _confabulating_policy(prompt, seed, step):
     """Right tool SEQUENCE, universally WRONG content (mid's failure
-    mode, extended to every family): grounding must fix both ends."""
+    mode, extended to every family): grounding must fix both ends.
+    v5.35: dispatch goes through the SHARED task grammar -- this test
+    no longer owns any regex copy of the grammar."""
     obs = re.findall(r"step \d+: (.*)", prompt)
     task_m = re.search(r"Task: (.*?)(?:\n|$)", prompt)
     task = task_m.group(1) if task_m else prompt
-
-    def ph(call):
-        return render_tool_call([call])
-
-    # exprs contain no periods: anchor calc to a no-dot tail so the
-    # file-env tasks (which ALSO start with "Compute the value of:")
-    # fall through to their own branches (same greedy-first bug class
-    # the grounding parser had)
-    if re.fullmatch(r"Compute the value of: [-0-9+*/()% ]*", task):
+    spec = parse_task(task)
+    n = len(obs)
+    ph = lambda c: render_tool_call([c])
+    if spec is None:
+        return ph(ToolCall("finish", {"answer": "?"}))
+    k = spec["kind"]
+    if k == "calc":
         return ph(ToolCall("finish", {"answer": "2"})) if obs else \
             ph(ToolCall("calc", {"expr": "1+1"}))
-    m = re.fullmatch(r'Apply (\w+)(?: (\d+) times)? to the string: "(.*)"', task)
-    if m:
+    if k == "str":
         return ph(ToolCall("finish", {"answer": "xx"})) if obs else \
             ph(ToolCall("str_op", {"s": "xx", "op": "upper", "n": 0}))
-    if re.fullmatch(r"First compute: .*", task):
-        n = len(obs)
+    if k == "compose":
         if n == 0:
             return ph(ToolCall("calc", {"expr": "1+1"}))
         if n == 1:
             return ph(ToolCall("str_op", {"s": "xx", "op": "upper", "n": 0}))
         return ph(ToolCall("finish", {"answer": "x"}))
-    m = re.match(r"Compute the value of: (.*?)\. Write the result to (\S+?), then read", task)
-    if m:
-        n = len(obs)
+    if k == "write_read":
         if n == 0:
             return ph(ToolCall("calc", {"expr": "1+1"}))
         if n == 1:
@@ -69,10 +66,7 @@ def _confabulating_policy(prompt, seed, step):
         if n == 2:
             return ph(ToolCall("file_read", {"path": "zz.txt"}))
         return ph(ToolCall("finish", {"answer": "0"}))
-    m = re.match(r'Write the string "(.*?)" to (\S+)\. Then apply (\w+)(?: (\d+) times)? to it and write the result to (\S+)\.', task, re.S)
-    if m:
-        a, b = m.group(2), m.group(5)
-        n = len(obs)
+    if k == "write_transform":
         if n == 0:
             return ph(ToolCall("file_write", {"path": "zz.txt", "content": "xx"}))
         if n == 1:
@@ -82,10 +76,7 @@ def _confabulating_policy(prompt, seed, step):
         if n == 3:
             return ph(ToolCall("file_read", {"path": "zz2.txt"}))
         return ph(ToolCall("finish", {"answer": "0"}))
-    m = re.fullmatch(r"Compute the value of: (.*?) and write the result to (\S+)\. Compute the value of: (.*?) and write the result to (\S+)\..*", task, re.S)
-    if m:
-        p1, p2 = m.group(2), m.group(4)
-        n = len(obs)
+    if k == "accumulate":
         if n == 0:
             return ph(ToolCall("calc", {"expr": "1+1"}))
         if n == 1:
