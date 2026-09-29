@@ -253,6 +253,10 @@ def main():
                           "mode_choice_target": "text AND tool >0.6"}}
     (out_dir / f"{OUT_NAME}.json").write_text(json.dumps(acc, indent=2))
     print(json.dumps(acc, indent=2), flush=True)
+    # Windows + CUDA teardown hang: results are on disk; skip the
+    # driver's slow exit cleanup (user-reported 2026-09-29)
+    import os
+    os._exit(0)
 
 
 if __name__ == "__main__":
