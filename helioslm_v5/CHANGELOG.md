@@ -1,5 +1,22 @@
 # HeliosLM v5 Changelog
 
+## v5.35b (2026-09-29) - RLCD on Real mid Outcome Data
+- examples/train_rlcd_head.py: trains a DecisionHead on the 24 real
+  outcome records from the mid before/after artifacts (v4 0/12 + v5
+  12/12, conf ~0.9999 both). Head sees STATE ONLY; outcomes provide the
+  RLCD signal (probabilities answer to outcomes, not preferences)
+- Quantified on real data: model confidence carries ZERO signal
+  (0.9999/0.9999 right vs wrong); the head separates to 0.645 vs 0.521
+  with acc 0.625 at n=24 -- mid's confabulation is PARTIALLY
+  state-predictable (benchmarks/rlcd_head_summary.json). RLCD-adjusted
+  rewards: right 1.0, wrong -2.0 (lam=2)
+- Measured (recorded): the honest-minimum char mean-pool encoder
+  separates marked states but needs ~1500 epochs (embedding
+  organization is the bottleneck); ECE 0.267 at that budget
+- T35 2/2; regression 7/7 groups
+
+
+
 ## v5.35 (2026-09-29) - TASK_GRAMMAR: One Table, Render and Parse
 - agent/task_grammar.py: the single source of truth for the task-text
   grammar (calc/str/compose/write_read/write_transform/accumulate/echo).
