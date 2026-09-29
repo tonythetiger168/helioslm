@@ -166,8 +166,20 @@ def main():
                  "checkpoints and run fresh (or point HELIOS_CKPT_DIR "
                  "elsewhere).")
     fp_file.write_text(tok_fp)
-    start_step = int(step_file.read_text()) if (ckpt.exists()
-                                                and step_file.exists()) else 0
+    # MID_FRESH=1: hard-ignore any resume state. Belt-and-braces for
+    # exactly the confusion seen 2026-09-29 (a corrupted checkpoint was
+    # re-evaluated repeatedly because 'delete the old files first' is a
+    # silent prerequisite). Fresh runs should ALWAYS use MID_FRESH=1.
+    if os.environ.get("MID_FRESH") == "1":
+        start_step = 0
+        for stale in (ckpt, step_file):
+            if stale.exists():
+                stale.unlink()
+        print("MID_FRESH=1: cleared resume state, starting from step 0",
+              flush=True)
+    else:
+        start_step = int(step_file.read_text()) if (ckpt.exists()
+                                                    and step_file.exists()) else 0
     if start_step:
         model.load_state_dict(torch.load(ckpt, map_location=device))
         print(f"RESUME from step {start_step}", flush=True)
