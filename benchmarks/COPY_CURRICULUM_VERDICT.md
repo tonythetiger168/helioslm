@@ -35,6 +35,22 @@ heads / constrained decoding). The copy curriculum module
 (agent/copy_curriculum.py, EchoEnv) stays -- echo remains the cleanest
 copy probe, and the data is cheap to generate for any future run.
 
-Artifacts: mid_agent_eval_v4(1).json (this run, uploaded by user) vs
-benchmarks/mid_agent_eval_v4.json (baseline) -- per-task byte
-comparison available.
+Artifacts: mid_agent_eval_v4_copycurr.json (the CLEAN paired run,
+uploaded by user) vs benchmarks/mid_agent_eval_v4.json (baseline) --
+per-task byte comparison available. A later re-run
+(mid_agent_eval_v4(2).json) accidentally used a mismatched tokenizer
+(v5.36 fresh-cleanup had deleted the .tok.json; the rebuilt table
+drifted) and produced garbage -- kept as an accidental probe:
+
+## Accidental probe: the mismatch run exposes what confidence is for
+
+On the MISMATCHED run the model's confidence on its garbage outputs
+scattered wildly (0.13, 0.21, 0.31, 0.40, 0.44, 0.97 -- vs the clean
+run's uniform ~0.9999 on BOTH right and wrong). The model's own
+confidence ALREADY signals OOD input -- it drops when the state leaves
+the training distribution. The calibration gap is therefore precise:
+the model is overconfident on IN-DISTRIBUTION errors (its trained
+failure mode), not globally miscalibrated. GroundingGate/TrustGate
+target exactly the in-distribution error case; the OOD case the model
+mostly flags on its own. Recorded 2026-09-29 from the accidental
+mismatch artifact.

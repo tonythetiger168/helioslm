@@ -1,5 +1,17 @@
 # HeliosLM v5 Changelog
 
+## v5.35f (2026-09-29) - Accidental Probe: Confidence Scatters under Tokenizer Mismatch
+- A re-run with a mismatched tokenizer (fresh-cleanup artifact) produced
+  garbage outputs whose confidences SCATTERED (0.13-0.97) vs the clean
+  run's uniform ~0.9999 on both classes
+- FINDING: the model's own confidence already flags OOD input; the
+  calibration gap is precise -- overconfidence on IN-DISTRIBUTION
+  errors only. GroundingGate/TrustGate target exactly that case; the
+  OOD case the model flags on its own. benchmarks/
+  mid_agent_eval_v4_mismatch_probe.json archived
+
+
+
 ## v5.35e (2026-09-29) - Copy Curriculum: NO Effect at 360M (controlled A/B)
 - User's GPU run: mid + 800 echo copy episodes vs baseline, same eval
   seed, same 12 tasks -> 0/12 BOTH, confabulations BYTE-IDENTICAL
