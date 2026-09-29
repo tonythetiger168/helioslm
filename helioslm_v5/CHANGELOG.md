@@ -1,5 +1,20 @@
 # HeliosLM v5 Changelog
 
+## v5.34.1 (2026-09-29) - Code Review: Semantic Finish Grounding
+- HIGH finding fixed: finish grounding was keyed to the sequence's
+  LAST EVENT; a mid-sequence deviation (accumulate without the closing
+  sum calc) would have produced a grounded-but-wrong answer -- the
+  disease the module exists to cure, re-introduced by the therapy.
+  Finish now anchors to family SEMANTICS (accumulate sums its two
+  observations regardless of sequence shape)
+- Docstring precision: replay deviation now states the recorded call
+  is itself the grounded (mutated) call; write_transform file_read
+  redirection documented; _state growth/thread-safety documented
+- T33 6/6 incl. the review oracle: sequence-deviation accumulate runs
+  (no closing calc) score 4/4
+
+
+
 ## v5.34 (2026-09-29) - Deterministic Grounding: the Therapy, Deployed
 - agent/grounding.py: GroundingGate wraps any gate; on DIRECT it
   rewrites tool args from the task text and finish answers from the

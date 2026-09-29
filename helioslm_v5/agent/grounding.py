@@ -20,10 +20,18 @@ Boundaries (recorded, not hidden):
 - Grounding covers the v5.23-v5.31 task grammar (calc/str/compose + the
   three file-env families). Unknown task shapes pass through UNGROUNDED;
   coverage is queryable via groundable().
-- Replay deviation: a grounded transcript's recorded observations come
-  from GROUNDED execution while verify_chat_replay re-derives from the
-  RAW generated text -- they differ by design. Grounded runs verify by
-  determinism (T33); a grounding-aware replay is future work.
+- Replay deviation (precise): the trajectory records the GROUNDED call
+  (args are mutated in place on the parsed-call object), so both the
+  recorded call and its observation come from grounded execution while
+  verify_chat_replay re-derives the RAW call from generated text --
+  replay mismatches on the call comparison by design. Grounded runs
+  verify by determinism (T33); a grounding-aware replay is future work.
+- write_transform file_read redirection (documented): any file_read in
+  a write_transform task is redirected to the result file b, on the
+  assumption that reading the raw intermediate is never the intended
+  semantics of this grammar. Canonical sequences only read b.
+- _state grows per task text and is not thread-safe: single-session
+  loops only (documented, matches AgentLoop/ChatSession semantics).
 """
 import re
 from dataclasses import dataclass, field
@@ -172,10 +180,19 @@ class GroundingGate(Gate):
                 content = st["files"].get(path, "")
                 st["reads"].append(content)
                 st["last"] = ("read", content)
-            elif call.name == "finish" and st["last"] is not None:
-                # the answer is whatever the LAST event produced: a closing
-                # calc (accumulate sum) overrides earlier reads
-                call.args["answer"] = st["last"][1]
+            elif call.name == "finish":
+                # Semantic finish grounding (code-review fix, 2026-09-29):
+                # the answer anchors to the TASK's definition, not to the
+                # sequence's last event -- a mid-sequence deviation must
+                # not produce a grounded-but-wrong answer (the exact
+                # disease this module exists to cure). For accumulate, two
+                # observations are enough to compute the sum even if the
+                # closing calc never happened.
+                if k == "accumulate" and len(st["obs"]) >= 2:
+                    call.args["answer"] = calc(
+                        f"({st['obs'][0]}) + ({st['obs'][1]})")
+                elif st["last"] is not None:
+                    call.args["answer"] = st["last"][1]
         except Exception:
             pass  # best-effort: never crash the loop
         return route

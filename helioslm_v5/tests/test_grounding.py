@@ -186,10 +186,59 @@ def test_unknown_task_passes_through():
     print("PASS test_unknown_task_passes_through")
 
 
+def test_finish_grounds_to_family_semantics():
+    """Code-review oracle: finish anchors to the TASK's definition, not
+    the sequence's last event. An accumulate run where the model skips
+    the closing sum calc (finishes right after the two reads) must still
+    produce the sum -- a mid-sequence deviation must never yield a
+    grounded-but-wrong answer."""
+    from grounding import GroundingGate
+    from gate import FixedGate, Route
+    from schema import ToolCall
+
+    def skipping_policy(prompt, seed, step):
+        obs = re.findall(r"step \d+: (.*)", prompt)
+        n = len(obs)
+        ph = lambda c: render_tool_call([c])
+        if n == 0:
+            return ph(ToolCall("calc", {"expr": "1+1"}))
+        if n == 1:
+            return ph(ToolCall("calc", {"expr": "2+2"}))
+        if n == 2:
+            return ph(ToolCall("file_write", {"path": "x", "content": "0"}))
+        if n == 3:
+            return ph(ToolCall("file_write", {"path": "y", "content": "0"}))
+        if n == 4:
+            return ph(ToolCall("file_read", {"path": "x"}))
+        if n == 5:
+            return ph(ToolCall("file_read", {"path": "y"}))
+        return ph(ToolCall("finish", {"answer": "0"}))  # no closing calc
+
+    import tempfile
+    rng = random.Random(77)
+    env = make_long_envs()[0]
+    ok = 0
+    for _ in range(4):
+        task = next(t for t in (env.sample(rng) for _ in range(20))
+                    if t.family == "accumulate")
+        with tempfile.TemporaryDirectory() as root:
+            reg, impls = build_default_registry(root)
+            gate = GroundingGate(FixedGate(Route.DIRECT))
+            loop = AgentLoop(skipping_policy, reg, impls, gate,
+                             max_steps=task.step_budget)
+            traj = loop.run(task.text, seed=1)
+        if traj.final_answer is not None and env.verify(task, traj.final_answer):
+            ok += 1
+    assert ok == 4, f"semantic finish grounding failed {4 - ok}/4"
+    print(f"PASS test_finish_grounds_to_family_semantics ({ok}/4, "
+          f"no closing calc)")
+
+
 if __name__ == "__main__":
     test_grounding_cures_confabulation()
     test_grounding_all_env_families()
     test_grounding_is_deterministic()
     test_escalate_path_untouched()
     test_unknown_task_passes_through()
-    print("\n5/5 grounding tests passed")
+    test_finish_grounds_to_family_semantics()
+    print("\n6/6 grounding tests passed")
