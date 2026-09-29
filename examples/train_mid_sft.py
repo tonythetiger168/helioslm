@@ -194,7 +194,12 @@ def main():
     if start_step:
         model.load_state_dict(torch.load(ckpt, map_location=device))
         print(f"RESUME from step {start_step}", flush=True)
-    opt = torch.optim.AdamW(model.parameters(), lr=LR)
+    # foreach=False: the multi-tensor AdamW path (_foreach_sqrt) hit
+    # "CUDA error: device not ready" repeatably on the user's RTX 4060
+    # (2026-09-29) after working the day before -- single-tensor path
+    # sidesteps the driver/foreach interaction entirely. Cost at 360M:
+    # negligible.
+    opt = torch.optim.AdamW(model.parameters(), lr=LR, foreach=False)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(
         opt, T_max=EPOCHS * math.ceil(len(train) / BATCH))
     if start_step:
