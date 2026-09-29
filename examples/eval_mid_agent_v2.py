@@ -119,8 +119,10 @@ def main():
     print(json.dumps({k: v for k, v in summary.items() if k != "results"},
                      indent=2), flush=True)
     # Windows + CUDA teardown hang: results are on disk; skip the
-    # driver's slow exit cleanup (user-reported 2026-09-29)
-    import os
+    # driver's slow exit cleanup (user-reported 2026-09-29). os comes
+    # from the module-top import (a function-local import would shadow
+    # every os.environ use above -- UnboundLocalError, found on first
+    # real run 2026-09-29).
     os._exit(0)
 
 

@@ -254,8 +254,10 @@ def main():
     (out_dir / f"{OUT_NAME}.json").write_text(json.dumps(acc, indent=2))
     print(json.dumps(acc, indent=2), flush=True)
     # Windows + CUDA teardown hang: results are on disk; skip the
-    # driver's slow exit cleanup (user-reported 2026-09-29)
-    import os
+    # driver's slow exit cleanup (user-reported 2026-09-29). NOTE: os is
+    # imported at module top -- an import HERE would shadow it into a
+    # function-local name and break every os.environ use above (found
+    # immediately by the user's first run, 2026-09-29).
     os._exit(0)
 
 
