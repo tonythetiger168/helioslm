@@ -172,8 +172,10 @@ def main():
         # copy-curriculum run: the guard refused a MID_FRESH run because
         # the refusal logic ran BEFORE the fresh cleanup.
         start_step = 0
-        for stale in (ckpt, step_file, fp_file,
-                      out_dir / f"{OUT_NAME}.tok.json"):
+        # v5.36b: clear checkpoint STATE only -- the .tok.json pairing
+        # artifact must survive (it is re-saved only at startup; the
+        # v5.36 cleanup deleted it AFTER saving, orphaning the weights)
+        for stale in (ckpt, step_file, fp_file):
             if stale.exists():
                 stale.unlink()
         print("MID_FRESH=1: cleared resume state, starting from step 0",
