@@ -1,5 +1,20 @@
 # HeliosLM v5 Changelog
 
+## v5.33 P6 (2026-09-29) - Clean Run: the Three-Point Scale Line Closes
+- Third training run (MID_FRESH=1, post-reboot): 3676s, final loss
+  0.3675, SFT eval 30/40 exact + 40/40 mode (reproduces the first run)
+- Agentic eval on the HEALTHY checkpoint: 0/12 correct BUT protocol
+  fluent -- parse works multi-turn, calc tasks show the exact
+  calc->finish shape, all 12 finished; finish answers are wrong
+- THE LINE (docs/scale_lineage_2026-09-29.md): 8.5M broken-at-tokenizer
+  (conf 0.94) -> 360M protocol-fluent-but-wrong (conf 0.9999) -> Qwen3
+  0.6B no-finish (conf ~1.0). Confidence-on-wrong GROWS with scale --
+  the strongest evidence yet for the certified-confidence thesis
+- Every earlier 0/12 was a measurement artifact (tokenizer mismatch /
+  corrupted resume), recorded, not counted
+
+
+
 ## v5.33 P5 (2026-09-29) - Resume Guard: Tokenizer Fingerprint Mismatch
 - Found on the user's second run: RESUME loaded step-4600 weights
   (old-tokenizer run) while the process had trained a NEW tokenizer
