@@ -1,5 +1,20 @@
 # HeliosLM v5 Changelog
 
+## v5.35e (2026-09-29) - Copy Curriculum: NO Effect at 360M (controlled A/B)
+- User's GPU run: mid + 800 echo copy episodes vs baseline, same eval
+  seed, same 12 tasks -> 0/12 BOTH, confabulations BYTE-IDENTICAL
+  (`19 * -92` -> `12 * -9`, `mhyIdE9KQ` -> `wIIIIIIK9` on both runs)
+- Three eliminations complete: not tokenizer (v5.33), not protocol
+  (40/40 mode), not data volume/curriculum (this run). Remaining
+  hypothesis: capacity/dynamics wall at 360M -- copy grounding does not
+  emerge from SFT at this scale
+- Consequence: GroundingGate is the correct answer at this scale, not
+  a workaround. Retirement path for grounding -> larger-scale check /
+  RL pressure (async GRPO ready) / architecture. benchmarks/
+  COPY_CURRICULUM_VERDICT.md records the A/B
+
+
+
 ## v5.35d (2026-09-29) - TypeSafe/Jev Alignment Report
 - docs/typesafe_alignment_2026-09-29.md: calibration of our open-source
   reference against the canonical vendor impl + the RLCDAlignBench
