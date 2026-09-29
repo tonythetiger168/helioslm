@@ -56,16 +56,18 @@ def _hf_sync(path, repo_path):
 
 def gen_dataset(tok):
     build_chat_dataset(DATA_PATH, n_per_env=EPISODES_PER_ENV, seed=SEED)
+    extra_path = os.environ.get("MID_COPY_JSON")   # v5.35c copy curriculum
     tool, text = [], []
-    with open(DATA_PATH, encoding="utf-8") as f:
-        for line in f:
-            d = json.loads(line)
-            p = tok.encode(d["prompt"])
-            if len(p) > MAXLEN - 8:
-                continue
-            r = tok.encode(d["response"])
-            (tool if d["response"].strip().startswith("@@tool@@")
-             else text).append((p, r))
+    for path in [DATA_PATH] + ([extra_path] if extra_path else []):
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                d = json.loads(line)
+                p = tok.encode(d["prompt"])
+                if len(p) > MAXLEN - 8:
+                    continue
+                r = tok.encode(d["response"])
+                (tool if d["response"].strip().startswith("@@tool@@")
+                 else text).append((p, r))
     rng = random.Random(SEED + 1)
     rng.shuffle(tool)
     rng.shuffle(text)

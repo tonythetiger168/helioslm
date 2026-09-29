@@ -1,5 +1,19 @@
 # HeliosLM v5 Changelog
 
+## v5.35c (2026-09-29) - Copy Curriculum: the Training-Side Therapy
+- agent/copy_curriculum.py: EchoEnv ('Repeat back exactly: "{s}"' ->
+  plain-text reply, random high-entropy payloads so pattern completion
+  cannot substitute for copying; family=echo, budget 1, exact verify),
+  gen_echo_episode / build_copy_dataset (echo + chat mixing), and
+  scripted_echo_policy shared by tests and SFT data gen
+- train_mid_sft.py: MID_COPY_JSON env appends a copy dataset to the SFT
+  stream -- the grounding retirement experiment is one GPU run away
+- T36 4/4: env verify, copy through the v5.30 text channel via a real
+  ChatSession (text-only, 10/10), dataset copy-exactness + ord
+  discipline, determinism. Regression 8/8 groups
+
+
+
 ## v5.35b (2026-09-29) - RLCD on Real mid Outcome Data
 - examples/train_rlcd_head.py: trains a DecisionHead on the 24 real
   outcome records from the mid before/after artifacts (v4 0/12 + v5
