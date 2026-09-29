@@ -159,12 +159,23 @@ def main():
     tok_fp = hashlib.sha256(tok_path.read_bytes()).hexdigest()
     fp_file = out_dir / f"{OUT_NAME}.tokfp"
     step_file = out_dir / f"{OUT_NAME}.step"
-    if ckpt.exists() and step_file.exists() and fp_file.exists() \
-            and fp_file.read_text() != tok_fp:
-        sys.exit("REFUSING to resume: tokenizer fingerprint differs from "
-                 "the checkpoint's training tokenizer. Move/delete the old "
-                 "checkpoints and run fresh (or point HELIOS_CKPT_DIR "
-                 "elsewhere).")
+    # Legacy-hole fix (found 2026-09-29, second corruption): checkpoints
+    # saved BEFORE the .tokfp mechanism have no fingerprint file, so the
+    # check below silently passed and re-corrupted the model again. Also
+    # compare against the checkpoint's OWN saved .tok.json whenever it
+    # exists -- no trust in sidecar freshness.
+    if ckpt.exists():
+        legacy_tok = out_dir / f"{OUT_NAME}.tok.json"
+        if legacy_tok.exists() \
+                and hashlib.sha256(legacy_tok.read_bytes()).hexdigest() != tok_fp:
+            sys.exit("REFUSING to resume: this checkpoint's saved tokenizer "
+                     "differs from the one just trained. Run with "
+                     "MID_FRESH=1 to start clean.")
+        if step_file.exists() and fp_file.exists() \
+                and fp_file.read_text() != tok_fp:
+            sys.exit("REFUSING to resume: tokenizer fingerprint differs "
+                     "from the checkpoint's training tokenizer. Run with "
+                     "MID_FRESH=1 to start clean.")
     fp_file.write_text(tok_fp)
     # MID_FRESH=1: hard-ignore any resume state. Belt-and-braces for
     # exactly the confusion seen 2026-09-29 (a corrupted checkpoint was
