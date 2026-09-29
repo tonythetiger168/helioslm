@@ -1,5 +1,25 @@
 # HeliosLM v5 Changelog
 
+## v5.34 (2026-09-29) - Deterministic Grounding: the Therapy, Deployed
+- agent/grounding.py: GroundingGate wraps any gate; on DIRECT it
+  rewrites tool args from the task text and finish answers from the
+  deterministically predicted tool chain (tools are deterministic, so
+  the prediction IS the obs). ESCALATE/oracle paths never touched;
+  unknown task shapes pass through (groundable() reports coverage)
+- T33 5/5 incl. the killer oracle: a policy that confabulates EVERY
+  argument scores 24/24 across all four env families under grounding --
+  the model keeps only the tool-sequence decision. Debug chain of five
+  real bugs (parse order, tail-tolerant regexes, last-event tracking,
+  write_transform str_op coverage, policy-side greedy regex) all fixed
+  and recorded
+- examples/eval_mid_agent_v5.py: the same mid checkpoint + GroundingGate
+  -- the v4 0/12 confabulation verdict vs the grounded run is the
+  before/after pair for the whole grounding thesis
+- Replay deviation recorded: grounded transcripts differ from raw-gen
+  replay by design; determinism (not old replay) is the T33 oracle
+
+
+
 ## v5.33 P8 (2026-09-29) - Autopsy CORRECTED: Two-Layer Brittle Copying
 - Full v4 transcripts (benchmarks/mid_agent_eval_v4.json) refine P7: the
   dominant failure is task->ARGS confabulation ("19 * -92" -> "12 * -9";
