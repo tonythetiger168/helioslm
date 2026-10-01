@@ -25,7 +25,11 @@ import torch.nn as nn
 from decision import NOUL_NO, NOUL_UNKNOWN, NOUL_YES
 
 _KIND_DIMS = {"choice": None, "noul": 3, "score": 1}
-_NOUL_IDX = {NOUL_YES: 0, NOUL_NO: 1, NOUL_UNKNOWN: 2}
+# v5.36: noul is CONTINUOUS -- the head emits one logit, sigmoid -> P(yes).
+# _NOUL_IDX survives only as a label->01 view for TRAINING TARGETS
+# (yes=1.0, no=0.0; NOUL_UNKNOWN targets are impossible by construction:
+# uncertainty is a probability near 0.5, not a class)
+_NOUL_IDX = {NOUL_YES: 1.0, NOUL_NO: 0.0, NOUL_UNKNOWN: 0.5}
 
 
 class DecisionHead(nn.Module):
@@ -44,7 +48,7 @@ class DecisionHead(nn.Module):
             if kind == "choice":
                 out = len(options)
             elif kind == "noul":
-                out = 3
+                out = 1            # v5.36: continuous P(yes)
             else:
                 out = 1
             self.heads[name] = nn.Linear(d, out)
@@ -62,16 +66,14 @@ class DecisionHead(nn.Module):
         for name in self.qnames:
             kind, options = self.qmeta[name]
             logits = self.heads[name](z)
-            if kind == "score":
+            if kind in ("score", "noul"):
+                # v5.36: noul returns P(yes) directly; its "confidence"
+                # (distance from 0.5) is derived by the Noul type
                 out[name] = (float(torch.sigmoid(logits)[0]), None)
             else:
                 probs = torch.softmax(logits, dim=-1)
                 conf, idx = float(probs.max()), int(probs.argmax())
-                if kind == "choice":
-                    out[name] = (options[idx], conf)
-                else:
-                    out[name] = ({0: NOUL_YES, 1: NOUL_NO,
-                                  2: NOUL_UNKNOWN}[idx], conf)
+                out[name] = (options[idx], conf)
         return out
 
     def decide(self, name, text_ids):
@@ -81,7 +83,9 @@ class DecisionHead(nn.Module):
     # --- training ---------------------------------------------------------
 
     def _targets(self, records):
-        """records: list of {ids, answers: {name: answer_str}}."""
+        """records: list of {ids, answers: {name: answer_str}}.
+        v5.36: noul targets are 01 floats (yes=1.0, no=0.0); continuous
+        form drops the UNKNOWN class entirely."""
         zs, labels = [], {n: [] for n in self.qnames}
         for r in records:
             with torch.no_grad():
@@ -95,7 +99,11 @@ class DecisionHead(nn.Module):
                     labels[n].append(_NOUL_IDX[a])
                 else:
                     labels[n].append(float(a))
-        return torch.stack(zs), {n: torch.tensor(v) for n, v in labels.items()}
+        return torch.stack(zs), {
+            n: (torch.tensor(v, dtype=torch.float32)
+                if self.qmeta[n][0] in ("noul", "score")
+                else torch.tensor(v))
+            for n, v in labels.items()}
 
     def fit(self, records, epochs=200, lr=1e-2, verbose=False):
         """CE on answers + Brier(conf, target).
@@ -120,6 +128,19 @@ class DecisionHead(nn.Module):
                 if kind == "score":
                     pred = torch.sigmoid(logits)[:, 0]
                     loss = loss + torch.nn.functional.mse_loss(pred, labels[n])
+                elif kind == "noul":
+                    # v5.36: BCE on P(yes) + outcome-targeted Brier on the
+                    # probability itself (uncertainty is the value)
+                    p = torch.sigmoid(logits)[:, 0]
+                    tgt01 = labels[n].float()
+                    loss = loss + torch.nn.functional.binary_cross_entropy(
+                        p, tgt01)
+                    with torch.no_grad():
+                        oc = torch.stack([torch.as_tensor(
+                            r["answers"].get(f"{n}__target_conf",
+                                             float(t)), dtype=torch.float32)
+                            for r, t in zip(records, tgt01)])
+                    loss = loss + self.brier_lambda * torch.mean((p - oc) ** 2)
                 else:
                     loss = loss + torch.nn.functional.cross_entropy(
                         logits, labels[n])
@@ -145,10 +166,15 @@ class DecisionHead(nn.Module):
         for n in self.qnames:
             kind, _ = self.qmeta[n]
             logits = self.heads[n](zs)
-            if kind == "score":
+            if kind in ("score", "noul"):
                 pred = torch.sigmoid(logits)[:, 0]
-                acc[n] = float((pred.round() == labels[n].round()).float().mean())
-                ece[n] = None
+                if kind == "noul":
+                    tgt = labels[n].float()
+                    acc[n] = float(((pred > 0.5) == (tgt > 0.5)).float().mean())
+                    ece[n] = float((pred - tgt).abs().mean())
+                else:
+                    acc[n] = float((pred.round() == labels[n].round()).float().mean())
+                    ece[n] = None
                 continue
             probs = torch.softmax(logits, dim=-1)
             conf, pred = probs.max(dim=-1)

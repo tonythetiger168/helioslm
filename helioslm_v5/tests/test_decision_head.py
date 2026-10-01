@@ -43,13 +43,13 @@ def _mk_records(n=200, seed=3):
 def test_questions_single_pass():
     head = DecisionHead({"route": ("choice", ("DIRECT", "ESCALATE")),
                          "is_irreversible": ("noul", None),
-                         "severity": ("score", None)})
+                         "trust": ("noul", None)})
     ids = torch.tensor(text_to_ids("DANGER delete wipe irreversible op"))
     out = head.forward(ids)
     assert set(out) == {"route", "is_irreversible", "severity"}
     ans, conf = out["route"]
     assert ans in ("DIRECT", "ESCALATE") and 0 <= conf <= 1
-    assert out["is_irreversible"][0] in (NOUL_YES, NOUL_NO, "unknown")
+    assert 0.0 <= out["is_irreversible"][0] <= 1.0  # v5.36 P(yes)
     assert 0.0 <= out["severity"][0] <= 1.0
     print("PASS test_questions_single_pass")
 
@@ -58,7 +58,7 @@ def test_learns_separable_states():
     torch.manual_seed(5)
     head = DecisionHead({"route": ("choice", ("DIRECT", "ESCALATE")),
                          "is_irreversible": ("noul", None),
-                         "severity": ("score", None)})
+                         "trust": ("noul", None)})
     recs = _mk_records()
     head.fit(recs, epochs=300, lr=5e-2)
     acc, ece = head.evaluate(recs)

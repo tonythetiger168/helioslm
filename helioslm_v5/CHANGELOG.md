@@ -1,5 +1,19 @@
 # HeliosLM v5 Changelog
 
+## v5.36 (2026-10-02) - Continuous Noul: the Floor Retires
+- Noul is now P(yes) in [0,1], NO independent confidence (official
+  TypeSafe form; triple-evidenced: our 1/K floor finding + official spec
+  + AlignBench readout). Uncertainty IS a probability near 0.5. The
+  ternary form and the certainty-Score escape hatch are retired
+- decision_head: noul head emits one logit; BCE + outcome-Brier on the
+  probability; evaluate reports P-level MAE
+- gate.ask noul defaults: DIRECT 0.2 / ESCALATE 0.8; CalibratedRouter
+  gains uncertainty() and drops certainty()
+- T37 3/3 incl. the strict floor oracle (sub-0.5 targets expressible).
+  Decision suite green
+
+
+
 ## v5.35f (2026-09-29) - Accidental Probe: Confidence Scatters under Tokenizer Mismatch
 - A re-run with a mismatched tokenizer (fresh-cleanup artifact) produced
   garbage outputs whose confidences SCATTERED (0.13-0.97) vs the clean

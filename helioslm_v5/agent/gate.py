@@ -39,11 +39,10 @@ class Gate:
             return Choice(question, tuple(r.value for r in Route),
                           route.value, float(conf if conf is not None else 0.5))
         if kind == "noul":
-            # conservative default: any ESCALATE decision means "yes, this
-            # call needs scrutiny" for scrutiny-type questions
+            # v5.36: continuous Noul. Conservative default: ESCALATE ->
+            # p_yes 0.8 (high scrutiny signal), DIRECT -> 0.2.
             route = self.decide(call, context)
-            return Noul(question, "no" if route == Route.DIRECT else "yes",
-                        float(context.get("confidence") or 0.5))
+            return Noul(question, 0.2 if route == Route.DIRECT else 0.8)
         if kind == "score":
             return Score(question, 0.5, 0.5)  # unopinionated default
         raise NotImplementedError(f"unknown decision kind {kind!r}")

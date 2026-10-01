@@ -27,7 +27,7 @@ QUESTIONS = {
     "off_task": ("noul", None),
     "mutates": ("noul", None),
     "out_of_scope": ("noul", None),
-    "certainty": ("score", None),
+    "trust": ("noul", None),
 }
 
 
@@ -116,26 +116,23 @@ def test_escalate_and_unregistered_loud():
     print("PASS test_escalate_and_unregistered_loud")
 
 
-def test_certainty_escapes_conf_floor():
-    """v5.32.1 finding made actionable: route Choice confidence floors at
-    0.5 on the risky class; the certainty Score drops below it."""
+def test_continuous_uncertainty_readout():
+    """v5.36: continuous-Noul uncertainty() readout replaces the retired
+    certainty-Score escape hatch."""
     router = CalibratedRouter(_mk_head())
     call = ToolCall("calc", {"expr": "1"})
     _, route_conf = router.head.decide(
         "route", torch.tensor(text_to_ids("RISKY delete wipe op 3 [calc]")))
-    cert, _ = router.certainty(call, {"task": "RISKY delete wipe op 3"})
-    assert route_conf >= 0.5, "sanity: Choice floor"
-    assert cert < 0.5, f"certainty should escape the floor: {cert}"
-    clean_cert, _ = router.certainty(call, {"task": "simple read only task 3"})
-    assert clean_cert > 0.5
-    print(f"PASS test_certainty_escapes_conf_floor "
-          f"(route_conf={route_conf:.2f} risky_cert={cert:.2f} "
-          f"clean_cert={clean_cert:.2f})")
-
+    p_risky = router.uncertainty(call, {"task": "RISKY delete wipe op 3"}, "trust")
+    p_clean = router.uncertainty(call, {"task": "simple read only task 3"}, "trust")
+    assert route_conf >= 0.5 and p_risky < 0.5 < p_clean, (route_conf, p_risky, p_clean)
+    print(f"PASS test_continuous_uncertainty_readout "
+          f"(route floor {route_conf:.2f}; trust P(yes) risky {p_risky:.2f} "
+          f"clean {p_clean:.2f})")
 
 if __name__ == "__main__":
     test_head_serves_gate_decisions()
     test_pi_warden_one_forward()
     test_escalate_and_unregistered_loud()
-    test_certainty_escapes_conf_floor()
+    test_continuous_uncertainty_readout()
     print("\n4/4 calibrated-router tests passed")

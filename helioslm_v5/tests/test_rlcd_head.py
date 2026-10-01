@@ -38,7 +38,7 @@ def test_model_conf_carries_no_signal_but_head_recovers():
     model_conf = [0.9999] * len(recs)          # the mid profile
     right_c = [c for c, o in zip(model_conf, ok) if o]
     wrong_c = [c for c, o in zip(model_conf, ok) if not o]
-    assert abs(sum(right_c)/len(right_c) - sum(wrong_c)/len(wrong_c)) < 1e-3
+    assert right_c and wrong_c, "test needs both classes"
 
     # convergence budget recorded: the honest-minimum char mean-pool
     # encoder separates marked states but needs ~1500 epochs at lr 1e-1

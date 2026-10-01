@@ -65,14 +65,29 @@ class Score:
 
 @dataclass(frozen=True)
 class Noul:
+    """Continuous Noul (v5.36): P(yes) in [0,1]. No separate confidence
+    -- the probability is the answer; near 0.5 means uncertain
+    (official TypeSafe form, adopted after our 1/K floor finding)."""
     question: str
-    answer: str            # NOUL_YES / NOUL_NO / NOUL_UNKNOWN
-    confidence: float
+    p_yes: float
 
     def __post_init__(self):
-        if self.answer not in (NOUL_YES, NOUL_NO, NOUL_UNKNOWN):
-            raise DecisionError(f"Noul answer {self.answer!r} invalid")
-        _check_conf(self.confidence)
+        if not (0.0 <= float(self.p_yes) <= 1.0):
+            raise DecisionError(f"Noul p_yes {self.p_yes} out of [0,1]")
+
+    @property
+    def answer(self) -> str:
+        if self.p_yes > 0.5:
+            return NOUL_YES
+        if self.p_yes < 0.5:
+            return NOUL_NO
+        return NOUL_UNKNOWN
+
+    @property
+    def confidence(self) -> float:
+        """Distance from the 0.5 uncertainty point -- how decided the
+        answer is, derived (not independent)."""
+        return abs(self.p_yes - 0.5) * 2.0
 
 
 # The pi-warden guardrail preset (open-source Jev userland pattern),

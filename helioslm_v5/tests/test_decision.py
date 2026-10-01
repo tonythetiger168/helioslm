@@ -44,9 +44,9 @@ def test_primitives_schema_enforced():
     with raises(DecisionError):
         Score("sev", 1.2, 0.5)
     with raises(DecisionError):
-        Noul("q", "perhaps", 0.5)
+        Noul("q", 1.5)          # v5.36: p_yes range
     with raises(DecisionError):
-        Noul("q", "yes", -0.1)
+        Noul("q", -0.1)
     print("PASS test_primitives_schema_enforced")
 
 
@@ -68,9 +68,9 @@ def test_gate_ask_route_and_noul():
     assert isinstance(d, Choice) and d.answer == "DIRECT" \
         and d.confidence == 0.77
     n = g_esc.ask(call, ctx, "noul", "is_irreversible")
-    assert isinstance(n, Noul) and n.answer == "yes"   # ESCALATE -> scrutiny
+    assert isinstance(n, Noul) and n.p_yes == 0.8   # ESCALATE -> scrutiny
     n2 = g_direct.ask(call, ctx, "noul", "is_irreversible")
-    assert n2.answer == "no"
+    assert n2.p_yes == 0.2
     s = g_direct.ask(call, ctx, "score", "severity")
     assert isinstance(s, Score) and s.value == 0.5
     with raises(NotImplementedError):

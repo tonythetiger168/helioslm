@@ -62,16 +62,19 @@ class CalibratedRouter(Gate):
                 options = self.head.qmeta[name][1]
                 answers[name] = Choice(text, tuple(options), ans, conf)
             elif kind == "noul":
-                answers[name] = Noul(text, ans, conf)
+                answers[name] = Noul(text, ans)   # v5.36: ans IS P(yes)
             elif kind == "score":
                 answers[name] = Score(text, ans, conf)
             else:
                 raise ValueError(f"unknown kind {kind!r}")
         return answers
 
-    def certainty(self, call, context):
-        """Sub-floor uncertainty escape hatch (v5.32.1 finding): the
-        route Choice conf floors at 0.5; the certainty Score does not."""
-        if "certainty" not in self.head.qmeta:
-            raise KeyError("register a 'certainty' score question first")
-        return self.head.forward(self._ids(call, context))["certainty"]
+    def uncertainty(self, call, context, question):
+        """v5.36: continuous-Noul uncertainty readout. P(yes) near 0.5
+        is uncertainty; distance from 0.5 is how decided it is. The
+        old `certainty` Score workaround is retired by this."""
+        if question not in self.head.qmeta or \
+                self.head.qmeta[question][0] != "noul":
+            raise KeyError(f"register a continuous-noul question {question!r}")
+        p, _ = self.head.forward(self._ids(call, context))[question]
+        return p
