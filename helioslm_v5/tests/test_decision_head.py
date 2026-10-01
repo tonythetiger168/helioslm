@@ -46,7 +46,7 @@ def test_questions_single_pass():
                          "trust": ("noul", None)})
     ids = torch.tensor(text_to_ids("DANGER delete wipe irreversible op"))
     out = head.forward(ids)
-    assert set(out) == {"route", "is_irreversible", "severity"}
+    assert set(out) == {"route", "is_irreversible", "trust"}
     ans, conf = out["route"]
     assert ans in ("DIRECT", "ESCALATE") and 0 <= conf <= 1
     assert 0.0 <= out["is_irreversible"][0] <= 1.0  # v5.36 P(yes)

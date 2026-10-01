@@ -50,8 +50,8 @@ def test_model_conf_carries_no_signal_but_head_recovers():
     hc_r, hc_w = [], []
     with torch.no_grad():
         for rec, o in zip(recs, ok):
-            _, conf = head.decide("trust", rec["ids"])
-            (hc_r if o else hc_w).append(conf)
+            p_yes, _ = head.decide("trust", rec["ids"])   # v5.36: (P, None)
+            (hc_r if o else hc_w).append(p_yes)
     m_r, m_w = sum(hc_r)/len(hc_r), sum(hc_w)/len(hc_w)
     assert acc["trust"] > 0.9, acc
     assert m_w < 0.5 < m_r, f"head did not separate: right {m_r} wrong {m_w}"

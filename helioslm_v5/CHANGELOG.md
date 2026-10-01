@@ -1,5 +1,17 @@
 # HeliosLM v5 Changelog
 
+## v5.36b (2026-10-02) - Continuous-Noul Test Fixes
+- decision_head._targets: score targets use raw floats, noul targets
+  use _NOUL_IDX -- the paths are distinct (mixing them KeyError'd on
+  None in test_calibrated_router)
+- test_decision_head: forward() set assertion synced to the renamed
+  'trust' question
+- test_rlcd_head: decide() returns (P, None) post-v5.36; the None is
+  not a confidence
+- T30/T28/T35 green under the continuous API
+
+
+
 ## v5.36 (2026-10-02) - Continuous Noul: the Floor Retires
 - Noul is now P(yes) in [0,1], NO independent confidence (official
   TypeSafe form; triple-evidenced: our 1/K floor finding + official spec

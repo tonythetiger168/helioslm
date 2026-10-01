@@ -84,8 +84,10 @@ class DecisionHead(nn.Module):
 
     def _targets(self, records):
         """records: list of {ids, answers: {name: answer_str}}.
-        v5.36: noul targets are 01 floats (yes=1.0, no=0.0); continuous
-        form drops the UNKNOWN class entirely."""
+        v5.36b: noul targets are 01 floats via _NOUL_IDX (yes=1.0,
+        no=0.0); continuous form drops the UNKNOWN class. Score targets
+        are raw floats. The two paths are distinct -- mixing them
+        KeyError'd on None (found in test_calibrated_router)."""
         zs, labels = [], {n: [] for n in self.qnames}
         for r in records:
             with torch.no_grad():
@@ -97,7 +99,7 @@ class DecisionHead(nn.Module):
                     labels[n].append(options.index(a))
                 elif kind == "noul":
                     labels[n].append(_NOUL_IDX[a])
-                else:
+                else:  # score: raw float target
                     labels[n].append(float(a))
         return torch.stack(zs), {
             n: (torch.tensor(v, dtype=torch.float32)
