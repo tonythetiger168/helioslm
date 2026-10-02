@@ -19,14 +19,16 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
 
 
-def main(path, repo="chienhsinlin/helioslm"):
+def main(path, repo="chienhsinlin/helioslm", repo_path=None):
     token = os.environ.get("HF_TOKEN")
     if not token:
         sys.exit("set HF_TOKEN first ($env:HF_TOKEN='hf_...')")
     auth = {"Authorization": f"Bearer {token}"}
     data = open(path, "rb").read()
     sha = hashlib.sha256(data).hexdigest()
-    name = "checkpoints/" + os.path.basename(path)
+    # optional explicit repo path; default keeps the historical
+    # checkpoints/ prefix for weight artifacts
+    name = repo_path or ("checkpoints/" + os.path.basename(path))
     print(f"[1/4] {name}: {len(data)} bytes sha={sha[:12]}", flush=True)
 
     def api(url, payload=None, method="POST", headers=None, raw=None,
@@ -72,4 +74,5 @@ def main(path, repo="chienhsinlin/helioslm"):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main(sys.argv[1],
+         repo_path=(sys.argv[2] if len(sys.argv) > 2 else None))
