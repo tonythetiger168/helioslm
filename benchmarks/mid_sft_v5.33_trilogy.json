@@ -1,0 +1,15 @@
+{
+  "params": 359992352,
+  "train_samples": 4686,
+  "device": "cuda",
+  "eval_exact": "30/40",
+  "eval_mode_tool": "20/20",
+  "eval_mode_text": "20/20",
+  "eval_mode_choice": "40/40",
+  "seed": 7,
+  "version": "v5.33",
+  "acceptance": {
+    "tool_parse_target": ">0.8",
+    "mode_choice_target": "text AND tool >0.6"
+  }
+}

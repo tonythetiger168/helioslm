@@ -1,5 +1,16 @@
 # HeliosLM v5 Changelog
 
+## v5.37i (2026-10-02) - Trilogy Artifacts Archived
+- benchmarks/mid_{agent_eval_v4,agent_eval_v5,sft_v5.33}_trilogy.json:
+  the raw evidence for the self-consistent trilogy (fresh 360M
+  checkpoint, paired tokenizer, fingerprint verified). v4 carries full
+  per-step transcripts: 0/12 with fresh confabulations (args corruption
+  dominant, obs->finish copying intact on calc/str); v5 9/12 with
+  verbatim-correct finals on all cured tasks; SFT summary 30/40 + 40/40
+- Trust verdict (from console; json local): 12/12 abstained, p_min ~2e-5
+
+
+
 ## v5.37h (2026-10-02) - The Self-Consistent Trilogy Closes
 - Fresh baseline retrain (6728s, loss 0.4129, SFT eval 30/40 + 40/40 --
   reproduces the 9/28 baseline within seeded noise), artifacts
