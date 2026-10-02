@@ -6,6 +6,7 @@ capturing per-call softmax max confidence. One copy now lives here;
 the scripts pass max_new/FEWSHOT and get (model, tok, make_fn).
 """
 import os
+import sys
 from pathlib import Path
 
 import torch
@@ -19,7 +20,26 @@ def load_model_tok(device=None, ckpt_dir=None):
     from helioslm_v5.src.tokenizer.bpe import BOS, HeliosBPE
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     ck = Path(ckpt_dir or os.environ.get("HELIOS_CKPT_DIR", "checkpoints"))
-    tok = HeliosBPE.load(str(ck / "mid_sft_v5.33.tok.json"))
+    tok_path = ck / "mid_sft_v5.33.tok.json"
+    # v5.37f structural guard: the training run stores a sha256
+    # fingerprint of ITS tokenizer (.tokfp). If the pairing file was
+    # rebuilt under a different repo state (the corpus changed out from
+    # under it -- the 10-02 drift), the ids silently mismatch and the
+    # model emits confident soup while every gate starves (parse errors
+    # never reach decide). Refuse loudly instead.
+    fp_file = ck / "mid_sft_v5.33.tokfp"
+    if fp_file.exists():
+        import hashlib
+        actual = hashlib.sha256(tok_path.read_bytes()).hexdigest()
+        if actual != fp_file.read_text().strip():
+            sys.exit("TOKENIZER MISMATCH: checkpoints/mid_sft_v5.33.tok.json "
+                     "does not match the fingerprint stored at training "
+                     "time. The corpus has drifted; a rebuild under the "
+                     "current tree cannot reproduce it. Fix: git checkout "
+                     "<train-time commit>, rebuild the tokenizer there, "
+                     "git checkout main, rerun.")
+        print("tokenizer fingerprint verified against .tokfp", flush=True)
+    tok = HeliosBPE.load(str(tok_path))
     print("loaded paired tokenizer from checkpoint", flush=True)
     model = HeliosLMv5(HeliosLMv5Config(size="mid")).to(device)
     model.load_state_dict(torch.load(ck / "mid_sft_v5.33.pt",

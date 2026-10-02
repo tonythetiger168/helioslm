@@ -1,5 +1,16 @@
 # HeliosLM v5 Changelog
 
+## v5.37f (2026-10-02) - Tokenizer Fingerprint Guard in the Eval Harness
+- _mid_common.load_model_tok verifies the saved .tok.json against the
+  training-time .tokfp sha256; mismatch exits loudly with the fix
+  recipe. The 10-02 trust-eval run produced confident soup with a
+  starved gate (p_min=None, zero decisions) because a rebuilt
+  tokenizer drifted under a changed corpus -- exactly the failure mode
+  this guard now refuses silently-reproducing. Structural guard for
+  the format/training-distribution skew family, part 1
+
+
+
 ## v5.37e (2026-10-02) - TrustGate Acceptance Harness Fix (v1 Trap, Third Occurrence)
 - eval_mid_trust v1 drove AgentLoop (Task:/step i: format) -- the v1
   format-skew trap, third occurrence of that family (v1 -> v2 fix ->
