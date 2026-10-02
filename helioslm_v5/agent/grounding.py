@@ -166,3 +166,42 @@ class GroundingGate(Gate):
 
     def ask(self, call, context, kind, question):
         return self.inner.ask(call, context, kind, question)
+
+
+def verify_grounded_replay(traj, registry, impls) -> None:
+    """Grounding-aware replay (v5.37): the recorded trajectory's calls
+    were GROUNDED (mutated in place), so raw-text replay mismatches by
+    design. This verifier re-derives the RAW call from the generated
+    text, applies a FRESH GroundingGate over it (same task grammar, so
+    the grounding reproduces exactly), executes, and compares
+    observations. Raises ReplayMismatch on any divergence.
+    """
+    try:
+        from .gate import FixedGate, Route
+        from .schema import ToolCallError, parse_tool_call
+        from .tools import execute
+        from .trajectory import ReplayMismatch, ids_to_text
+    except ImportError:
+        from gate import FixedGate, Route
+        from schema import ToolCallError, parse_tool_call
+        from tools import execute
+        from trajectory import ReplayMismatch, ids_to_text
+
+    gate = GroundingGate(FixedGate(Route.DIRECT))
+    for s in traj.steps:
+        text = ids_to_text(s.generated_ids)
+        try:
+            calls = parse_tool_call(text, registry)
+        except ToolCallError as e:
+            obs = f"PARSE_ERROR: {e}"
+        else:
+            call = calls[0]
+            gate.decide(call, {"task": traj.task, "step": s.index})
+            try:
+                obs = execute(call, registry, impls)
+            except ToolCallError as e:
+                obs = f"TOOL_ERROR: {e}"
+        if obs != s.observation:
+            raise ReplayMismatch(
+                f"step {s.index}: grounded replay observation differs:\n"
+                f"  replay  : {obs!r}\n  recorded: {s.observation!r}")

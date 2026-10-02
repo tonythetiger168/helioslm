@@ -1,5 +1,19 @@
 # HeliosLM v5 Changelog
 
+## v5.37b (2026-10-02) - Engineering Debt: Shared Harness + Grounded Replay
+- examples/_mid_common.py: the three mid eval scripts' identical
+  preambles (paired-tokenizer + checkpoint load + greedy model_fn with
+  per-call confidence capture) now live in one place; scripts pass
+  max_new/fewshot and get (model, tok, make_fn)
+- grounding.verify_grounded_replay: grounded trajectories are now
+  formally re-verifiable -- raw text -> parse -> a FRESH GroundingGate
+  reproduces the recorded observations exactly (deterministic tools +
+  shared grammar), tamper detection intact. The v5.34 docstring replay
+  deviation is CLOSED
+- T39 2/2; T33 regression green
+
+
+
 ## v5.37 (2026-10-02) - TrustGate: Calibrated Abstention, Deployed
 - agent/trust_gate.py: the TypeSafe behavior tiers as a Gate wrapper.
   The trust question (continuous Noul, v5.36) is P(the routed action
