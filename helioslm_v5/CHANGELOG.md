@@ -1,5 +1,15 @@
 # HeliosLM v5 Changelog
 
+## v5.37c (2026-10-02) - TrustGate x mid Acceptance Script
+- examples/eval_mid_trust.py: trains the trust head on the REAL v4
+  failure outcomes (12/12 confabulated), then drives fresh mid eval
+  tasks behind TrustGate -- expected behavior: ESCALATE on the
+  failure-class states (the model is DENIED ungrounded action on its
+  own measured failure territory), DIRECT only where trusted. The
+  therapy pair, verified end to end on real weights
+
+
+
 ## v5.37b (2026-10-02) - Engineering Debt: Shared Harness + Grounded Replay
 - examples/_mid_common.py: the three mid eval scripts' identical
   preambles (paired-tokenizer + checkpoint load + greedy model_fn with
