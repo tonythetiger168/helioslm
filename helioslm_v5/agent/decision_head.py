@@ -99,8 +99,10 @@ class DecisionHead(nn.Module):
                     labels[n].append(options.index(a))
                 elif kind == "noul":
                     labels[n].append(_NOUL_IDX[a])
-                else:  # score: raw float target
-                    labels[n].append(float(a))
+                else:  # score: raw float target; a missing answer fills
+                    # 0.0 (records may register more heads than they
+                    # annotate -- found in test_calibrated_router)
+                    labels[n].append(float(a) if a is not None else 0.0)
         return torch.stack(zs), {
             n: (torch.tensor(v, dtype=torch.float32)
                 if self.qmeta[n][0] in ("noul", "score")

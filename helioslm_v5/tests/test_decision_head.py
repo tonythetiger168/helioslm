@@ -30,13 +30,13 @@ def _mk_records(n=200, seed=3):
             recs.append({"ids": torch.tensor(text_to_ids(text)),
                          "answers": {"route": "DIRECT",
                                      "is_irreversible": NOUL_NO,
-                                     "severity": 0.1}})
+                                     "trust": 0.1}})
         else:
             text = f"DANGER delete wipe irreversible op {i} xyz"
             recs.append({"ids": torch.tensor(text_to_ids(text)),
                          "answers": {"route": "ESCALATE",
                                      "is_irreversible": NOUL_YES,
-                                     "severity": 0.9}})
+                                     "trust": 0.9}})
     return recs
 
 
@@ -50,7 +50,7 @@ def test_questions_single_pass():
     ans, conf = out["route"]
     assert ans in ("DIRECT", "ESCALATE") and 0 <= conf <= 1
     assert 0.0 <= out["is_irreversible"][0] <= 1.0  # v5.36 P(yes)
-    assert 0.0 <= out["severity"][0] <= 1.0
+    assert 0.0 <= out["trust"][0] <= 1.0
     print("PASS test_questions_single_pass")
 
 

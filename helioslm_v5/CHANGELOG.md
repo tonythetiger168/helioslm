@@ -1,5 +1,15 @@
 # HeliosLM v5 Changelog
 
+## v5.36c (2026-10-02) - Continuous-Noul Suite Fully Green
+- decision_head._targets: score targets tolerate missing answers
+  (fill 0.0) -- records may register more heads than they annotate
+- test_decision_head: severity->trust rename completed (set assertion
+  included)
+- T27/T28/T30/T35 + T37 all green under the continuous API; decision
+  suite closes at 6/6
+
+
+
 ## v5.36b (2026-10-02) - Continuous-Noul Test Fixes
 - decision_head._targets: score targets use raw floats, noul targets
   use _NOUL_IDX -- the paths are distinct (mixing them KeyError'd on
