@@ -98,7 +98,14 @@ class DecisionHead(nn.Module):
                 if kind == "choice":
                     labels[n].append(options.index(a))
                 elif kind == "noul":
-                    labels[n].append(_NOUL_IDX[a])
+                    # v5.36d: targets may be yes/no strings OR raw
+                    # probabilities (continuous consumers); None fills 0.5
+                    if a is None:
+                        labels[n].append(0.5)
+                    elif isinstance(a, str):
+                        labels[n].append(_NOUL_IDX[a])
+                    else:
+                        labels[n].append(float(a))
                 else:  # score: raw float target; a missing answer fills
                     # 0.0 (records may register more heads than they
                     # annotate -- found in test_calibrated_router)
