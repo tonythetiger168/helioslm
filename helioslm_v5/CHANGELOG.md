@@ -1,5 +1,20 @@
 # HeliosLM v5 Changelog
 
+## v5.37 (2026-10-02) - TrustGate: Calibrated Abstention, Deployed
+- agent/trust_gate.py: the TypeSafe behavior tiers as a Gate wrapper.
+  The trust question (continuous Noul, v5.36) is P(the routed action
+  will be correct), learned from OUTCOMES (RLCD); the model's own
+  confidence is not consulted (measured signal-free at mid). Tiers:
+  P >= hi -> DIRECT auto-execute; lo <= P < hi -> DIRECT flagged
+  medium; P < lo -> ESCALATE (do not act). Abstain without an oracle is
+  a LOUD NotImplementedError, never silent; with inner= it delegates.
+  Every decision lands in an audit log (p_trust/tier/route)
+- The therapy pair closes: grounding fixes actions the model TAKES;
+  TrustGate withholds actions on states the head DISTRUSTS
+- T38 4/4; decision suite 7/7 incl. T38
+
+
+
 ## v5.36h (2026-10-02) - T30 Labels Actually Swapped (block-verified)
 - v5.36g's replace targeted a severity line that never existed in the
   v5.36f file -> silent no-op; outputs were bit-identical to the
