@@ -1,5 +1,21 @@
 # HeliosLM v5 Changelog
 
+## v5.37h (2026-10-02) - The Self-Consistent Trilogy Closes
+- Fresh baseline retrain (6728s, loss 0.4129, SFT eval 30/40 + 40/40 --
+  reproduces the 9/28 baseline within seeded noise), artifacts
+  durable: .pt + .tok.json + .tokfp on HF (chienhsinlin/helioslm,
+  commits ab69b699/a784781b/0494ec68)
+- Trilogy on ONE checkpoint, fingerprint verified: v4 ungrounded 0/12
+  (fresh confabulations, disease reproducible); v5 grounded 9/12 (all
+  calc/str cured; 3 write_read failures = finish-first sequences --
+  grounding is SEQUENCE-DEPENDENT, it cannot inject into an empty
+  state machine; premature finish is TrustGate's territory); TrustGate
+  12/12 abstained at p~2e-5 (decisive; all-negative training data ->
+  family-wide abstention, tiered behavior needs mixed labels)
+- Report sections 3-4 updated to the self-consistent numbers
+
+
+
 ## v5.37g (2026-10-02) - hf_upload.py Ships in the Repo (Durability Fix)
 - The 10-02 post-mortem: the mid baseline weights existed ONLY on the
   user's disk (HF_SYNC was never set locally; the uploader lived only

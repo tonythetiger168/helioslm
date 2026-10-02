@@ -48,10 +48,16 @@ tokenizer trained on the repo's own corpus (bpe.py, T31), a 360M
    confabulations BYTE-IDENTICALLY (COPY_CURRICULUM_VERDICT.md).
    Three eliminations: not tokenizer, not protocol, not data volume.
    Remaining hypothesis: capacity/dynamics wall at 360M.
-3. **Grounding is the correct answer at this scale**: same checkpoint,
-   same eval seed, GroundingGate takes the agentic suite 0/12 -> 12/12
-   (benchmarks/mid_agent_eval_v4.json vs _v5.json). Policy-in-code is
-   not a workaround; it is the therapy.
+3. **Grounding is the correct answer at this scale -- with a
+   sequence-dependence boundary**: the 2026-10-02 self-consistent
+   trilogy (ONE fresh checkpoint, paired tokenizer, fingerprint
+   verified) reproduces 0/12 ungrounded -> 9/12 grounded. The 3
+   write_read failures are finish-first sequences: the model emits
+   finish BEFORE any tool evidence exists, grounding has nothing to
+   inject (state machine empty), and the confabulation passes through.
+   Grounding cures evidence-gathering sequences; it cannot cure
+   premature finishes -- which is precisely the behavior TrustGate's
+   low-trust tier exists to refuse.
 4. **The model already flags OOD**: an accidental tokenizer-mismatch
    run scattered confidences (0.13-0.97) where the clean run pins
    ~0.9999. The calibration gap is precise: overconfidence on
@@ -69,13 +75,22 @@ tokenizer trained on the repo's own corpus (bpe.py, T31), a 360M
    expresses it by construction (T37). Triple-evidenced: our floor
    finding + TypeSafe's official spec + RLCDAlignBench's readout.
 
-## 4. The therapy pair
+## 4. The therapy pair (trilogy verified 2026-10-02, one checkpoint)
 
-Grounding fixes actions the model TAKES (0/12 -> 12/12). TrustGate
-withholds actions on states the head DISTRUSTS (low P(correct) ->
-ESCALATE; loud without an oracle, delegated with one). Together they
-are the deployed form of the TypeSafe behavior tiers -- and both halves
-are independently verified, which no vendor publishes.
+| run | gate | result |
+|---|---|---|
+| v4 ungrounded | FixedGate(DIRECT) | 0/12, fresh confabulations (`367`, `C9qI9u9`, `2222r2222`) |
+| v5 grounded | GroundingGate | 9/12 (all calc/str cured; 3 write_read = finish-first bypass) |
+| trust | TrustGate(head from v4 outcomes) | 12/12 abstained, p_min ~2e-5 |
+
+Grounding fixes actions the model TAKES within an evidence-gathering
+sequence. TrustGate withholds actions on states the head DISTRUSTS --
+and a finish-first confabulation is exactly what a low-trust head
+should refuse. TrustGate caveat, recorded: trained on all-negative
+outcomes (the v4 12), it abstains family-wide; tiered behavior needs
+mixed-label outcome data (v4+v5's 24 records are the ready source).
+Together they are the deployed form of the TypeSafe behavior tiers --
+both halves verified on identical weights, which no vendor publishes.
 
 ## 5. Boundaries (honest)
 
