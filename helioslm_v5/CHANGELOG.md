@@ -1,5 +1,14 @@
 # HeliosLM v5 Changelog
 
+## v5.36g (2026-10-02) - T30 Labels Un-swapped
+- The continuous readout oracle labeled clean->no / risky->yes; the
+  head learned the majority class as the anchor and inverted the
+  direction. Semantics: trust P(yes) should be HIGH for clean states.
+  Un-swapped. (A flipped-labels run is itself the classic calibration
+  bug -- worth the record.)
+
+
+
 ## v5.36f (2026-10-02) - T30 Data Fix (Real Labels, Real Assert)
 - trust targets were neutral (both classes 0.5-ish) -- no learnable
   signal, direction unassertable; the v5.36e direction-only assert
