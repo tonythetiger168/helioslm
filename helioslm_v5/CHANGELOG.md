@@ -1,5 +1,12 @@
 # HeliosLM v5 Changelog
 
+## v5.36e (2026-10-02) - T30 Margin Assert -> Direction
+- CalibratedRouter synthetic registers neutral targets for trust; the
+  trained margins sit near 0.5 with tiny separation. Assert DIRECTION
+  (p_risky < p_clean), not magnitude -- no fake convergence claims
+
+
+
 ## v5.36d (2026-10-02) - Noul Targets Accept Continuous Values
 - _targets noul path: yes/no strings map via _NOUL_IDX; raw numeric
   targets (probabilities) pass through; None fills 0.5 (neutral).
