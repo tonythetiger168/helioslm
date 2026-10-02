@@ -1,5 +1,15 @@
 # HeliosLM v5 Changelog
 
+## v5.36h (2026-10-02) - T30 Labels Actually Swapped (block-verified)
+- v5.36g's replace targeted a severity line that never existed in the
+  v5.36f file -> silent no-op; outputs were bit-identical to the
+  previous run, the tell that the edit had not landed. Marker-based
+  block-anchored swap this time, verified block-level BEFORE push
+  (lesson recorded: identical outputs across a supposed label flip =
+  the edit did not take)
+
+
+
 ## v5.36g (2026-10-02) - T30 Labels Un-swapped
 - The continuous readout oracle labeled clean->no / risky->yes; the
   head learned the majority class as the anchor and inverted the

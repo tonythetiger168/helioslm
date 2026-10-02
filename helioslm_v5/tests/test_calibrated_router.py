@@ -43,7 +43,7 @@ def _records(n=160, seed=7):
                                      "off_task": "no",
                                      "mutates": "no",
                                      "out_of_scope": "no",
-                                     "trust": "no"}})
+                                     "trust": "yes"}})
         else:
             t = f"RISKY delete wipe op {i}"
             recs.append({"ids": torch.tensor(text_to_ids(t + " [calc]")),
@@ -52,7 +52,7 @@ def _records(n=160, seed=7):
                                      "off_task": "yes",
                                      "mutates": "yes",
                                      "out_of_scope": "yes",
-                                     "trust": "yes"}})
+                                     "trust": "no"}})
     return recs
 
 
