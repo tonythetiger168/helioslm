@@ -1,5 +1,13 @@
 # HeliosLM v5 Changelog
 
+## v5.37d (2026-10-02) - Working Report: the RLCD Methodology Paper
+- docs/report_rlcd_methodology_2026-10.md: full narrative -- three RL
+  paradigms, the seven-link evidence chain (all measurements), the
+  therapy pair, honest boundaries, and the task-INTRA positioning vs
+  RLCDAlignBench. Every claim cites an artifact and a test
+
+
+
 ## v5.37c (2026-10-02) - TrustGate x mid Acceptance Script
 - examples/eval_mid_trust.py: trains the trust head on the REAL v4
   failure outcomes (12/12 confabulated), then drives fresh mid eval
