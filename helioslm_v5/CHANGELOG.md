@@ -1,5 +1,14 @@
 # HeliosLM v5 Changelog
 
+## v5.37g (2026-10-02) - hf_upload.py Ships in the Repo (Durability Fix)
+- The 10-02 post-mortem: the mid baseline weights existed ONLY on the
+  user's disk (HF_SYNC was never set locally; the uploader lived only
+  in a sandbox /tmp file), and a local overwrite destroyed them. The
+  uploader now ships in the repo (stdlib only, token from env) so the
+  artifact pipeline has no environmental single point of failure
+
+
+
 ## v5.37f (2026-10-02) - Tokenizer Fingerprint Guard in the Eval Harness
 - _mid_common.load_model_tok verifies the saved .tok.json against the
   training-time .tokfp sha256; mismatch exits loudly with the fix
