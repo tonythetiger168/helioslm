@@ -1,5 +1,13 @@
 # HeliosLM v5 Changelog
 
+## v5.36f (2026-10-02) - T30 Data Fix (Real Labels, Real Assert)
+- trust targets were neutral (both classes 0.5-ish) -- no learnable
+  signal, direction unassertable; the v5.36e direction-only assert
+  papered over it. Fix: real labels (clean->no, risky->yes) and the
+  strong assert restored. Real signal, real oracle
+
+
+
 ## v5.36e (2026-10-02) - T30 Margin Assert -> Direction
 - CalibratedRouter synthetic registers neutral targets for trust; the
   trained margins sit near 0.5 with tiny separation. Assert DIRECTION
