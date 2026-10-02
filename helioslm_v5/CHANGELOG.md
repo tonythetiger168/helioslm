@@ -1,5 +1,20 @@
 # HeliosLM v5 Changelog
 
+## v5.37e (2026-10-02) - TrustGate Acceptance Harness Fix (v1 Trap, Third Occurrence)
+- eval_mid_trust v1 drove AgentLoop (Task:/step i: format) -- the v1
+  format-skew trap, third occurrence of that family (v1 -> v2 fix ->
+  this). mid SFT renders chat transcripts; under the wrong harness the
+  model emits no tool blocks (final=None everywhere) and parse failures
+  never reach the gate, silently voiding the abstention measurement
+- v2: ChatSession + TrustGate(inner=ReviewOracle); abstained tasks end
+  final=None BY DESIGN (do not act). Recorded with the honest count:
+  the format-skew family is now THREE documented occurrences -- the
+  lesson exists in eval_mid_agent_v2.py's docstring and was still
+  re-walked; a structural guard (harness-format assertion against the
+  training distribution) is the real fix, queued
+
+
+
 ## v5.37d (2026-10-02) - Working Report: the RLCD Methodology Paper
 - docs/report_rlcd_methodology_2026-10.md: full narrative -- three RL
   paradigms, the seven-link evidence chain (all measurements), the
