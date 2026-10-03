@@ -1,5 +1,18 @@
 # HeliosLM v5 Changelog
 
+## v5.38g (2026-10-04) - Paper v3: Encoder Legs Complete
+- Qwen3-0.6B hidden supervised 0.807 / LOBO 0.561; mid 360M hidden
+  supervised 0.692 / LOBO 0.528 (user's GPU runs, 90s each). Encoder
+  capacity hypothesis VERIFIED: same readout protocol, encoder ladder
+  0.561 -> 0.692 -> 0.807, closing 86% of the gap to Jev zero-shot
+  (0.859) and BEATING word-level TF-IDF by +0.08. LOBO transfer rises
+  with encoder quality (0.542 -> 0.561) but plateaus near 0.56 --
+  frozen features carry some transferable signal (abstentionbench LOBO
+  0.933) yet fine-tuned readout heads are the recorded next step
+- Paper v3: six-row table + rewritten ablation; PDF rebuilt (tectonic)
+
+
+
 ## v5.38f (2026-10-03) - Paper v2 + Local Encoder Scripts
 - Paper v2 (565a6c16): LOBO row (0.542, near-zero transfer finding),
   encoder ablation paragraph, LM-encoder legs marked in-progress

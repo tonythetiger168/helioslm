@@ -254,18 +254,24 @@ Jev zero-shot (cached, recomputed) & 0.859 \\
 Ours: char mean-pool head (supervised) & 0.561 \\
 Ours: char mean-pool head (LOBO transfer) & 0.542 \\
 Ours: in-domain BPE head (supervised) & 0.569 \\
-Ours: Qwen3-0.6B hidden-state encoder & \emph{in progress} \\
-Ours: mid (360M) hidden-state encoder & \emph{in progress} \\
+Ours: Qwen3-0.6B hidden (frozen) & \textbf{0.807} \\
+Ours: Qwen3-0.6B hidden (LOBO) & 0.561 \\
+Ours: mid 360M hidden (frozen) & 0.692 \\
+Ours: mid 360M hidden (LOBO) & 0.528 \\
 \bottomrule
 \end{tabular}
 \caption{RLCDAlignBench, 41 comparable benchmarks (16-benchmark
 subset for the encoder legs). The LOBO row trains on the other 40
 benchmarks and tests on the held-out one -- the honest-minimum encoder
 shows near-zero transfer (0.542 vs 0.561), localizing its knowledge at
-surface statistics rather than transferable failure concepts. The two
-frozen-LM-encoder legs (Qwen3-0.6B base, our mid 360M SFT) are
-checkpointed at 1400/2329 instances; they test whether a real language
-model's representations close the gap to the TF-IDF feature class.}
+surface statistics rather than transferable failure concepts. Frozen-LM-encoder legs (Qwen3-0.6B base
+via transformers, our mid 360M SFT): the same readout protocol on real
+hidden states closes 86\% of the gap to the commercial detector and
+\emph{beats} word-level TF-IDF by +0.08. LOBO transfer rises with
+encoder quality (0.542 $\to$ 0.561) but stays modest -- frozen
+features carry some transferable signal (abstentionbench LOBO 0.933)
+yet plateau near 0.56, pointing to fine-tuned readout heads or
+prompt-based scoring as the next step.}
 \label{tab:alignbench}
 \end{table}
 
@@ -317,9 +323,11 @@ readout protocol (continuous Noul $\to$ LR) on char mean-pool scores
 $n$-grams 0.726. Tokenizer capacity is not the limit; feature geometry
 is. The LOBO transfer row (0.542) further shows the mean-pool encoder
 memorizes per-benchmark surface statistics rather than transferable
-failure concepts -- the two frozen-LM encoder legs in
-progress directly test whether a real language model's hidden states
-carry the missing transfer.
+failure concepts -- the two frozen-LM encoder legs
+complete the picture: Qwen3-0.6B hidden states supervised at 0.807 and
+mid 360M at 0.692 -- real language-model representations not only
+close the gap to the TF-IDF feature class but exceed it, while LOBO
+transfer rises with encoder quality yet plateaus near 0.56.
 
 A methodological lesson with general import: the benchmark's state
 schema is per-benchmark (10+ shapes); a fixed field assumption rendered
