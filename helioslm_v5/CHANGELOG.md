@@ -1,5 +1,14 @@
 # HeliosLM v5 Changelog
 
+## v5.38c (2026-10-03) - Paper Draft
+- docs/paper_draft_2026-10-03.md: full working paper (abstract,
+  intro, related work, stack, evidence chain, trilogy, AlignBench
+  comparison, limitations, reproducibility). Every number traces to a
+  versioned artifact; honest framing throughout (supervised legs,
+  single-point scale, encoder bottleneck)
+
+
+
 ## v5.38b (2026-10-03) - TF-IDF Leg + Charts: 11 Benchmarks Beat Jev Zero-Shot
 - TF-IDF leg (word 1-2 + char_wb 3-5, 20K features each, LR C=1): median
   0.726 (char 0.561 -> BPE 0.569 -> TF-IDF 0.726). WE BEAT Jev zero-shot
