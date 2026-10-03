@@ -1,5 +1,17 @@
 # HeliosLM v5 Changelog
 
+## v5.38e (2026-10-03) - Paper PDF Built and Distributed
+- docs/paper_draft_2026-10-03.pdf: tectonic build, 7pp, 3 figures
+  embedded, checked into GitHub (eb87ad45) and HF
+  (commit f356f081, chienhsinlin/helioslm docs/). HF docs/ is now the
+  complete trio: .tex (source) + .md (reading) + .pdf (artifact)
+- hf_upload.py second routing bug fixed: inline branch corrupted
+  binary files (PDF) via errors=replace -- 400 from the commit API.
+  Routing is now content-based (strict utf-8 probe), not size-based
+  (12a368fb). Same lesson as the LFS-pointer bug, in reverse
+
+
+
 ## v5.38d (2026-10-03) - LaTeX Version for arXiv
 - docs/paper_draft_2026-10-03.tex: arXiv-ready article (booktabs
   tables, natbib, thebibliography). Self-contained; compiles with
