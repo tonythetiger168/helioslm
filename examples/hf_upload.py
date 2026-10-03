@@ -19,6 +19,13 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
 
 
+INLINE_MAX = 1_000_000   # < 1MB: inline files[] (text/small artifacts);
+                         # >= 1MB: LFS. Uploading a text README as an LFS
+                         # pointer breaks the HF model card (found 10-03:
+                         # README.md landed as an LFS pointer and the repo
+                         # front page showed the pointer text)
+
+
 def main(path, repo="chienhsinlin/helioslm", repo_path=None):
     token = os.environ.get("HF_TOKEN")
     if not token:
@@ -26,10 +33,24 @@ def main(path, repo="chienhsinlin/helioslm", repo_path=None):
     auth = {"Authorization": f"Bearer {token}"}
     data = open(path, "rb").read()
     sha = hashlib.sha256(data).hexdigest()
-    # optional explicit repo path; default keeps the historical
-    # checkpoints/ prefix for weight artifacts
     name = repo_path or ("checkpoints/" + os.path.basename(path))
-    print(f"[1/4] {name}: {len(data)} bytes sha={sha[:12]}", flush=True)
+    if len(data) < INLINE_MAX:
+        payload = {"message": f"upload {name} (inline)",
+                   "summary": f"upload {name}",
+                   "description": f"inline upload of {name}",
+                   "files": [{"path": name,
+                              "content": data.decode("utf-8", "replace")}],
+                   "lfsFiles": []}
+        req = urllib.request.Request(
+            f"https://huggingface.co/api/models/{repo}/commit/main",
+            method="POST", data=json.dumps(payload).encode(),
+            headers={**auth, "Content-Type": "application/json",
+                     "User-Agent": UA})
+        commit = json.loads(urllib.request.urlopen(req, timeout=120).read())
+        print("[inline] commit:", commit.get("commitUrl"), flush=True)
+        print("DONE", flush=True)
+        return
+    print(f"[1/4] {name}: {len(data)} bytes sha={sha[:12]} [LFS]", flush=True)
 
     def api(url, payload=None, method="POST", headers=None, raw=None,
             timeout=600):
