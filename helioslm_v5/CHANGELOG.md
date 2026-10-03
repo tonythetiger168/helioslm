@@ -1,5 +1,16 @@
 # HeliosLM v5 Changelog
 
+## v5.38f (2026-10-03) - Paper v2 + Local Encoder Scripts
+- Paper v2 (565a6c16): LOBO row (0.542, near-zero transfer finding),
+  encoder ablation paragraph, LM-encoder legs marked in-progress
+- examples/alignbench_qwen_encode.py + alignbench_mid_encode.py:
+  runnable locally on GPU (~5 min each on a 4060); produce qwen_feats.npz
+  / mid_feats.npz for the readout leg. Sandbox legs checkpointed at
+  1400/2329 but the FUSE filesystem instability killed them repeatedly;
+  local runs are the reliable path
+
+
+
 ## v5.38e (2026-10-03) - Paper PDF Built and Distributed
 - docs/paper_draft_2026-10-03.pdf: tectonic build, 7pp, 3 figures
   embedded, checked into GitHub (eb87ad45) and HF
