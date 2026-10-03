@@ -32,8 +32,8 @@ def render(it):
 keep = [(i, it) for i, it in enumerate(items) if it["benchmark"] in SUBSET]
 print(f"subset: {len(keep)} states", flush=True)
 
-tok = AutoTokenizer.from_pretrained("./qwen")
-model = AutoModel.from_pretrained("./qwen").eval()
+tok = AutoTokenizer.from_pretrained("qwen")
+model = AutoModel.from_pretrained("qwen").eval()
 dev = "cuda" if torch.cuda.is_available() else "cpu"
 model = model.to(dev)
 print(f"device: {dev}", flush=True)
