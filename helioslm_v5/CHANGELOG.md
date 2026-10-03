@@ -1,5 +1,17 @@
 # HeliosLM v5 Changelog
 
+## v5.37n (2026-10-03) - Refusal Accounting + Import Fix
+- v5 rerun (v5.37l oracle fix): 9/12 correct, 3 write_read refusals
+  with ZERO hallucination leakage -- but the 360M model recovers by
+  QUOTING the abstention text as its answer, not re-walking the chain.
+  v5 eval now counts abstained separately (not as wrong): therapy
+  outcome is 9 correct + 3 abstained + 0 leaked
+- eval_mid_trust: FixedGate import fix (v5.37l replace missed the
+  actual import line; NameError before the dual-prefix+TherapyPair run
+  could start)
+
+
+
 ## v5.37m (2026-10-03) - The 8.4x Intervention Contrast, Archived
 - benchmarks/trust_dual_prefix_console_2026-10-03.md: console record
   of the v5.37k dual-prefix run. ungrounded_p 0.023 / grounded_p 0.190

@@ -96,16 +96,23 @@ def main():
                                   max_steps=task.step_budget)
             final = session.send(task.text, seed=1)
             ok = final is not None and env.verify(task, final)
+            abstained = final is not None and str(final).startswith(
+                "ABSTAINED")
             results.append({"family": getattr(task, "family",
                                               type(task).__name__),
                             "task": task.text[:80], "expected": task.answer,
                             "final": final, "correct": ok,
+                            "abstained": abstained,
                             "steps": len(session.steps), "conf": state["conf"]})
             print(f"{results[-1]['family']} correct={ok} "
                   f"final={str(final)[:30]!r}", flush=True)
     corr = [r for r in results if r["correct"]]
+    abst = [r for r in results if r.get("abstained")]
     summary = {"n": len(results),
                "correct": f"{len(corr)}/{len(results)}",
+               "abstained": f"{len(abst)}/{len(results)}",
+               "note": "abstained = refusal fired and NO hallucination "
+                       "leaked; not scored as wrong",
                "grounded": True,
                "compare": "mid_agent_eval_v4.json was 0/12 ungrounded",
                "results": results}
