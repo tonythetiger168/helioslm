@@ -1,3 +1,16 @@
+---
+license: mit
+tags:
+- helioslm
+- rlcd
+- calibrated-decisions
+- decision-layer
+- agentic-rl
+- deepseek-v3
+- reference-implementation
+pipeline_tag: text-generation
+---
+
 # HeliosLM — A Hackable DeepSeek-V3/K3-Style LLM Stack in Pure PyTorch
 
 A from-scratch PyTorch reference implementation of a modern LLM stack: MLA attention with weight absorption, sigmoid-gated MoE with auxiliary-loss-free load balancing, hybrid linear attention, speculative decoding, FP8 training, a DualPipe schedule simulation, a vLLM-style serving engine, a **verifiable agent layer** (strict tool schema, bitwise-replay oracle), DSA sparse attention, Mooncake-style prefill/decode disaggregation, and tool-tuned checkpoints. Built to be **read, modified, and verified** — every core path is unit-tested and many are checked with bitwise-equivalence tests. Everything runs on CPU.
