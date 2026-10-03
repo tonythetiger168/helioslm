@@ -1,5 +1,14 @@
 # HeliosLM v5 Changelog
 
+## v5.37o (2026-10-03) - Top-Level Import Actually Added
+- v5.37n's import patch replaced the LAZY import inside
+  ReviewOracle.decide (first textual occurrence) instead of adding a
+  top-level one; main() still had no FixedGate. Same trap family as
+  v5.36g: anchor on the wrong occurrence, assert passed on the wrong
+  string. Header-scoped verify this time
+
+
+
 ## v5.37n (2026-10-03) - Refusal Accounting + Import Fix
 - v5 rerun (v5.37l oracle fix): 9/12 correct, 3 write_read refusals
   with ZERO hallucination leakage -- but the 360M model recovers by

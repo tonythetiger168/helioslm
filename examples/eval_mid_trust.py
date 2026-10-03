@@ -35,6 +35,7 @@ from chat import ChatSession
 from decision_head import DecisionHead
 from envs import make_envs, make_long_envs
 from helioslm_v5.agent.trajectory import text_to_ids   # path anchor
+from gate import FixedGate, Route
 from trust_gate import TrustGate
 from grounding import GroundingGate
 from tools import build_default_registry
