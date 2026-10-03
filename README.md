@@ -40,7 +40,9 @@ A from-scratch PyTorch reference implementation of a modern LLM stack: MLA atten
 
 **Calibrated Agency: An Open-Source RLCD Stack, from Toy Scale to 360M, with a
 Canonical-Benchmark Comparison** — Chien-Hsin Lin, working draft 2026-10-03.
-[`docs/paper_draft_2026-10-03.tex`](docs/paper_draft_2026-10-03.tex) (arXiv-ready, figures included) ·
+
+**[📄 Read the PDF](docs/paper_draft_2026-10-03.pdf)** (7pp, figures included) ·
+[LaTeX source](docs/paper_draft_2026-10-03.tex) (arXiv-ready) ·
 [markdown](helioslm_v5/docs/paper_draft_2026-10-03.md) ·
 [HF copy](https://huggingface.co/chienhsinlin/helioslm/tree/main/docs).
 Headline numbers: overconfidence on wrong answers grows with scale
