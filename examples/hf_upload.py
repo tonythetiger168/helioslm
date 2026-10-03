@@ -34,12 +34,21 @@ def main(path, repo="chienhsinlin/helioslm", repo_path=None):
     data = open(path, "rb").read()
     sha = hashlib.sha256(data).hexdigest()
     name = repo_path or ("checkpoints/" + os.path.basename(path))
-    if len(data) < INLINE_MAX:
+    # inline ONLY for genuinely text-decodable files; binary files
+    # (PDFs!) must use LFS regardless of size -- decoding a PDF with
+    # errors="replace" corrupts it and the commit API 400s (found
+    # 10-03 on the 313KB paper PDF)
+    is_text = False
+    try:
+        data.decode("utf-8")
+        is_text = True
+    except UnicodeDecodeError:
+        pass
+    if is_text and len(data) < INLINE_MAX:
         payload = {"message": f"upload {name} (inline)",
                    "summary": f"upload {name}",
                    "description": f"inline upload of {name}",
-                   "files": [{"path": name,
-                              "content": data.decode("utf-8", "replace")}],
+                   "files": [{"path": name, "content": data.decode("utf-8")}],
                    "lfsFiles": []}
         req = urllib.request.Request(
             f"https://huggingface.co/api/models/{repo}/commit/main",
