@@ -1,0 +1,8 @@
+{
+ "protocol": "LOBO: train MLP head (1024->256->1 sigmoid) on 14 source benchmarks, test on held-out target; 300 epochs Adam 1e-3",
+ "median_auroc_seed0": 0.589,
+ "lr_lobo_baseline": 0.561,
+ "delta": 0.028,
+ "interpretation": "fine-tuning the readout head releases a MODEST transfer gain (+0.028) -- direction confirmed, magnitude small; the frozen-feature ceiling is real but not absolute. Recorded next step: prompt-based zero-shot (the other recorded direction) and per-benchmark few-shot fine-tuning",
+ "note": "single seed, 300 epochs (800-epoch run timed out on sandbox; 300 is converged per loss curve)"
+}

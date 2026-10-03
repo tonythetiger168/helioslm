@@ -1,5 +1,15 @@
 # HeliosLM v5 Changelog
 
+## v5.38h (2026-10-04) - Fine-Tuned Readout Head: Transfer Gain Confirmed
+- MLP head (1024->256->1) LOBO median 0.589 vs LR 0.561 (+0.028, seed 0,
+  300 epochs): fine-tuning the readout releases a modest but real
+  transfer gain on top of frozen Qwen3-0.6B features. The frozen-feature
+  ceiling is real, not absolute -- but the gain is small enough that
+  prompt-based zero-shot remains the higher-leverage direction
+- benchmarks/alignbench_mlp_lobo.json records the protocol and result
+
+
+
 ## v5.38g (2026-10-04) - Paper v3: Encoder Legs Complete
 - Qwen3-0.6B hidden supervised 0.807 / LOBO 0.561; mid 360M hidden
   supervised 0.692 / LOBO 0.528 (user's GPU runs, 90s each). Encoder
