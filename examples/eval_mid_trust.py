@@ -84,31 +84,43 @@ def main():
 
     gate = TrustGate(head, hi=0.7, lo=0.3, inner=ReviewOracle())
     rng = random.Random(777)
+    # v5.37k: BOTH intervention prefixes. All-negative abstention was
+    # the 10-02 failure; the mixed head on [ungrounded] alone still
+    # learns 'ungrounded -> distrust' (12/12 correct distrust). The
+    # TIERED demonstration is the CONTRAST: same fresh tasks under
+    # [grounded] must read materially higher trust.
     results = []
-    for env in make_envs() + make_long_envs():
-        reg, impls = build_default_registry()
-        for _ in range(3):
-            task = env.sample(rng)
-            log_start = len(gate.log)
-            session = ChatSession(model_fn, reg, impls, gate,
-                                  max_steps=task.step_budget)
-            final = session.send(f"[ungrounded] {task.text}", seed=1)
-            decisions = gate.log[log_start:]
-            abstained = any(e["route"] == "ESCALATE" for e in decisions)
-            ok = final is not None and env.verify(task, final)
-            results.append({
-                "family": getattr(task, "family", type(task).__name__),
-                "correct": ok, "abstained": abstained,
-                "p_trust_min": min((e["p_trust"] for e in decisions),
-                                   default=None),
-                "final": final})
-            print(f"{results[-1]['family']} correct={ok} "
-                  f"abstained={abstained} "
-                  f"p_min={results[-1]['p_trust_min']} "
-                  f"final={str(final)[:30]!r}", flush=True)
+    for prefix in ("ungrounded", "grounded"):
+        for env in make_envs() + make_long_envs():
+            reg, impls = build_default_registry()
+            for _ in range(3):
+                task = env.sample(rng)
+                log_start = len(gate.log)
+                session = ChatSession(model_fn, reg, impls, gate,
+                                      max_steps=task.step_budget)
+                final = session.send(f"[{prefix}] {task.text}", seed=1)
+                decisions = gate.log[log_start:]
+                abstained = any(e["route"] == "ESCALATE" for e in decisions)
+                ok = final is not None and env.verify(task, final)
+                results.append({
+                    "prefix": prefix,
+                    "family": getattr(task, "family", type(task).__name__),
+                    "correct": ok, "abstained": abstained,
+                    "p_trust_min": min((e["p_trust"] for e in decisions),
+                                       default=None),
+                    "final": final})
+                print(f"[{prefix}] {results[-1]['family']} correct={ok} "
+                      f"abstained={abstained} "
+                      f"p_min={results[-1]['p_trust_min']} "
+                      f"final={str(final)[:30]!r}", flush=True)
+    pu = [r["p_trust_min"] for r in results if r["prefix"] == "ungrounded"]
+    pg = [r["p_trust_min"] for r in results if r["prefix"] == "grounded"]
+    summary_contrast = {
+        "ungrounded_p_mean": sum(pu) / len(pu),
+        "grounded_p_mean": sum(pg) / len(pg)}
     abstains = [r for r in results if r["abstained"]]
     corr = [r for r in results if r["correct"]]
-    summary = {
+    summary = {**summary_contrast,
         "n": len(results),
         "correct": f"{len(corr)}/{len(results)}",
         "abstained": f"{len(abstains)}/{len(results)}",

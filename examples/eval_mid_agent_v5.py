@@ -34,6 +34,19 @@ from tools import build_default_registry
 MAX_NEW = 128
 
 
+class AbstainOracle:
+    """v5.37k: the premature-finish refusal (GroundingGate ESCALATE on an
+    empty state machine) needs an observation to hand back to the
+    session, or FixedGate.escalate raises and the eval dies (found on
+    the first v5.37j rerun: refusal fired correctly on write_read task
+    10, then NotImplementedError killed the harness). The model gets
+    the abstention note and can re-walk the evidence chain."""
+
+    def escalate(self, call, context):
+        return ("ABSTAINED (insufficient evidence): finish arrived before "
+                "any tool observation -- gather evidence first")
+
+
 def main():
     torch.manual_seed(0)
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -72,8 +85,10 @@ def main():
         reg, impls = build_default_registry()
         for _ in range(max(1, n_tasks // 4)):
             task = env.sample(rng)
-            session = ChatSession(model_fn, reg, impls,
-                                  GroundingGate(FixedGate(Route.DIRECT)),
+            oracle = AbstainOracle()
+            grounded = GroundingGate(FixedGate(Route.DIRECT))
+            grounded.inner = oracle
+            session = ChatSession(model_fn, reg, impls, grounded,
                                   max_steps=task.step_budget)
             final = session.send(task.text, seed=1)
             ok = final is not None and env.verify(task, final)

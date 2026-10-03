@@ -1,5 +1,19 @@
 # HeliosLM v5 Changelog
 
+## v5.37k (2026-10-03) - Acceptance Harness Fixes (Refusal Fired, Harness Died)
+- First v5.37j rerun: the premature-finish refusal fired EXACTLY as
+  designed (9/9 calc/str correct, then write_read task 10 finish-first
+  -> ESCALATE) but FixedGate has no oracle and the harness crashed --
+  refusal correct, assembly incomplete. v5 gains AbstainOracle: the
+  session receives the abstention note and the model can re-walk the
+  evidence chain
+- eval_mid_trust runs BOTH intervention prefixes (24 tasks total):
+  [ungrounded] alone legitimately reads all-distrust (training says
+  ungrounded fails 12/12); the TIERED demonstration is the contrast
+  metric ungrounded_p_mean vs grounded_p_mean on fresh identical tasks
+
+
+
 ## v5.37j (2026-10-03) - Known-Limitations Batch: #1 + #3
 - eval_mid_trust v2: MIXED outcome records (v4 12 no + v5 9 yes/3 no)
   with an INTERVENTION prefix ([ungrounded]/[grounded]) -- the trust
