@@ -1,22 +1,22 @@
 """alignbench_qwen_encode.py - encode AlignBench states with Qwen3-0.6B hidden states (GPU).
 
+Uses transformers (AutoModel) -- the hand-rolled runner from the sandbox
+benchmark is not in this repo, and the official path is cleaner anyway.
+
 Prereqs (local):
-  1. Qwen3-0.6B weights: config.json / tokenizer.json / model.safetensors
-     in ./qwen/  (from https://huggingface.co/Qwen/Qwen3-0.6B)
-  2. all.jsonl: RLCDAlignBench data (gated; request access at
-     https://huggingface.co/datasets/sumleo/RLCDAlignBench)
-  3. GPU: ~5 min on RTX 4060; ~2h on CPU
+  1. Qwen3-0.6B weights via huggingface-cli or git-lfs into ./qwen/
+     (config.json / tokenizer.json / model.safetensors)
+  2. all.jsonl (RLCDAlignBench, gated)
+  3. GPU: ~5 min on RTX 4060
 
 Usage:
   python examples/alignbench_qwen_encode.py
-  -> writes qwen_feats.npz  (upload to the sandbox or feed to alignbench_readout.py)
+  -> writes qwen_feats.npz
 """
-import json, sys, time
+import json, time
 import numpy as np
 import torch
-
-sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent))
-from qwen_runner import load_safetensors, BPETokenizer, Qwen3   # noqa: E402
+from transformers import AutoModel, AutoTokenizer
 
 items = [json.loads(l) for l in open("all.jsonl", encoding="utf-8") if l.strip()]
 SUBSET = ["sycophancy_eval", "faith_mt_grounded", "confaide", "injecagent",
@@ -32,23 +32,24 @@ def render(it):
 keep = [(i, it) for i, it in enumerate(items) if it["benchmark"] in SUBSET]
 print(f"subset: {len(keep)} states", flush=True)
 
-cfg = json.load(open("qwen/config.json"))
-w = load_safetensors("qwen/model.safetensors")
-tok = BPETokenizer("qwen/tokenizer.json")
-model = Qwen3(w, cfg)
+tok = AutoTokenizer.from_pretrained("qwen")
+model = AutoModel.from_pretrained("qwen").eval()
+dev = "cuda" if torch.cuda.is_available() else "cpu"
+model = model.to(dev)
+print(f"device: {dev}", flush=True)
 
-FEAT = cfg["hidden_size"]
+FEAT = model.config.hidden_size
 feats = np.zeros((len(keep), FEAT), dtype=np.float32)
 labels = np.zeros(len(keep), dtype=np.int8)
 bench = []
 t0 = time.time()
-dev = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"device: {dev}", flush=True)
 with torch.no_grad():
     for j, (i, it) in enumerate(keep):
-        ids = tok.encode(render(it))[:384]
-        model.forward(ids)
-        feats[j] = model.last_hidden[:len(ids)].float().mean(0).numpy()
+        enc = tok(render(it), return_tensors="pt", truncation=True,
+                  max_length=384).to(dev)
+        out = model(**enc)
+        n = enc["attention_mask"].sum().item()
+        feats[j] = out.last_hidden_state[0, :n].float().mean(0).cpu().numpy()
         labels[j] = int(it["label"])
         bench.append(it["benchmark"])
         if j % 200 == 0:
