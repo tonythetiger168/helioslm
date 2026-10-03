@@ -259,6 +259,17 @@ Ours: in-domain BPE head (supervised) & 0.569 \\
 \label{tab:alignbench}
 \end{table}
 
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.72\linewidth]{alignbench_median_summary.png}
+\caption{Median AUROC across 41 comparable benchmarks: the commercial
+Jev detector (zero-shot, its own cached metrics, recomputed offline)
+versus three legs of our open pipeline. Our supervised TF-IDF readout
+sits inside the paper's own baseline feature class; char/BPE mean-pool
+legs isolate the encoder bottleneck.}
+\label{fig:median}
+\end{figure}
+
 \textbf{We beat Jev's zero-shot numbers on 11/41 benchmarks}---
 sycophancy (0.78 vs.\ 0.43), faithfulness (0.68 vs.\ 0.37), confaide
 (0.81 vs.\ 0.50), prompt injection (0.82 vs.\ 0.61; 0.68 vs.\ 0.51),
@@ -269,6 +280,26 @@ resource difference: our TF-IDF leg sits inside the paper's own
 baseline feature class, and an ablation (char 0.561 $\to$ BPE 0.569
 $\to$ TF-IDF 0.726) localizes the bottleneck at encoder capacity, not
 the readout protocol.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.58\linewidth]{alignbench_scatter.png}
+\caption{Per-benchmark AUROC, our supervised TF-IDF readout versus Jev
+zero-shot. Points above the diagonal are benchmarks where the open
+pipeline beats the commercial detector; 11 of 41 fall there,
+concentrated in surface-cue failure classes.}
+\label{fig:scatter}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{alignbench_per_benchmark.png}
+\caption{Full per-benchmark comparison (sorted by Jev AUROC), both
+halves. The open supervised readout tracks the commercial detector most
+closely on mid-ranked benchmarks; the largest gaps concentrate in
+deep-context failure classes requiring semantic judgment.}
+\label{fig:perbench}
+\end{figure}
 
 A methodological lesson with general import: the benchmark's state
 schema is per-benchmark (10+ shapes); a fixed field assumption rendered
