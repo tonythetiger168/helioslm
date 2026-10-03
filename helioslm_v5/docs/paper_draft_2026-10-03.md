@@ -1,8 +1,9 @@
 # Calibrated Agency: An Open-Source RLCD Stack, from Toy Scale to 360M, with a Canonical-Benchmark Comparison
 
-**Working paper draft, 2026-10-03.** All numbers are reproduced from
-versioned artifacts in github.com/tonythetiger168/helioslm (cited by
-CHANGELOG tag) and the gated dataset sumleo/RLCDAlignBench.
+**Chien-Hsin Lin. Working paper draft, 2026-10-03.** All numbers are
+reproduced from versioned artifacts in
+github.com/tonythetiger168/helioslm (cited by CHANGELOG tag) and the
+gated dataset sumleo/RLCDAlignBench.
 
 ## Abstract
 
