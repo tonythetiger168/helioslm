@@ -1,5 +1,13 @@
 # HeliosLM v5 Changelog
 
+## v5.38d (2026-10-03) - LaTeX Version for arXiv
+- docs/paper_draft_2026-10-03.tex: arXiv-ready article (booktabs
+  tables, natbib, thebibliography). Self-contained; compiles with
+  pdflatex. Submission path: arXiv cs.LG now, TMLR next (reproducibility
+  certification target), NeurIPS 2027 main after the zero-shot leg
+
+
+
 ## v5.38c (2026-10-03) - Paper Draft
 - docs/paper_draft_2026-10-03.md: full working paper (abstract,
   intro, related work, stack, evidence chain, trilogy, AlignBench
