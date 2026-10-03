@@ -1,5 +1,29 @@
 # HeliosLM v5 Changelog
 
+## v5.38a (2026-10-03) - RLCDAlignBench First Numbers (7,193 instances)
+- benchmarks/alignbench_comparison_2026-10-03.txt: three-way table,
+  41 comparable benchmarks. Jev zero-shot (its own cached metrics,
+  recomputed offline from the gated dataset) median 0.859 (paper
+  reports 0.886; delta = variant/battery selection, recorded); our
+  SUPERVISED DecisionHead median 0.561 char / 0.569 BPE
+- Honest read: the median gap is the honest-minimum encoder (char/
+  BPE mean-pool, T35-documented bottleneck), NOT the RLCD readout
+  protocol -- the same readout on per-benchmark surface-cue tasks
+  matches or beats Jev zero-shot (sycophancy 0.71 vs 0.43, injecagent
+  0.80 vs 0.61, open_prompt_injection 0.67 vs 0.51, abstentionbench
+  0.88 vs 0.87). We are below the paper's TF-IDF LR baseline too
+  (0.75-0.97): word n-grams >> mean-pool at this scale
+- Method lesson recorded: the benchmark's state schema is PER-BENCHMARK
+  (10+ shapes); the first run rendered empty states for 40/44
+  benchmarks (median 0.500) before switching to generic all-field
+  rendering (0.561). Any fixed-field assumption on heterogeneous
+  benchmarks degrades SILENTLY
+- Runner updated: label is it['label'] directly (1=failure); generic
+  state render; in-domain BPE leg (4K vocab trained on the data
+  itself, encodings cached)
+
+
+
 ## v5.38 (2026-10-03) - RLCDAlignBench Runner Skeleton
 - examples/alignbench_run.py: our stack on the canonical benchmark
   (sumleo/RLCDAlignBench, gated). Legs: inspect (field mapping),
