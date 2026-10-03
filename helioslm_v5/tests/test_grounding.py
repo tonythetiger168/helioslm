@@ -225,6 +225,38 @@ def test_finish_grounds_to_family_semantics():
           f"no closing calc)")
 
 
+def test_premature_finish_escalates():
+    """v5.37j: finish-first on a groundable multi-step family must
+    ESCALATE -- empty state machine means nothing to inject, and the
+    10-02 write_read bypass ('1 * 1', '36') showed the confabulation
+    passes through otherwise."""
+    from grounding import GroundingGate
+    from schema import ToolCall, render_tool_call
+
+    class ReviewOracle:
+        def decide(self, call, context):
+            return Route.DIRECT
+
+        def escalate(self, call, context):
+            return "ROUTED_TO_REVIEW"
+
+    gate = GroundingGate(FixedGate(Route.DIRECT))
+    gate.inner = ReviewOracle()
+    call = ToolCall("finish", {"answer": "0"})
+    task = ("Compute the value of: 21 * 17 + 10. Write the result to "
+            "f.txt, then read f.txt and finish with its exact content.")
+    route = gate.decide(call, {"task": task})
+    assert route == Route.ESCALATE, f"premature finish not refused: {route}"
+    assert gate.escalate(call, {"task": task}) == "ROUTED_TO_REVIEW"
+    # single-step calc finishing after its obs is NOT premature
+    g2 = GroundingGate(FixedGate(Route.DIRECT))
+    c2 = ToolCall("calc", {"expr": "1+1"})
+    g2.decide(c2, {"task": "Compute the value of: 2 + 2"})
+    c3 = ToolCall("finish", {"answer": "x"})
+    assert g2.decide(c3, {"task": "Compute the value of: 2 + 2"}) == Route.DIRECT
+    print("PASS test_premature_finish_escalates")
+
+
 if __name__ == "__main__":
     test_grounding_cures_confabulation()
     test_grounding_all_env_families()
@@ -232,4 +264,5 @@ if __name__ == "__main__":
     test_escalate_path_untouched()
     test_unknown_task_passes_through()
     test_finish_grounds_to_family_semantics()
-    print("\n6/6 grounding tests passed")
+    test_premature_finish_escalates()
+    print("\n7/7 grounding tests passed")

@@ -145,6 +145,18 @@ class GroundingGate(Gate):
                 st["reads"].append(content)
                 st["last"] = ("read", content)
             elif call.name == "finish":
+                # v5.37j: PREMATURE FINISH on a multi-step family with an
+                # EMPTY state machine (finish-first, no evidence gathered).
+                # Grounding has nothing to inject; the confabulation would
+                # pass through -- exactly the 10-02 write_read bypass
+                # (finals '1 * 1', '36'). Refuse the route instead:
+                # ESCALATE (evidence insufficient, route to review).
+                # The therapy pair at the sequence level: TrustGate
+                # withholds at the state level, this rule at the
+                # sequence level. Single-step families (calc/str)
+                # legitimately finish after one obs, so they exempt.
+                if st["last"] is None and k not in ("calc", "str"):
+                    return Route.ESCALATE
                 # Semantic finish grounding (code-review fix, 2026-09-29):
                 # the answer anchors to the TASK's definition, not to the
                 # sequence's last event -- a mid-sequence deviation must

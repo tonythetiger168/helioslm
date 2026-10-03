@@ -1,5 +1,21 @@
 # HeliosLM v5 Changelog
 
+## v5.37j (2026-10-03) - Known-Limitations Batch: #1 + #3
+- eval_mid_trust v2: MIXED outcome records (v4 12 no + v5 9 yes/3 no)
+  with an INTERVENTION prefix ([ungrounded]/[grounded]) -- the trust
+  question is P(correct | state, intervention); the 10-02 family-wide
+  abstention came from all-negative data missing this dimension
+- GroundingGate: PREMATURE FINISH on a groundable multi-step family
+  with an empty state machine now ESCALATEs (the 10-02 write_read
+  bypass: finals '1 * 1'/'36' passed through ungrounded). Single-step
+  families exempt (calc/str finish after one obs is legitimate).
+  Sequence-level refusal inside grounding; TrustGate remains the
+  state-level counterpart
+- T33 7/7 incl. the new premature-finish oracle (finish-first refused,
+  calc-then-finish still DIRECT)
+
+
+
 ## v5.37i (2026-10-02) - Trilogy Artifacts Archived
 - benchmarks/mid_{agent_eval_v4,agent_eval_v5,sft_v5.33}_trilogy.json:
   the raw evidence for the self-consistent trilogy (fresh 360M
