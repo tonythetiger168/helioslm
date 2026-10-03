@@ -36,6 +36,7 @@ from decision_head import DecisionHead
 from envs import make_envs, make_long_envs
 from helioslm_v5.agent.trajectory import text_to_ids   # path anchor
 from trust_gate import TrustGate
+from grounding import GroundingGate
 from tools import build_default_registry
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -64,8 +65,33 @@ def load_outcome_records():
 class ReviewOracle:
     """Stand-in for the human/vendor review path an abstention routes
     to in production."""
+    def decide(self, call, context):
+        from gate import FixedGate, Route
+        return Route.DIRECT
+
     def escalate(self, call, context):
         return "ABSTAINED (low trust): action routed to review"
+
+
+class TherapyPair:
+    """v5.37l: the COMPOSED therapy -- TrustGate routes, GroundingGate
+    fills content. The 10-03 dual-prefix run exposed the gap: DIRECT
+    under [grounded] prefix executed UNTREATED (confabulated args,
+    4/4 wrong) because the trust harness ran bare. Trust must be
+    PAIRED with the intervention it is conditioned on."""
+
+    def __init__(self, trust_gate, grounding_gate):
+        self.trust = trust_gate
+        self.ground = grounding_gate
+
+    def decide(self, call, context):
+        route = self.trust.decide(call, context)
+        if route.value == "DIRECT":
+            return self.ground.decide(call, context)   # may rewrite / refuse
+        return route
+
+    def escalate(self, call, context):
+        return self.trust.escalate(call, context)
 
 
 def main():
@@ -83,6 +109,8 @@ def main():
     head.eval()
 
     gate = TrustGate(head, hi=0.7, lo=0.3, inner=ReviewOracle())
+    grounded_gate = GroundingGate(FixedGate(Route.DIRECT))
+    grounded_gate.inner = ReviewOracle()
     rng = random.Random(777)
     # v5.37k: BOTH intervention prefixes. All-negative abstention was
     # the 10-02 failure; the mixed head on [ungrounded] alone still
@@ -96,7 +124,9 @@ def main():
             for _ in range(3):
                 task = env.sample(rng)
                 log_start = len(gate.log)
-                session = ChatSession(model_fn, reg, impls, gate,
+                active = TherapyPair(gate, grounded_gate) \
+                    if prefix == "grounded" else gate
+                session = ChatSession(model_fn, reg, impls, active,
                                       max_steps=task.step_budget)
                 final = session.send(f"[{prefix}] {task.text}", seed=1)
                 decisions = gate.log[log_start:]

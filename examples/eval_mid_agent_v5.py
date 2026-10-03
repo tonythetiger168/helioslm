@@ -42,6 +42,10 @@ class AbstainOracle:
     10, then NotImplementedError killed the harness). The model gets
     the abstention note and can re-walk the evidence chain."""
 
+    def decide(self, call, context):
+        from gate import Route
+        return Route.DIRECT
+
     def escalate(self, call, context):
         return ("ABSTAINED (insufficient evidence): finish arrived before "
                 "any tool observation -- gather evidence first")

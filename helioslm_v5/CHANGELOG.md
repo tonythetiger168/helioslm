@@ -1,5 +1,21 @@
 # HeliosLM v5 Changelog
 
+## v5.37l (2026-10-03) - Therapy-Pair Composition + 8.4x Intervention Contrast
+- Dual-prefix trust run: ungrounded_p_mean 0.0228 vs grounded_p_mean
+  0.1904 -- intervention conditioning VERIFIED on real weights; tiers
+  emerged (high ~0.7 / medium ~0.47 / low <0.3 firing in one run)
+- FINDING: 4 DIRECT [grounded] tasks were 4/4 WRONG -- the trust
+  harness executed them UNTREATED. Trust calibrated on grounded
+  outcomes is only honorcd when the run is ACTUALLY grounded: the
+  therapy pair must be COMPOSED, not used alone. TherapyPair wrapper
+  (TrustGate routes, GroundingGate fills) added to eval_mid_trust;
+  [grounded] prefix now runs composed, [ungrounded] stays bare
+- v5 AbstainOracle gained decide() (GroundingGate.decide consults
+  inner.decide first; the missing method crashed the rerun at task 10,
+  refusal itself had fired correctly)
+
+
+
 ## v5.37k (2026-10-03) - Acceptance Harness Fixes (Refusal Fired, Harness Died)
 - First v5.37j rerun: the premature-finish refusal fired EXACTLY as
   designed (9/9 calc/str correct, then write_read task 10 finish-first
