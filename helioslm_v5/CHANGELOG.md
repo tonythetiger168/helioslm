@@ -1,5 +1,15 @@
 # HeliosLM v5 Changelog
 
+## v5.37m (2026-10-03) - The 8.4x Intervention Contrast, Archived
+- benchmarks/trust_dual_prefix_console_2026-10-03.md: console record
+  of the v5.37k dual-prefix run. ungrounded_p 0.023 / grounded_p 0.190
+  (8.4x), tiers emerged (0.71 high / 0.47 medium / <0.3 low); 4
+  DIRECT-[grounded] 4/4 wrong without grounding -> TherapyPair
+  composition finding; v5 refusal fired then died on oracle.decide
+  (fixed in v5.37l). Report evidence chain gains claim 4b
+
+
+
 ## v5.37o (2026-10-03) - Top-Level Import Actually Added
 - v5.37n's import patch replaced the LAZY import inside
   ReviewOracle.decide (first textual occurrence) instead of adding a

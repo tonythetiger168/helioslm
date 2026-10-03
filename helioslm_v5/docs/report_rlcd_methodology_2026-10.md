@@ -72,6 +72,16 @@ tokenizer trained on the repo's own corpus (bpe.py, T31), a 360M
    PAIRED with that intervention. TrustGate routes, GroundingGate
    fills -- neither half suffices alone (benchmarks/
    trust_dual_prefix_console_2026-10-03.md).
+4b. **Trust is a function of (state, intervention), not state alone**
+   (10-03): the same 12 task texts, run ungrounded (0/12) vs grounded
+   (9/12), train a continuous-Noul head on both with an intervention
+   prefix -- fresh identical tasks read ungrounded_p 0.023 vs
+   grounded_p 0.190 (8.4x), with high/medium/low tiers firing in one
+   run. And 4 DIRECT-[grounded] tasks scored 4/4 WRONG when executed
+   WITHOUT grounding: trust calibrated on an intervention must be
+   PAIRED with that intervention. TrustGate routes, GroundingGate
+   fills -- neither half suffices alone (benchmarks/
+   trust_dual_prefix_console_2026-10-03.md).
 5. **Failure is partially state-predictable**: an RLCD-trained head
    separates mid's right/wrong states at 0.645/0.521 (n=24) where the
    model's own confidence carries zero signal (0.9999/0.9999,
