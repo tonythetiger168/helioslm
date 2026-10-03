@@ -1,0 +1,125 @@
+{
+ "abstentionbench": {
+  "auroc": 0.9863013698630136
+ },
+ "bias_refbio": {
+  "auroc": 0.3541666666666667
+ },
+ "bias_refletter": {
+  "auroc": 0.6761904761904762
+ },
+ "bias_scene_heldout": {
+  "auroc": 0.543859649122807
+ },
+ "confaide": {
+  "auroc": 0.8076923076923077
+ },
+ "deceptionbench_reward": {
+  "auroc": 0.8683644189383071
+ },
+ "elephant_aita": {
+  "auroc": 0.7452452452452453
+ },
+ "faith_mt_claimcheck": {
+  "auroc": 0.2463768115942029
+ },
+ "faith_mt_grounded": {
+  "auroc": 0.6792452830188679
+ },
+ "harmbench": {
+  "auroc": 0.9133738601823708
+ },
+ "injecagent": {
+  "auroc": 0.825
+ },
+ "instrumental_eval": {
+  "auroc": 0.9166666666666666
+ },
+ "jbb_artifacts": {
+  "auroc": 0.8854166666666666
+ },
+ "llm_aggrefact_A": {
+  "auroc": 0.5561877667140825
+ },
+ "llm_aggrefact_B": {
+  "auroc": 0.626453488372093
+ },
+ "llm_uncertainty_bench": {
+  "auroc": 0.5217391304347826
+ },
+ "machiavelli_harm": {
+  "auroc": 0.5427777777777778
+ },
+ "machiavelli_heldout": {
+  "auroc": 0.6225621757022723
+ },
+ "machiavelli_power": {
+  "auroc": 0.5544733044733045
+ },
+ "machiavelli_reward": {
+  "auroc": 0.8883701188455009
+ },
+ "mask_continuation": {
+  "auroc": 0.5906862745098039
+ },
+ "mask_disinformation": {
+  "auroc": 0.8681818181818182
+ },
+ "mask_factual": {
+  "auroc": 0.3697916666666667
+ },
+ "open_prompt_injection": {
+  "auroc": 0.6822469982847341
+ },
+ "privaci_bench": {
+  "auroc": 0.8391335227272727
+ },
+ "privaci_gdpr_heldout": {
+  "auroc": 0.8320987654320988
+ },
+ "privacylens": {
+  "auroc": 0.563858695652174
+ },
+ "ragtruth": {
+  "auroc": 0.6027421652421653
+ },
+ "reward_hacking_freeform": {
+  "auroc": 0.515625
+ },
+ "reward_harm_freeform": {
+  "auroc": 0.9236111111111112
+ },
+ "rh_mt_reward": {
+  "auroc": 0.4375
+ },
+ "sciq_uncertainty": {
+  "auroc": 0.726027397260274
+ },
+ "strongreject": {
+  "auroc": 0.9490662139219015
+ },
+ "summedits": {
+  "auroc": 0.45278450363196127
+ },
+ "sycon_fp": {
+  "auroc": 0.8333333333333334
+ },
+ "sycophancy_eval": {
+  "auroc": 0.775175644028103
+ },
+ "sycophancy_feedback": {
+  "auroc": 0.6195488721804512
+ },
+ "tensor_trust_extract": {
+  "auroc": 0.8596326836581709
+ },
+ "tensor_trust_hijack": {
+  "auroc": 0.9973290598290598
+ },
+ "verbalized_ece": {
+  "auroc": 0.7838750527648797
+ },
+ "world_affecting_reward": {
+  "auroc": 0.8225806451612904
+ }
+}

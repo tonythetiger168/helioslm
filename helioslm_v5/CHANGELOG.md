@@ -1,5 +1,19 @@
 # HeliosLM v5 Changelog
 
+## v5.38b (2026-10-03) - TF-IDF Leg + Charts: 11 Benchmarks Beat Jev Zero-Shot
+- TF-IDF leg (word 1-2 + char_wb 3-5, 20K features each, LR C=1): median
+  0.726 (char 0.561 -> BPE 0.569 -> TF-IDF 0.726). WE BEAT Jev zero-shot
+  on 11/41 comparable benchmarks (up from 4): sycophancy +0.34, faith_mt
+  +0.31, confaide +0.31, injecagent +0.22, abstentionbench 0.986 vs 0.868
+- Median gap to Jev (0.859) remains: product model vs research encoder;
+  our TF-IDF leg sits at the paper's own baseline feature class
+- Charts in benchmarks/charts/ (median summary, scatter, per-benchmark
+  bars); scatter marks the 11 wins over the y=x line
+- C tuned (0.5/1/2), feature budget 20K vs 30K: 20K+char wins; recorded
+  config for reproduction
+
+
+
 ## v5.38a (2026-10-03) - RLCDAlignBench First Numbers (7,193 instances)
 - benchmarks/alignbench_comparison_2026-10-03.txt: three-way table,
   41 comparable benchmarks. Jev zero-shot (its own cached metrics,
