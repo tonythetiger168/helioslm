@@ -1,5 +1,17 @@
 # HeliosLM v5 Changelog
 
+## v5.38 (2026-10-03) - RLCDAlignBench Runner Skeleton
+- examples/alignbench_run.py: our stack on the canonical benchmark
+  (sumleo/RLCDAlignBench, gated). Legs: inspect (field mapping),
+  head (supervised DecisionHead per benchmark -- the honest TF-IDF-
+  baseline analog; the paper headline is ZERO-SHOT Jev, a different
+  question), jev (offline cache recompute, no key). Protocol mirrors
+  the paper: generic prompt+response state, P(yes) as score, AUROC per
+  benchmark. BLOCKED on gated access (user to request at the dataset
+  page with the chienhsinlin HF account)
+
+
+
 ## v5.37m (2026-10-03) - The 8.4x Intervention Contrast, Archived
 - benchmarks/trust_dual_prefix_console_2026-10-03.md: console record
   of the v5.37k dual-prefix run. ungrounded_p 0.023 / grounded_p 0.190
