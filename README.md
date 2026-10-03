@@ -3,9 +3,11 @@
 A from-scratch PyTorch reference implementation of a modern LLM stack: MLA attention with weight absorption, sigmoid-gated MoE with auxiliary-loss-free load balancing, hybrid linear attention, speculative decoding, FP8 training, a DualPipe schedule simulation, a vLLM-style serving engine, a **verifiable agent layer** (strict tool schema, bitwise-replay oracle), DSA sparse attention, Mooncake-style prefill/decode disaggregation, and tool-tuned checkpoints. Built to be **read, modified, and verified** — every core path is unit-tested and many are checked with bitwise-equivalence tests. Everything runs on CPU.
 
 > **One-liner:** If you want to understand (or hack on) how DeepSeek-V3/K3-class models actually work — without needing a GPU cluster first — this repo is for you.
+>
+> **Also:** the open-source reference for the **RLCD "decision layer"** paradigm — calibrated confidence on acting models, verified across three scales and on the 7,193-instance RLCDAlignBench. Working paper: `docs/paper_draft_2026-10-03.tex` ([repo](https://github.com/tonythetiger168/helioslm/blob/main/docs/paper_draft_2026-10-03.tex) | [HF](https://huggingface.co/chienhsinlin/helioslm/tree/main/docs)).
 
 [![CI](https://github.com/tonythetiger168/helioslm/actions/workflows/ci.yml/badge.svg)](https://github.com/tonythetiger168/helioslm/actions)
-![Tests](https://img.shields.io/badge/tests-115%2B%20unit%20%2B%20integration%20%2B%20oracle-brightgreen)
+![Tests](https://img.shields.io/badge/tests-150%2B%20unit%20%2B%20integration%20%2B%20oracle-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![PyTorch](https://img.shields.io/badge/framework-PyTorch%20(pure)-ee4c2c)
 
@@ -20,6 +22,21 @@ A from-scratch PyTorch reference implementation of a modern LLM stack: MLA atten
 | **A practitioner** evaluating serving/quantization techniques | vLLM-style paged engine, GPTQ/AWQ/FP8/MXFP4 quantization, MTP speculative decoding — all inspectable |
 
 **Honest positioning:** this is a correctness-focused reference implementation, not a throughput-optimized production engine (see [Known Limitations](#known-limitations)).
+
+## Paper
+
+**Calibrated Agency: An Open-Source RLCD Stack, from Toy Scale to 360M, with a
+Canonical-Benchmark Comparison** — Chien-Hsin Lin, working draft 2026-10-03.
+[`docs/paper_draft_2026-10-03.tex`](docs/paper_draft_2026-10-03.tex) (arXiv-ready, figures included) ·
+[markdown](helioslm_v5/docs/paper_draft_2026-10-03.md) ·
+[HF copy](https://huggingface.co/chienhsinlin/helioslm/tree/main/docs).
+Headline numbers: overconfidence on wrong answers grows with scale
+(0.94 -> 0.9999 -> ~1.0 at 8.5M/360M/Qwen3-0.6B); deterministic grounding
+cures a 360M model's copy-shaped agentic failure (0/12 -> 9/12 + 3
+abstained); trust is f(state, intervention) with an 8.4x measured
+contrast; on RLCDAlignBench our open readout reaches 0.726 median AUROC
+and beats the commercial Jev detector's zero-shot numbers on 11/41
+benchmarks. Every claim traces to a versioned artifact in `benchmarks/`.
 
 ## Deployment tiers
 
@@ -80,7 +97,7 @@ Nothing sells an LLM repo like showing it produce tokens. -->
 | **Agent** | v5.23 agent layer: strict tool-call schema/parser (16 error classes), deterministic sandboxed tools, trajectory bitwise-replay oracle, ground-truth-by-construction toy envs, routing gates (v5.22 decision-audit discipline); v5.26 real-model oracles (T15); v5.27 **tool-tuned checkpoint** trained on agent-loop replays (data format == inference by construction) — T17 end-to-end baseline parse 0.15 / finish 1/9, `sparse_top_k=4` ~= dense; hardened by real-model findings (TOOL_ERROR recovery, ASCII-safe docs) ; v5.29 three-modes benchmark with strict-monotone tau routing curves and a recorded overconfidence finding (max conf 0.925-0.944 on wrong answers), artifact oracles T19 |
 | **Chat** | v5.30: dual-mode protocol (plain text OR @@tool@@ block; text bypasses the gate, gate governs tools only), multi-turn ChatSession with transcript replay, chat SFT data with inference-identical prompts; v5.30.2 fixed a dataset filter bias that had hidden the text channel (mode-choice: text 11/20) — T20/T21 |
 | **Frontier references** | v5.31: five readable toy-scale references distilled from the 2026 frontier — manifold-constrained hyper-connections (DS-V4), HCA/CSA-style compressed attention with exact causality, long-horizon file env (8-14 steps), think-mode + experience reuse (Qwen3-Max direction), async GRPO with bitwise sync-parity (GLM-5 direction) — T22-T26 |
-| **Decision layer** | v5.32: typed decision primitives Choice/Score/Noul (System One / Jev direction) with schema enforcement, gate ask/ask_batch extension point, non-autoregressive DecisionHead answering K questions in one pass, outcome-targeted Brier calibration (RLCD direction; the label-targeted variant is provably redundant with CE — recorded) — T27/T28 |
+| **Decision layer** | v5.32: typed decision primitives Choice/Score/Noul (System One / Jev direction) with schema enforcement, gate ask/ask_batch extension point, non-autoregressive DecisionHead answering K questions in one pass, outcome-targeted Brier calibration (RLCD direction; the label-targeted variant is provably redundant with CE — recorded) — T27/T28 ; v5.36 continuous Noul (P(yes), floor retired); v5.34 deterministic grounding (0/12 -> 9/12 + 3 abstained on a real 360M checkpoint, zero hallucination leakage); v5.37 TrustGate calibrated abstention + TherapyPair composition (trust is f(state, intervention) — 8.4x measured contrast); v5.38 RLCDAlignBench: our supervised TF-IDF readout median 0.726 AUROC, beats the commercial Jev detector's zero-shot numbers on 11/41 benchmarks (charts in benchmarks/charts/) — T27-T39 |
 | **Benchmarks** | Top-10 LLM position paper with verified leaderboard data and the calibration/replay axes no vendor publishes (`helioslm_v5/docs/benchmark_top5_2026-09-27.md`); probe suite (toy + file-env + chat) with scripted oracles, runnable against any API |
 | **Disaggregation** | v5.25 Mooncake-style prefill/decode module behind a monotonicity gate; v5.28 three-axis **Pareto sweep** (makespan / workers / worker-seconds) with latency-cost curves per workload — cache-aware anti-monotonicity recorded as a structural finding, not hidden |
 | **Speculative decoding** | DeepSeek-style MTP with **strict verification** (residual (p−q)₊ resampling), batch support, O(1) cache-truncation rollback; hybrid recurrent-state rollback via restore+replay. |
