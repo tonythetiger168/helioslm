@@ -337,10 +337,16 @@ hidden supervised 0.807, mid 360M hidden 0.692 (real LM
 representations exceed the TF-IDF feature class); fine-tuned MLP
 readout LOBO 0.589 (+0.028 -- the frozen ceiling is soft); and
 prompt-based zero-shot 0.500 median with extreme bimodality (0.879
-harmbench vs 0.289 INVERTED sycophancy -- the base model itself is
-sycophantic about flattery). No general zero-shot calibration without
-training: calibration requires training, the commercial category's
-core claim, here independently verified.
+harmbench vs 0.289 INVERTED sycophancy). Two decompositions sharpen
+this: (1) the sycophancy inversion is REAL and self-referential --
+$P(\text{yes}|\text{flattery}) = 0.890$ vs
+$P(\text{yes}|\text{control}) = 0.953$ ($-0.063$) -- the detector's
+own sycophancy mirrors the failure it is asked to detect; (2) a
+ceiling-effect audit shows 15/16 benchmarks have class-separation
+effect size $<0.03$ -- the high harmbench AUROC comes from extreme
+distribution tails, not calibration. Prompt-zero has no calibration
+ability even on surface-cue classes. Calibration requires training:
+the commercial category's core claim, here independently verified.
 
 A methodological lesson with general import: the benchmark's state
 schema is per-benchmark (10+ shapes); a fixed field assumption rendered

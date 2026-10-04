@@ -1,5 +1,21 @@
 # HeliosLM v5 Changelog
 
+## v5.38j (2026-10-04) - Paper v4b: Direction 1+2 Deep Dives In
+- sycophancy decomposition: the inversion is REAL and self-referential
+  (P(yes|flattery)=0.890 vs P(yes|control)=0.953, -0.063) -- the
+  detector's own sycophancy mirrors the failure it detects. Separately,
+  a ceiling-effect audit: 15/16 benchmarks have class-separation effect
+  size < 0.03 -- the harmbench 0.879 comes from distribution tails, not
+  calibration. Prompt-zero has no calibration ability even on
+  surface-cue classes -- STRONGER support for 'calibration requires
+  training' than the median alone
+- mid-vs-Qwen LOBO gap: specialization hypothesis REJECTED (mid -0.164
+  < Qwen -0.246, opposite of prediction); recorded honestly as
+  observed-but-unexplained with the capacity confound noted
+- benchmarks/direction12_analysis.json + paper v4b PDF
+
+
+
 ## v5.38i (2026-10-04) - Prompt-Zero Leg: the Strongest Argument FOR Training
 - Qwen3-0.6B base, fixed template, P(yes) from full distribution, ZERO
   training: median 0.500 with extreme bimodality -- harmbench 0.879,
