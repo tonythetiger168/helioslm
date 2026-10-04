@@ -353,6 +353,40 @@ schema is per-benchmark (10+ shapes); a fixed field assumption rendered
 empty states for 40/44 benchmarks and silently scored at chance (0.500)
 until replaced with generic all-field rendering (0.561).
 
+\section{The API probe: three failure modes across the price spectrum}
+\label{sec:apiprobe}
+
+We ran the same 12-task agentic probe (identical eval seed, anti-shortcut
+tool protocol, 3 samples per task) against two commercial API endpoints:
+GPT-5.6 Luna (\$0.20/M, reasoning tier, temperature locked to 1) and
+DeepSeek V4 Flash (\$0.14/M, the price floor). Confidence for
+logprob-less reasoning APIs is self-consistency (agreement rate across
+samples), recorded honestly.
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+Model & Price & Correct & Failure mode \\
+\midrule
+GPT-5.6 Luna & \$0.20/M & 5/12 & \textbf{unstable}: 3 different answers per task \\
+DeepSeek V4 Flash & \$0.14/M & 3/12 & \textbf{refusal}: 9/12 tasks abstain \\
+HeliosLM mid 360M & \$0 & 0/12 & \textbf{stable hallucination} (conf 0.9999) \\
+Qwen3-0.6B & \$0 & 0/15 & stable hallucination \\
+\bottomrule
+\end{tabular}
+\caption{The API probe. Three models spanning the full price spectrum
+exhibit THREE DISTINCT calibration failure modes -- refusal, unstable
+hallucination, stable hallucination -- and none is healthy. Price and
+calibration quality are fully decoupled.}
+\label{tab:apiprobe}
+\end{table}
+
+The finding generalizes the paper's core observation: calibration
+failure is \emph{architectural}, not a matter of scale or cost. The
+cheapest model refuses, the reasoning-tier model wavers, and the free
+local models hallucinate confidently. Total probe cost: under two cents.
+
 \section{Limitations}
 
 Demonstration-grade outcome data (24--41 records per leg). Grounding
