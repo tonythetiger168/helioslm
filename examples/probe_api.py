@@ -48,9 +48,10 @@ def chat_once(base, key, model, prompt, max_tokens=200, temperature=0.0):
     handled by graceful degradation: max_tokens may be rejected (retry
     as max_completion_tokens then without), logprobs may be unsupported
     (conf stays None, recorded honestly)."""
+    # reasoning-tier models (gpt-5.6-luna et al.) reject temperature
+    # != 1 -- it is part of the degradation ladder below
     body = {"model": model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": temperature}
+            "messages": [{"role": "user", "content": prompt}]}
 
     def attempt(extra):
         b = {**body, **extra}
@@ -62,12 +63,19 @@ def chat_once(base, key, model, prompt, max_tokens=200, temperature=0.0):
         return json.loads(urllib.request.urlopen(req, timeout=60).read())
 
     r = None
-    for extra in ({"max_tokens": max_tokens, "logprobs": True,
-                   "top_logprobs": 1},
-                  {"max_completion_tokens": max_tokens,
-                   "logprobs": True, "top_logprobs": 1},
-                  {"max_tokens": max_tokens},
-                  {}):
+    combos = [{"temperature": temperature, "max_tokens": max_tokens,
+               "logprobs": True, "top_logprobs": 1},
+              {"temperature": temperature,
+               "max_completion_tokens": max_tokens, "logprobs": True,
+               "top_logprobs": 1},
+              {"temperature": temperature, "max_tokens": max_tokens},
+              {"max_tokens": max_tokens, "logprobs": True,
+               "top_logprobs": 1},
+              {"max_completion_tokens": max_tokens, "logprobs": True,
+               "top_logprobs": 1},
+              {"max_tokens": max_tokens},
+              {}]
+    for extra in combos:
         try:
             r = attempt(extra)
             break
@@ -84,6 +92,11 @@ def chat_once(base, key, model, prompt, max_tokens=200, temperature=0.0):
                 + _os.environ.get("PROBE_LAST_400", "?")), None
     choice = r["choices"][0]
     text = choice["message"]["content"] or ""
+    # fallback confidence for reasoning-tier models (no logprobs): the
+    # structural peakedness of the first content token is not available,
+    # so we record None -- HONESTLY. The calibration comparison then
+    # uses only models whose APIs expose logprobs, which is itself a
+    # publishable observation about API transparency.
     import os as _os
     if _os.environ.get("PROBE_DEBUG"):
         _os.makedirs("probe_debug", exist_ok=True)
