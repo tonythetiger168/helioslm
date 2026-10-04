@@ -184,7 +184,7 @@ def main():
                 _state["steps"] = step + 1
                 return text
 
-            # final = run_episode(args, key, task, reg, impls)
+            final = run_episode(args, key, task, reg, impls)
             parsed_ok = 0
             finals = []
             if final is not None:
