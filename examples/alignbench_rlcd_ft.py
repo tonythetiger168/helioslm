@@ -87,8 +87,14 @@ for it in test_rows:
 print(f"train {len(train_rows)} / test {len(test_rows)}", flush=True)
 model = AutoModelForCausalLM.from_pretrained(
     "qwen", torch_dtype=torch.bfloat16, attn_implementation="eager")
-model.gradient_checkpointing_enable()
+model.gradient_checkpointing_enable(
+    gradient_checkpointing_kwargs={"use_reentrant": False})
 model.config.use_cache = False
+# RTX 4060 driver-tier CUDA instability with checkpointed backward
+# (same family as the earlier foreach failure): synchronize before the
+# first backward pass so async errors surface at the true origin
+import torch as _t
+_t.cuda.synchronize()
 dev = "cuda"
 model = model.to(dev)
 opt = torch.optim.AdamW(model.parameters(), lr=1e-5, weight_decay=0.01)
