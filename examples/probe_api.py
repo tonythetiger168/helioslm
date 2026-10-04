@@ -75,8 +75,13 @@ def chat_once(base, key, model, prompt, max_tokens=200, temperature=0.0):
             code = e.code
             if code not in (400, 422):
                 return f"API_ERROR {code}: {e.read().decode()[:100]}", None
+            # remember the LAST 400 body for diagnosis
+            import os as _os
+            _os.environ["PROBE_LAST_400"] = e.read().decode()[:300]
     if r is None:
-        return "API_ERROR: all parameter combinations rejected", None
+        import os as _os
+        return ("API_ERROR: all combos rejected | last 400: "
+                + _os.environ.get("PROBE_LAST_400", "?")), None
     choice = r["choices"][0]
     text = choice["message"]["content"] or ""
     import os as _os
