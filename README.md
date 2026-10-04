@@ -53,6 +53,25 @@ contrast; on RLCDAlignBench our open readout reaches 0.726 median AUROC
 and beats the commercial Jev detector's zero-shot numbers on 11/41
 benchmarks. Every claim traces to a versioned artifact in `benchmarks/`.
 
+## Citation
+
+```bibtex
+@article{lin2026calibrated,
+  title={Calibrated Agency: An Open-Source {RLCD} Stack,
+         from Toy Scale to 360M, with a Canonical-Benchmark Comparison},
+  author={Lin, Chien-Hsin},
+  year={2026},
+  note={Working draft. arXiv ID: [pending endorsement]},
+  url={https://github.com/tonythetiger168/helioslm}
+}
+```
+
+Every numeric claim traces to a versioned artifact: code and tests in
+this repository (CHANGELOG v5.30.2--v5.38j), weights/tokenizer/
+fingerprints and benchmark data in
+[huggingface.co/chienhsinlin/helioslm](https://huggingface.co/chienhsinlin/helioslm),
+and the paper source + PDF in `docs/`.
+
 ## Deployment tiers
 
 Three rungs, each with one recorded reason to exist (no spectrum theater):
