@@ -1,7 +1,8 @@
 {
- "protocol": "LOBO: MLP head (1024->256->1 sigmoid) trained on 14 source benchmarks, tested on held-out target; 300 epochs Adam lr=1e-3, seed 0",
- "median_auroc": 0.589,
+ "protocol": "LOBO: train MLP head (1024->256->1 sigmoid) on 14 source benchmarks, test on held-out target; 300 epochs Adam 1e-3",
+ "median_auroc_seed0": 0.589,
  "lr_lobo_baseline": 0.561,
  "delta": 0.028,
- "interpretation": "fine-tuning the readout head releases a MODEST transfer gain -- direction confirmed, magnitude small; the frozen-feature ceiling is real but not absolute. Prompt-based zero-shot remains the higher-leverage direction"
+ "interpretation": "fine-tuning the readout head releases a MODEST transfer gain (+0.028) -- direction confirmed, magnitude small; the frozen-feature ceiling is real but not absolute. Recorded next step: prompt-based zero-shot",
+ "note": "single seed, 300 epochs (converged per loss curve)"
 }
