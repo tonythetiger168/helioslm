@@ -31,6 +31,18 @@ from gate import FixedGate, Route
 from schema import ToolCallError, parse_chat_turn
 from tools import build_default_registry
 
+ANTI_SHORTCUT = """IMPORTANT: you MUST solve every task by calling tools.
+Do NOT compute answers mentally and reply directly -- always emit a
+tool call first, read the observation, and only then finish.
+
+"""
+
+ANTI_SHORTCUT = """IMPORTANT: you MUST solve every task by calling tools.
+Do NOT compute answers mentally and reply directly -- always emit a
+tool call first, read the observation, and only then finish.
+
+"""
+
 FEWSHOT = """Solved example:
 Task: Compute the value of: 2 + 3
 Assistant: @@tool@@{\"calls\":[{\"name\":\"calc\",\"args\":{\"expr\":\"2 + 3\"}}]}@@end@@
@@ -111,12 +123,43 @@ def chat_once(base, key, model, prompt, max_tokens=200, temperature=0.0):
     return text, conf
 
 
+def run_episode(args, key, task, reg, impls):
+    """One full tool-loop episode; returns the final answer or None."""
+    transcript = f"Task: {task.text}"
+    for step in range(task.step_budget):
+        out_text, _ = chat_once(args.base, key, args.model,
+                                ANTI_SHORTCUT + FEWSHOT + transcript,
+                                max_tokens=300)
+        try:
+            kind, payload = parse_chat_turn(out_text, reg)
+        except ToolCallError:
+            transcript += f"\nstep {step}: PARSE_ERROR"
+            continue
+        if kind == "text":
+            return payload
+        call = payload[0]
+        from tools import execute
+        if call.name not in reg._specs:
+            obs = (f"TOOL_ERROR: unknown tool '{call.name}'. Available: "
+                   "calc, str_op, file_read, file_write, finish")
+        else:
+            try:
+                obs = execute(call, reg, impls)
+            except ToolCallError as e:
+                obs = f"TOOL_ERROR: {e}"
+        transcript += f"\nAssistant: {out_text}\nstep {step}: {obs}"
+        if call.name == "finish":
+            return call.args["answer"]
+    return None
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default="https://api.openai.com/v1")
     ap.add_argument("--model", default="gpt-5.6-luna")
     ap.add_argument("--tasks", type=int, default=12)
     ap.add_argument("--out", default="api_probe_results.json")
+    ap.add_argument("--samples", type=int, default=3)
     args = ap.parse_args()
     key = os.environ.get("OPENAI_API_KEY")
     if not key:
@@ -141,47 +184,34 @@ def main():
                 _state["steps"] = step + 1
                 return text
 
-            # drive a minimal tool loop (no ChatSession -- API models
-            # use their own reasoning; we parse their tool intent)
-            transcript = f"Task: {task.text}"
-            final = None
+            # final = run_episode(args, key, task, reg, impls)
             parsed_ok = 0
-            for step in range(task.step_budget):
-                out_text, conf = chat_once(args.base, key, args.model,
-                                           FEWSHOT + transcript, max_tokens=300)
-                state["conf"] = conf
-                # DEBUG: record raw model output (smoke-test only)
-                print(f"  RAW[{step}]: {out_text[:200]!r}", flush=True)
-                try:
-                    kind, payload = parse_chat_turn(out_text, reg)
-                except ToolCallError:
-                    transcript += f"\nstep {step}: PARSE_ERROR"
-                    continue
-                if kind == "text":
-                    final = payload
-                    break
-                call = payload[0]
-                parsed_ok += 1
-                from tools import execute
-                try:
-                    obs = execute(call, reg, impls)
-                except ToolCallError as e:
-                    obs = f"TOOL_ERROR: {e}"
-                transcript += f"\nAssistant: {out_text}\nstep {step}: {obs}"
-                if call.name == "finish":
-                    final = call.args["answer"]
-                    break
-            ok = final is not None and env.verify(task, final)
+            finals = []
+            if final is not None:
+                finals.append(str(final).strip())
+            for _rep in range(max(0, args.samples - 1)):
+                rep = run_episode(args, key, task, reg, impls)
+                if rep is not None:
+                    finals.append(str(rep).strip())
+            from collections import Counter
+            if finals:
+                majority, cnt = Counter(finals).most_common(1)[0]
+                consistency = cnt / len(finals)
+            else:
+                majority, consistency = None, None
+            ok = majority is not None and env.verify(task, majority)
             results.append({"family": getattr(task, "family",
                                               type(task).__name__),
                             "task": task.text[:80],
                             "expected": task.answer,
-                            "final": final, "correct": ok,
+                            "final": majority, "correct": ok,
                             "steps": state["steps"],
                             "parsed_tool_calls": parsed_ok,
-                            "conf": state["conf"]})
+                            "conf": consistency,
+                            "conf_type": "self_consistency",
+                            "n_samples": len(finals)})
             print(f"{results[-1]['family']} correct={ok} "
-                  f"conf={state['conf']}", flush=True)
+                  f"consistency={consistency}", flush=True)
 
     wrong = [r["conf"] for r in results
              if not r["correct"] and r["conf"] is not None]
