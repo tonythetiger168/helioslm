@@ -1,5 +1,17 @@
 # HeliosLM v5 Changelog
 
+## v5.39c (2026-10-04) - Level 1: Hybrid/Select Ceiling Measured
+- benchmarks/level1_hybrid_results.json: TF-IDF 0.774 / hybrid 0.714 /
+  Qwen-enc 0.714 / PER-BENCH-SELECT 0.796 (44 benchmarks, oracle leg
+  selection on test AUROC). Three findings: (1) CONCAT HURTS -- Qwen
+  hidden states add noise to TF-IDF (-0.06), gate beats concat; (2)
+  leg selection adds +0.022 over the best single leg; (3) the
+  feature-engineering ceiling is ~0.80 -- the remaining 0.06 to Jev's
+  0.859 is TRAINING, not engineering. Level 2 (RLCD fine-tune of the
+  readout on Qwen3-0.6B) is the recorded and only remaining path
+
+
+
 ## v5.38j (2026-10-04) - Paper v4b: Direction 1+2 Deep Dives In
 - sycophancy decomposition: the inversion is REAL and self-referential
   (P(yes|flattery)=0.890 vs P(yes|control)=0.953, -0.063) -- the
