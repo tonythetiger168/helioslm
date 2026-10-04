@@ -44,21 +44,39 @@ Final answer: 5
 def chat_once(base, key, model, prompt, max_tokens=200, temperature=0.0):
     """Single chat completion; returns (text, confidence). Confidence is
     logprob of the most likely FIRST token -- the same functional
-    definition as our local softmax-max (greedy first-token peakedness),
-    adjusted: we use the API-returned top-logprob when available."""
+    definition as our local softmax-max. Two 2026-API realities are
+    handled by graceful degradation: max_tokens may be rejected (retry
+    as max_completion_tokens then without), logprobs may be unsupported
+    (conf stays None, recorded honestly)."""
     body = {"model": model,
             "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": max_tokens, "temperature": temperature,
-            "logprobs": True, "top_logprobs": 1}
-    req = urllib.request.Request(
-        base.rstrip("/") + "/chat/completions",
-        data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json",
-                 "Authorization": f"Bearer {key}"})
-    try:
-        r = json.loads(urllib.request.urlopen(req, timeout=60).read())
-    except urllib.error.HTTPError as e:
-        return f"API_ERROR {e.code}: {e.read().decode()[:100]}", None
+            "temperature": temperature}
+
+    def attempt(extra):
+        b = {**body, **extra}
+        req = urllib.request.Request(
+            base.rstrip("/") + "/chat/completions",
+            data=json.dumps(b).encode(),
+            headers={"Content-Type": "application/json",
+                     "Authorization": f"Bearer {key}"})
+        return json.loads(urllib.request.urlopen(req, timeout=60).read())
+
+    r = None
+    for extra in ({"max_tokens": max_tokens, "logprobs": True,
+                   "top_logprobs": 1},
+                  {"max_completion_tokens": max_tokens,
+                   "logprobs": True, "top_logprobs": 1},
+                  {"max_tokens": max_tokens},
+                  {}):
+        try:
+            r = attempt(extra)
+            break
+        except urllib.error.HTTPError as e:
+            code = e.code
+            if code not in (400, 422):
+                return f"API_ERROR {code}: {e.read().decode()[:100]}", None
+    if r is None:
+        return "API_ERROR: all parameter combinations rejected", None
     choice = r["choices"][0]
     text = choice["message"]["content"] or ""
     import os as _os
