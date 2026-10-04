@@ -61,6 +61,11 @@ def chat_once(base, key, model, prompt, max_tokens=200, temperature=0.0):
         return f"API_ERROR {e.code}: {e.read().decode()[:100]}", None
     choice = r["choices"][0]
     text = choice["message"]["content"] or ""
+    import os as _os
+    if _os.environ.get("PROBE_DEBUG"):
+        _os.makedirs("probe_debug", exist_ok=True)
+        n = len(_os.listdir("probe_debug"))
+        open(f"probe_debug/resp_{n:03d}.json", "w").write(json.dumps(r, indent=1))
     conf = None
     lp = choice.get("logprobs")
     if lp and lp.get("content"):
@@ -109,6 +114,8 @@ def main():
                 out_text, conf = chat_once(args.base, key, args.model,
                                            FEWSHOT + transcript, max_tokens=300)
                 state["conf"] = conf
+                # DEBUG: record raw model output (smoke-test only)
+                print(f"  RAW[{step}]: {out_text[:200]!r}", flush=True)
                 try:
                     kind, payload = parse_chat_turn(out_text, reg)
                 except ToolCallError:
