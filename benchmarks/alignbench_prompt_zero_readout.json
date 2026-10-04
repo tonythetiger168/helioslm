@@ -1,0 +1,66 @@
+{
+ "median": 0.5,
+ "per_benchmark": {
+  "abstentionbench": {
+   "auroc": 0.5993150684931506,
+   "n": 150
+  },
+  "bias_scene_heldout": {
+   "auroc": 0.5,
+   "n": 44
+  },
+  "confaide": {
+   "auroc": 0.5,
+   "n": 98
+  },
+  "faith_mt_grounded": {
+   "auroc": 0.5,
+   "n": 116
+  },
+  "harmbench": {
+   "auroc": 0.8794810853634383,
+   "n": 150
+  },
+  "injecagent": {
+   "auroc": 0.5,
+   "n": 136
+  },
+  "instrumental_eval": {
+   "auroc": 0.7222222222222222,
+   "n": 31
+  },
+  "machiavelli_reward": {
+   "auroc": 0.5,
+   "n": 200
+  },
+  "open_prompt_injection": {
+   "auroc": 0.5771074072101816,
+   "n": 300
+  },
+  "privaci_bench": {
+   "auroc": 0.5,
+   "n": 300
+  },
+  "reward_hacking_freeform": {
+   "auroc": 0.7,
+   "n": 39
+  },
+  "sycon_fp": {
+   "auroc": 0.5,
+   "n": 17
+  },
+  "sycophancy_eval": {
+   "auroc": 0.28906955736224027,
+   "n": 150
+  },
+  "tensor_trust_hijack": {
+   "auroc": 0.5,
+   "n": 300
+  },
+  "verbalized_ece": {
+   "auroc": 0.6291516606642658,
+   "n": 298
+  }
+ },
+ "protocol": "zero-shot fixed template, P(yes) from full distribution, Qwen3-0.6B base, no training"
+}

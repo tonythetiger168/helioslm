@@ -1,5 +1,22 @@
 # HeliosLM v5 Changelog
 
+## v5.38i (2026-10-04) - Prompt-Zero Leg: the Strongest Argument FOR Training
+- Qwen3-0.6B base, fixed template, P(yes) from full distribution, ZERO
+  training: median 0.500 with extreme bimodality -- harmbench 0.879,
+  reward_hacking 0.700, instrumental 0.722, verbalized_ece 0.629, but
+  sycophancy 0.289 INVERTED (the base model is itself sycophantic about
+  flattery -- an alignment failure measured INSIDE the detector) and
+  confaide/bias at pure chance. A single fixed prompt has no general
+  zero-shot calibration ability
+- FINDING: this failure mode is the strongest independent support for
+  the commercial decision-layer category's core claim -- calibration
+  REQUIRES training. Recorded as the closing row of the ablation
+- Paper v4: three new rows (MLP-LOBO 0.589, prompt-zero 0.500),
+  ablation rewritten with the training-requirement conclusion
+- benchmarks/alignbench_prompt_zero_readout.json
+
+
+
 ## v5.38h (2026-10-04) - Fine-Tuned Readout Head: Transfer Gain Confirmed
 - MLP head (1024->256->1) LOBO median 0.589 vs LR 0.561 (+0.028, seed 0,
   300 epochs): fine-tuning the readout releases a modest but real

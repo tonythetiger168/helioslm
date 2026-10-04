@@ -258,6 +258,8 @@ Ours: Qwen3-0.6B hidden (frozen) & \textbf{0.807} \\
 Ours: Qwen3-0.6B hidden (LOBO) & 0.561 \\
 Ours: mid 360M hidden (frozen) & 0.692 \\
 Ours: mid 360M hidden (LOBO) & 0.528 \\
+Ours: MLP fine-tuned readout (LOBO) & 0.589 \\
+Ours: prompt-based zero-shot & 0.500 \\
 \bottomrule
 \end{tabular}
 \caption{RLCDAlignBench, 41 comparable benchmarks (16-benchmark
@@ -268,10 +270,16 @@ surface statistics rather than transferable failure concepts. Frozen-LM-encoder 
 via transformers, our mid 360M SFT): the same readout protocol on real
 hidden states closes 86\% of the gap to the commercial detector and
 \emph{beats} word-level TF-IDF by +0.08. LOBO transfer rises with
-encoder quality (0.542 $\to$ 0.561) but stays modest -- frozen
-features carry some transferable signal (abstentionbench LOBO 0.933)
-yet plateau near 0.56, pointing to fine-tuned readout heads or
-prompt-based scoring as the next step.}
+encoder quality (0.542 $\to$ 0.561). Two further directions complete
+the picture and BOTH strengthen the RLCD thesis: (a) a fine-tuned MLP
+readout head lifts LOBO to 0.589 (+0.028) -- real but modest, the
+frozen-feature ceiling is soft; (b) prompt-based zero-shot scoring
+(fixed template, $P(\text{yes})$ from the full distribution) scores
+median 0.500 with a bimodal distribution -- harmbench 0.879 but
+sycophancy 0.289 (INVERTED: the base model itself is sycophantic
+about flattery). A single fixed prompt has no general zero-shot
+calibration ability; calibration requires training, which is the
+commercial category's core claim -- here independently verified.}
 \label{tab:alignbench}
 \end{table}
 
@@ -323,11 +331,16 @@ readout protocol (continuous Noul $\to$ LR) on char mean-pool scores
 $n$-grams 0.726. Tokenizer capacity is not the limit; feature geometry
 is. The LOBO transfer row (0.542) further shows the mean-pool encoder
 memorizes per-benchmark surface statistics rather than transferable
-failure concepts -- the two frozen-LM encoder legs
-complete the picture: Qwen3-0.6B hidden states supervised at 0.807 and
-mid 360M at 0.692 -- real language-model representations not only
-close the gap to the TF-IDF feature class but exceed it, while LOBO
-transfer rises with encoder quality yet plateaus near 0.56.
+failure concepts The full
+ladder, ending with the two training-free directions: Qwen3-0.6B
+hidden supervised 0.807, mid 360M hidden 0.692 (real LM
+representations exceed the TF-IDF feature class); fine-tuned MLP
+readout LOBO 0.589 (+0.028 -- the frozen ceiling is soft); and
+prompt-based zero-shot 0.500 median with extreme bimodality (0.879
+harmbench vs 0.289 INVERTED sycophancy -- the base model itself is
+sycophantic about flattery). No general zero-shot calibration without
+training: calibration requires training, the commercial category's
+core claim, here independently verified.
 
 A methodological lesson with general import: the benchmark's state
 schema is per-benchmark (10+ shapes); a fixed field assumption rendered
