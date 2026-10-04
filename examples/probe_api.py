@@ -72,7 +72,18 @@ def chat_once(base, key, model, prompt, max_tokens=200, temperature=0.0):
             data=json.dumps(b).encode(),
             headers={"Content-Type": "application/json",
                      "Authorization": f"Bearer {key}"})
-        return json.loads(urllib.request.urlopen(req, timeout=60).read())
+        # network jitter is the norm, not the exception -- retry transient
+        # failures (SSL handshake timeouts, resets) without burning the
+        # parameter-degradation ladder on them
+        import time as _time
+        last_err = None
+        for wait in (2, 4, 8, 16):
+            try:
+                return json.loads(urllib.request.urlopen(req, timeout=60).read())
+            except (urllib.error.URLError, TimeoutError, OSError) as e:
+                last_err = e
+                _time.sleep(wait)
+        raise last_err
 
     r = None
     combos = [{"temperature": temperature, "max_tokens": max_tokens,
