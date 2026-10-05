@@ -1,6 +1,6 @@
 # HeliosLM v5 Changelog
 
-## v5.41 (2026-10-06) - Line Unification Merge
+## v5.41 (2026-10-06) - Line Unification Merge + Decision-Engine Phase 1
 - Merge of the two diverged lines (local ahead 4 / remote ahead 160+ since
   2026-09-23): the local maintenance line (KDA per-channel decay gate v5.21,
   NVFP4 QAT + NoPE v5.22-L, learned lightning indexer) reunites with the
@@ -13,8 +13,18 @@
   local `per_channel_decay` flag; `linear_attention.py`, `mla.py`, `qat.py`,
   `test_v5.py` auto-merged with both sides' features intact
 - Version string unified at v5.41 (next free number after remote v5.40b)
-- Baseline after merge: full unit + integration suite to be verified green
-  before push (see daily_report_20261006.md)
+- Phase 1.1/1.2: `src/decision_head.py` — LM-backed typed decision readout
+  (noul P(yes) / choice softmax / score) over the model's own hidden
+  states, the LM-facing piece of the local-decision-engine direction;
+  oracles in `tests/test_lm_decision_head.py` (5/5). Distinct from the
+  toy-scale `agent/decision_head.py` (v5.32), which keeps its own oracles
+- Phase 1.4: `src/training/dpo.py` — DPOTrainer (sigmoid-margin loss,
+  sequence-level log-probs mirroring the GRPO simplification, frozen
+  reference enforced, beta exposed); analytic anchor oracle
+  (pi==ref => loss == log 2) plus margin-training and frozen-reference
+  oracles in `tests/test_dpo.py` (6/6)
+- Verification: 71/71 test_v5 + 9/9 integration + 34 suites + 11 new
+  oracles all green at push time
 
 ## v5.39c (2026-10-04) - Level 1: Hybrid/Select Ceiling Measured
 - benchmarks/level1_hybrid_results.json: TF-IDF 0.774 / hybrid 0.714 /
