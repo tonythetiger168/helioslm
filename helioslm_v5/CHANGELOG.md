@@ -1,5 +1,49 @@
 # HeliosLM v5 Changelog
 
+## v5.42 (2026-10-06) - Decision-Engine Tooling Wave (Phase 1.3 + Phase 2 + Phase 3)
+All pieces oracle-tested; claims scoped to what the oracles prove (see
+each module's docstring honesty notes).
+- Phase 1.3: `tests/test_decision_head_integration.py` (3/3) — DecisionHead
+  wired onto real HeliosLMv5 hidden states; end-to-end gradient flow to
+  trunk verified; recorded finding: the decision path BYPASSES lm_head
+  (zero/None grad by design); aux-loss-free route_bias carries no backprop
+  gradient (heuristic-only, design); synthetic routing learned through the
+  full model graph to acc 1.000
+- Phase 2.1: `src/training/envs.py` — multi-env GRPO registry: MathEnv
+  (constructed numeric truth), CodeEnv (RESULT-line literal compare,
+  ast.literal_eval only, never exec), AlignmentAuditEnv (RLCDAlignBench
+  label convention, refuses synthetic data); MultiEnvBatch mixing and
+  routing (5/5 oracles)
+- Phase 2.2: `eval/longctx.py` — passkey-by-loglikelihood long-context
+  harness (no generation, deterministic); refuses rotary extrapolation
+  beyond max_position_embeddings without explicit rope_scaling; records
+  model/config provenance with every number (5/5 oracles; perfect stub
+  100%, uniform stub ~chance, untrained lite measured as harness smoke)
+- Phase 2.3: `eval/quant_calib.py` — calibration x quantization cross
+  probe: ECE + accuracy for bf16 vs NVFP4 fake-quant twins of the same
+  weights (caller model never mutated; deepcopy inside); ECE math exact
+  on calibrated stubs (0.0000) and overconfidence stubs (0.1900) (4/4)
+- Phase 3.1: `src/inference/pool_ledger.py` — prefix-pool accounting
+  ledger via stats() deltas (zero invasive change to the verified pool);
+  effective prompt-token discount + per-request entries; decode cost
+  explicitly out of scope (3/3)
+- Phase 3.2: `agent/trust_gate_v2.py` — TrustGate v2 calibrated
+  probabilistic abstention: cost-sensitive threshold p* = 1 - ce/cw,
+  abstain band widened by the head's measured ECE, uncalibrated operation
+  loud-tagged with conservative margin (5/5)
+- Phase 3.3: `eval/mini_bench.py` — task-level JSONL benchmark harness
+  (choice-loglikelihood scoring, per-benchmark aggregation, load-time
+  schema loud-errors) (3/3); choice_confidence generalized to
+  token-SEQUENCE choices (position-faithful)
+- Phase 3.4/3.5: README GIF evaluated and held (asciinema/agg toolchain +
+  a checkpoint whose output is worth showing required; script remains
+  ready); r/LocalLLaMA v5.42 draft appended to docs/launch_post_reddit.md
+  with explicit HOLD-until-Phase-2-results note
+- Also: docs/ROADMAP.md + docs/PHASE0_3_PLAN.md reconstructed from
+  LLM_HANDOFF.md (originals never reached origin); 25 large data
+  artifacts untracked (.gitignore; on-disk copies preserved)
+- Verification: 71/71 test_v5 + 9/9 integration + all suites green
+
 ## v5.41 (2026-10-06) - Line Unification Merge + Decision-Engine Phase 1
 - Merge of the two diverged lines (local ahead 4 / remote ahead 160+ since
   2026-09-23): the local maintenance line (KDA per-channel decay gate v5.21,

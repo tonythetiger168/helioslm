@@ -148,3 +148,67 @@ Critical questions:
 - Lead images: the 99.2% KV-cache chart (ML crowd), the demo GIF (general)
 - The "three bugs the oracles caught" hook is the strongest HN angle —
   engineers love post-mortems more than features
+
+---
+
+## Variant D — v5.41/5.42 "local decision engine" wave (DRAFT, hold for Phase 2 results)
+
+**Title options:**
+- `[Project] HeliosLM — a locally verifiable decision engine: what 9 days of a failed RLHF experiment taught us about calibration`
+- `We tried to fine-tune a 0.6B base into an alignment auditor. It scored 0.50 AUROC in all 7 configs. Here's the stack that came out of that failure.`
+
+**Body:**
+
+Hey r/LocalLLaMA — a story with an honest failure in the middle.
+
+HeliosLM is a pure-PyTorch DeepSeek-V3/K3-style stack where every
+mechanism ships with verification oracles. Two weeks ago we started
+calibration research: can a small model detect alignment failures
+(sycophancy, reward hacking) in other models' outputs?
+
+**Level 1 worked**: SFT a 360M HeliosLM + linear probe on RLCDAlignBench
+(7,193 instances, 16 benchmarks) → 0.796 AUROC, gate beats concat,
+per-benchmark leg selection adds +0.022.
+
+**Level 2 failed, thoroughly**: full fine-tune of Qwen3-0.6B with an
+RLCD Brier term — 0.500 test AUROC in all seven configurations (padding
+fix, label direction, CE-only, frozen backbone, gradient accumulation...
+all of them). Root cause: a general base has no alignment-failure
+inductive bias, and 16-class cross-benchmark detection is too complex
+for 0.6B. The recorded conclusion: **calibration readouts belong on
+decision-shaped models, not general LMs fine-tuned into pretending.**
+
+So the stack pivoted to a **local decision engine** (the pieces all
+landed in v5.41/v5.42, all oracle-tested):
+- `DecisionHead` — typed non-autoregressive readout (P(yes) / routing /
+  score) over the model's OWN hidden states; the decision path provably
+  bypasses the LM head
+- `DPOTrainer` — sigmoid-margin loss, frozen reference enforced, with an
+  analytic anchor test (π=ref ⇒ loss=log 2)
+- `TrustGate v2` — cost-sensitive thresholds (act iff expected loss of
+  acting beats escalating) with an abstain band as wide as the head's
+  measured ECE: the gate refuses to pretend a probability is sharper
+  than its calibration
+- Multi-env GRPO registry (math / code / alignment-audit), a passkey
+  long-context harness that fails loudly beyond native positions, and a
+  calibration×quantization probe (what does NVFP4 fake-quant do to ECE?
+  the runner measures instead of assuming)
+
+**What we don't claim**: no frontier benchmark numbers (toy scale),
+no agentic eval yet, and the quant×calibration drift results are
+mechanics until a trained checkpoint runs them. Every module above says
+so in its own docstring.
+
+Repo: https://github.com/tonythetiger168/helioslm (150+ oracle tests)
+
+Feedback wanted:
+1. Who else is measuring quantization's effect on CALIBRATION (not just
+   accuracy)? The probe is ready; we want comparison points.
+2. For TrustGate-style calibrated abstention: what cost ratio
+   (wrong-action vs escalation) do real deployments actually use?
+
+### Posting notes (v5.42 draft)
+- HOLD until Phase 2 produces at least one trained-checkpoint number —
+  posting "the harness works" without a result reads as vaporware
+- The Level-2 failure story is the hook; lead with it
+- Do not claim the decision engine is deployed anywhere; it is tooling

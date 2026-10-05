@@ -1,4 +1,4 @@
-# HeliosLM v5.41 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.42 - DeepSeek/K3-Style Architecture
 
 Reference LLM implementation with DeepSeek-V3-style efficiency techniques.
 All modules below are implemented and exercised by a CPU test suite with
@@ -18,6 +18,18 @@ misbehaving (see CHANGELOG). v5.5 is a feature release aligned with
 Kimi-K3-class architecture mechanisms: hybrid linear attention, LatentMoE,
 quantile balancing, cross-layer attention residuals, and SiTU-GLU (see
 CHANGELOG; unit suite now 44 tests).
+
+## v5.42 (2026-10-06): Decision-Engine Tooling Wave
+Phase 1.3 + Phase 2 + Phase 3 of the local-decision-engine plan in one
+release, every piece oracle-tested with claims scoped to what the oracles
+prove: DecisionHead-on-model integration (3/3, incl. the recorded finding
+that the decision path bypasses lm_head), multi-env GRPO registry
+(math/code/alignment-audit, 5/5), passkey long-context harness (5/5,
+refuses silent rotary extrapolation), calibration x NVFP4 cross probe
+(4/4, ECE exact on stubs), prefix-pool accounting ledger (3/3),
+TrustGate v2 cost-sensitive calibrated abstention (5/5), and a
+task-level JSONL mini-benchmark harness (3/3). GIF rendering held for
+toolchain/output-quality reasons; launch draft carries a HOLD note.
 
 ## v5.41 (2026-10-06): Line Unification Merge
 Merge of the two diverged lines after nine days of non-fast-forward: the
