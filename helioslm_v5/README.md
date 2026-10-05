@@ -1,4 +1,4 @@
-# HeliosLM v5.22 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.41 - DeepSeek/K3-Style Architecture
 
 Reference LLM implementation with DeepSeek-V3-style efficiency techniques.
 All modules below are implemented and exercised by a CPU test suite with
@@ -19,7 +19,15 @@ Kimi-K3-class architecture mechanisms: hybrid linear attention, LatentMoE,
 quantile balancing, cross-layer attention residuals, and SiTU-GLU (see
 CHANGELOG; unit suite now 44 tests).
 
-## v5.22 (2026-09-21, second round): Daily Improvement — NVFP4 QAT + NoPE
+## v5.41 (2026-10-06): Line Unification Merge
+Merge of the two diverged lines after nine days of non-fast-forward: the
+local maintenance line (v5.21 per-channel decay gate, v5.22-L NVFP4 QAT +
+NoPE, learned lightning indexer) reunites with the calibration/RLCD line
+(v5.23-v5.40b). Conflict resolutions: size-dependent linear-head config
+kept alongside `per_channel_decay`; both version histories preserved (local
+v5.22 carries a `-L` suffix); both sides' tests retained.
+
+## v5.22-L (2026-09-21, second round, local line): Daily Improvement — NVFP4 QAT + NoPE
 
 Two landscape-driven additions (2026-09-21 scan). **NVFP4 QAT target**
 (`apply_qat(model, method="nvfp4")`): the FP4 training format the field
@@ -33,7 +41,7 @@ layers skip RoPE entirely — permutation-blind over the visible prefix
 Kimi-K3 direction; GDA layers were already position-free. Unit suite
 62 → 64 tests. Full details: [CHANGELOG](CHANGELOG.md).
 
-## v5.21 (2026-09-21): Daily Improvement — KDA-Style Per-Channel Decay Gate
+## v5.21 (2026-09-21, local line): Daily Improvement — KDA-Style Per-Channel Decay Gate
 
 Landscape-driven (2026-09-21 scan): Kimi K3 (KDA at 3:1 interleave) and
 GLM-5.3-Flash (34 KDA + 11 sparse MLA) both ship per-channel fine-grained

@@ -1,5 +1,21 @@
 # HeliosLM v5 Changelog
 
+## v5.41 (2026-10-06) - Line Unification Merge
+- Merge of the two diverged lines (local ahead 4 / remote ahead 160+ since
+  2026-09-23): the local maintenance line (KDA per-channel decay gate v5.21,
+  NVFP4 QAT + NoPE v5.22-L, learned lightning indexer) reunites with the
+  calibration/RLCD line (v5.23-v5.40b: agent layer, disagg evolver, chat
+  capability, TrustGate, continuous noul, RLCDAlignBench, level-1 ceiling
+  0.796, level-2 RLCD-FT experiment). Conflict resolutions: README and
+  CHANGELOG keep both histories (local v5.22 keeps a `-L` suffix to
+  disambiguate from the remote v5.22 decision-layer audit toolkit);
+  `config_v5.py` keeps the remote size-dependent linear-head config AND the
+  local `per_channel_decay` flag; `linear_attention.py`, `mla.py`, `qat.py`,
+  `test_v5.py` auto-merged with both sides' features intact
+- Version string unified at v5.41 (next free number after remote v5.40b)
+- Baseline after merge: full unit + integration suite to be verified green
+  before push (see daily_report_20261006.md)
+
 ## v5.39c (2026-10-04) - Level 1: Hybrid/Select Ceiling Measured
 - benchmarks/level1_hybrid_results.json: TF-IDF 0.774 / hybrid 0.714 /
   Qwen-enc 0.714 / PER-BENCH-SELECT 0.796 (44 benchmarks, oracle leg
