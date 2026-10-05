@@ -1,0 +1,142 @@
+{
+  "n": 12,
+  "correct": "0/12",
+  "finished": "0/12",
+  "mean_parse_rate": 0.0,
+  "replay_ok": true,
+  "conf_on_wrong_mean": 1.0,
+  "results": [
+    {
+      "family": "Task",
+      "correct": false,
+      "steps": 2,
+      "budget": 2,
+      "parse_rate": 0.0,
+      "finished": false,
+      "replay_ok": true,
+      "conf": 0.9999887943267822,
+      "wall_s": 2.8
+    },
+    {
+      "family": "Task",
+      "correct": false,
+      "steps": 2,
+      "budget": 2,
+      "parse_rate": 0.0,
+      "finished": false,
+      "replay_ok": true,
+      "conf": 0.9999738931655884,
+      "wall_s": 1.1
+    },
+    {
+      "family": "Task",
+      "correct": false,
+      "steps": 2,
+      "budget": 2,
+      "parse_rate": 0.0,
+      "finished": false,
+      "replay_ok": true,
+      "conf": 0.999985933303833,
+      "wall_s": 0.9
+    },
+    {
+      "family": "Task",
+      "correct": false,
+      "steps": 2,
+      "budget": 2,
+      "parse_rate": 0.0,
+      "finished": false,
+      "replay_ok": true,
+      "conf": 0.9999749660491943,
+      "wall_s": 1.4
+    },
+    {
+      "family": "Task",
+      "correct": false,
+      "steps": 2,
+      "budget": 2,
+      "parse_rate": 0.0,
+      "finished": false,
+      "replay_ok": true,
+      "conf": 0.9999663829803467,
+      "wall_s": 1.2
+    },
+    {
+      "family": "Task",
+      "correct": false,
+      "steps": 2,
+      "budget": 2,
+      "parse_rate": 0.0,
+      "finished": false,
+      "replay_ok": true,
+      "conf": 0.9999843835830688,
+      "wall_s": 0.8
+    },
+    {
+      "family": "Task",
+      "correct": false,
+      "steps": 4,
+      "budget": 4,
+      "parse_rate": 0.0,
+      "finished": false,
+      "replay_ok": true,
+      "conf": 0.999984860420227,
+      "wall_s": 1.6
+    },
+    {
+      "family": "Task",
+      "correct": false,
+      "steps": 4,
+      "budget": 4,
+      "parse_rate": 0.0,
+      "finished": false,
+      "replay_ok": true,
+      "conf": 0.999985933303833,
+      "wall_s": 2.2
+    },
+    {
+      "family": "Task",
+      "correct": false,
+      "steps": 4,
+      "budget": 4,
+      "parse_rate": 0.0,
+      "finished": false,
+      "replay_ok": true,
+      "conf": 0.9999876022338867,
+      "wall_s": 2.3
+    },
+    {
+      "family": "write_read",
+      "correct": false,
+      "steps": 8,
+      "budget": 8,
+      "parse_rate": 0.0,
+      "finished": false,
+      "replay_ok": true,
+      "conf": 0.9999842643737793,
+      "wall_s": 4.9
+    },
+    {
+      "family": "write_read",
+      "correct": false,
+      "steps": 8,
+      "budget": 8,
+      "parse_rate": 0.0,
+      "finished": false,
+      "replay_ok": true,
+      "conf": 0.9999792575836182,
+      "wall_s": 4.9
+    },
+    {
+      "family": "write_read",
+      "correct": false,
+      "steps": 8,
+      "budget": 8,
+      "parse_rate": 0.0,
+      "finished": false,
+      "replay_ok": true,
+      "conf": 0.9999853372573853,
+      "wall_s": 4.7
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "prompt_equal": [
+    true,
+    true,
+    true
+  ],
+  "gens": [
+    {
+      "task": "Compute the value of: 41 + -28 - 77 + 94",
+      "train_out": "onf 0 f\" v5.6=True))}. c_kv \"17447474141onf 0 f\" v5.6=True))}. c_kv \"74141onf 0 f\" v5.6=True))}. c_kv \"14141414141onf 0 f\" v5.6=True)le=True)le=True)41414141le414141onf4141414141414141414141414onf4141",
+      "cs_out": "onf 0 f\" v5.6=True))}. c_kv \"17447474141onf 0 f\" v5.6=True))}. c_kv \"74141onf 0 f\" v5.6=True))}. c_kv \"14141414141onf 0 f\" v5.6=True)le=True)le=True)41414141le414141onf4141414141414141414141414onf4141"
+    },
+    {
+      "task": "Compute the value of: -9 * 60 % -49",
+      "train_out": "onf 0 f\" v5.6=True))}. c_kv \"949le worker_se-shle)\n\n\ndef maMAX_",
+      "cs_out": "onf 0 f\" v5.6=True))}. c_kv \"949le worker_se-shle)\n\n\ndef maMAX_"
+    },
+    {
+      "task": "Compute the value of: 19 * -92",
+      "train_out": "onfodeonf 0 f\" v5.6 \" build_)}.insum(\" \" \"text92 ->",
+      "cs_out": "onfodeonf 0 f\" v5.6 \" build_)}.insum(\" \" \"text92 ->"
+    }
+  ]
+}

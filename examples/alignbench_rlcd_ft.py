@@ -1,13 +1,9 @@
 """alignbench_rlcd_ft.py - Level 2: fine-tune Qwen3-0.6B on AlignBench outcomes.
 
-Full fine-tune with (1) CE on a yes/no answer token and (2) the RLCD
-Brier term (P(yes)-label)^2. Honest prediction (level2_plan.json): the
-Brier term shows NULL effect here (label == outcome on iid data -- T28
-proper-scoring-rule redundancy); the gain comes from full fine-tuning
-vs frozen features. That separation -- "calibration requires training"
-vs "calibration requires RLCD-style training" -- is the point.
+Frozen backbone + last layer + lm_head fine-tune.
+Preserves pretrained representations while learning the alignment probe.
 
-GPU: RTX 4060 8GB, bf16, batch 8, grad checkpointing. ~2h/epoch.
+GPU: RTX 4060 8GB, bf16, batch 4, accum 4, grad checkpointing. ~30min/epoch.
 
 Usage:
   pip install transformers accelerate
@@ -90,27 +86,36 @@ model = AutoModelForCausalLM.from_pretrained(
 model.gradient_checkpointing_enable(
     gradient_checkpointing_kwargs={"use_reentrant": False})
 model.config.use_cache = False
-# RTX 4060 driver-tier CUDA instability with checkpointed backward
-# (same family as the earlier foreach failure): synchronize before the
-# first backward pass so async errors surface at the true origin
 import torch as _t
 _t.cuda.synchronize()
 dev = "cuda"
 model = model.to(dev)
-# 8GB VRAM discipline: bf16 optimizer states halve the AdamW footprint
-# (fp32 master would be 2.4GB + 4.8GB states + 2.4GB grads -- OOM on a
-# 4060); bf16 states are slightly noisier, acceptable at lr 1e-5
-opt = torch.optim.AdamW(model.parameters(), lr=1e-5, weight_decay=0.01,
-                        foreach=False)
+
+# === FREEZE BACKBONE, TRAIN LAST LAYER + LM_HEAD ONLY ===
+trainable_params = 0
+total_params = 0
+for name, param in model.named_parameters():
+    total_params += param.numel()
+    if "layers.27" in name or "lm_head" in name:  # last layer + head
+        param.requires_grad = True
+        trainable_params += param.numel()
+    else:
+        param.requires_grad = False
+print(f"Trainable params: {trainable_params:,} / {total_params:,} "
+      f"({100*trainable_params/total_params:.1f}%)", flush=True)
+
+opt = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()),
+                        lr=1e-4, weight_decay=0.01, foreach=False)
 for g in opt.param_groups:
     for p in g["params"]:
         p.data = p.data.to(torch.bfloat16)
 EPOCHS = int(PLAN["training"]["epochs"])
 LAM = float(PLAN["training"]["rlcd_lambda"])
 BATCH = 4
+ACCUM_STEPS = 4
 loader = DataLoader(ProbeDS(train_rows), batch_size=BATCH, shuffle=True,
                     collate_fn=collate)
-total_steps = EPOCHS * len(loader)
+total_steps = EPOCHS * len(loader) // ACCUM_STEPS
 sched = get_cosine_schedule_with_warmup(opt, 30, total_steps)
 
 def auroc(scores, labels):
@@ -133,6 +138,7 @@ def auroc(scores, labels):
 
 t0 = time.time()
 step = 0
+opt.zero_grad()
 for ep in range(EPOCHS):
     model.train()
     tot = 0.0
@@ -140,23 +146,46 @@ for ep in range(EPOCHS):
         batch = {k: v.to(dev) for k, v in batch.items()}
         out = model(input_ids=batch["input_ids"],
                     attention_mask=batch["attention_mask"])
-        logits = out.logits[:, -1, :]
-        p_yes = torch.softmax(logits.float(), dim=-1)[:, YES]
+        seq_lengths = batch["attention_mask"].sum(dim=1) - 1
+        batch_size = batch["input_ids"].shape[0]
+        logits = out.logits[torch.arange(batch_size, device=dev), seq_lengths, :]
         yn_logits = logits[:, [YES, NO]].float()
-        yn_target = batch["labels"].long()
+        p_yes = torch.softmax(yn_logits, dim=-1)[:, 0]
+        yn_target = (1 - batch["labels"]).long()
         ce = F.cross_entropy(yn_logits, yn_target)
-        brier = ((p_yes - batch["labels"]) ** 2).mean()
-        loss = ce + LAM * brier
-        opt.zero_grad()
+        brier_labels = 1 - batch["labels"]
+        brier = ((p_yes - brier_labels) ** 2).mean()
+        loss = (ce + LAM * brier) / ACCUM_STEPS
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        opt.step()
-        sched.step()
-        tot += loss.item()
+        if (step + 1) % ACCUM_STEPS == 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            opt.step()
+            sched.step()
+            opt.zero_grad()
+        tot += loss.item() * ACCUM_STEPS
         step += 1
         if step % 100 == 0:
-            print(f"ep{ep} {step}/{total_steps} loss {tot/step:.4f} "
+            print(f"ep{ep} {step}/{total_steps * ACCUM_STEPS} loss {tot/step:.4f} "
+                  f"p_yes_mean={p_yes.mean().item():.3f} p_yes_std={p_yes.std().item():.3f} "
                   f"{time.time()-t0:.0f}s", flush=True)
+
+# === Train set eval ===
+print("\n--- Train AUROC check ---", flush=True)
+train_scores, train_labs = [], []
+with torch.no_grad():
+    for i in range(0, len(train_rows), 16):
+        chunk = train_rows[i:i + 16]
+        enc = tok([render(it) for it in chunk], return_tensors="pt",
+                  padding=True, truncation=True, max_length=512).to(dev)
+        out = model(**enc)
+        seq_lengths = enc["attention_mask"].sum(dim=1) - 1
+        chunk_logits = out.logits[torch.arange(len(chunk), device=dev), seq_lengths, :].float()
+        yn_logits_eval = chunk_logits[:, [YES, NO]]
+        p = torch.softmax(yn_logits_eval, dim=-1)[:, 0]
+        train_scores.extend(p.cpu().numpy().tolist())
+        train_labs.extend([int(it["label"]) for it in chunk])
+train_auroc = auroc(train_scores, train_labs)
+print(f"Train AUROC: {train_auroc:.3f}", flush=True)
 
 model.eval()
 per_bench = {}
@@ -169,7 +198,10 @@ with torch.no_grad():
                       padding=True, truncation=True,
                       max_length=512).to(dev)
             out = model(**enc)
-            p = torch.softmax(out.logits[:, -1, :].float(), dim=-1)[:, YES]
+            seq_lengths = enc["attention_mask"].sum(dim=1) - 1
+            chunk_logits = out.logits[torch.arange(len(chunk), device=dev), seq_lengths, :].float()
+            yn_logits_eval = chunk_logits[:, [YES, NO]]
+            p = torch.softmax(yn_logits_eval, dim=-1)[:, 0]
             scores.extend(p.cpu().numpy().tolist())
             labs.extend([int(it["label"]) for it in chunk])
         a = auroc(scores, labs)

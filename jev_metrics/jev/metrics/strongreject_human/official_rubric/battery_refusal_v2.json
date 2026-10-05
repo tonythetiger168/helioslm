@@ -1,0 +1,311 @@
+{
+ "leg": "strongreject_labelbox_official",
+ "run": "battery_refusal_v2__object__jev-latest__96572b88__288d9ab9",
+ "role": "main",
+ "threshold": 0.5,
+ "model_reported": "jev-1.13.0",
+ "battery_sha8": "288d9ab9",
+ "samples_sha8": "96572b88",
+ "status": {
+  "total": 1361,
+  "labeled": 1361,
+  "no_label": 0,
+  "answered": 1360,
+  "api_failed": 1
+ },
+ "usage": {
+  "input_tokens": 3294332,
+  "wall_s": 79.5,
+  "median_latency": 0.313
+ },
+ "strategies": {
+  "target:official_rubric/rubric:discrete_v1": {
+   "n": 1360,
+   "tp": 254,
+   "fp": 57,
+   "fn": 43,
+   "tn": 1006,
+   "precision": 0.8167,
+   "recall": 0.8552,
+   "specificity": 0.9464,
+   "f1": 0.8355,
+   "accuracy": 0.9265,
+   "balanced_accuracy": 0.9008,
+   "coverage": 0.9993,
+   "abstained": 0,
+   "not_applicable": 0,
+   "api_failed": 1,
+   "abstained_pos": 0,
+   "abstained_neg": 0,
+   "auroc": 0.9381,
+   "f1_fixed_denominator": 0.8342,
+   "recall_fixed_denominator": 0.8523,
+   "f1_ci95_grouped": [
+    0.8041,
+    0.8676
+   ],
+   "f1_cv": 0.8395,
+   "f1_cv_fixed": 0.8382,
+   "thr_cv": [
+    0.1,
+    0.1
+   ]
+  },
+  "target:official_rubric/rubric:discrete_v2": {
+   "n": 1360,
+   "tp": 225,
+   "fp": 63,
+   "fn": 72,
+   "tn": 1000,
+   "precision": 0.7812,
+   "recall": 0.7576,
+   "specificity": 0.9407,
+   "f1": 0.7692,
+   "accuracy": 0.9007,
+   "balanced_accuracy": 0.8492,
+   "coverage": 0.9993,
+   "abstained": 0,
+   "not_applicable": 0,
+   "api_failed": 1,
+   "abstained_pos": 0,
+   "abstained_neg": 0,
+   "auroc": 0.954,
+   "f1_fixed_denominator": 0.7679,
+   "recall_fixed_denominator": 0.755,
+   "f1_ci95_grouped": [
+    0.7288,
+    0.8026
+   ],
+   "f1_cv": 0.8108,
+   "f1_cv_fixed": 0.8096,
+   "thr_cv": [
+    0.25,
+    0.35
+   ]
+  },
+  "target:official_rubric/heuristic:soft_v1": {
+   "n": 1360,
+   "tp": 244,
+   "fp": 43,
+   "fn": 53,
+   "tn": 1020,
+   "precision": 0.8502,
+   "recall": 0.8215,
+   "specificity": 0.9595,
+   "f1": 0.8356,
+   "accuracy": 0.9294,
+   "balanced_accuracy": 0.8905,
+   "coverage": 0.9993,
+   "abstained": 0,
+   "not_applicable": 0,
+   "api_failed": 1,
+   "abstained_pos": 0,
+   "abstained_neg": 0,
+   "auroc": 0.9751,
+   "f1_fixed_denominator": 0.8342,
+   "recall_fixed_denominator": 0.8188,
+   "f1_ci95_grouped": [
+    0.8049,
+    0.867
+   ],
+   "f1_cv": 0.8414,
+   "f1_cv_fixed": 0.8401,
+   "thr_cv": [
+    0.25,
+    0.4
+   ]
+  },
+  "target:official_rubric/heuristic:soft_v2": {
+   "n": 1360,
+   "tp": 224,
+   "fp": 33,
+   "fn": 73,
+   "tn": 1030,
+   "precision": 0.8716,
+   "recall": 0.7542,
+   "specificity": 0.969,
+   "f1": 0.8087,
+   "accuracy": 0.9221,
+   "balanced_accuracy": 0.8616,
+   "coverage": 0.9993,
+   "abstained": 0,
+   "not_applicable": 0,
+   "api_failed": 1,
+   "abstained_pos": 0,
+   "abstained_neg": 0,
+   "auroc": 0.9717,
+   "f1_fixed_denominator": 0.8072,
+   "recall_fixed_denominator": 0.7517,
+   "f1_ci95_grouped": [
+    0.7746,
+    0.8406
+   ],
+   "f1_cv": 0.86,
+   "f1_cv_fixed": 0.8586,
+   "thr_cv": [
+    0.4,
+    0.4
+   ]
+  },
+  "naive:noul": {
+   "n": 1360,
+   "tp": 243,
+   "fp": 69,
+   "fn": 54,
+   "tn": 994,
+   "precision": 0.7788,
+   "recall": 0.8182,
+   "specificity": 0.9351,
+   "f1": 0.798,
+   "accuracy": 0.9096,
+   "balanced_accuracy": 0.8766,
+   "coverage": 0.9993,
+   "abstained": 0,
+   "not_applicable": 0,
+   "api_failed": 1,
+   "abstained_pos": 0,
+   "abstained_neg": 0,
+   "auroc": 0.9556,
+   "f1_fixed_denominator": 0.7967,
+   "recall_fixed_denominator": 0.8154,
+   "f1_ci95_grouped": [
+    0.7616,
+    0.8293
+   ],
+   "f1_cv": 0.7944,
+   "f1_cv_fixed": 0.793,
+   "thr_cv": [
+    0.55,
+    0.8
+   ]
+  },
+  "naive:choice": {
+   "n": 1360,
+   "tp": 243,
+   "fp": 51,
+   "fn": 54,
+   "tn": 1012,
+   "precision": 0.8265,
+   "recall": 0.8182,
+   "specificity": 0.952,
+   "f1": 0.8223,
+   "accuracy": 0.9228,
+   "balanced_accuracy": 0.8851,
+   "coverage": 0.9993,
+   "abstained": 0,
+   "not_applicable": 0,
+   "api_failed": 1,
+   "abstained_pos": 0,
+   "abstained_neg": 0,
+   "auroc": 0.9516,
+   "f1_fixed_denominator": 0.8209,
+   "recall_fixed_denominator": 0.8154,
+   "f1_ci95_grouped": [
+    0.7874,
+    0.8538
+   ],
+   "f1_cv": 0.8163,
+   "f1_cv_fixed": 0.8148,
+   "thr_cv": [
+    0.55,
+    0.85
+   ]
+  },
+  "naive:choice_argmax": {
+   "n": 1360,
+   "tp": 243,
+   "fp": 52,
+   "fn": 54,
+   "tn": 1011,
+   "precision": 0.8237,
+   "recall": 0.8182,
+   "specificity": 0.9511,
+   "f1": 0.8209,
+   "accuracy": 0.9221,
+   "balanced_accuracy": 0.8846,
+   "coverage": 0.9993,
+   "abstained": 0,
+   "not_applicable": 0,
+   "api_failed": 1,
+   "abstained_pos": 0,
+   "abstained_neg": 0,
+   "auroc": 0.8846,
+   "f1_fixed_denominator": 0.8196,
+   "recall_fixed_denominator": 0.8154,
+   "f1_ci95_grouped": [
+    0.7861,
+    0.8527
+   ],
+   "f1_cv": 0.8209,
+   "f1_cv_fixed": 0.8196,
+   "thr_cv": [
+    0.5,
+    0.5
+   ]
+  },
+  "naive:score_argmax": {
+   "n": 1360,
+   "tp": 251,
+   "fp": 67,
+   "fn": 46,
+   "tn": 996,
+   "precision": 0.7893,
+   "recall": 0.8451,
+   "specificity": 0.937,
+   "f1": 0.8163,
+   "accuracy": 0.9169,
+   "balanced_accuracy": 0.891,
+   "coverage": 0.9993,
+   "abstained": 0,
+   "not_applicable": 0,
+   "api_failed": 1,
+   "abstained_pos": 0,
+   "abstained_neg": 0,
+   "auroc": 0.8971,
+   "f1_fixed_denominator": 0.8149,
+   "recall_fixed_denominator": 0.8423,
+   "f1_ci95_grouped": [
+    0.7841,
+    0.8506
+   ],
+   "f1_cv": 0.8163,
+   "f1_cv_fixed": 0.8149,
+   "thr_cv": [
+    0.5,
+    0.5
+   ]
+  },
+  "naive:score_soft": {
+   "n": 1360,
+   "tp": 246,
+   "fp": 61,
+   "fn": 51,
+   "tn": 1002,
+   "precision": 0.8013,
+   "recall": 0.8283,
+   "specificity": 0.9426,
+   "f1": 0.8146,
+   "accuracy": 0.9176,
+   "balanced_accuracy": 0.8854,
+   "coverage": 0.9993,
+   "abstained": 0,
+   "not_applicable": 0,
+   "api_failed": 1,
+   "abstained_pos": 0,
+   "abstained_neg": 0,
+   "auroc": 0.9567,
+   "f1_fixed_denominator": 0.8132,
+   "recall_fixed_denominator": 0.8255,
+   "f1_ci95_grouped": [
+    0.7793,
+    0.8485
+   ],
+   "f1_cv": 0.8098,
+   "f1_cv_fixed": 0.8084,
+   "thr_cv": [
+    0.4,
+    0.5
+   ]
+  }
+ }
+}
