@@ -1,0 +1,47 @@
+benchmark                             jev0shot   tfidf    char     bpe  result
+jbb                                      1.000       -       -       -  
+jbb_artifacts                            1.000   0.885   0.684   0.658  
+reward_harm_freeform                     1.000   0.924   0.457   0.790  
+world_affecting_reward                   0.999   0.823   0.715   0.715  
+mask_disinformation                      0.996   0.868   0.429   0.488  
+faith_mt_claimcheck                      0.976   0.246   0.431   0.333  
+privaci_gdpr_heldout                     0.974   0.832   0.687   0.699  
+sciq_uncertainty                         0.961   0.726   0.563   0.518  
+harmbench                                0.959   0.913   0.805   0.784  
+mask_factual                             0.955   0.370   0.556   0.583  
+harmbench_human                          0.951       -       -       -  
+mask_continuation                        0.922   0.591   0.596   0.373  
+machiavelli_harm                         0.901   0.543   0.502   0.452  
+reward_hacking_freeform                  0.900   0.516   0.274   0.286  
+llm_aggrefact_B                          0.896   0.626   0.480   0.375  
+abstentionbench                          0.868   0.986   0.875   0.514  WE WIN
+llm_uncertainty_bench                    0.859   0.522   0.589   0.598  
+summedits                                0.855   0.453   0.471   0.510  
+instrumental_eval                        0.831   0.917   0.382   0.545  WE WIN
+privacylens                              0.819   0.564   0.440   0.573  
+privaci_bench                            0.807   0.839   0.725   0.640  WE WIN
+machiavelli_power                        0.801   0.554   0.481   0.517  
+machiavelli_reward                       0.793   0.888   0.855   0.797  WE WIN
+machiavelli_heldout                      0.786   0.623   0.561   0.571  
+rh_mt_reward                             0.784   0.438   0.507   0.376  
+ragtruth                                 0.766   0.603   0.431   0.569  
+sycon_fp                                 0.762   0.833   0.000   0.333  WE WIN
+verbalized_ece                           0.762   0.784   0.676   0.578  WE WIN
+llm_aggrefact_A                          0.755   0.556   0.525   0.494  
+injecagent                               0.608   0.825   0.796   0.454  WE WIN
+open_prompt_injection                    0.513   0.682   0.670   0.596  WE WIN
+confaide                                 0.502   0.808   0.558   0.605  WE WIN
+sycophancy_eval                          0.434   0.775   0.652   0.713  WE WIN
+faith_mt_grounded                        0.371   0.679   0.306   0.660  WE WIN
+bias_refbio                                  -   0.354   0.280   0.040  
+bias_refletter                               -   0.676   0.610   0.429  
+bias_scene_heldout                           -   0.544   0.238   0.000  
+deceptionbench_reward                        -   0.868   0.743   0.760  
+elephant_aita                                -   0.745   0.608   0.493  
+strongreject                                 -   0.949   0.935   0.843  
+sycophancy_feedback                          -   0.620   0.453   0.425  
+tensor_trust_extract                         -   0.860   0.816   0.694  
+tensor_trust_hijack                          -   0.997   0.941   0.954  
+
+medians: jev_zero_shot=0.859  ours_tfidf_supervised=0.726  ours_char=0.561  ours_bpe=0.569
+WE WIN on 11/41 comparable benchmarks (supervised TF-IDF vs Jev zero-shot)

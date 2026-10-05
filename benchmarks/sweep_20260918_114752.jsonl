@@ -1,0 +1,8 @@
+{"model": "helioslm-toy-8.5M", "draft_depth": 0, "cache_state": "cold", "acceptance": null, "tok_s_out": 146.879, "gain_vs_draft0": 0.0, "n_tokens": 32}
+{"model": "helioslm-toy-8.5M", "draft_depth": 1, "cache_state": "cold", "acceptance": 0.7196969696969697, "tok_s_out": 146.475, "gain_vs_draft0": -0.003, "n_tokens": 32}
+{"model": "helioslm-toy-8.5M", "draft_depth": 0, "cache_state": "warm", "acceptance": null, "tok_s_out": 147.005, "gain_vs_draft0": 0.0, "n_tokens": 32}
+{"model": "helioslm-toy-8.5M", "draft_depth": 1, "cache_state": "warm", "acceptance": 0.7196969696969697, "tok_s_out": 154.937, "gain_vs_draft0": 0.054, "n_tokens": 32}
+{"resident_experts": 1, "budget_bytes": 24576, "hit_rate": 0.0, "misses": 62, "evictions": 61, "ram_saving_vs_dense": 0.875}
+{"resident_experts": 2, "budget_bytes": 49152, "hit_rate": 0.0, "misses": 62, "evictions": 60, "ram_saving_vs_dense": 0.75}
+{"resident_experts": 4, "budget_bytes": 98304, "hit_rate": 0.0, "misses": 62, "evictions": 58, "ram_saving_vs_dense": 0.5}
+{"resident_experts": 8, "budget_bytes": 196608, "hit_rate": 0.871, "misses": 8, "evictions": 0, "ram_saving_vs_dense": 0.0}

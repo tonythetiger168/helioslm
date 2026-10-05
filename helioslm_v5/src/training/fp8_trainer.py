@@ -9,10 +9,12 @@ either by casting through a native ``torch.float8_*`` dtype (PyTorch >= 2.1)
 or, when the runtime lacks float8 support, by an explicit round-to-nearest
 grid simulation with a straight-through gradient.
 """
+import inspect
 import warnings
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 _FP8_RANGES = {
     # max_val, mantissa bits, min normal exponent (subnormal step = 2^(min_exp - mantissa))
@@ -186,6 +188,8 @@ class FP8Trainer:
         self.max_grad_norm = max_grad_norm
         # Number of train_steps skipped because of non-finite loss/grads.
         self.skipped_steps = 0
+        # One-time guard for the no-labels fallback warning in train_step.
+        self._warned_no_labels = False
 
         # Convert applicable layers to FP8
         self._convert_to_fp8()
@@ -277,9 +281,58 @@ class FP8Trainer:
             loss = loss.mean()
         return loss
 
-    def train_step(self, batch):
+    @staticmethod
+    def _accepts_labels_kwarg(model) -> bool:
+        """True if ``model.forward`` declares a ``labels`` keyword."""
+        try:
+            params = inspect.signature(model.forward).parameters
+        except (TypeError, ValueError):
+            return False
+        return "labels" in params
+
+    def _token_cross_entropy(self, batch, labels) -> torch.Tensor:
+        """Token cross-entropy of the model logits against ``labels``.
+
+        ``labels`` is a LongTensor of shape (B, L) aligned position-wise
+        with ``batch['input_ids']``; the causal shift is applied here
+        (logits at position t are scored against labels[t + 1]), so pass
+        the full unshifted target sequence. Positions equal to -100 are
+        ignored. A model whose forward accepts ``labels=`` scores them
+        itself and its loss is used as-is.
+        """
+        labels = labels.long()
+        if self._accepts_labels_kwarg(self.model):
+            # The model scores the labels itself; extract its loss with the
+            # same defensive reduction as the no-labels path.
+            return self._extract_loss(self.model(**batch, labels=labels))
+        output = self.model(**batch)
+        logits = output[0] if isinstance(output, (tuple, list)) \
+            else getattr(output, "logits")
+        # Causal LM shift: position t predicts token t + 1.
+        shift_logits = logits[:, :-1, :].float()
+        shift_labels = labels[:, 1:]
+        return F.cross_entropy(
+            shift_logits.reshape(-1, shift_logits.size(-1)),
+            shift_labels.reshape(-1),
+            ignore_index=-100,
+        )
+
+    def train_step(self, batch, labels=None):
         """Single training step: forward -> zero_grad -> backward ->
         optimizer.step -> copy master weights back to the model.
+
+        Args:
+            batch: keyword arguments for the model forward (e.g.
+                ``{'input_ids': ids}``), exactly as before.
+            labels: optional LongTensor of shape (B, L) with target token
+                ids aligned position-wise with ``batch['input_ids']``.
+                When given, the step minimizes token cross-entropy (the
+                causal shift is applied internally — see
+                ``_token_cross_entropy``). When omitted, the previous
+                behavior is kept (reduce the raw model output), but a
+                one-time warning is emitted: for models like HeliosLMv5
+                whose forward returns raw logits, that reduction is NOT a
+                task loss.
 
         NaN guard (M-T2): if the loss or any gradient is non-finite, the
         optimizer step is SKIPPED — no NaN ever reaches the fp32 master
@@ -296,7 +349,18 @@ class FP8Trainer:
         self.optimizer.zero_grad(set_to_none=True)
 
         # Forward in FP8
-        loss = self._extract_loss(self.model(**batch))
+        if labels is None:
+            if not self._warned_no_labels:
+                self._warned_no_labels = True
+                warnings.warn(
+                    "FP8Trainer.train_step: no labels given; falling back to "
+                    "reducing the raw model output (for HeliosLMv5 that is "
+                    "the mean of the logits, NOT a task loss). Pass "
+                    "labels=(B, L) target token ids to train with token "
+                    "cross-entropy.")
+            loss = self._extract_loss(self.model(**batch))
+        else:
+            loss = self._token_cross_entropy(batch, labels)
 
         if not torch.isfinite(loss):
             self.skipped_steps += 1

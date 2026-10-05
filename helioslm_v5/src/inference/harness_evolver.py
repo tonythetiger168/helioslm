@@ -89,8 +89,16 @@ class HarnessEvolver:
     # Oracle: greedy outputs must be bitwise-identical to baseline.
     # ------------------------------------------------------------------
     @torch.no_grad()
-    def _run(self, cfg: HarnessConfig):
-        """Run the workload under ``cfg``. Returns (outputs, telemetry)."""
+    def _run(self, cfg: HarnessConfig, baseline_outputs: List[List[int]] = None):
+        """Run the workload under ``cfg``. Returns (outputs, telemetry).
+
+        ``baseline_outputs``: greedy outputs of the zero config. When a
+        candidate runs BOTH the pool and the draft pass, each pass's
+        output is gated against it — a composite config is accepted only
+        if every pass agrees bitwise (temp-0 invariance). A diverging
+        pass's output is surfaced as the item result so the caller's
+        oracle gate rejects the config.
+        """
         outputs = []
         telemetry = {"tokens": 0, "pool_hit_tokens": 0}
         pool = None
@@ -99,19 +107,24 @@ class HarnessEvolver:
             pool = PrefixPool(self.model, block_size=self.block_size,
                               max_blocks=max(4, len(self.workload) * 2),
                               fingerprint="harness-evolver")
-        for ids in self.workload:
+        for idx, ids in enumerate(self.workload):
             out = None
+            pool_out = None
+            draft_ran = False
             # pass 1 (optional): prefix-pool pass — prefill reuse telemetry
             if pool is not None:
                 row = pool.generate(ids, max_new_tokens=self.max_new,
                                     temperature=0.0)
-                out = row[0, len(ids):].tolist()
+                pool_out = row[0, len(ids):].tolist()
+                out = pool_out
             # pass 2 (optional): MTP draft pass — acceptance telemetry.
             # Measured on its own because PrefixPool.generate does not
-            # draft internally; the oracle gate below compares the FINAL
-            # outputs against baseline, so a composite config is accepted
-            # only if every pass agrees bitwise (which temp-0 guarantees).
+            # draft internally; when BOTH passes run (composite config),
+            # each pass is gated separately against the baseline below —
+            # a composite config is accepted only if every pass agrees
+            # bitwise (which temp-0 guarantees).
             if cfg.draft and getattr(self.model, "mtp_modules", None):
+                draft_ran = True
                 dec = MTPDecoder(self.model, self.model.mtp_modules,
                                  self.model.config)
                 r = dec.generate(torch.tensor([ids]), max_new_tokens=self.max_new,
@@ -123,6 +136,15 @@ class HarnessEvolver:
                                             max_new_tokens=self.max_new,
                                             temperature=0)
                 out = out_t[0, len(ids):].tolist()
+            elif pool_out is not None and draft_ran \
+                    and baseline_outputs is not None \
+                    and pool_out != list(baseline_outputs[idx]):
+                # Composite gate: the pool pass diverged from the
+                # baseline. Surface its output as the item result — the
+                # draft output (which overwrote ``out`` above) would mask
+                # the divergence and let the oracle gate pass a config
+                # whose pool pass changes greedy answers.
+                out = pool_out
             outputs.append(list(out))
             telemetry["tokens"] += len(ids) + len(out)
         if pool is not None:
@@ -175,7 +197,7 @@ class HarnessEvolver:
         # baseline for ACCEPTANCE decisions is still the zero config (its
         # cost), but mutations compose onto the seed.
         seed = start_from or HarnessConfig()
-        seed_outputs, seed_tel = self._run(seed)
+        seed_outputs, seed_tel = self._run(seed, base_outputs)
         seed_cost = self._cost(seed, seed_tel, 0)
         # the oracle must hold for the seed itself on this workload
         seed_ok = all(torch.equal(torch.tensor(a), torch.tensor(b))
@@ -202,7 +224,7 @@ class HarnessEvolver:
                                               cand.tier_resident_experts),
                     label=cand.label,
                 )
-                out, tel = self._run(trial)
+                out, tel = self._run(trial, base_outputs)
                 self.evaluations += 1
                 ok = all(torch.equal(torch.tensor(a), torch.tensor(b))
                          for a, b in zip(out, base_outputs))

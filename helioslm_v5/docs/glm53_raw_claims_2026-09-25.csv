@@ -1,0 +1,10 @@
+﻿Benchmark,分數,備註
+SWE-bench Verified,77.8%,
+Terminal-Bench 3.0,88.3%,⚠️ 版本比 Hy4 的 2.1 新，不能直接比
+DeepSWE,66.9,
+GPQA Diamond,62.5%,和 Hy4 的 92.3 差距大到可疑，幾乎肯定是評測協議不同，先別當真
+HLE w/ Tools,62.5,
+CyberGym,**84.5%**,壓過 Anthropic 受限模型 Mythos 5 的 83.8%（Z.ai 自報，Reuters 引用）
+ExploitBench / ExploitGym,54.4 / 130,
+GDPVal-AA v2,1769 Elo，排名第一,
+Arena Elo,1474（95.7 percentile）,

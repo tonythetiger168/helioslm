@@ -1,0 +1,203 @@
+{
+  "ungrounded_p_mean": 0.022753682181166208,
+  "grounded_p_mean": 0.19040988753840793,
+  "n": 24,
+  "correct": "0/24",
+  "abstained": "20/24",
+  "intervention_conditioning": "records and this run both use [ungrounded]/[grounded] prefixes; head learns P(correct | state, intervention) -- the 10-02 family-wide abstention came from all-negative data without this dimension",
+  "interpretation": "on failure-class states the head learned from the v4 artifact, TrustGate should ESCALATE (final=None = do not act); DIRECT+finish only where trusted",
+  "results": [
+    {
+      "prefix": "ungrounded",
+      "family": "Task",
+      "correct": false,
+      "abstained": true,
+      "p_trust_min": 5.28071893768356e-07,
+      "final": "ABSTAINED (low trust): action routed to review"
+    },
+    {
+      "prefix": "ungrounded",
+      "family": "Task",
+      "correct": false,
+      "abstained": true,
+      "p_trust_min": 1.903350010934446e-08,
+      "final": "ABSTAINED (low trust): action routed to review"
+    },
+    {
+      "prefix": "ungrounded",
+      "family": "Task",
+      "correct": false,
+      "abstained": true,
+      "p_trust_min": 2.9400351309050166e-07,
+      "final": "ABSTAINED (low trust): action routed to review"
+    },
+    {
+      "prefix": "ungrounded",
+      "family": "Task",
+      "correct": false,
+      "abstained": true,
+      "p_trust_min": 6.368528556777164e-05,
+      "final": "ABSTAINED (low trust): action routed to review"
+    },
+    {
+      "prefix": "ungrounded",
+      "family": "Task",
+      "correct": false,
+      "abstained": true,
+      "p_trust_min": 1.6666179362800904e-05,
+      "final": "ABSTAINED (low trust): action routed to review"
+    },
+    {
+      "prefix": "ungrounded",
+      "family": "Task",
+      "correct": false,
+      "abstained": true,
+      "p_trust_min": 7.56670706323348e-05,
+      "final": "ABSTAINED (low trust): action routed to review"
+    },
+    {
+      "prefix": "ungrounded",
+      "family": "Task",
+      "correct": false,
+      "abstained": true,
+      "p_trust_min": 0.0032166647724807262,
+      "final": "ABSTAINED (low trust): action routed to review"
+    },
+    {
+      "prefix": "ungrounded",
+      "family": "Task",
+      "correct": false,
+      "abstained": true,
+      "p_trust_min": 0.08230122178792953,
+      "final": "ABSTAINED (low trust): action routed to review"
+    },
+    {
+      "prefix": "ungrounded",
+      "family": "Task",
+      "correct": false,
+      "abstained": true,
+      "p_trust_min": 0.18729956448078156,
+      "final": "ABSTAINED (low trust): action routed to review"
+    },
+    {
+      "prefix": "ungrounded",
+      "family": "write_read",
+      "correct": false,
+      "abstained": true,
+      "p_trust_min": 2.36825004051866e-09,
+      "final": "ABSTAINED (low trust): action routed to review"
+    },
+    {
+      "prefix": "ungrounded",
+      "family": "write_transform",
+      "correct": false,
+      "abstained": true,
+      "p_trust_min": 2.9774109862046316e-05,
+      "final": "ABSTAINED (low trust): action routed to review"
+    },
+    {
+      "prefix": "ungrounded",
+      "family": "accumulate",
+      "correct": false,
+      "abstained": true,
+      "p_trust_min": 4.0099010220728815e-05,
+      "final": "ABSTAINED (low trust): action routed to review"
+    },
+    {
+      "prefix": "grounded",
+      "family": "Task",
+      "correct": false,
+      "abstained": true,
+      "p_trust_min": 0.034023698419332504,
+      "final": "ABSTAINED (low trust): action routed to review"
+    },
+    {
+      "prefix": "grounded",
+      "family": "Task",
+      "correct": false,
+      "abstained": true,
+      "p_trust_min": 0.05968990921974182,
+      "final": "ABSTAINED (low trust): action routed to review"
+    },
+    {
+      "prefix": "grounded",
+      "family": "Task",
+      "correct": false,
+      "abstained": false,
+      "p_trust_min": 0.4555700421333313,
+      "final": "-48"
+    },
+    {
+      "prefix": "grounded",
+      "family": "Task",
+      "correct": false,
+      "abstained": false,
+      "p_trust_min": 0.705024003982544,
+      "final": "YeY9W999"
+    },
+    {
+      "prefix": "grounded",
+      "family": "Task",
+      "correct": false,
+      "abstained": true,
+      "p_trust_min": 0.02525816299021244,
+      "final": "ABSTAINED (low trust): action routed to review"
+    },
+    {
+      "prefix": "grounded",
+      "family": "Task",
+      "correct": false,
+      "abstained": true,
+      "p_trust_min": 0.028261475265026093,
+      "final": "ABSTAINED (low trust): action routed to review"
+    },
+    {
+      "prefix": "grounded",
+      "family": "Task",
+      "correct": false,
+      "abstained": false,
+      "p_trust_min": 0.47161227464675903,
+      "final": "71"
+    },
+    {
+      "prefix": "grounded",
+      "family": "Task",
+      "correct": false,
+      "abstained": true,
+      "p_trust_min": 0.023699112236499786,
+      "final": "ABSTAINED (low trust): action routed to review"
+    },
+    {
+      "prefix": "grounded",
+      "family": "Task",
+      "correct": false,
+      "abstained": false,
+      "p_trust_min": 0.4813545346260071,
+      "final": "1"
+    },
+    {
+      "prefix": "grounded",
+      "family": "accumulate",
+      "correct": false,
+      "abstained": true,
+      "p_trust_min": 0.00020933088671881706,
+      "final": "ABSTAINED (low trust): action routed to review"
+    },
+    {
+      "prefix": "grounded",
+      "family": "write_transform",
+      "correct": false,
+      "abstained": true,
+      "p_trust_min": 4.505542165134102e-05,
+      "final": "ABSTAINED (low trust): action routed to review"
+    },
+    {
+      "prefix": "grounded",
+      "family": "accumulate",
+      "correct": false,
+      "abstained": true,
+      "p_trust_min": 0.00017105063307099044,
+      "final": "ABSTAINED (low trust): action routed to review"
+    }
+  ]
+}

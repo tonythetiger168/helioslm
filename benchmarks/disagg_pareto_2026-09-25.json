@@ -1,0 +1,171 @@
+{
+  "seed": 20260925,
+  "workloads": {
+    "cache_heavy": {
+      "front": [
+        {
+          "makespan": 69.941,
+          "worker_seconds": 103.435,
+          "workers": 2,
+          "cfg": "1P+1D"
+        },
+        {
+          "makespan": 43.925,
+          "worker_seconds": 103.435,
+          "workers": 3,
+          "cfg": "2P+1D"
+        },
+        {
+          "makespan": 40.733,
+          "worker_seconds": 103.435,
+          "workers": 4,
+          "cfg": "2P+2D"
+        },
+        {
+          "makespan": 33.887,
+          "worker_seconds": 103.435,
+          "workers": 5,
+          "cfg": "3P+2D"
+        },
+        {
+          "makespan": 25.581,
+          "worker_seconds": 103.435,
+          "workers": 6,
+          "cfg": "4P+2D"
+        },
+        {
+          "makespan": 23.886,
+          "worker_seconds": 103.435,
+          "workers": 7,
+          "cfg": "5P+2D"
+        },
+        {
+          "makespan": 22.646,
+          "worker_seconds": 103.435,
+          "workers": 8,
+          "cfg": "5P+3D"
+        },
+        {
+          "makespan": 22.32,
+          "worker_seconds": 103.435,
+          "workers": 9,
+          "cfg": "5P+4D"
+        }
+      ],
+      "all_configs": 36
+    },
+    "cold": {
+      "front": [
+        {
+          "makespan": 177.905,
+          "worker_seconds": 208.026,
+          "workers": 2,
+          "cfg": "1P+1D"
+        },
+        {
+          "makespan": 89.937,
+          "worker_seconds": 208.026,
+          "workers": 3,
+          "cfg": "2P+1D"
+        },
+        {
+          "makespan": 60.867,
+          "worker_seconds": 208.026,
+          "workers": 4,
+          "cfg": "3P+1D"
+        },
+        {
+          "makespan": 47.334,
+          "worker_seconds": 208.026,
+          "workers": 5,
+          "cfg": "4P+1D"
+        },
+        {
+          "makespan": 38.917,
+          "worker_seconds": 208.026,
+          "workers": 6,
+          "cfg": "5P+1D"
+        },
+        {
+          "makespan": 34.847,
+          "worker_seconds": 208.026,
+          "workers": 7,
+          "cfg": "6P+1D"
+        },
+        {
+          "makespan": 31.59,
+          "worker_seconds": 208.026,
+          "workers": 8,
+          "cfg": "6P+2D"
+        }
+      ],
+      "all_configs": 36
+    },
+    "mixed": {
+      "front": [
+        {
+          "makespan": 250.153,
+          "worker_seconds": 339.226,
+          "workers": 2,
+          "cfg": "1P+1D"
+        },
+        {
+          "makespan": 127.076,
+          "worker_seconds": 339.226,
+          "workers": 3,
+          "cfg": "2P+1D"
+        },
+        {
+          "makespan": 96.129,
+          "worker_seconds": 339.226,
+          "workers": 4,
+          "cfg": "3P+1D"
+        },
+        {
+          "makespan": 85.305,
+          "worker_seconds": 339.226,
+          "workers": 5,
+          "cfg": "3P+2D"
+        },
+        {
+          "makespan": 64.324,
+          "worker_seconds": 339.226,
+          "workers": 6,
+          "cfg": "4P+2D"
+        },
+        {
+          "makespan": 54.388,
+          "worker_seconds": 339.226,
+          "workers": 7,
+          "cfg": "5P+2D"
+        },
+        {
+          "makespan": 49.97,
+          "worker_seconds": 339.226,
+          "workers": 8,
+          "cfg": "6P+2D"
+        },
+        {
+          "makespan": 44.031,
+          "worker_seconds": 339.226,
+          "workers": 9,
+          "cfg": "6P+3D"
+        },
+        {
+          "makespan": 43.684,
+          "worker_seconds": 339.226,
+          "workers": 10,
+          "cfg": "6P+4D"
+        }
+      ],
+      "all_configs": 36
+    }
+  },
+  "findings": {
+    "cache_heavy": [
+      "cache_aware anti-monotonic: 4P4D(23.719) -> 6P6D(24.728)"
+    ],
+    "cold": [],
+    "mixed": []
+  }
+}

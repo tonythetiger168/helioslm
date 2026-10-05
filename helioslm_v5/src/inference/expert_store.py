@@ -63,6 +63,10 @@ class DiskExpertStore:
 
     def __init__(self, moe, path, budget_bytes):
         self.path = path
+        # Set only when attach_streaming_store created the backing file
+        # itself (path=None): the store then OWNS the file and unlinks it
+        # on close. A caller-supplied path is never touched.
+        self._owns_file = False
         self.budget_bytes = int(budget_bytes)
         self.experts = list(moe.experts)          # the real modules
         self.num_experts = len(self.experts)
@@ -170,6 +174,16 @@ class DiskExpertStore:
         if self._mm is not None:
             self._mm._mmap.close()
             self._mm = None
+        if self._owns_file and self.path is not None:
+            # We created this temp file (path=None at attach): remove it
+            # or every attach leaks total_bytes in the system temp dir.
+            # close() must stay idempotent, so clear the path after the
+            # unlink (and swallow a raced/cleared file silently).
+            try:
+                os.unlink(self.path)
+            except FileNotFoundError:
+                pass
+            self.path = None
 
 
 class _StreamingExpertList:
@@ -198,12 +212,25 @@ def attach_streaming_store(moe, path=None, budget_bytes=1 << 30):
     """Offload ``moe.experts`` to a disk tier and attach the streaming list.
 
     Returns the ``DiskExpertStore``. Router/shared weights stay resident.
-    Eval mode only; see module docstring for the contract.
+    Eval mode only; see module docstring for the contract. When ``path``
+    is None a temp file is created that the store OWNS (unlinked on
+    ``close``/detach); a caller-supplied path is never removed.
     """
+    if isinstance(moe.experts, _StreamingExpertList):
+        raise RuntimeError(
+            "attach_streaming_store: this MoE's experts are already "
+            "managed by a streaming store — call detach_streaming_store "
+            "first. Attaching a second store would serialize experts "
+            "while the first store evicts them (writing empty(0) "
+            "tensors) and leave stale LRU bookkeeping behind."
+        )
+    owns_file = False
     if path is None:
         fd, path = tempfile.mkstemp(prefix="helioslm_experts_", suffix=".bin")
         os.close(fd)
+        owns_file = True
     store = DiskExpertStore(moe, path, budget_bytes)
+    store._owns_file = owns_file
     for eid in range(store.num_experts):
         store._strip(eid)
     store._original_experts = moe.experts

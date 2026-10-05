@@ -346,8 +346,15 @@ class DeviceLimitedMoE(nn.Module):
                         )
                     outs.append(self.experts[eid](chunk)[:n_real])
                 expert_out = outs[0] if len(outs) == 1 else torch.cat(outs, dim=0)
+                # fp32 accumulation regardless of the expert compute dtype:
+                # under bf16 autocast expert outputs are bf16 while z (a
+                # norm output) stays fp32 -- index_add_ demands matching
+                # dtypes. First caught on a real GPU (v5.33 mid run); CPU
+                # fp32 never exercised this path.
                 output_z.index_add_(
-                    0, idx, expert_out * sorted_weights[start : start + cnt].unsqueeze(-1)
+                    0, idx,
+                    (expert_out * sorted_weights[start : start + cnt].unsqueeze(-1))
+                    .to(output_z.dtype)
                 )
             start += cnt
 
@@ -404,18 +411,31 @@ class DeviceLimitedMoE(nn.Module):
                 # _record_margins left-shifts and appends, so the valid
                 # samples are the LAST n columns of the buffer.
                 window = self.margin_buffer[:, self._MARGIN_BUF - n:].float()
-                q = torch.quantile(window, 1.0 - target_frac, dim=1)
-                if torch.distributed.is_available() \
-                        and torch.distributed.is_initialized():
-                    # Each rank's window holds only its LOCAL tokens; average
-                    # the per-rank quantile estimates so the bias update is
-                    # driven by global statistics and stays identical across
-                    # ranks (mirrors the heuristic path's load all-reduce).
-                    torch.distributed.all_reduce(
-                        q, op=torch.distributed.ReduceOp.SUM)
-                    q = q / torch.distributed.get_world_size()
-                self.route_bias.add_(-q.to(self.route_bias.dtype))
-                self.margin_count.zero_()
+                if self.top_k >= self.num_experts \
+                        or not torch.isfinite(window).any():
+                    # K == E (explicitly allowed by config validation)
+                    # selects every expert for every token: _route records
+                    # margins against a -inf boundary, so the window is all
+                    # +inf and torch.quantile over it is NaN — which would
+                    # poison route_bias forever. Selection bias is also
+                    # meaningless when all experts are always chosen (the
+                    # gates are bias-free). Skip the update and drop the
+                    # poisoned window; the finiteness guard covers the same
+                    # hazard for any other non-finite window.
+                    self.margin_count.zero_()
+                else:
+                    q = torch.quantile(window, 1.0 - target_frac, dim=1)
+                    if torch.distributed.is_available() \
+                            and torch.distributed.is_initialized():
+                        # Each rank's window holds only its LOCAL tokens; average
+                        # the per-rank quantile estimates so the bias update is
+                        # driven by global statistics and stays identical across
+                        # ranks (mirrors the heuristic path's load all-reduce).
+                        torch.distributed.all_reduce(
+                            q, op=torch.distributed.ReduceOp.SUM)
+                        q = q / torch.distributed.get_world_size()
+                    self.route_bias.add_(-q.to(self.route_bias.dtype))
+                    self.margin_count.zero_()
             self.expert_load.zero_()
             return self.route_bias
 

@@ -1,0 +1,243 @@
+"""probe_api.py - run the HeliosLM calibration probe suite against any
+OpenAI-compatible API endpoint.
+
+v5.39: the price-war thesis instrument. When inference is $0.14/M and
+1M context is standard, cheapness is not a differentiator -- but no
+frontier vendor publishes calibration-on-wrong-answers curves. This
+script measures exactly that on the cheapest frontier tiers for less
+than one cent.
+
+Output format is IDENTICAL to our own model evals (mid_agent_eval_v4
+schema): per-task {task, expected, final, correct, steps, conf} --
+directly comparable with our 8.5M/360M/Qwen3-0.6B numbers.
+
+Usage:
+  set OPENAI_API_KEY
+  python examples/probe_api.py                    # GPT-5.6 Luna, 12 tasks
+  python examples/probe_api.py --model gpt-5.6-luna --tasks 24
+"""
+import argparse
+import json
+import os
+import sys
+import time
+import urllib.request
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "helioslm_v5" / "agent"))
+
+from envs import make_envs, make_long_envs
+from gate import FixedGate, Route
+from schema import ToolCallError, parse_chat_turn
+from tools import build_default_registry
+
+ANTI_SHORTCUT = """IMPORTANT: you MUST solve every task by calling tools.
+Do NOT compute answers mentally and reply directly -- always emit a
+tool call first, read the observation, and only then finish.
+
+"""
+
+ANTI_SHORTCUT = """IMPORTANT: you MUST solve every task by calling tools.
+Do NOT compute answers mentally and reply directly -- always emit a
+tool call first, read the observation, and only then finish.
+
+"""
+
+FEWSHOT = """Solved example:
+Task: Compute the value of: 2 + 3
+Assistant: @@tool@@{\"calls\":[{\"name\":\"calc\",\"args\":{\"expr\":\"2 + 3\"}}]}@@end@@
+step 0: 5
+Assistant: @@tool@@{\"calls\":[{\"name\":\"finish\",\"args\":{\"answer\":\"5\"}}]}@@end@@
+Final answer: 5
+
+"""
+
+
+def chat_once(base, key, model, prompt, max_tokens=200, temperature=0.0):
+    """Single chat completion; returns (text, confidence). Confidence is
+    logprob of the most likely FIRST token -- the same functional
+    definition as our local softmax-max. Two 2026-API realities are
+    handled by graceful degradation: max_tokens may be rejected (retry
+    as max_completion_tokens then without), logprobs may be unsupported
+    (conf stays None, recorded honestly)."""
+    # reasoning-tier models (gpt-5.6-luna et al.) reject temperature
+    # != 1 -- it is part of the degradation ladder below
+    body = {"model": model,
+            "messages": [{"role": "user", "content": prompt}]}
+
+    def attempt(extra):
+        b = {**body, **extra}
+        req = urllib.request.Request(
+            base.rstrip("/") + "/chat/completions",
+            data=json.dumps(b).encode(),
+            headers={"Content-Type": "application/json",
+                     "Authorization": f"Bearer {key}"})
+        # network jitter is the norm, not the exception -- retry transient
+        # failures (SSL handshake timeouts, resets) without burning the
+        # parameter-degradation ladder on them
+        import time as _time
+        last_err = None
+        for wait in (2, 4, 8, 16):
+            try:
+                return json.loads(urllib.request.urlopen(req, timeout=60).read())
+            except (urllib.error.URLError, TimeoutError, OSError) as e:
+                last_err = e
+                _time.sleep(wait)
+        raise last_err
+
+    r = None
+    combos = [{"temperature": temperature, "max_tokens": max_tokens,
+               "logprobs": True, "top_logprobs": 1},
+              {"temperature": temperature,
+               "max_completion_tokens": max_tokens, "logprobs": True,
+               "top_logprobs": 1},
+              {"temperature": temperature, "max_tokens": max_tokens},
+              {"max_tokens": max_tokens, "logprobs": True,
+               "top_logprobs": 1},
+              {"max_completion_tokens": max_tokens, "logprobs": True,
+               "top_logprobs": 1},
+              {"max_tokens": max_tokens},
+              {}]
+    for extra in combos:
+        try:
+            r = attempt(extra)
+            break
+        except urllib.error.HTTPError as e:
+            code = e.code
+            if code not in (400, 422):
+                return f"API_ERROR {code}: {e.read().decode()[:100]}", None
+            # remember the LAST 400 body for diagnosis
+            import os as _os
+            _os.environ["PROBE_LAST_400"] = e.read().decode()[:300]
+    if r is None:
+        import os as _os
+        return ("API_ERROR: all combos rejected | last 400: "
+                + _os.environ.get("PROBE_LAST_400", "?")), None
+    choice = r["choices"][0]
+    text = choice["message"]["content"] or ""
+    # fallback confidence for reasoning-tier models (no logprobs): the
+    # structural peakedness of the first content token is not available,
+    # so we record None -- HONESTLY. The calibration comparison then
+    # uses only models whose APIs expose logprobs, which is itself a
+    # publishable observation about API transparency.
+    import os as _os
+    if _os.environ.get("PROBE_DEBUG"):
+        _os.makedirs("probe_debug", exist_ok=True)
+        n = len(_os.listdir("probe_debug"))
+        open(f"probe_debug/resp_{n:03d}.json", "w").write(json.dumps(r, indent=1))
+    conf = None
+    lp = choice.get("logprobs")
+    if lp and lp.get("content"):
+        first = lp["content"][0]
+        if first.get("top_logprobs"):
+            conf = 2.718281828 ** first["top_logprobs"][0]["logprob"]
+    return text, conf
+
+
+def run_episode(args, key, task, reg, impls):
+    """One full tool-loop episode; returns the final answer or None."""
+    transcript = f"Task: {task.text}"
+    for step in range(task.step_budget):
+        out_text, _ = chat_once(args.base, key, args.model,
+                                ANTI_SHORTCUT + FEWSHOT + transcript,
+                                max_tokens=300)
+        try:
+            kind, payload = parse_chat_turn(out_text, reg)
+        except ToolCallError:
+            transcript += f"\nstep {step}: PARSE_ERROR"
+            continue
+        if kind == "text":
+            return payload
+        call = payload[0]
+        from tools import execute
+        if call.name not in reg._specs:
+            obs = (f"TOOL_ERROR: unknown tool '{call.name}'. Available: "
+                   "calc, str_op, file_read, file_write, finish")
+        else:
+            try:
+                obs = execute(call, reg, impls)
+            except ToolCallError as e:
+                obs = f"TOOL_ERROR: {e}"
+        transcript += f"\nAssistant: {out_text}\nstep {step}: {obs}"
+        if call.name == "finish":
+            return call.args["answer"]
+    return None
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--base", default="https://api.openai.com/v1")
+    ap.add_argument("--model", default="gpt-5.6-luna")
+    ap.add_argument("--tasks", type=int, default=12)
+    ap.add_argument("--out", default="api_probe_results.json")
+    ap.add_argument("--samples", type=int, default=3)
+    args = ap.parse_args()
+    key = os.environ.get("OPENAI_API_KEY")
+    if not key:
+        sys.exit("set OPENAI_API_KEY first")
+
+    n_tasks = args.tasks
+    import random
+    rng = random.Random(20260928)   # SAME seed as our local evals
+    results = []
+    total_cost_est = 0.0
+    for env in make_envs() + make_long_envs():
+        reg, impls = build_default_registry()
+        for _ in range(max(1, n_tasks // 4)):
+            task = env.sample(rng)
+            state = {"conf": None, "steps": 0}
+
+            def model_fn(prompt, seed, step, _base=args.base, _key=key,
+                         _model=args.model, _state=state):
+                text, conf = chat_once(_base, _key, _model,
+                                       FEWSHOT + prompt)
+                _state["conf"] = conf
+                _state["steps"] = step + 1
+                return text
+
+            final = run_episode(args, key, task, reg, impls)
+            parsed_ok = 0
+            finals = []
+            if final is not None:
+                finals.append(str(final).strip())
+            for _rep in range(max(0, args.samples - 1)):
+                rep = run_episode(args, key, task, reg, impls)
+                if rep is not None:
+                    finals.append(str(rep).strip())
+            from collections import Counter
+            if finals:
+                majority, cnt = Counter(finals).most_common(1)[0]
+                consistency = cnt / len(finals)
+            else:
+                majority, consistency = None, None
+            ok = majority is not None and env.verify(task, majority)
+            results.append({"family": getattr(task, "family",
+                                              type(task).__name__),
+                            "task": task.text[:80],
+                            "expected": task.answer,
+                            "final": majority, "correct": ok,
+                            "steps": state["steps"],
+                            "parsed_tool_calls": parsed_ok,
+                            "conf": consistency,
+                            "conf_type": "self_consistency",
+                            "n_samples": len(finals)})
+            print(f"{results[-1]['family']} correct={ok} "
+                  f"consistency={consistency}", flush=True)
+
+    wrong = [r["conf"] for r in results
+             if not r["correct"] and r["conf"] is not None]
+    summary = {"model": args.model, "n": len(results),
+               "correct": f"{sum(r['correct'] for r in results)}/{len(results)}",
+               "conf_on_wrong_mean": (round(sum(wrong)/len(wrong), 4)
+                                       if wrong else None),
+               "conf_on_wrong_max": (round(max(wrong), 4) if wrong else None),
+               "note": "same probe suite + same eval seed as our local "
+                       "models -- directly comparable",
+               "results": results}
+    Path(args.out).write_text(json.dumps(summary, indent=2))
+    print(json.dumps({k: v for k, v in summary.items() if k != "results"},
+                     indent=2))
+
+
+if __name__ == "__main__":
+    main()

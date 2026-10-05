@@ -4345,6 +4345,222 @@ def test_evolver_pareto_adaptation():
           f"pareto={len(rep['pareto'])}pts, memory-budget rejects pool, "
           f"adaptation dropped={tr['dropped_modules']}")
 
+def test_decision_layer_audit():
+    """v5.22: calibration metrics + routing monotonicity gate + tau evolution."""
+    from helioslm_v5.eval.system_one import (MockSystemOne,
+        ThresholdRouter, brier_score, evolve_threshold,
+        expected_calibration_error, routing_gate)
+
+    # 1) calibration metrics discriminate temperatures, ground truth only.
+    #    The ECE surface is U-shaped in temperature (this mock is NOT
+    #    calibrated at T=1: confidence exceeds accuracy) -- the audit
+    #    kit's job is to FIND the optimum, the discipline a System One
+    #    deployment should run in CI.
+    x_base = MockSystemOne().sample_batch(2048, seed=1)
+
+    def ece_of(t):
+        m = MockSystemOne(temperature=t)
+        r = m(x_base)
+        return expected_calibration_error(r["probs"], r["correct"]), r
+
+    e_sharp, r_sharp = ece_of(0.3)   # near-optimal for this mock
+    e_mid, r_cal = ece_of(1.0)       # overconfident
+    e_over, _ = ece_of(3.0)          # underconfident, worse
+    assert e_sharp < e_mid < e_over, \
+        f"U-shape expected: {e_sharp:.3f} < {e_mid:.3f} < {e_over:.3f}"
+    assert e_sharp < 0.10
+    assert brier_score(r_cal["probs"], r_cal["correct"]) < 0.25
+    # grid search on the metric recovers the better temperature -- the
+    # actionable output of a calibration audit
+    grid = [(t, ece_of(t)[0]) for t in (0.2, 0.3, 0.5, 1.0, 2.0, 4.0)]
+    t_best = min(grid, key=lambda p: p[1])[0]
+    assert t_best <= 0.5, "grid search should prefer low temps, got " + str(t_best)
+
+    # 2) routing monotonicity gate: correctness non-decreasing in tau
+    cal = MockSystemOne(temperature=1.0)
+    router = ThresholdRouter(oracle_cost=10.0, decision_cost=1.0)
+    reports = routing_gate(cal, router, taus=[0.5, 0.6, 0.7, 0.8, 0.9, 0.99])
+    assert all(r.gate_passed for r in reports), \
+        "escalation path always correct => monotonicity must hold"
+    cors = [r.correctness for r in reports]
+    assert cors == sorted(cors), "correctness must be sorted by tau"
+    costs = [r.cost for r in reports]
+    assert costs == sorted(costs), "cost grows with tau"
+
+    # 3) threshold evolution under the correctness floor
+    ev = evolve_threshold(cal, router, correctness_floor=0.95,
+                          n_samples=2048, seed=2)
+    assert ev["best_tau"] is not None, "a feasible tau must exist"
+    assert ev["correctness"] >= 0.95
+    # the evolved tau must itself appear in the evaluated grid and pass gates
+    row = next(r for r in ev["evaluated"] if r["tau"] == ev["best_tau"])
+    assert row["gate"] and row["correctness"] >= 0.95
+    _pass("test_decision_layer_audit",
+          f"ECE t0.3={e_sharp:.3f} t1={e_mid:.3f} t3={e_over:.3f} "
+          f"grid-best-t={t_best}; "
+          f"tau*={ev['best_tau']} cost={ev['best_cost']:.2f} "
+          f"correct={ev['correctness']:.3f}")
+
+
+# ----------------------------------------------------------------------
+# v5.20 code-review regression tests (review pass 2026-09-23)
+# ----------------------------------------------------------------------
+
+def test_vllm_engine_padded_batched_prefill():
+    """v5.20: equal-length prompts below the admission watermark must not
+    crash batched prefill (regression: prefill grouping ignored
+    prompt_pad, so a padded group hit the pad==0 assert and healthy
+    requests were retired as errors)."""
+    from helioslm_v5.src.inference.vllm_engine import VLLMEngine
+
+    model, config = _lite_model(seed=118)
+    # one admission wave: the two short prompts share a length AND both
+    # get watermark padding — the exact combination the old grouping
+    # crashed on
+    prompts = [[1, 2, 3], [4, 5, 6], [7, 8, 9, 10, 11]]
+    max_new = 5
+    engine = VLLMEngine(model, config, block_size=4, max_num_blocks=64)
+    req_ids = [engine.add_request(p, max_new_tokens=max_new, temperature=0.0)
+               for p in prompts]
+    results = engine.run()
+
+    for p, rid in zip(prompts, req_ids):
+        ref = model.generate(torch.tensor([p]), max_new_tokens=max_new,
+                             temperature=0)
+        ref_new = ref[0, len(p):].tolist()
+        got = results[rid]
+        assert ref_new[:len(got)] == got, \
+            f"request {rid}: engine {got} != greedy reference {ref_new[:len(got)]}"
+        assert len(got) >= 1
+    bm = engine.block_manager
+    assert len(bm.block_tables) == 0 and bm.num_free_blocks() == 64, \
+        f"block leak: free={bm.num_free_blocks()}/64 tables={len(bm.block_tables)}"
+    _pass("test_vllm_engine_padded_batched_prefill",
+          "equal-length padded group decodes == per-request greedy; no errors")
+
+
+def test_prefix_pool_high_token_ids():
+    """v5.20: pool hashing must accept token ids >= 256 (regression:
+    bytes(int(t)) raised ValueError, so any non-ASCII id crashed store —
+    and generate() stores unconditionally)."""
+    from helioslm_v5.src.inference.prefix_pool import PrefixPool
+
+    model, config = _lite_model(seed=119)
+    pool = PrefixPool(model, block_size=8, max_blocks=32,
+                      fingerprint="v5.20/fp32")
+    prompt = [300, 301, 302, 303, 400, 500, 600, 700, 800]  # ids >= 256
+    ref = model.generate(torch.tensor([prompt]), max_new_tokens=8,
+                         temperature=0)
+    out = pool.generate(prompt, max_new_tokens=8, temperature=0)
+    assert torch.equal(out, ref), \
+        "pooled generate with ids >= 256 must be bit-exact"
+    # repeat: the stored blocks (prompt + generated ids) must hash fine too
+    out2 = pool.generate(prompt, max_new_tokens=8, temperature=0)
+    assert torch.equal(out2, ref)
+    assert pool.stats()["hits"] >= 1
+    _pass("test_prefix_pool_high_token_ids",
+          "ids>=256 store/lookup round-trip bit-exact")
+
+
+def _mpdp_attnres_stage_builder(rank: int):
+    """Attn-res threading stage builder (module level: spawn pickling)."""
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+    from helioslm_v5.src.training.dualpipe import DualPipeStage, LayerWrap
+    torch.manual_seed(4321 + rank)
+    config = HeliosLMv5Config(size="lite")
+    config.use_attention_residuals = True
+    model = HeliosLMv5(config)
+    return DualPipeStage(nn.ModuleList([LayerWrap(model.layers[rank])]))
+
+
+def test_multi_process_dualpipe_attention_residuals():
+    """v5.20: the multi-process worker must seed a zeros gradient for the
+    dropped attention-residual accumulator (regression: the None upstream
+    grad crashed backward; a scalar accumulator would have silently taken
+    implicit ONES). Mirrors DualPipeScheduler._backward_stage semantics."""
+    from helioslm_v5.src.training.dualpipe import DualPipeScheduler
+    from helioslm_v5.src.training.multi_process_dualpipe import (
+        MultiProcessDualPipeRunner)
+
+    config = HeliosLMv5Config(size="lite")
+    torch.manual_seed(5678)
+    stages = [_mpdp_attnres_stage_builder(r) for r in range(2)]
+    for st in stages:
+        st.train()
+    gen = torch.Generator().manual_seed(44)
+    inputs = [torch.randn(2, 5, config.hidden_size, generator=gen)
+              for _ in range(3)]
+    ggen = torch.Generator().manual_seed(45)
+    grad_outs = [torch.randn(2, 5, config.hidden_size, generator=ggen)
+                 for _ in range(3)]
+
+    ref = DualPipeScheduler(stages, num_micro_batches=len(inputs))
+    ref_outs = ref.run_forward(inputs)
+    ref_in_grads = ref.run_backward(grad_outs)
+    ref_stage_grads = [{n: p.grad.clone() for n, p in st.named_parameters()
+                        if p.grad is not None} for st in stages]
+
+    runner = MultiProcessDualPipeRunner(_mpdp_attnres_stage_builder,
+                                        num_stages=2, init_seed=4321)
+    try:
+        outs = runner.run_forward(inputs)
+        in_grads = runner.run_backward(grad_outs)
+        stage_grads = runner.collect_grads()
+    finally:
+        runner.shutdown()
+
+    for i in range(3):
+        assert (outs[i] - ref_outs[i]).abs().max().item() < 1e-5, \
+            f"mb{i}: output mismatch"
+        assert (in_grads[i] - ref_in_grads[i]).abs().max().item() < 1e-5, \
+            f"mb{i}: input grad mismatch"
+    for r in range(2):
+        for name, g in stage_grads[r].items():
+            rg = ref_stage_grads[r].get(name)
+            if g is None or rg is None:
+                assert g is None and rg is None, \
+                    f"stage{r}.{name}: grad presence mismatch"
+                continue
+            assert (g - rg).abs().max().item() < 1e-5, \
+                f"stage{r}.{name}: param grad mismatch"
+
+    def gate_grad(sd):
+        return next((g for n, g in sd.items() if n.endswith("attn_res_gate")),
+                    None)
+
+    # the last stage's accumulator feeds downstream layers: its gate must
+    # receive the (zeros-seeded) upstream gradient, matching single-process
+    for tag, sd in (("ref", ref_stage_grads[1]), ("mp", stage_grads[1])):
+        g = gate_grad(sd)
+        assert g is not None and g.abs().item() > 0, \
+            f"{tag} stage-1 attn_res_gate got no accumulator gradient"
+    _pass("test_multi_process_dualpipe_attention_residuals",
+          "attn-res pipeline: outputs/grads == single-process <1e-5, "
+          "accumulator grad flows")
+
+
+def test_fp8_trainer_cross_entropy():
+    """v5.20: train_step(labels=...) must be real token cross-entropy
+    (regression: _extract_loss averaged raw logits, so FP8 training never
+    saw a task loss; mean-of-logits is unbounded below)."""
+    from helioslm_v5.src.training.fp8_trainer import FP8Trainer
+
+    model, config = _lite_model(seed=120)
+    trainer = FP8Trainer(model, config)
+    ids = torch.randint(3, config.vocab_size, (2, 10))
+    labels = ids.clone()  # next-token targets aligned with input_ids
+    loss = trainer.train_step({"input_ids": ids}, labels=labels)
+
+    # random init: CE ~ ln(vocab); the old fallback can even go negative
+    ln_vocab = math.log(config.vocab_size)
+    assert 0.05 < loss < 3.0 * ln_vocab, \
+        f"loss {loss:.4f} is not a plausible token CE (ln vocab={ln_vocab:.3f})"
+    probe = model.embed_tokens.weight  # not a Linear -> survives FP8 conversion
+    assert probe.grad is not None and probe.grad.norm().item() > 0, \
+        "no gradient reached embed_tokens"
+    _pass("test_fp8_trainer_cross_entropy",
+          f"labels-aware loss={loss:.4f} vs ln(vocab)={ln_vocab:.4f}")
+
 
 TESTS = [
     test_mla,
@@ -4411,6 +4627,8 @@ TESTS = [
     test_final_logit_soft_cap,
     # limitations task: GGUF export
     test_gguf_export,
+    # v5.22
+    test_decision_layer_audit,
     # v5.20
     test_evolver_pareto_adaptation,
     # v5.19
@@ -4432,6 +4650,11 @@ TESTS = [
     # v5.11
     test_fused_quant_kernels,
     test_eval_harness,
+    # v5.20 code-review regression tests
+    test_vllm_engine_padded_batched_prefill,
+    test_prefix_pool_high_token_ids,
+    test_multi_process_dualpipe_attention_residuals,
+    test_fp8_trainer_cross_entropy,
 ]
 
 

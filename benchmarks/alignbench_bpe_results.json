@@ -1,0 +1,166 @@
+{
+ "abstentionbench": {
+  "auroc": 0.5138888888888888,
+  "n": 150
+ },
+ "bias_refbio": {
+  "auroc": 0.04,
+  "n": 52
+ },
+ "bias_refletter": {
+  "auroc": 0.42857142857142855,
+  "n": 43
+ },
+ "bias_scene_heldout": {
+  "auroc": 0.0,
+  "n": 44
+ },
+ "confaide": {
+  "auroc": 0.6054421768707483,
+  "n": 98
+ },
+ "deceptionbench_reward": {
+  "auroc": 0.759671955785345,
+  "n": 300
+ },
+ "elephant_aita": {
+  "auroc": 0.4933497536945813,
+  "n": 255
+ },
+ "faith_mt_claimcheck": {
+  "auroc": 0.3333333333333333,
+  "n": 148
+ },
+ "faith_mt_grounded": {
+  "auroc": 0.660377358490566,
+  "n": 116
+ },
+ "harmbench": {
+  "auroc": 0.7841079460269865,
+  "n": 150
+ },
+ "injecagent": {
+  "auroc": 0.45416666666666666,
+  "n": 136
+ },
+ "instrumental_eval": {
+  "auroc": 0.5454545454545454,
+  "n": 31
+ },
+ "jbb_artifacts": {
+  "auroc": 0.658008658008658,
+  "n": 64
+ },
+ "llm_aggrefact_A": {
+  "auroc": 0.4935437589670014,
+  "n": 150
+ },
+ "llm_aggrefact_B": {
+  "auroc": 0.3751851851851852,
+  "n": 150
+ },
+ "llm_uncertainty_bench": {
+  "auroc": 0.5980113636363636,
+  "n": 150
+ },
+ "machiavelli_harm": {
+  "auroc": 0.4521090440228403,
+  "n": 300
+ },
+ "machiavelli_heldout": {
+  "auroc": 0.5709821428571429,
+  "n": 300
+ },
+ "machiavelli_power": {
+  "auroc": 0.516955266955267,
+  "n": 300
+ },
+ "machiavelli_reward": {
+  "auroc": 0.7973027375201288,
+  "n": 200
+ },
+ "mask_continuation": {
+  "auroc": 0.37320574162679426,
+  "n": 82
+ },
+ "mask_disinformation": {
+  "auroc": 0.4882154882154882,
+  "n": 102
+ },
+ "mask_factual": {
+  "auroc": 0.5833333333333334,
+  "n": 56
+ },
+ "open_prompt_injection": {
+  "auroc": 0.5959805959805959,
+  "n": 300
+ },
+ "privaci_bench": {
+  "auroc": 0.6399147727272727,
+  "n": 300
+ },
+ "privaci_gdpr_heldout": {
+  "auroc": 0.6992753623188406,
+  "n": 300
+ },
+ "privacylens": {
+  "auroc": 0.5733695652173914,
+  "n": 110
+ },
+ "ragtruth": {
+  "auroc": 0.5687229437229437,
+  "n": 300
+ },
+ "reward_hacking_freeform": {
+  "auroc": 0.2857142857142857,
+  "n": 39
+ },
+ "reward_harm_freeform": {
+  "auroc": 0.7901234567901234,
+  "n": 60
+ },
+ "rh_mt_reward": {
+  "auroc": 0.3758169934640523,
+  "n": 69
+ },
+ "sciq_uncertainty": {
+  "auroc": 0.5176056338028169,
+  "n": 150
+ },
+ "strongreject": {
+  "auroc": 0.8433333333333334,
+  "n": 100
+ },
+ "summedits": {
+  "auroc": 0.5097623871799595,
+  "n": 300
+ },
+ "sycon_fp": {
+  "auroc": 0.3333333333333333,
+  "n": 17
+ },
+ "sycophancy_eval": {
+  "auroc": 0.7129629629629629,
+  "n": 150
+ },
+ "sycophancy_feedback": {
+  "auroc": 0.42473118279569894,
+  "n": 217
+ },
+ "tensor_trust_extract": {
+  "auroc": 0.6938657407407407,
+  "n": 300
+ },
+ "tensor_trust_hijack": {
+  "auroc": 0.9542348498471498,
+  "n": 300
+ },
+ "verbalized_ece": {
+  "auroc": 0.5781490015360983,
+  "n": 298
+ },
+ "world_affecting_reward": {
+  "auroc": 0.7148928307464892,
+  "n": 296
+ }
+}

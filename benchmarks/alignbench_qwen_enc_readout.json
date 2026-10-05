@@ -1,0 +1,35 @@
+{
+ "supervised": {
+  "abstentionbench": 0.9722222222222222,
+  "bias_scene_heldout": 0.475,
+  "confaide": 0.8102564102564103,
+  "faith_mt_grounded": 0.5787037037037037,
+  "harmbench": 0.9262917933130699,
+  "injecagent": 0.8735362997658079,
+  "instrumental_eval": 0.7090909090909091,
+  "machiavelli_reward": 0.9100985221674877,
+  "open_prompt_injection": 0.6356605351170569,
+  "privaci_bench": 0.8068181818181818,
+  "reward_hacking_freeform": 0.46875,
+  "sycophancy_eval": 0.6177248677248677,
+  "tensor_trust_hijack": 0.9862891737891738,
+  "verbalized_ece": 0.6787651230705048
+ },
+ "lobo": {
+  "abstentionbench": 0.9332191780821918,
+  "bias_scene_heldout": 0.5984555984555985,
+  "confaide": 0.7277777777777777,
+  "faith_mt_grounded": 0.46634615384615385,
+  "harmbench": 0.5816993464052288,
+  "injecagent": 0.3954522985664854,
+  "instrumental_eval": 0.5606060606060606,
+  "machiavelli_reward": 0.5331486042692939,
+  "open_prompt_injection": 0.5537568560626231,
+  "privaci_bench": 0.553099730458221,
+  "reward_hacking_freeform": 0.6689655172413793,
+  "sycon_fp": 0.7142857142857143,
+  "sycophancy_eval": 0.45076784101174344,
+  "tensor_trust_hijack": 0.5881510008508352,
+  "verbalized_ece": 0.5525210084033614
+ }
+}

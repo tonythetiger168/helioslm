@@ -1,0 +1,130 @@
+{
+  "n": 12,
+  "correct": "0/12",
+  "finished": "12/12",
+  "mean_tool_steps": 2.25,
+  "conf_on_wrong_mean": 0.9999,
+  "harness": "ChatSession (training distribution)",
+  "results": [
+    {
+      "family": "Task",
+      "correct": false,
+      "steps": 2,
+      "budget": 2,
+      "tool_steps": 2,
+      "finished": true,
+      "conf": 0.9999468326568604,
+      "wall_s": 1.8
+    },
+    {
+      "family": "Task",
+      "correct": false,
+      "steps": 2,
+      "budget": 2,
+      "tool_steps": 2,
+      "finished": true,
+      "conf": 0.999915361404419,
+      "wall_s": 1.2
+    },
+    {
+      "family": "Task",
+      "correct": false,
+      "steps": 2,
+      "budget": 2,
+      "tool_steps": 2,
+      "finished": true,
+      "conf": 0.9999569654464722,
+      "wall_s": 0.9
+    },
+    {
+      "family": "Task",
+      "correct": false,
+      "steps": 2,
+      "budget": 2,
+      "tool_steps": 2,
+      "finished": true,
+      "conf": 0.9999527931213379,
+      "wall_s": 1.3
+    },
+    {
+      "family": "Task",
+      "correct": false,
+      "steps": 2,
+      "budget": 2,
+      "tool_steps": 2,
+      "finished": true,
+      "conf": 0.9999496936798096,
+      "wall_s": 1.3
+    },
+    {
+      "family": "Task",
+      "correct": false,
+      "steps": 2,
+      "budget": 2,
+      "tool_steps": 2,
+      "finished": true,
+      "conf": 0.9999326467514038,
+      "wall_s": 1.3
+    },
+    {
+      "family": "Task",
+      "correct": false,
+      "steps": 3,
+      "budget": 4,
+      "tool_steps": 3,
+      "finished": true,
+      "conf": 0.9999507665634155,
+      "wall_s": 1.3
+    },
+    {
+      "family": "Task",
+      "correct": false,
+      "steps": 3,
+      "budget": 4,
+      "tool_steps": 3,
+      "finished": true,
+      "conf": 0.999957799911499,
+      "wall_s": 1.6
+    },
+    {
+      "family": "Task",
+      "correct": false,
+      "steps": 3,
+      "budget": 4,
+      "tool_steps": 3,
+      "finished": true,
+      "conf": 0.9999289512634277,
+      "wall_s": 1.7
+    },
+    {
+      "family": "write_read",
+      "correct": false,
+      "steps": 2,
+      "budget": 8,
+      "tool_steps": 2,
+      "finished": true,
+      "conf": 0.999951958656311,
+      "wall_s": 1.0
+    },
+    {
+      "family": "write_read",
+      "correct": false,
+      "steps": 2,
+      "budget": 8,
+      "tool_steps": 2,
+      "finished": true,
+      "conf": 0.9999583959579468,
+      "wall_s": 1.0
+    },
+    {
+      "family": "write_read",
+      "correct": false,
+      "steps": 2,
+      "budget": 8,
+      "tool_steps": 2,
+      "finished": true,
+      "conf": 0.9999570846557617,
+      "wall_s": 1.0
+    }
+  ]
+}

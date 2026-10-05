@@ -92,8 +92,16 @@ def _worker(rank: int, num_stages: int,
         leaf, ares_leaf = stage_inputs.pop(mb_idx)
         torch.set_rng_state(rng_states.pop(mb_idx))
         out, ares_out = run_stage(leaf, ares_leaf)
-        outs = [out] + ([ares_out] if ares_out is not None else [])
-        grads = [grad] + ([ares_grad] if ares_out is not None else [])
+        # Mirror DualPipeScheduler._backward_stage: a missing upstream
+        # accumulator gradient is mathematically a zero gradient. Passing
+        # the None straight through crashes backward on a non-scalar
+        # ares_out (and would seed an implicit ONES gradient on a scalar
+        # one), killing the worker and hanging the driver.
+        outs, grads = [out], [grad]
+        if ares_out is not None and ares_out.requires_grad:
+            outs.append(ares_out)
+            grads.append(ares_grad if ares_grad is not None
+                         else torch.zeros_like(ares_out))
         torch.autograd.backward(outs, grads)
         bwd_out.put(("bwd", mb_idx, leaf.grad,
                      ares_leaf.grad if ares_leaf is not None else None))

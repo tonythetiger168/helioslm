@@ -1,0 +1,10 @@
+{
+  "n": 24,
+  "model_conf_right": 0.9999470710754395,
+  "model_conf_wrong": 0.9999466041723887,
+  "head_conf_right": 0.6446105390787125,
+  "head_conf_wrong": 0.5212856431802114,
+  "head_acc": 0.625,
+  "head_ece": 0.09794769994914532,
+  "note": "24 real records, demonstration-grade; head sees state only, signal comes from outcomes (RLCD)"
+}

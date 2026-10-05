@@ -1,0 +1,50 @@
+{
+  "model": "gpt-5.6-luna",
+  "n": 4,
+  "correct": "0/4",
+  "conf_on_wrong_mean": null,
+  "conf_on_wrong_max": null,
+  "note": "same probe suite + same eval seed as our local models -- directly comparable",
+  "results": [
+    {
+      "family": "Task",
+      "task": "Compute the value of: 41 + -28 - 77 + 94",
+      "expected": "30",
+      "final": "API_ERROR: all parameter combinations rejected",
+      "correct": false,
+      "steps": 0,
+      "parsed_tool_calls": 0,
+      "conf": null
+    },
+    {
+      "family": "Task",
+      "task": "Apply upper to the string: \"TzQ?e7dHZm\"",
+      "expected": "TZQ?E7DHZM",
+      "final": "API_ERROR: all parameter combinations rejected",
+      "correct": false,
+      "steps": 0,
+      "parsed_tool_calls": 0,
+      "conf": null
+    },
+    {
+      "family": "Task",
+      "task": "First compute: -30 + 42. Then apply upper to the digits of the result.",
+      "expected": "12",
+      "final": "API_ERROR: all parameter combinations rejected",
+      "correct": false,
+      "steps": 0,
+      "parsed_tool_calls": 0,
+      "conf": null
+    },
+    {
+      "family": "write_transform",
+      "task": "Write the string \"joker ember\" to a.txt. Then apply reverse to it and write the ",
+      "expected": "rebme rekoj",
+      "final": "API_ERROR: all parameter combinations rejected",
+      "correct": false,
+      "steps": 0,
+      "parsed_tool_calls": 0,
+      "conf": null
+    }
+  ]
+}

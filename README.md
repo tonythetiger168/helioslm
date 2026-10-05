@@ -1,11 +1,26 @@
+---
+license: mit
+tags:
+- helioslm
+- rlcd
+- calibrated-decisions
+- decision-layer
+- agentic-rl
+- deepseek-v3
+- reference-implementation
+pipeline_tag: text-generation
+---
+
 # HeliosLM — A Hackable DeepSeek-V3/K3-Style LLM Stack in Pure PyTorch
 
-A from-scratch PyTorch reference implementation of a modern LLM stack: MLA attention with weight absorption, sigmoid-gated MoE with auxiliary-loss-free load balancing, hybrid linear attention, speculative decoding, FP8 training, a DualPipe schedule simulation, and a vLLM-style serving engine. Built to be **read, modified, and verified** — every core path is unit-tested and many are checked with bitwise-equivalence tests. Everything runs on CPU.
+A from-scratch PyTorch reference implementation of a modern LLM stack: MLA attention with weight absorption, sigmoid-gated MoE with auxiliary-loss-free load balancing, hybrid linear attention, speculative decoding, FP8 training, a DualPipe schedule simulation, a vLLM-style serving engine, a **verifiable agent layer** (strict tool schema, bitwise-replay oracle), DSA sparse attention, Mooncake-style prefill/decode disaggregation, and tool-tuned checkpoints. Built to be **read, modified, and verified** — every core path is unit-tested and many are checked with bitwise-equivalence tests. Everything runs on CPU.
 
 > **One-liner:** If you want to understand (or hack on) how DeepSeek-V3/K3-class models actually work — without needing a GPU cluster first — this repo is for you.
+>
+> **Also:** the open-source reference for the **RLCD "decision layer"** paradigm — calibrated confidence on acting models, verified across three scales and on the 7,193-instance RLCDAlignBench. Working paper: `docs/paper_draft_2026-10-03.tex` ([repo](https://github.com/tonythetiger168/helioslm/blob/main/docs/paper_draft_2026-10-03.tex) | [HF](https://huggingface.co/chienhsinlin/helioslm/tree/main/docs)).
 
 [![CI](https://github.com/tonythetiger168/helioslm/actions/workflows/ci.yml/badge.svg)](https://github.com/tonythetiger168/helioslm/actions)
-![Tests](https://img.shields.io/badge/tests-64%20unit%20%2B%209%20integration-brightgreen)
+![Tests](https://img.shields.io/badge/tests-150%2B%20unit%20%2B%20integration%20%2B%20oracle-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![PyTorch](https://img.shields.io/badge/framework-PyTorch%20(pure)-ee4c2c)
 
@@ -15,11 +30,61 @@ A from-scratch PyTorch reference implementation of a modern LLM stack: MLA atten
 
 | You are... | What HeliosLM gives you |
 |---|---|
-| **A learner** who wants to understand MLA, MoE routing, DualPipe, speculative decoding | Annotated, review-hardened PyTorch with 48 unit tests that act as executable documentation |
+| **A learner** who wants to understand MLA, MoE routing, DualPipe, speculative decoding | Annotated, review-hardened PyTorch with 115+ tests (T11-T28) that act as executable documentation |
 | **A researcher** who wants a stack to modify, ablate, and extend quickly | Single-process, CPU-iterable training + serving code — change one file, run one test |
 | **A practitioner** evaluating serving/quantization techniques | vLLM-style paged engine, GPTQ/AWQ/FP8/MXFP4 quantization, MTP speculative decoding — all inspectable |
 
 **Honest positioning:** this is a correctness-focused reference implementation, not a throughput-optimized production engine (see [Known Limitations](#known-limitations)).
+
+## Paper
+
+**Calibrated Agency: An Open-Source RLCD Stack, from Toy Scale to 360M, with a
+Canonical-Benchmark Comparison** — Chien-Hsin Lin, working draft 2026-10-03.
+
+**[📄 Read the PDF](docs/paper_draft_2026-10-03.pdf)** (7pp, figures included) ·
+[LaTeX source](docs/paper_draft_2026-10-03.tex) (arXiv-ready) ·
+[markdown](helioslm_v5/docs/paper_draft_2026-10-03.md) ·
+[HF copy](https://huggingface.co/chienhsinlin/helioslm/tree/main/docs).
+Headline numbers: overconfidence on wrong answers grows with scale
+(0.94 -> 0.9999 -> ~1.0 at 8.5M/360M/Qwen3-0.6B); deterministic grounding
+cures a 360M model's copy-shaped agentic failure (0/12 -> 9/12 + 3
+abstained); trust is f(state, intervention) with an 8.4x measured
+contrast; on RLCDAlignBench our open readout reaches 0.726 median AUROC
+and beats the commercial Jev detector's zero-shot numbers on 11/41
+benchmarks. Every claim traces to a versioned artifact in `benchmarks/`.
+
+## Citation
+
+```bibtex
+@article{lin2026calibrated,
+  title={Calibrated Agency: An Open-Source {RLCD} Stack,
+         from Toy Scale to 360M, with a Canonical-Benchmark Comparison},
+  author={Lin, Chien-Hsin},
+  year={2026},
+  note={Working draft. arXiv ID: [pending endorsement]},
+  url={https://github.com/tonythetiger168/helioslm}
+}
+```
+
+Every numeric claim traces to a versioned artifact: code and tests in
+this repository (CHANGELOG v5.30.2--v5.38j), weights/tokenizer/
+fingerprints and benchmark data in
+[huggingface.co/chienhsinlin/helioslm](https://huggingface.co/chienhsinlin/helioslm),
+and the paper source + PDF in `docs/`.
+
+## Deployment tiers
+
+Three rungs, each with one recorded reason to exist (no spectrum theater):
+
+| Tier | Params | Vocab | Weights (bf16) | Deployment RAM | Why it exists |
+|---|---|---|---|---|---|
+| **lite** | 8.5M | 1,024 char-level | ~17 MB | **<500 MB, CPU, millisecond latency** | Protocol/audit research at $0: agent, chat, decision layer, replay verification |
+| **mid** (v5.33) | 360M | 32,768 BPE (HeliosBPE, T31) | ~720 MB | ~1.5 GB, CPU-runnable inference | **Scale validation**: separate toy artifacts from scale-invariant findings (acceptance oracles T32; GPU training run pending) |
+| **full** | DeepSeek-V3/Kimi-K3-class spec | 160,000 | fp8 still needs hundreds of GB HBM | H200/B200-class servers | Architecture decision reference (MLA + MoE + FP8 + MTP), not a local target |
+
+Any intermediate size is constructible by explicit field overrides --
+caller-provided non-None values always win over presets and are validated
+in `__post_init__` (no silent truncation).
 
 ## Quick Start
 
@@ -27,6 +92,18 @@ A from-scratch PyTorch reference implementation of a modern LLM stack: MLA atten
 pip install torch
 python -m helioslm_v5.tests.test_v5     # 48 unit tests
 python integration_test_v51.py          # 9 end-to-end integration tests
+python -m helioslm_v5.tests.test_agent  # 9 agent-layer oracles (v5.23)
+python -m helioslm_v5.tests.test_v5_stage_a   # T15 real-model oracles (v5.26)
+python -m helioslm_v5.tests.test_v5_stage_b   # T17 tool-tuned end-to-end (v5.27)
+python -m helioslm_v5.tests.test_disagg_pareto  # T18 Pareto sweep oracles (v5.28)
+python helioslm_v5/tests/test_chat.py            # T20 chat capability oracles (v5.30)
+python helioslm_v5/tests/test_mhc.py             # T22 mHC oracles (v5.31)
+python helioslm_v5/tests/test_kv_compress.py     # T23 compressed-attention causality (v5.31)
+python helioslm_v5/tests/test_file_env.py        # T24 long-horizon env (v5.31)
+python helioslm_v5/tests/test_think.py           # T25 think + experience reuse (v5.31)
+python helioslm_v5/tests/test_async_grpo.py      # T26 async GRPO sync-parity (v5.31)
+python helioslm_v5/tests/test_decision.py        # T27 typed decision primitives (v5.32)
+python helioslm_v5/tests/test_decision_head.py   # T28 DecisionHead calibration (v5.32)
 ```
 
 ```python
@@ -51,6 +128,12 @@ Nothing sells an LLM repo like showing it produce tokens. -->
 | **Attention** | MLA with **weight absorption** — latent-only KV cache, **−97.7% memory vs MHA** (full config), verified equivalent to the expanded path (<1e-4). Hybrid linear attention: Gated Delta Rule layers interleaved with MLA (3:1 default), fixed-size recurrent state cache, decode ≡ one-shot (<2e-7), optional per-channel (KDA-style) decay gate so state rows forget at independent rates (v5.21), NoPE option to drop RoPE entirely (v5.22). RoPE scaling: linear / NTK / YaRN. DSA-style sparse top-k decode over the latent cache (k≥L exactly dense), with a **learned lightning indexer** option (ReLU-scored low-dim heads reading the cached latents, DSA-style distill training helper; default head-mean "free" indexer bit-identical) and opt-in sparse prefill. Sliding-window attention with StreamingLLM sinks (O(W) decode), per-head QK-norm, Gemma-style logit soft-capping. |
 | **MoE** | Sigmoid-gated fine-grained experts with **auxiliary-loss-free** load balancing (selection-only bias, heuristic or quantile updates). **LatentMoE**: routed experts in a shared latent space. **SiTU-GLU** tanh soft-capped activation. |
 | **Cross-layer** | **Attention Residuals** — per-layer gated injection of accumulated lower-layer attention outputs, threaded through DualPipe (gradient-exact, bitwise-verified). |
+| **Agent** | v5.23 agent layer: strict tool-call schema/parser (16 error classes), deterministic sandboxed tools, trajectory bitwise-replay oracle, ground-truth-by-construction toy envs, routing gates (v5.22 decision-audit discipline); v5.26 real-model oracles (T15); v5.27 **tool-tuned checkpoint** trained on agent-loop replays (data format == inference by construction) — T17 end-to-end baseline parse 0.15 / finish 1/9, `sparse_top_k=4` ~= dense; hardened by real-model findings (TOOL_ERROR recovery, ASCII-safe docs) ; v5.29 three-modes benchmark with strict-monotone tau routing curves and a recorded overconfidence finding (max conf 0.925-0.944 on wrong answers), artifact oracles T19 |
+| **Chat** | v5.30: dual-mode protocol (plain text OR @@tool@@ block; text bypasses the gate, gate governs tools only), multi-turn ChatSession with transcript replay, chat SFT data with inference-identical prompts; v5.30.2 fixed a dataset filter bias that had hidden the text channel (mode-choice: text 11/20) — T20/T21 |
+| **Frontier references** | v5.31: five readable toy-scale references distilled from the 2026 frontier — manifold-constrained hyper-connections (DS-V4), HCA/CSA-style compressed attention with exact causality, long-horizon file env (8-14 steps), think-mode + experience reuse (Qwen3-Max direction), async GRPO with bitwise sync-parity (GLM-5 direction) — T22-T26 |
+| **Decision layer** | v5.32: typed decision primitives Choice/Score/Noul (System One / Jev direction) with schema enforcement, gate ask/ask_batch extension point, non-autoregressive DecisionHead answering K questions in one pass, outcome-targeted Brier calibration (RLCD direction; the label-targeted variant is provably redundant with CE — recorded) — T27/T28 ; v5.36 continuous Noul (P(yes), floor retired); v5.34 deterministic grounding (0/12 -> 9/12 + 3 abstained on a real 360M checkpoint, zero hallucination leakage); v5.37 TrustGate calibrated abstention + TherapyPair composition (trust is f(state, intervention) — 8.4x measured contrast); v5.38 RLCDAlignBench: our supervised TF-IDF readout median 0.726 AUROC, beats the commercial Jev detector's zero-shot numbers on 11/41 benchmarks (charts in benchmarks/charts/) — T27-T39 |
+| **Benchmarks** | Top-10 LLM position paper with verified leaderboard data and the calibration/replay axes no vendor publishes (`helioslm_v5/docs/benchmark_top5_2026-09-27.md`); probe suite (toy + file-env + chat) with scripted oracles, runnable against any API |
+| **Disaggregation** | v5.25 Mooncake-style prefill/decode module behind a monotonicity gate; v5.28 three-axis **Pareto sweep** (makespan / workers / worker-seconds) with latency-cost curves per workload — cache-aware anti-monotonicity recorded as a structural finding, not hidden |
 | **Speculative decoding** | DeepSeek-style MTP with **strict verification** (residual (p−q)₊ resampling), batch support, O(1) cache-truncation rollback; hybrid recurrent-state rollback via restore+replay. |
 | **Serving** | vLLM-style engine: paged KV accounting, copy-on-write forks, watermark-aligned continuous batching. |
 | **Training** | FP8 trainer (native float8 + STE, E5M2 gradient hooks, AdamW master weights), DualPipe schedule simulation (recompute-based, gradient-exact), GRPO (real sampling, k3 KL, answer-extraction rewards), Muon optimizer (Newton–Schulz orthogonalized momentum, optional per-head blocks), QAT straight-through fake-quant training. |
@@ -60,8 +143,8 @@ Nothing sells an LLM repo like showing it produce tokens. -->
 | **Stream scoring** | `eval/score_stream.py`: score any engine's (prompt, output) JSONL under a reference model; A/B compare with bootstrap CI — the audit-side complement to serving engines |
 | **Spec telemetry** | `bench_spec_breakeven.py`: draft x cache-state sweep in the colibri-P3 schema; acceptance + expert hit-rate per decode context, `best_draft_per_cache_state()` picker |
 | **Expert streaming** | `expert_store.py`: routed experts tiered to a memory-mapped file, LRU residency with hit/miss/eviction telemetry; streaming forward is bitwise-identical to dense (oracle-verified, roadmap #6) |
-| **Toy checkpoint** | `checkpoints/toy_v5.13.pt` — 8.5M char-level model trained on the repo's own source in ~10 CPU-minutes (`examples/train_toy_checkpoint.py`); `generate()` / harness / MTP run against trained weights |
-| **Quantization** | **True GPTQ** (Hessian OBS with error compensation, optional act-order), AWQ with activation-aware grid search, native FP8, MXFP4 — all with `from_linear` real-weight packing. QAT fake-quant training (STE) targets: MXFP4, AWQ, and NVFP4 (E2M1×16 + E4M3 block scales, v5.22). |
+| **Toy checkpoints** | `checkpoints/toy_v5.13.pt` — 8.5M char-level model trained on the repo's own source in ~10 CPU-minutes (`examples/train_toy_checkpoint.py`); `checkpoints/tool_tuned_v5.27.pt` — tool-tuned on agent-loop replays (`examples/train_tool_tuned.py`, periodic save + resume); `generate()` / harness / MTP / agent loop run against trained weights |
+| **Quantization** | **True GPTQ** (Hessian OBS with error compensation, optional act-order), AWQ with activation-aware grid search, native FP8, MXFP4 — all with `from_linear` real-weight packing. QAT fake-quant training (STE) targets: MXFP4, AWQ, and NVFP4 (E2M1×16 + E4M3 block scales, local-line v5.22-L). |
 | **Eval** | Log-likelihood harness (`helioslm_v5/eval/harness.py`): `loglikelihood` / `multiple_choice` / `run_harness` + built-in synthetic tasks (v5.11), token-id based, lm-eval-harness spirit |
 | **Multimodal** | NaViT vision encoder (row/col position decomposition, mixed-resolution packing), streaming audio encoder (causal, sliding-window memory, bit-equivalent to one-shot). |
 
@@ -86,23 +169,32 @@ latent (512 + 64 values/token). Full numbers and methodology:
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md) — reproducible on CPU via
 `python benchmarks/bench_cpu.py`.
 
+**v5.28 serving Pareto** (`benchmarks/disagg_pareto_2026-09-25.json`, regenerate via
+`python examples/disagg_pareto.py`): latency-cost curves for cache-heavy / cold / mixed
+workloads — the cost-axis alignment artifact, see
+[docs/benchmark_alignment.md](helioslm_v5/docs/benchmark_alignment.md).
+
 ## Repository layout
 
 ```
-helioslm_v5/          # source (configs, src/{attention,moe,inference,training,vision,audio,quantization}, tests)
-docs/                 # code review reports + per-version fix reports
+helioslm_v5/          # source (configs, src/{attention,moe,inference,training,vision,audio,quantization}, agent/, tests)
+examples/             # train_toy_checkpoint.py, train_tool_tuned.py (v5.27), disagg_pareto.py (v5.28)
+benchmarks/           # CPU bench results + disagg_pareto_2026-09-25.json (v5.28 artifact)
+docs/                 # code review reports, benchmark_alignment.md, k3_alignment_targets(.md/.csv),
+                      # competitive_intel_2026-09-25.md (+ raw claims CSV), helioslm_handoff.md
 integration_test_v51.py
-CHANGELOG.md          # full version history (v5.0 → v5.9)
+CHANGELOG.md          # full version history (v5.0 → v5.28)
 ```
 
 ## Roadmap
 
 See the [GitHub Project board](https://github.com/tonythetiger168/helioslm/projects) for the live plan. Highlights:
 
-- [ ] Pre-trained toy checkpoint (small corpus, few hours of training) so people can `load` and chat immediately
+- [x] Pre-trained toy checkpoints (v5.13 text, v5.27 tool-tuned) — `load` and `generate()` / agent-loop immediately
+- [ ] Epoch-2 + scaled tool-tuning (T17 parse 0.15 → target 0.4+; trainer resume-ready)
 - [ ] Fused quantization kernels
 - [ ] CUDA end-to-end verification (paths are currently static-checked; CPU-verified)
-- [ ] Hugging Face Hub integration for configs/checkpoints
+- [x] Hugging Face Hub: `chienhsinlin/helioslm-agent` hosts the agent layer + tool-tuned artifacts
 - [ ] Example notebooks: "Train a tiny HeliosLM on your laptop" / "Add a new attention variant in 30 lines"
 
 ## Contributing
@@ -119,8 +211,16 @@ are static-checked) — tracked as a community issue.
 
 Headlines (full details in [CHANGELOG.md](helioslm_v5/CHANGELOG.md)):
 
-- **v5.22** — NVFP4-format QAT fake-quant target (E2M1×16 + E4M3 block scales) + NoPE option for MLA (Kimi-K3 direction; default off, bit-identical)
-- **v5.21** — KDA-style per-channel decay gate: linear-attention state rows forget at independent rates (Kimi Linear / GLM-5.3-Flash direction), bit-identical default, rollback-safe
+- **v5.22-L** (local line) — NVFP4-format QAT fake-quant target (E2M1×16 + E4M3 block scales) + NoPE option for MLA (Kimi-K3 direction; default off, bit-identical)
+- **v5.21** (local line) — KDA-style per-channel decay gate: linear-attention state rows forget at independent rates (Kimi Linear / GLM-5.3-Flash direction), bit-identical default, rollback-safe
+- **v5.29** — Three-mode benchmark on the real checkpoint (direct/routed/oracle): tau-routing curve strictly monotone (v5.22 gate PASS on real confidence); headline finding = systematic overconfidence on wrong answers (conf 0.944) — the exact failure class the v5.22 audit toolkit measures
+- **v5.28** — Cost-axis alignment: disagg three-axis Pareto sweep (latency-cost curves per workload; cache-aware anti-monotonicity recorded as structural finding)
+- **v5.27** — Tool-tuned checkpoint: agent-loop-replay training, T17 end-to-end (parse 0.15/finish 1/9 baseline, regression-guard floors), sparse_top_k=4 ~= dense in agent inference; agent hardened (TOOL_ERROR recovery, ASCII-safe docs)
+- **v5.26** — Stage A real-model oracles (T15): zero-gate attention residuals bitwise-verified on HeliosLMv5; sparse top-k decode oracle (k≥L bit-identical, selection validity + determinism); agent-loop smoke on the real toy checkpoint
+- **v5.25** — Disagg evolver module: Mooncake-style prefill/decode separation as a HarnessEvolver search module, monotonicity gate, three-axis Pareto (makespan / workers / worker-seconds)
+- **v5.24** — Attention variants with two-layer oracles: DSA sparse decode (fp32 certificate ⇒ fp64 gate), AttnRes mixing (zero-init ⇒ bitwise migration gate)
+- **v5.23** — Agent layer: strict tool-call schema + parser, deterministic sandboxed tools, trajectory bitwise-replay oracle, ground-truth-by-construction envs, routing gates in the agent loop
+- **v5.22** — Decision-layer audit toolkit: calibration metrics (ECE / Brier) against constructed ground truth — no reference LLM required
 - **v5.20** — Pareto-aware integration (memory axis) + cross-workload adaptation loop — ModularRSI gaps 2/3 closed at the inference layer
 - **v5.19** — Evolvable serving harness: ModularRSI-style module-wise search (draft/pool/tier) behind a deterministic bitwise oracle gate
 - **v5.18** — Content-addressed KV prefix pool: cross-session prefix reuse, fingerprint-guarded, bit-exact oracle (roadmap #6 complete)

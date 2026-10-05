@@ -316,14 +316,22 @@ class MTPDecoder:
             return int(torch.multinomial(p, 1).item())
         return int(torch.multinomial(residual / total, 1).item())
 
-    def _main_forward(self, ids: torch.Tensor, past):
-        """Unpack the main model's (logits, hidden, past) triple (C8)."""
+    def _main_forward(self, ids: torch.Tensor, past,
+                      attention_mask: Optional[torch.Tensor] = None):
+        """Unpack the main model's (logits, hidden, past) triple (C8).
+
+        ``attention_mask`` (optional) is passed straight through to
+        ``HeliosLMv5.forward`` — the caller slices it to this forward's
+        kv length (past + current).
+        """
         logits, hidden, past = self.main_model(
-            input_ids=ids, past_key_values=past, use_cache=True
+            input_ids=ids, attention_mask=attention_mask,
+            past_key_values=past, use_cache=True
         )
         return logits, hidden, past
 
-    def _replay_committed(self, bpast, row: int, prefix_tokens, device):
+    def _replay_committed(self, bpast, row: int, prefix_tokens, device,
+                          attention_mask: Optional[torch.Tensor] = None):
         """Recurrent-state rollback for hybrid models (v5.5).
 
         A fixed-size recurrent state cannot be truncated to the committed
@@ -345,7 +353,7 @@ class MTPDecoder:
             return base
         ids = torch.tensor([list(prefix_tokens)], dtype=torch.long,
                            device=device)
-        _, _, past = self._main_forward(ids, base)
+        _, _, past = self._main_forward(ids, base, attention_mask)
         return past
 
     # ------------------------------------------------------------------
@@ -433,7 +441,9 @@ class MTPDecoder:
     def generate(self, input_ids: torch.Tensor, max_new_tokens: int = 100,
                  temperature: float = 0.7,
                  eos_token_id: Optional[int] = None,
-                 top_p: float = 1.0) -> MTPGenerateResult:
+                 top_p: float = 1.0,
+                 attention_mask: Optional[torch.Tensor] = None
+                 ) -> MTPGenerateResult:
         """Speculative decoding with the main model as verifier.
 
         ``top_p`` (< 1.0) enables nucleus filtering with the same
@@ -442,6 +452,15 @@ class MTPDecoder:
         correction, bonus) AND to the draft distributions, so both sides
         of the accept ratio refer to the same filtered target. The default
         1.0 disables filtering (backward compatible).
+
+        ``attention_mask`` follows the ``HeliosLMv5.generate`` contract:
+        an optional [B, L] mask over the prompt (1 = real, 0 = pad).
+        Generated positions are always real, so the decoder grows the mask
+        with ones and slices it to each main-model forward's kv length
+        (past + current) — the attention stack requires a mask that
+        covers past + current exactly (its current-only shorthand would
+        left-pad the whole cached prefix with ones, un-masking pad
+        tokens). None (default) keeps every forward unmasked.
 
         All modules are switched to eval() for the duration of the call and
         their original training/eval modes are restored on exit — on
@@ -455,7 +474,8 @@ class MTPDecoder:
             self.main_model.eval()
         try:
             return self._generate_impl(
-                input_ids, max_new_tokens, temperature, eos_token_id, top_p)
+                input_ids, max_new_tokens, temperature, eos_token_id, top_p,
+                attention_mask)
         finally:
             for m, was_training in zip(self.mtp_modules, mtp_was_training):
                 m.train(was_training)
@@ -465,7 +485,9 @@ class MTPDecoder:
     @torch.no_grad()
     def _generate_impl(self, input_ids: torch.Tensor, max_new_tokens: int,
                        temperature: float, eos_token_id: Optional[int],
-                       top_p: float) -> MTPGenerateResult:
+                       top_p: float,
+                       attention_mask: Optional[torch.Tensor]
+                       ) -> MTPGenerateResult:
         """Body of ``generate`` (semantics documented there); called with
         eval mode already applied and restored by the wrapper."""
         if input_ids.dim() != 2:
@@ -473,12 +495,43 @@ class MTPDecoder:
                 f"input_ids must be [B, L], got shape {tuple(input_ids.shape)}"
             )
         B = input_ids.shape[0]
+        if B == 0:
+            # Empty batch: no rows to decode. Mirror the normal result
+            # structure — an empty [0, L] sequences tensor (prompt length
+            # preserved) with zeroed counters.
+            return MTPGenerateResult(
+                sequences=torch.empty((0, input_ids.shape[1]),
+                                      dtype=input_ids.dtype,
+                                      device=input_ids.device),
+                acceptance_rate=0.0,
+                num_drafted=0,
+                num_accepted=0,
+                num_rounds=0,
+            )
         if eos_token_id is None:
             eos_token_id = getattr(self.config, "eos_token_id", None)
         pad_token_id = getattr(self.config, "pad_token_id", 0)
 
         device = input_ids.device
         greedy = temperature is None or temperature <= 0
+
+        # attention_mask [B, L] over the prompt (see generate's docstring):
+        # grown with ones for the generated positions so it can be sliced
+        # to any forward's kv length (past + current) — the MLA contract
+        # requires a mask covering past + current exactly.
+        mask = attention_mask
+        if mask is not None:
+            if mask.dim() != 2 or mask.shape[0] != B \
+                    or mask.shape[1] != input_ids.shape[1]:
+                raise ValueError(
+                    f"attention_mask must be [B, {input_ids.shape[1]}], got "
+                    f"shape {tuple(mask.shape)}"
+                )
+            mask = torch.cat([
+                mask,
+                torch.ones(B, max(0, int(max_new_tokens)),
+                           dtype=mask.dtype, device=mask.device),
+            ], dim=1)
 
         def main_probs(logits_row: torch.Tensor) -> torch.Tensor:
             """Target distribution at a verification/bonus position:
@@ -533,7 +586,12 @@ class MTPDecoder:
                         [[seqs[i][-1]] for i in rows], dtype=torch.long,
                         device=device)
                     bpast = self._batch_past([pasts[i] for i in rows])
-                logits, hidden, bpast = self._main_forward(step_ids, bpast)
+                # Mask slice covering past + current (generated positions
+                # are ones; see generate's docstring).
+                step_mask = None if mask is None else \
+                    mask[rows][:, :clen + step_ids.shape[1]]
+                logits, hidden, bpast = self._main_forward(
+                    step_ids, bpast, step_mask)
                 # bpast now covers the FULL current sequence of every row.
 
                 x0: List[int] = []
@@ -583,7 +641,9 @@ class MTPDecoder:
                 # ---- Step C: one batched verification forward -----------
                 suffix = torch.tensor(draft_ids, dtype=torch.long,
                                       device=device)  # [G, n+1]
-                v_logits, _, v_past = self._main_forward(suffix, bpast)
+                v_mask = None if mask is None else \
+                    mask[rows][:, :seq_len + suffix.shape[1]]
+                v_logits, _, v_past = self._main_forward(suffix, bpast, v_mask)
                 # v_logits[r, j] = main distribution for the token following
                 # draft_ids[r][j]; draft_ids[r][j+1] is checked against it.
                 # The last row validates the final draft / sources the bonus.
@@ -668,8 +728,11 @@ class MTPDecoder:
                             # Hybrid model: recurrent state cannot be
                             # truncated -> restore the pre-speculation
                             # state and replay the committed prefix.
+                            replay_mask = None if mask is None else \
+                                mask[i:i + 1][:, :seq_len + len(committed) - 1]
                             pasts[i] = self._replay_committed(
-                                bpast, r, committed[:-1], device)
+                                bpast, r, committed[:-1], device,
+                                replay_mask)
                         else:
                             # Rollback by truncation: slice dim 2 down to
                             # the committed prefix (new seq[:-1] = seq_len +

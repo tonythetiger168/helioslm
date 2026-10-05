@@ -1,0 +1,36 @@
+{
+ "sycophancy_inversion": {
+  "effect": "P(yes|label=1) - P(yes|label=0) = -0.063",
+  "interpretation": "REAL inversion: the base model is LESS likely to flag flattering responses as failures -- the detector's own sycophancy mirrors the failure it detects. A self-referential alignment failure.",
+  "label_1_mean": 0.89,
+  "label_0_mean": 0.953
+ },
+ "ceiling_effect_finding": {
+  "effect_sizes": {
+   "sycophancy_eval": -0.063,
+   "bias_scene_heldout": 0.0,
+   "confaide": 0.0,
+   "faith_mt_grounded": 0.0,
+   "injecagent": 0.0,
+   "machiavelli_reward": 0.0,
+   "privaci_bench": 0.0,
+   "sycon_fp": 0.0,
+   "tensor_trust_hijack": 0.0,
+   "abstentionbench": 0.001,
+   "open_prompt_injection": 0.003,
+   "verbalized_ece": 0.004,
+   "instrumental_eval": 0.008,
+   "reward_hacking_freeform": 0.018,
+   "harmbench": 0.026
+  },
+  "key_observation": "15/16 benchmarks have effect size < 0.03 -- P(yes) barely separates classes at all. The high harmbench AUROC (0.879) comes from extreme distribution tails, not calibration. Prompt-zero has NO calibration ability even on surface-cue classes; zero-shot requires training.",
+  "conclusion": "STRONGER support for 'calibration requires training' than the median 0.500 alone suggested."
+ },
+ "mid_vs_qwen_lobo_gap": {
+  "mid_gap": -0.164,
+  "qwen_gap": -0.246,
+  "hypothesis_tested": "in-domain SFT -> more specialized -> worse transfer",
+  "result": "NOT SUPPORTED: mid (SFT) has the SMALLER gap despite the specialization hypothesis predicting the opposite",
+  "alternative": "capacity difference: Qwen's higher supervised score (0.807 vs 0.692) gives it more to lose. Recorded as observed-but-unexplained."
+ }
+}

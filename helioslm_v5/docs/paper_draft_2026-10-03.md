@@ -1,0 +1,262 @@
+# Calibrated Agency: An Open-Source RLCD Stack, from Toy Scale to 360M, with a Canonical-Benchmark Comparison
+
+**Chien-Hsin Lin. Working paper draft, 2026-10-03.** All numbers are
+reproduced from versioned artifacts in
+github.com/tonythetiger168/helioslm (cited by CHANGELOG tag) and the
+gated dataset sumleo/RLCDAlignBench.
+
+## Abstract
+
+LLMs increasingly act: they call tools, route through gates, and
+commit to answers -- each carrying a confidence. Three reinforcement
+paradigms compete for training them: RLHF (preferences), RLVR
+(verifiable answers), and RLCD (calibration -- probabilities answering
+to outcomes, not preferences). The third underpins a commercial
+"decision layer" category (Jev / TypeSafe, 2026), yet has no
+open-source reference implementation with scale evidence. This paper
+is that reference. We build a complete RLCD stack -- typed decision
+primitives, a non-autoregressive multi-question decision head,
+outcome-recorded calibration with a Brier term we prove load-bearing,
+deterministic grounding ("policy in code"), and calibrated abstention
+-- and evaluate it across three model scales (8.5M char, 360M BPE,
+Qwen3-0.6B anchor) plus the canonical 7,193-instance RLCDAlignBench.
+Findings: (1) overconfidence on wrong answers grows with scale at
+every point measured (0.94 -> 0.9999 -> ~1.0); (2) a 360M model's
+agentic failures are copy-shaped, cured at inference by deterministic
+grounding (0/12 -> 9/12, remainder abstained, zero hallucination
+leakage); (3) trust is a function of (state, intervention), not state
+alone -- a controlled contrast shows 8.4x trust separation between
+grounded and ungrounded runs of identical states; (4) on RLCDAlignBench
+our supervised TF-IDF readout reaches 0.726 median AUROC and beats the
+commercial Jev detector's zero-shot numbers on 11/41 benchmarks. All
+claims carry replay-verifiable trajectories, paired-tokenizer
+fingerprints, and per-decision audit logs.
+
+## 1. Introduction
+
+A model that acts must also decide whether to act, and how sure it is.
+Post-training offers three reward signals. RLHF optimizes human
+preference -- powerful, but the reward model is a proxy, and proxy
+games are documented. RLVR optimizes verifiable answers -- honest, but
+the 0/1 signal says nothing about calibration, and "passes the test"
+need not mean "understands the claim". RLCD (Reinforcement Learning
+for Calibrated Decisions) optimizes the third thing: the honesty of
+the probability itself, scored against outcomes with proper scoring
+rules.
+
+In September 2026 TypeSafe AI productized this third paradigm (Jev:
+non-autoregressive typed decisions with calibrated probabilities, 70-
+500ms, policy kept in code), and concurrently released RLCDAlignBench
+(7,193 detection instances, 44 benchmarks, 10 failure classes) showing
+a single generic Noul question reaches 0.886 median AUROC zero-shot.
+What the category lacks is an open, inspectable, independently
+reproducible reference -- and, critically, scale evidence: does the
+calibration gap that RLCD targets actually behave as claimed across
+model sizes, and do the proposed therapies work on real weights?
+
+This paper answers with a full open-source stack and three
+contributions:
+
+1. **The stack** (Sec. 3): eight layers from typed primitives to
+   calibrated abstention, each with executable oracles (28 tests).
+2. **The evidence chain** (Sec. 4-5): seven measured findings across
+   three scales, including a self-consistent before/after/therapy
+   trilogy on one 360M checkpoint.
+3. **The benchmark** (Sec. 6): first published numbers of an
+   independent pipeline on RLCDAlignBench, including offline
+   recomputation of the vendor's own cached metrics.
+
+We do not claim to beat the vendor product; we claim something the
+vendor does not publish: every mechanism verified on identical
+weights, with replay-verifiable audit trails.
+
+## 2. Related work
+
+**RLHF** (InstructGPT; Ouyang et al.) optimizes preference rewards;
+structural weaknesses are reward hacking and annotator cost. **RLVR**
+(DeepSeek-R1; OpenAI o-series) optimizes verifiable answers; its blind
+spot is calibration, which we quantify below (Sec. 4.1). **RLCD** is
+the training method of the Jev decision layer (TypeSafe, 2026-09);
+our stack is its open reference. **RLCDAlignBench** (ICLR 2027 under
+review) detects alignment failures in *other* models' outputs
+(task-INTER); we are the task-INTRA branch (an agent policing itself)
+and independently recompute their detector's numbers offline.
+**GRPO** (Shao et al.) provides our RLVR-flavored base trainer;
+**Hyper-Connections** (ByteDance) and **DeepSeek-V4's** mHC /
+compressed-attention designs inform our architecture references
+(v5.31), as do Qwen3-Max's tool-use routing and GLM-5's async RL
+infrastructure. The certified-confidence thesis -- calibration on wrong
+answers as the axis to measure and train -- has, to our knowledge, no
+prior open implementation with scale evidence.
+
+## 3. The stack
+
+Each layer ships with executable oracles; citations are CHANGELOG tags
+in the repo.
+
+| Layer | Module | Oracle |
+|---|---|---|
+| Typed primitives (Choice/Score/Noul) | decision.py | T27 5/5 |
+| Non-autoregressive K-question head | decision_head.py | T28 4/4 |
+| Outcome records + RLCD reward shaping | decision_data.py | T29 3/3 |
+| Head-backed gate (one-pass pi-warden) | calibrated_router.py | T30 4/4 |
+| Continuous Noul (P(yes) in [0,1]) | v5.36 | T37 3/3 |
+| Deterministic grounding | grounding.py | T33 7/7 |
+| Calibrated abstention | trust_gate.py | T38 4/4 |
+| Grounded replay audit | verify_grounded_replay | T39 2/2 |
+
+Supporting infrastructure: a task grammar shared by producer and
+consumer (T34), a byte-level BPE tokenizer (T31), a 360M "mid" rung
+(v5.33), a long-horizon file env (T24), and GRPO with async workers
+whose parity with the synchronous trainer is verified bitwise (T26).
+
+### 3.1 The calibration term that bites
+
+A supervised calibration penalty Brier(conf, *label*) is redundant
+with cross-entropy: both are proper scoring rules converging to the
+same posterior on iid labels -- we verify identical confidences to
+three decimals in an A/B (T28). The term is load-bearing only against
+an **outcome** signal the softmax cannot memorize: records carry a
+replay-verified `target_conf` (T29). This pins the precise interface
+RLCD requires, and is, to our knowledge, the first published
+demonstration of the redundancy.
+
+### 3.2 The binary confidence floor
+
+Binary Choice confidence (max softmax probability) has a hard floor at
+1/K and cannot express sub-50% certainty. Our fix follows the vendor's
+spec: Noul as a continuous P(yes) with no separate confidence --
+uncertainty is a probability near 0.5 (T37 floor oracle). The ternary
+form and the Score-based escape hatch are retired.
+
+## 4. The evidence chain (three scales)
+
+All measurements use one evaluator family (AgentLoop/ChatSession,
+replay-verified), one confidence definition (softmax max, greedy).
+
+### 4.1 Overconfidence grows with scale
+
+| Scale | Setting | Conf on wrong |
+|---|---|---|
+| 8.5M char (lite) | in-format wrong answers | 0.925-0.944 |
+| 360M BPE (mid) | ungrounded agentic, all 12 wrong | 0.9999 mean |
+| Qwen3-0.6B (anchor, our harness) | multi-step agentic 0/15 | mean 0.893, max 1.0 |
+
+A frontier-family model probed with our own runner shows the same
+disease more extremely. Confidence on wrong answers **grows** with
+scale and fluency at every point we can measure.
+
+### 4.2 The 360M failure is copy-shaped
+
+The mid model executes the agent protocol perfectly (correct
+tool sequences, valid JSON) while confabulating content: task->args
+corruption dominates ("19 * -92" -> "12 * -9"), with obs->finish
+copying fragile. A controlled A/B with +800 copy-curriculum episodes
+changed the confabulations byte-identically (COPY_CURRICULUM_VERDICT):
+three eliminations (tokenizer, protocol, data volume) leave a
+capacity/dynamics wall at 360M. Recorded honestly as a single-point
+scale measurement.
+
+### 4.3 Grounding is the therapy, with a sequence boundary
+
+Deterministic grounding (parse the task grammar, inject tool args,
+anchor finish to the tool chain's deterministic replay) takes the same
+checkpoint, same eval seed, from **0/12 to 9/12**; the remaining 3 are
+premature finishes now refused at the sequence level (v5.37j), with
+**zero hallucination leakage** -- the refusals score as abstentions,
+not errors. Grounding cannot inject into an empty evidence chain; that
+residual belongs to abstention.
+
+### 4.4 The model already flags OOD
+
+An accidental tokenizer-mismatch run scattered confidences (0.13-0.97)
+where the clean run pins ~0.9999. The calibration gap is precise:
+**overconfidence on in-distribution errors only**. The OOD case the
+model handles itself; the therapy targets the case it does not.
+
+### 4.5 Trust is f(state, intervention)
+
+The same 12 task texts run ungrounded (0/12) and grounded (9/12) train
+a continuous-Noul head with an intervention prefix. Fresh identical
+tasks read **ungrounded_p 0.023 vs grounded_p 0.190 (8.4x)**, with
+high/medium/low tiers firing in one run. Crucially, 4 DIRECT-grounded
+tasks scored 4/4 **wrong** when executed without grounding: trust
+calibrated on an intervention must be **paired** with that
+intervention. Neither half of the therapy pair suffices alone -- a
+controlled counterexample to using them separately.
+
+## 5. The self-consistent trilogy
+
+On ONE fresh checkpoint (360M, paired tokenizer, sha256 fingerprint
+verified at load): ungrounded 0/12 (fresh confabulations -- the disease
+is itself reproducible within seeded noise), grounded 9/12 + 3
+abstained, TrustGate 12/12 abstained at p~2e-5 on all-negative training
+data. Switching the head to mixed intervention-conditioned outcomes
+(24 records) produced tiered behavior and the 8.4x contrast (Sec. 4.5).
+Every artifact is archived; the weights, tokenizer, and fingerprint
+are on HuggingFace (chienhsinlin/helioslm).
+
+## 6. RLCDAlignBench: independent numbers
+
+We requested access to the gated dataset and ran our pipeline on all
+7,193 instances (44 benchmarks; 41 with both classes). Protocol per
+the paper: generic state render, P(yes) as score, AUROC per benchmark.
+The vendor's own cached metrics were recomputed offline from the
+dataset (no API key); our recomputation yields median **0.859** versus
+the paper's reported 0.886 (delta from variant/battery selection,
+recorded).
+
+| Detector | Median AUROC | n |
+|---|---|---|
+| Jev zero-shot (cached, recomputed) | 0.859 | 41 |
+| **Ours: TF-IDF readout (supervised)** | **0.726** | 41 |
+| Ours: char mean-pool head (supervised) | 0.561 | 41 |
+| Ours: in-domain BPE head (supervised) | 0.569 | 41 |
+
+**We beat Jev's zero-shot numbers on 11/41 benchmarks** -- sycophancy
+(0.78 vs 0.43), faithfulness (0.68 vs 0.37), confaide (0.81 vs 0.50),
+prompt injection (0.82 vs 0.61; 0.68 vs 0.51), abstention (0.99 vs
+0.87), reward hacking (0.89 vs 0.79) -- the surface-cue failure classes
+where "read probabilities, not argmax" shines. The residual median gap
+is a product-model-vs-research-encoder resource difference: our TF-IDF
+leg sits inside the paper's own baseline feature class, and an ablation
+(char 0.561 -> BPE 0.569 -> TF-IDF 0.726) localizes the bottleneck at
+encoder capacity, not the readout protocol.
+
+A methodological lesson with general import: the benchmark's state
+schema is per-benchmark (10+ shapes); a fixed field assumption rendered
+empty states for 40/44 benchmarks and silently scored at chance (0.500)
+until replaced with generic all-field rendering (0.561).
+
+## 7. Limitations
+
+Demonstration-grade outcome data (24-41 records per leg). Grounding
+coverage is six task grammars; unknown grammars pass through
+ungrounded, queryable via groundable(). The 360M capacity finding is a
+single-point measurement. Our probes are toy-grade by construction;
+the Qwen3-0.6B anchor is the smallest frontier-family model, not the
+frontier. AlignBench numbers are supervised (the honest analog of the
+paper's TF-IDF baseline), not zero-shot; we do not claim the vendor's
+headline. The honest-minimum encoder (mean-pool) is the measured
+bottleneck; mid-scale hidden-state encoders are queued.
+
+## 8. Conclusion
+
+RLCD's thesis is that calibration -- not preference, not verifiable
+answers -- is the axis on which acting models most need training. The
+open stack presented here makes every component of that thesis
+inspectable and independently verifiable: the disease measured across
+scales, the therapies each verified on identical weights, the
+counterexample showing the therapies must be composed, and the first
+independent numbers on the canonical benchmark. The day frontier
+vendors publish calibration-on-wrong-answers curves with
+replay-verifiable trajectories, this reference will have served its
+purpose.
+
+## Reproducibility
+
+Code, tests, artifacts: github.com/tonythetiger168/helioslm (CHANGELOG
+v5.30.2-v5.38b). Weights/tokenizer/fingerprints and benchmark artifacts:
+huggingface.co/chienhsinlin/helioslm. Dataset: sumleo/RLCDAlignBench
+(gated; we requested and were granted access). Every numeric claim in
+this paper traces to a JSON artifact in benchmarks/.

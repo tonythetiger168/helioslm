@@ -45,24 +45,42 @@ from helioslm_v5.eval.harness import loglikelihood
 
 
 def _encode(text, vocab_size):
-    ids = [ord(c) for c in text if ord(c) < vocab_size]
+    bad = sorted({c for c in text if ord(c) >= vocab_size})
+    if bad:
+        raise ValueError(
+            f"text contains {len(bad)} distinct character(s) with "
+            f"ord >= vocab_size={vocab_size} (e.g. {bad[:5]!r}); the toy "
+            "checkpoint scores char-level ASCII text — swap the checkpoint "
+            "to score text outside that range"
+        )
+    ids = [ord(c) for c in text]
     if not ids:
-        raise ValueError("text encodes to zero tokens (non-ASCII or empty?)")
+        raise ValueError("text encodes to zero tokens (empty string?)")
     return ids
 
 
 def score_record(model, prompt, output, vocab_size):
-    """Score one (prompt, output) pair. Returns the score dict."""
+    """Score one (prompt, output) pair. Returns the score dict.
+
+    ``ppl`` is exp(nll_per_token), computed faithfully: it saturates at
+    ``math.inf`` when the exponent overflows (nll > ~709), instead of
+    clamping nll — an nll of 20 and an nll of 60 must not report the
+    same perplexity.
+    """
     ctx = _encode(prompt, vocab_size)
     cont = _encode(output, vocab_size)
     lp = loglikelihood(model, ctx, cont)
     n = len(cont)
     nll = -lp / max(n, 1)
+    try:
+        ppl = math.exp(nll)
+    except OverflowError:
+        ppl = math.inf
     return {
         "sum_logprob": round(lp, 4),
         "n_tokens": n,
         "nll_per_token": round(nll, 4),
-        "ppl": round(math.exp(min(nll, 20)), 2),
+        "ppl": round(ppl, 2),
     }
 
 
@@ -107,7 +125,12 @@ def main() -> None:
             rows.append({"id": rid, "nll_a": sa["nll_per_token"],
                          "nll_b": sb["nll_per_token"], "delta_b_minus_a": round(d, 4)})
         n = len(deltas)
-        mean = sum(deltas) / max(n, 1)
+        if n == 0:
+            raise ValueError(
+                f"no common record ids between {a_path} and {b_path}; "
+                "compare mode needs paired records (same ids in both files)"
+            )
+        mean = sum(deltas) / n
         # bootstrap CI (deterministic seed)
         g = torch.Generator().manual_seed(0)
         boots = sorted(float(torch.tensor(deltas)[

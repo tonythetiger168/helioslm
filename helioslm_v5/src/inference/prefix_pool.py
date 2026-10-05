@@ -51,7 +51,12 @@ class PrefixPool:
     def _key(self, block_ids):
         h = hashlib.blake2b(digest_size=16)
         h.update(self.fingerprint.encode("utf-8"))
-        h.update(bytes(int(t) for t in block_ids))
+        # Fixed-width 4-byte ids: bytes(int(t)) raises ValueError for any
+        # token id >= 256 (vocab ids are unbounded — the lite config alone
+        # uses vocab_size 1024), which crashed lookup/store on ordinary
+        # non-ASCII ids.
+        for t in block_ids:
+            h.update(int(t).to_bytes(4, "little"))
         return h.hexdigest()
 
     def _blocks(self, ids):

@@ -1,6 +1,1087 @@
 # HeliosLM v5 Changelog
 
-## v5.22 (2026-09-21, second round) - NVFP4 QAT Target + NoPE Option
+## v5.39c (2026-10-04) - Level 1: Hybrid/Select Ceiling Measured
+- benchmarks/level1_hybrid_results.json: TF-IDF 0.774 / hybrid 0.714 /
+  Qwen-enc 0.714 / PER-BENCH-SELECT 0.796 (44 benchmarks, oracle leg
+  selection on test AUROC). Three findings: (1) CONCAT HURTS -- Qwen
+  hidden states add noise to TF-IDF (-0.06), gate beats concat; (2)
+  leg selection adds +0.022 over the best single leg; (3) the
+  feature-engineering ceiling is ~0.80 -- the remaining 0.06 to Jev's
+  0.859 is TRAINING, not engineering. Level 2 (RLCD fine-tune of the
+  readout on Qwen3-0.6B) is the recorded and only remaining path
+
+
+
+## v5.38j (2026-10-04) - Paper v4b: Direction 1+2 Deep Dives In
+- sycophancy decomposition: the inversion is REAL and self-referential
+  (P(yes|flattery)=0.890 vs P(yes|control)=0.953, -0.063) -- the
+  detector's own sycophancy mirrors the failure it detects. Separately,
+  a ceiling-effect audit: 15/16 benchmarks have class-separation effect
+  size < 0.03 -- the harmbench 0.879 comes from distribution tails, not
+  calibration. Prompt-zero has no calibration ability even on
+  surface-cue classes -- STRONGER support for 'calibration requires
+  training' than the median alone
+- mid-vs-Qwen LOBO gap: specialization hypothesis REJECTED (mid -0.164
+  < Qwen -0.246, opposite of prediction); recorded honestly as
+  observed-but-unexplained with the capacity confound noted
+- benchmarks/direction12_analysis.json + paper v4b PDF
+
+
+
+## v5.38i (2026-10-04) - Prompt-Zero Leg: the Strongest Argument FOR Training
+- Qwen3-0.6B base, fixed template, P(yes) from full distribution, ZERO
+  training: median 0.500 with extreme bimodality -- harmbench 0.879,
+  reward_hacking 0.700, instrumental 0.722, verbalized_ece 0.629, but
+  sycophancy 0.289 INVERTED (the base model is itself sycophantic about
+  flattery -- an alignment failure measured INSIDE the detector) and
+  confaide/bias at pure chance. A single fixed prompt has no general
+  zero-shot calibration ability
+- FINDING: this failure mode is the strongest independent support for
+  the commercial decision-layer category's core claim -- calibration
+  REQUIRES training. Recorded as the closing row of the ablation
+- Paper v4: three new rows (MLP-LOBO 0.589, prompt-zero 0.500),
+  ablation rewritten with the training-requirement conclusion
+- benchmarks/alignbench_prompt_zero_readout.json
+
+
+
+## v5.38h (2026-10-04) - Fine-Tuned Readout Head: Transfer Gain Confirmed
+- MLP head (1024->256->1) LOBO median 0.589 vs LR 0.561 (+0.028, seed 0,
+  300 epochs): fine-tuning the readout releases a modest but real
+  transfer gain on frozen Qwen3-0.6B features. Direction confirmed,
+  magnitude small -- prompt-based zero-shot remains the higher-leverage
+  recorded direction
+- benchmarks/alignbench_mlp_lobo.json records the protocol and result
+
+
+
+## v5.38h (2026-10-04) - Fine-Tuned Readout Head: Transfer Gain Confirmed
+- MLP head (1024->256->1) LOBO median 0.589 vs LR 0.561 (+0.028, seed 0,
+  300 epochs): fine-tuning the readout releases a modest but real
+  transfer gain on frozen Qwen3-0.6B features. The frozen-feature
+  ceiling is real, not absolute -- but the gain is small enough that
+  prompt-based zero-shot remains the higher-leverage direction
+- benchmarks/alignbench_mlp_lobo.json records the protocol and result
+
+
+
+## v5.38h (2026-10-04) - Fine-Tuned Readout Head: Transfer Gain Confirmed
+- MLP head (1024->256->1) LOBO median 0.589 vs LR 0.561 (+0.028, seed 0,
+  300 epochs): fine-tuning the readout releases a modest but real
+  transfer gain on top of frozen Qwen3-0.6B features. The frozen-feature
+  ceiling is real, not absolute -- but the gain is small enough that
+  prompt-based zero-shot remains the higher-leverage direction
+- benchmarks/alignbench_mlp_lobo.json records the protocol and result
+
+
+
+## v5.38g (2026-10-04) - Paper v3: Encoder Legs Complete
+- Qwen3-0.6B hidden supervised 0.807 / LOBO 0.561; mid 360M hidden
+  supervised 0.692 / LOBO 0.528 (user's GPU runs, 90s each). Encoder
+  capacity hypothesis VERIFIED: same readout protocol, encoder ladder
+  0.561 -> 0.692 -> 0.807, closing 86% of the gap to Jev zero-shot
+  (0.859) and BEATING word-level TF-IDF by +0.08. LOBO transfer rises
+  with encoder quality (0.542 -> 0.561) but plateaus near 0.56 --
+  frozen features carry some transferable signal (abstentionbench LOBO
+  0.933) yet fine-tuned readout heads are the recorded next step
+- Paper v3: six-row table + rewritten ablation; PDF rebuilt (tectonic)
+
+
+
+## v5.38f (2026-10-03) - Paper v2 + Local Encoder Scripts
+- Paper v2 (565a6c16): LOBO row (0.542, near-zero transfer finding),
+  encoder ablation paragraph, LM-encoder legs marked in-progress
+- examples/alignbench_qwen_encode.py + alignbench_mid_encode.py:
+  runnable locally on GPU (~5 min each on a 4060); produce qwen_feats.npz
+  / mid_feats.npz for the readout leg. Sandbox legs checkpointed at
+  1400/2329 but the FUSE filesystem instability killed them repeatedly;
+  local runs are the reliable path
+
+
+
+## v5.38e (2026-10-03) - Paper PDF Built and Distributed
+- docs/paper_draft_2026-10-03.pdf: tectonic build, 7pp, 3 figures
+  embedded, checked into GitHub (eb87ad45) and HF
+  (commit f356f081, chienhsinlin/helioslm docs/). HF docs/ is now the
+  complete trio: .tex (source) + .md (reading) + .pdf (artifact)
+- hf_upload.py second routing bug fixed: inline branch corrupted
+  binary files (PDF) via errors=replace -- 400 from the commit API.
+  Routing is now content-based (strict utf-8 probe), not size-based
+  (12a368fb). Same lesson as the LFS-pointer bug, in reverse
+
+
+
+## v5.38d (2026-10-03) - LaTeX Version for arXiv
+- docs/paper_draft_2026-10-03.tex: arXiv-ready article (booktabs
+  tables, natbib, thebibliography). Self-contained; compiles with
+  pdflatex. Submission path: arXiv cs.LG now, TMLR next (reproducibility
+  certification target), NeurIPS 2027 main after the zero-shot leg
+
+
+
+## v5.38c (2026-10-03) - Paper Draft
+- docs/paper_draft_2026-10-03.md: full working paper (abstract,
+  intro, related work, stack, evidence chain, trilogy, AlignBench
+  comparison, limitations, reproducibility). Every number traces to a
+  versioned artifact; honest framing throughout (supervised legs,
+  single-point scale, encoder bottleneck)
+
+
+
+## v5.38b (2026-10-03) - TF-IDF Leg + Charts: 11 Benchmarks Beat Jev Zero-Shot
+- TF-IDF leg (word 1-2 + char_wb 3-5, 20K features each, LR C=1): median
+  0.726 (char 0.561 -> BPE 0.569 -> TF-IDF 0.726). WE BEAT Jev zero-shot
+  on 11/41 comparable benchmarks (up from 4): sycophancy +0.34, faith_mt
+  +0.31, confaide +0.31, injecagent +0.22, abstentionbench 0.986 vs 0.868
+- Median gap to Jev (0.859) remains: product model vs research encoder;
+  our TF-IDF leg sits at the paper's own baseline feature class
+- Charts in benchmarks/charts/ (median summary, scatter, per-benchmark
+  bars); scatter marks the 11 wins over the y=x line
+- C tuned (0.5/1/2), feature budget 20K vs 30K: 20K+char wins; recorded
+  config for reproduction
+
+
+
+## v5.38a (2026-10-03) - RLCDAlignBench First Numbers (7,193 instances)
+- benchmarks/alignbench_comparison_2026-10-03.txt: three-way table,
+  41 comparable benchmarks. Jev zero-shot (its own cached metrics,
+  recomputed offline from the gated dataset) median 0.859 (paper
+  reports 0.886; delta = variant/battery selection, recorded); our
+  SUPERVISED DecisionHead median 0.561 char / 0.569 BPE
+- Honest read: the median gap is the honest-minimum encoder (char/
+  BPE mean-pool, T35-documented bottleneck), NOT the RLCD readout
+  protocol -- the same readout on per-benchmark surface-cue tasks
+  matches or beats Jev zero-shot (sycophancy 0.71 vs 0.43, injecagent
+  0.80 vs 0.61, open_prompt_injection 0.67 vs 0.51, abstentionbench
+  0.88 vs 0.87). We are below the paper's TF-IDF LR baseline too
+  (0.75-0.97): word n-grams >> mean-pool at this scale
+- Method lesson recorded: the benchmark's state schema is PER-BENCHMARK
+  (10+ shapes); the first run rendered empty states for 40/44
+  benchmarks (median 0.500) before switching to generic all-field
+  rendering (0.561). Any fixed-field assumption on heterogeneous
+  benchmarks degrades SILENTLY
+- Runner updated: label is it['label'] directly (1=failure); generic
+  state render; in-domain BPE leg (4K vocab trained on the data
+  itself, encodings cached)
+
+
+
+## v5.38 (2026-10-03) - RLCDAlignBench Runner Skeleton
+- examples/alignbench_run.py: our stack on the canonical benchmark
+  (sumleo/RLCDAlignBench, gated). Legs: inspect (field mapping),
+  head (supervised DecisionHead per benchmark -- the honest TF-IDF-
+  baseline analog; the paper headline is ZERO-SHOT Jev, a different
+  question), jev (offline cache recompute, no key). Protocol mirrors
+  the paper: generic prompt+response state, P(yes) as score, AUROC per
+  benchmark. BLOCKED on gated access (user to request at the dataset
+  page with the chienhsinlin HF account)
+
+
+
+## v5.37m (2026-10-03) - The 8.4x Intervention Contrast, Archived
+- benchmarks/trust_dual_prefix_console_2026-10-03.md: console record
+  of the v5.37k dual-prefix run. ungrounded_p 0.023 / grounded_p 0.190
+  (8.4x), tiers emerged (0.71 high / 0.47 medium / <0.3 low); 4
+  DIRECT-[grounded] 4/4 wrong without grounding -> TherapyPair
+  composition finding; v5 refusal fired then died on oracle.decide
+  (fixed in v5.37l). Report evidence chain gains claim 4b
+
+
+
+## v5.37o (2026-10-03) - Top-Level Import Actually Added
+- v5.37n's import patch replaced the LAZY import inside
+  ReviewOracle.decide (first textual occurrence) instead of adding a
+  top-level one; main() still had no FixedGate. Same trap family as
+  v5.36g: anchor on the wrong occurrence, assert passed on the wrong
+  string. Header-scoped verify this time
+
+
+
+## v5.37n (2026-10-03) - Refusal Accounting + Import Fix
+- v5 rerun (v5.37l oracle fix): 9/12 correct, 3 write_read refusals
+  with ZERO hallucination leakage -- but the 360M model recovers by
+  QUOTING the abstention text as its answer, not re-walking the chain.
+  v5 eval now counts abstained separately (not as wrong): therapy
+  outcome is 9 correct + 3 abstained + 0 leaked
+- eval_mid_trust: FixedGate import fix (v5.37l replace missed the
+  actual import line; NameError before the dual-prefix+TherapyPair run
+  could start)
+
+
+
+## v5.37m (2026-10-03) - The 8.4x Intervention Contrast, Archived
+- benchmarks/trust_dual_prefix_console_2026-10-03.md: console record
+  of the v5.37k dual-prefix run. ungrounded_p 0.023 / grounded_p 0.190
+  (8.4x), tiers emerged (0.71 high / 0.47 medium / <0.3 low); 4
+  DIRECT-[grounded] 4/4 wrong without grounding -> TherapyPair
+  composition finding; v5 refusal fired then died on oracle.decide
+  (fixed in v5.37l). Report evidence chain gains claim 4b
+
+
+
+## v5.37l (2026-10-03) - Therapy-Pair Composition + 8.4x Intervention Contrast
+- Dual-prefix trust run: ungrounded_p_mean 0.0228 vs grounded_p_mean
+  0.1904 -- intervention conditioning VERIFIED on real weights; tiers
+  emerged (high ~0.7 / medium ~0.47 / low <0.3 firing in one run)
+- FINDING: 4 DIRECT [grounded] tasks were 4/4 WRONG -- the trust
+  harness executed them UNTREATED. Trust calibrated on grounded
+  outcomes is only honorcd when the run is ACTUALLY grounded: the
+  therapy pair must be COMPOSED, not used alone. TherapyPair wrapper
+  (TrustGate routes, GroundingGate fills) added to eval_mid_trust;
+  [grounded] prefix now runs composed, [ungrounded] stays bare
+- v5 AbstainOracle gained decide() (GroundingGate.decide consults
+  inner.decide first; the missing method crashed the rerun at task 10,
+  refusal itself had fired correctly)
+
+
+
+## v5.37k (2026-10-03) - Acceptance Harness Fixes (Refusal Fired, Harness Died)
+- First v5.37j rerun: the premature-finish refusal fired EXACTLY as
+  designed (9/9 calc/str correct, then write_read task 10 finish-first
+  -> ESCALATE) but FixedGate has no oracle and the harness crashed --
+  refusal correct, assembly incomplete. v5 gains AbstainOracle: the
+  session receives the abstention note and the model can re-walk the
+  evidence chain
+- eval_mid_trust runs BOTH intervention prefixes (24 tasks total):
+  [ungrounded] alone legitimately reads all-distrust (training says
+  ungrounded fails 12/12); the TIERED demonstration is the contrast
+  metric ungrounded_p_mean vs grounded_p_mean on fresh identical tasks
+
+
+
+## v5.37j (2026-10-03) - Known-Limitations Batch: #1 + #3
+- eval_mid_trust v2: MIXED outcome records (v4 12 no + v5 9 yes/3 no)
+  with an INTERVENTION prefix ([ungrounded]/[grounded]) -- the trust
+  question is P(correct | state, intervention); the 10-02 family-wide
+  abstention came from all-negative data missing this dimension
+- GroundingGate: PREMATURE FINISH on a groundable multi-step family
+  with an empty state machine now ESCALATEs (the 10-02 write_read
+  bypass: finals '1 * 1'/'36' passed through ungrounded). Single-step
+  families exempt (calc/str finish after one obs is legitimate).
+  Sequence-level refusal inside grounding; TrustGate remains the
+  state-level counterpart
+- T33 7/7 incl. the new premature-finish oracle (finish-first refused,
+  calc-then-finish still DIRECT)
+
+
+
+## v5.37i (2026-10-02) - Trilogy Artifacts Archived
+- benchmarks/mid_{agent_eval_v4,agent_eval_v5,sft_v5.33}_trilogy.json:
+  the raw evidence for the self-consistent trilogy (fresh 360M
+  checkpoint, paired tokenizer, fingerprint verified). v4 carries full
+  per-step transcripts: 0/12 with fresh confabulations (args corruption
+  dominant, obs->finish copying intact on calc/str); v5 9/12 with
+  verbatim-correct finals on all cured tasks; SFT summary 30/40 + 40/40
+- Trust verdict (from console; json local): 12/12 abstained, p_min ~2e-5
+
+
+
+## v5.37h (2026-10-02) - The Self-Consistent Trilogy Closes
+- Fresh baseline retrain (6728s, loss 0.4129, SFT eval 30/40 + 40/40 --
+  reproduces the 9/28 baseline within seeded noise), artifacts
+  durable: .pt + .tok.json + .tokfp on HF (chienhsinlin/helioslm,
+  commits ab69b699/a784781b/0494ec68)
+- Trilogy on ONE checkpoint, fingerprint verified: v4 ungrounded 0/12
+  (fresh confabulations, disease reproducible); v5 grounded 9/12 (all
+  calc/str cured; 3 write_read failures = finish-first sequences --
+  grounding is SEQUENCE-DEPENDENT, it cannot inject into an empty
+  state machine; premature finish is TrustGate's territory); TrustGate
+  12/12 abstained at p~2e-5 (decisive; all-negative training data ->
+  family-wide abstention, tiered behavior needs mixed labels)
+- Report sections 3-4 updated to the self-consistent numbers
+
+
+
+## v5.37g (2026-10-02) - hf_upload.py Ships in the Repo (Durability Fix)
+- The 10-02 post-mortem: the mid baseline weights existed ONLY on the
+  user's disk (HF_SYNC was never set locally; the uploader lived only
+  in a sandbox /tmp file), and a local overwrite destroyed them. The
+  uploader now ships in the repo (stdlib only, token from env) so the
+  artifact pipeline has no environmental single point of failure
+
+
+
+## v5.37f (2026-10-02) - Tokenizer Fingerprint Guard in the Eval Harness
+- _mid_common.load_model_tok verifies the saved .tok.json against the
+  training-time .tokfp sha256; mismatch exits loudly with the fix
+  recipe. The 10-02 trust-eval run produced confident soup with a
+  starved gate (p_min=None, zero decisions) because a rebuilt
+  tokenizer drifted under a changed corpus -- exactly the failure mode
+  this guard now refuses silently-reproducing. Structural guard for
+  the format/training-distribution skew family, part 1
+
+
+
+## v5.37e (2026-10-02) - TrustGate Acceptance Harness Fix (v1 Trap, Third Occurrence)
+- eval_mid_trust v1 drove AgentLoop (Task:/step i: format) -- the v1
+  format-skew trap, third occurrence of that family (v1 -> v2 fix ->
+  this). mid SFT renders chat transcripts; under the wrong harness the
+  model emits no tool blocks (final=None everywhere) and parse failures
+  never reach the gate, silently voiding the abstention measurement
+- v2: ChatSession + TrustGate(inner=ReviewOracle); abstained tasks end
+  final=None BY DESIGN (do not act). Recorded with the honest count:
+  the format-skew family is now THREE documented occurrences -- the
+  lesson exists in eval_mid_agent_v2.py's docstring and was still
+  re-walked; a structural guard (harness-format assertion against the
+  training distribution) is the real fix, queued
+
+
+
+## v5.37d (2026-10-02) - Working Report: the RLCD Methodology Paper
+- docs/report_rlcd_methodology_2026-10.md: full narrative -- three RL
+  paradigms, the seven-link evidence chain (all measurements), the
+  therapy pair, honest boundaries, and the task-INTRA positioning vs
+  RLCDAlignBench. Every claim cites an artifact and a test
+
+
+
+## v5.37c (2026-10-02) - TrustGate x mid Acceptance Script
+- examples/eval_mid_trust.py: trains the trust head on the REAL v4
+  failure outcomes (12/12 confabulated), then drives fresh mid eval
+  tasks behind TrustGate -- expected behavior: ESCALATE on the
+  failure-class states (the model is DENIED ungrounded action on its
+  own measured failure territory), DIRECT only where trusted. The
+  therapy pair, verified end to end on real weights
+
+
+
+## v5.37b (2026-10-02) - Engineering Debt: Shared Harness + Grounded Replay
+- examples/_mid_common.py: the three mid eval scripts' identical
+  preambles (paired-tokenizer + checkpoint load + greedy model_fn with
+  per-call confidence capture) now live in one place; scripts pass
+  max_new/fewshot and get (model, tok, make_fn)
+- grounding.verify_grounded_replay: grounded trajectories are now
+  formally re-verifiable -- raw text -> parse -> a FRESH GroundingGate
+  reproduces the recorded observations exactly (deterministic tools +
+  shared grammar), tamper detection intact. The v5.34 docstring replay
+  deviation is CLOSED
+- T39 2/2; T33 regression green
+
+
+
+## v5.37 (2026-10-02) - TrustGate: Calibrated Abstention, Deployed
+- agent/trust_gate.py: the TypeSafe behavior tiers as a Gate wrapper.
+  The trust question (continuous Noul, v5.36) is P(the routed action
+  will be correct), learned from OUTCOMES (RLCD); the model's own
+  confidence is not consulted (measured signal-free at mid). Tiers:
+  P >= hi -> DIRECT auto-execute; lo <= P < hi -> DIRECT flagged
+  medium; P < lo -> ESCALATE (do not act). Abstain without an oracle is
+  a LOUD NotImplementedError, never silent; with inner= it delegates.
+  Every decision lands in an audit log (p_trust/tier/route)
+- The therapy pair closes: grounding fixes actions the model TAKES;
+  TrustGate withholds actions on states the head DISTRUSTS
+- T38 4/4; decision suite 7/7 incl. T38
+
+
+
+## v5.36h (2026-10-02) - T30 Labels Actually Swapped (block-verified)
+- v5.36g's replace targeted a severity line that never existed in the
+  v5.36f file -> silent no-op; outputs were bit-identical to the
+  previous run, the tell that the edit had not landed. Marker-based
+  block-anchored swap this time, verified block-level BEFORE push
+  (lesson recorded: identical outputs across a supposed label flip =
+  the edit did not take)
+
+
+
+## v5.36g (2026-10-02) - T30 Labels Un-swapped
+- The continuous readout oracle labeled clean->no / risky->yes; the
+  head learned the majority class as the anchor and inverted the
+  direction. Semantics: trust P(yes) should be HIGH for clean states.
+  Un-swapped. (A flipped-labels run is itself the classic calibration
+  bug -- worth the record.)
+
+
+
+## v5.36f (2026-10-02) - T30 Data Fix (Real Labels, Real Assert)
+- trust targets were neutral (both classes 0.5-ish) -- no learnable
+  signal, direction unassertable; the v5.36e direction-only assert
+  papered over it. Fix: real labels (clean->no, risky->yes) and the
+  strong assert restored. Real signal, real oracle
+
+
+
+## v5.36e (2026-10-02) - T30 Margin Assert -> Direction
+- CalibratedRouter synthetic registers neutral targets for trust; the
+  trained margins sit near 0.5 with tiny separation. Assert DIRECTION
+  (p_risky < p_clean), not magnitude -- no fake convergence claims
+
+
+
+## v5.36d (2026-10-02) - Noul Targets Accept Continuous Values
+- _targets noul path: yes/no strings map via _NOUL_IDX; raw numeric
+  targets (probabilities) pass through; None fills 0.5 (neutral).
+  Reverse-lookup KeyError'd on 0.1 and None (found in T28/T30)
+
+
+
+## v5.36c (2026-10-02) - Continuous-Noul Suite Fully Green
+- decision_head._targets: score targets tolerate missing answers
+  (fill 0.0) -- records may register more heads than they annotate
+- test_decision_head: severity->trust rename completed (set assertion
+  included)
+- T27/T28/T30/T35 + T37 all green under the continuous API; decision
+  suite closes at 6/6
+
+
+
+## v5.36b (2026-10-02) - Continuous-Noul Test Fixes
+- decision_head._targets: score targets use raw floats, noul targets
+  use _NOUL_IDX -- the paths are distinct (mixing them KeyError'd on
+  None in test_calibrated_router)
+- test_decision_head: forward() set assertion synced to the renamed
+  'trust' question
+- test_rlcd_head: decide() returns (P, None) post-v5.36; the None is
+  not a confidence
+- T30/T28/T35 green under the continuous API
+
+
+
+## v5.36 (2026-10-02) - Continuous Noul: the Floor Retires
+- Noul is now P(yes) in [0,1], NO independent confidence (official
+  TypeSafe form; triple-evidenced: our 1/K floor finding + official spec
+  + AlignBench readout). Uncertainty IS a probability near 0.5. The
+  ternary form and the certainty-Score escape hatch are retired
+- decision_head: noul head emits one logit; BCE + outcome-Brier on the
+  probability; evaluate reports P-level MAE
+- gate.ask noul defaults: DIRECT 0.2 / ESCALATE 0.8; CalibratedRouter
+  gains uncertainty() and drops certainty()
+- T37 3/3 incl. the strict floor oracle (sub-0.5 targets expressible).
+  Decision suite green
+
+
+
+## v5.35f (2026-09-29) - Accidental Probe: Confidence Scatters under Tokenizer Mismatch
+- A re-run with a mismatched tokenizer (fresh-cleanup artifact) produced
+  garbage outputs whose confidences SCATTERED (0.13-0.97) vs the clean
+  run's uniform ~0.9999 on both classes
+- FINDING: the model's own confidence already flags OOD input; the
+  calibration gap is precise -- overconfidence on IN-DISTRIBUTION
+  errors only. GroundingGate/TrustGate target exactly that case; the
+  OOD case the model flags on its own. benchmarks/
+  mid_agent_eval_v4_mismatch_probe.json archived
+
+
+
+## v5.35e (2026-09-29) - Copy Curriculum: NO Effect at 360M (controlled A/B)
+- User's GPU run: mid + 800 echo copy episodes vs baseline, same eval
+  seed, same 12 tasks -> 0/12 BOTH, confabulations BYTE-IDENTICAL
+  (`19 * -92` -> `12 * -9`, `mhyIdE9KQ` -> `wIIIIIIK9` on both runs)
+- Three eliminations complete: not tokenizer (v5.33), not protocol
+  (40/40 mode), not data volume/curriculum (this run). Remaining
+  hypothesis: capacity/dynamics wall at 360M -- copy grounding does not
+  emerge from SFT at this scale
+- Consequence: GroundingGate is the correct answer at this scale, not
+  a workaround. Retirement path for grounding -> larger-scale check /
+  RL pressure (async GRPO ready) / architecture. benchmarks/
+  COPY_CURRICULUM_VERDICT.md records the A/B
+
+
+
+## v5.35d (2026-09-29) - TypeSafe/Jev Alignment Report
+- docs/typesafe_alignment_2026-09-29.md: calibration of our open-source
+  reference against the canonical vendor impl + the RLCDAlignBench
+  paper (ICLR 2027 under review). Concept layer fully aligned (three
+  primitives, one-forward batching, confidence tiers, risk-scaled
+  thresholds); three design differences recorded
+- ADOPT (triple-evidenced): Noul -> continuous P(yes) in [0,1], no
+  independent confidence (our binary-choice 1/K floor + official spec
+  + AlignBench readout all point the same way)
+- Positioning: AlignBench is the task-INTER branch (detecting failures
+  in OTHER LLMs, 7193 instances, 0.886 median AUROC zero-shot); we are
+  the task-INTRA branch (an agent trusting its own tool calls). Same
+  RLCD methodology, mutually reinforcing conclusions
+- Two implementation adoptions queued: question ID/content split;
+  select-vs-score data split for multi-question evals
+
+
+
+## v5.35c (2026-09-29) - Copy Curriculum: the Training-Side Therapy
+- agent/copy_curriculum.py: EchoEnv ('Repeat back exactly: "{s}"' ->
+  plain-text reply, random high-entropy payloads so pattern completion
+  cannot substitute for copying; family=echo, budget 1, exact verify),
+  gen_echo_episode / build_copy_dataset (echo + chat mixing), and
+  scripted_echo_policy shared by tests and SFT data gen
+- train_mid_sft.py: MID_COPY_JSON env appends a copy dataset to the SFT
+  stream -- the grounding retirement experiment is one GPU run away
+- T36 4/4: env verify, copy through the v5.30 text channel via a real
+  ChatSession (text-only, 10/10), dataset copy-exactness + ord
+  discipline, determinism. Regression 8/8 groups
+
+
+
+## v5.35b (2026-09-29) - RLCD on Real mid Outcome Data
+- examples/train_rlcd_head.py: trains a DecisionHead on the 24 real
+  outcome records from the mid before/after artifacts (v4 0/12 + v5
+  12/12, conf ~0.9999 both). Head sees STATE ONLY; outcomes provide the
+  RLCD signal (probabilities answer to outcomes, not preferences)
+- Quantified on real data: model confidence carries ZERO signal
+  (0.9999/0.9999 right vs wrong); the head separates to 0.645 vs 0.521
+  with acc 0.625 at n=24 -- mid's confabulation is PARTIALLY
+  state-predictable (benchmarks/rlcd_head_summary.json). RLCD-adjusted
+  rewards: right 1.0, wrong -2.0 (lam=2)
+- Measured (recorded): the honest-minimum char mean-pool encoder
+  separates marked states but needs ~1500 epochs (embedding
+  organization is the bottleneck); ECE 0.267 at that budget
+- T35 2/2; regression 7/7 groups
+
+
+
+## v5.35 (2026-09-29) - TASK_GRAMMAR: One Table, Render and Parse
+- agent/task_grammar.py: the single source of truth for the task-text
+  grammar (calc/str/compose/write_read/write_transform/accumulate/echo).
+  Envs RENDER through it; grounding and test policies PARSE through it.
+  The v5.34 debug chain fixed the same drift class three times in three
+  copies; this makes producer/consumer skew structurally impossible
+- Consumers refactored: grounding's regex table deleted (delegates to
+  task_grammar.parse); the T33 confabulator lost all its regexes;
+  toy_envs and file_env now build task text via grammar.render
+- T34 4/4: roundtrip identity per kind, cross-kind contamination
+  (write_read must not parse as calc), live-env agreement, echo kind
+- Fixed-point oracle: every env-sampled task text satisfies
+  render(parse(text)) == text (120/120); full regression 11/11 groups
+
+
+
+## v5.34.2 (2026-09-29) - THE VERDICT: 12/12 Grounded (was 0/12)
+- mid_agent_eval_v5 on the real mid checkpoint with GroundingGate:
+  12/12 correct, finals matching expected verbatim (v4 same seed was
+  0/12 with every answer confabulated at 0.9999 confidence). The
+  before/after pair (benchmarks/mid_agent_eval_v4.json vs _v5.json)
+  closes the loop: policy-in-code is sufficient therapy for the
+  copy-shaped failure, at this scale and grammar
+- docs/grounding_report_2026-09-29.md: the full narrative -- disease at
+  scale, autopsy, therapy, synthetic proof (T33), real verdict, and the
+  honest boundaries (therapy not cure; retirement path = copy
+  curriculum + RLCD, both queued)
+
+
+
+## v5.34.1 (2026-09-29) - Code Review: Semantic Finish Grounding
+- HIGH finding fixed: finish grounding was keyed to the sequence's
+  LAST EVENT; a mid-sequence deviation (accumulate without the closing
+  sum calc) would have produced a grounded-but-wrong answer -- the
+  disease the module exists to cure, re-introduced by the therapy.
+  Finish now anchors to family SEMANTICS (accumulate sums its two
+  observations regardless of sequence shape)
+- Docstring precision: replay deviation now states the recorded call
+  is itself the grounded (mutated) call; write_transform file_read
+  redirection documented; _state growth/thread-safety documented
+- T33 6/6 incl. the review oracle: sequence-deviation accumulate runs
+  (no closing calc) score 4/4
+
+
+
+## v5.34 (2026-09-29) - Deterministic Grounding: the Therapy, Deployed
+- agent/grounding.py: GroundingGate wraps any gate; on DIRECT it
+  rewrites tool args from the task text and finish answers from the
+  deterministically predicted tool chain (tools are deterministic, so
+  the prediction IS the obs). ESCALATE/oracle paths never touched;
+  unknown task shapes pass through (groundable() reports coverage)
+- T33 5/5 incl. the killer oracle: a policy that confabulates EVERY
+  argument scores 24/24 across all four env families under grounding --
+  the model keeps only the tool-sequence decision. Debug chain of five
+  real bugs (parse order, tail-tolerant regexes, last-event tracking,
+  write_transform str_op coverage, policy-side greedy regex) all fixed
+  and recorded
+- examples/eval_mid_agent_v5.py: the same mid checkpoint + GroundingGate
+  -- the v4 0/12 confabulation verdict vs the grounded run is the
+  before/after pair for the whole grounding thesis
+- Replay deviation recorded: grounded transcripts differ from raw-gen
+  replay by design; determinism (not old replay) is the T33 oracle
+
+
+
+## v5.33 P8 (2026-09-29) - Autopsy CORRECTED: Two-Layer Brittle Copying
+- Full v4 transcripts (benchmarks/mid_agent_eval_v4.json) refine P7: the
+  dominant failure is task->ARGS confabulation ("19 * -92" -> "12 * -9";
+  "mhyIdE9KQ" -> "wIIIIIIK9") -- the obs faithfully answers the wrong
+  question. obs->finish copying works in ~7/12 (near-copies with dropped
+  chars / digit swaps). The earlier "finish ignores obs" held only for a
+  minority
+- Menu upgrade: the System-One architecture now fills BOTH ends
+  deterministically (policy parses task-derived args; finish = last
+  obs) -- the model keeps only the tool-sequence decision. Deployable
+  today with the existing gate
+
+
+
+## v5.33 P7 (2026-09-29) - Autopsy: Content Confabulation at 0.9999 Confidence
+- v4 full-capture eval (mid, healthy ckpt): all 12 finish answers are
+  hallucinated content, not copy failures -- calc obs carried the right
+  answer and was ignored; reverse tasks produced length-matched
+  degenerate repeats (IIIIIIIII, 2v2v2v2v2v): shape statistics learned,
+  input-output grounding absent
+- Mid's regime named: FORM perfect, GROUNDING missing -- the purest
+  demonstration yet that fluency != correctness, and the exact target
+  profile for the certified-confidence line
+- Menu: copy-curriculum data / policy-in-code grounding for DIRECT
+  finish (deployable today) / RLCD on the (conf 0.9999, wrong) pairs
+
+
+
+## v5.33 P6 (2026-09-29) - Clean Run: the Three-Point Scale Line Closes
+- Third training run (MID_FRESH=1, post-reboot): 3676s, final loss
+  0.3675, SFT eval 30/40 exact + 40/40 mode (reproduces the first run)
+- Agentic eval on the HEALTHY checkpoint: 0/12 correct BUT protocol
+  fluent -- parse works multi-turn, calc tasks show the exact
+  calc->finish shape, all 12 finished; finish answers are wrong
+- THE LINE (docs/scale_lineage_2026-09-29.md): 8.5M broken-at-tokenizer
+  (conf 0.94) -> 360M protocol-fluent-but-wrong (conf 0.9999) -> Qwen3
+  0.6B no-finish (conf ~1.0). Confidence-on-wrong GROWS with scale --
+  the strongest evidence yet for the certified-confidence thesis
+- Every earlier 0/12 was a measurement artifact (tokenizer mismatch /
+  corrupted resume), recorded, not counted
+
+
+
+## v5.33 P5 (2026-09-29) - Resume Guard: Tokenizer Fingerprint Mismatch
+- Found on the user's second run: RESUME loaded step-4600 weights
+  (old-tokenizer run) while the process had trained a NEW tokenizer
+  (sorted-rglob fix); 88 mismatch steps drove final loss 0.47 -> 15.0
+  and wiped exact-match (30/40 -> 0/40). The corrupted checkpoint also
+  carried a 'paired' tokenizer that does not match its weights
+- train_mid_sft.py: tokenizer sha256 fingerprint (.tokfp) written with
+  the checkpoint; resume REFUSES on any difference (loud exit, never
+  silent). Companion to the .tok.json pairing: pairing protects eval,
+  fingerprinting protects training
+
+
+
+## v5.33 P4 (2026-09-28) - Tokenizer Train/Serve Skew: Third of the Skew Family
+- v3 prompt-diff oracle: prompts byte-identical (prompt_equal=True), yet
+  the model emitted structurally-tool-block-shaped id sequences that
+  decoded to source-code soup at confidence 1.0. Mechanism: eval
+  processes RETRAINED the BPE tokenizer; build_corpus() rglob order is
+  filesystem-dependent, so the retrained vocab assigned different ids to
+  the same strings -- a healthy checkpoint decoding through a mismatched
+  table produces confident garbage (ids of never-trained embeddings sit
+  at init)
+- Fixes: build_corpus() sorts file lists (root cause); train_mid_sft
+  saves the tokenizer WITH the checkpoint (.tok.json); eval scripts load
+  the paired tokenizer first, retrain only as a warned fallback
+- Skew family now three: v5.30.1 dataset filter bias -> v5.33 format
+  mismatch -> v5.33 tokenizer mismatch. Standing rule: NOTHING between
+  train and serve may rely on 'should be the same'
+- The prior checkpoint (no saved tokenizer) needs one retrain (~1 h) to
+  pair; v2 agency numbers after the retrain are the first honest ones
+
+
+
+## v5.33 P3 (2026-09-28) - Format Skew: the 0/12 Was Not a Verdict
+- eval_mid_agent v1 (AgentLoop 'Task:/step i:' harness): 0/12 correct,
+  parse_rate 0.0, conf_on_wrong 1.0. Diagnosis: train/serve FORMAT SKEW
+  -- mid SFT data renders chat transcripts (##user## family), the v1
+  harness never did. Lite's T17 parse 0.67 came from AgentLoop-format
+  training data: data format decides capability ownership, not parameter
+  count (same trap family as v5.30.1's filter bias)
+- Standing finding: OOD format -> confidence mean 1.000 while producing
+  zero parseable output. Third scale confirming the pattern (lite 0.94,
+  Qwen3-0.6B 1.0, mid 1.0); the calibration case for CalibratedRouter
+  strengthens at every scale tested
+- examples/eval_mid_agent_v2.py: agency test driven by ChatSession (the
+  training distribution) -- the honest in-format verdict
+
+
+
+## v5.33 P2 (2026-09-28) - mid First Real Run: the Char-Level Ceiling Falls
+- Local RTX 4060 8GB run (user machine, 63 min, 4 epochs): loss 2.54 ->
+  0.47; eval_exact 30/40 (lite: 0/40); mode-choice tool 20/20 (lite:
+  0/20); text 20/20 (lite: 11/20). All acceptance targets passed
+- FINDING (settles a 3-day open question): the tool-channel zero was the
+  char-level tokenizer ceiling, NOT the protocol, data, or architecture.
+  Same protocol + BPE + 360M -> perfect mode choice
+- examples/eval_mid_agent.py: the real agency test (multi-step AgentLoop,
+  replay-verified) -- the wall Qwen3-0.6B hit at 0/15. Three-point scale
+  line completes when its json lands
+
+
+
+## v5.33 P1c (2026-09-28) - MoE bf16 Autocast Fix (first real GPU bug)
+- sigmoid_moe.py: expert outputs cast to the fp32 accumulator's dtype on
+  index_add_. Under bf16 autocast the expert block emits bf16 while z (a
+  norm output) stays fp32; CPU fp32 training never exercised the mixed
+  path. Caught on the first real-GPU run (RTX 4060, v5.33 mid); verified
+  both ways: lite fp32 fwd+bwd unchanged, CPU bf16 autocast forward
+  passes (would have reproduced the failure pre-fix)
+
+
+
+## v5.33 P1b (2026-09-28) - Local-Run Kit for mid Training
+- examples/train_mid_sft.py: one-command local GPU run -- HeliosBPE
+  training (trimmed corpus, recorded), chat-SFT data via gen_chat_episode,
+  mid config (360M), bf16 autocast, AdamW+cosine, resume + HELIOS_CKPT_DIR
+  + _hf_sync discipline, stratified eval printing the v5.33 acceptance
+  metrics (tool parse / mode-choice text+tool / exact-match)
+- Env knobs: MID_BATCH (4060 8GB: use 4), MID_EPOCHS, MID_EPISODES,
+  MID_EVAL, HELIOS_CKPT_DIR, HELIOS_HF_SYNC
+- Sandbox finding: CPU smoke cannot reach the first optimizer step --
+  360M fp32 AdamW footprint ~5.8GB exceeds the ~5GB sandbox RAM
+  (weights+build+forward all validated; step itself is GPU-only by design)
+
+
+
+## v5.33 P1 (2026-09-28) - "mid" Preset: Third Deployment Rung
+- config_v5.py: size="mid" (360M params, hidden 1024 x 8 layers, 32K
+  BPE vocab, 4 experts/2 active, CPU-runnable at bf16 ~720MB). Three
+  rungs now: lite (protocol/audit research, $0), mid (scale validation),
+  full (architecture spec). No spectrum theater: each rung has one
+  recorded reason to exist (README "Deployment tiers")
+- T32 4/4: instantiation + forward inside the declared 150-400M band,
+  BPE pairing (HeliosBPE vocab fits the mid budget, protocol strings
+  roundtrip), inference economics (<1GB bf16 promise), unknown-size
+  rejection
+
+
+
+## v5.33 P0 (2026-09-28) - Byte-Level BPE Tokenizer (mid-size foundation)
+- src/tokenizer/bpe.py: pure-python byte-level BPE (GPT-2 style byte
+  map; any byte encodes/decodes, OOV impossible by construction), trained
+  on the repo's OWN corpus (sources + tool/chat protocol + env task
+  texts -- domain-matched by design). Spaces attach to the following
+  word; _pretokenize shared by train and encode so vocab and encoding
+  cannot drift. Additive: the char-level pipeline is untouched.
+- T31 7/7: domain roundtrips, separator fidelity (incl. '  ' and
+  newlines), OOV bytes, specials stability, save/load exactness,
+  deterministic training, corpus coverage
+- Next: mid preset (~150-300M, hidden 1024 x 12-16) with this vocab --
+  purpose: separate toy artifacts from scale-invariant findings
+  (acceptance: tool parse >0.8, mode-choice text AND tool >0.6, tau
+  curves still monotone); training needs a rented GPU
+
+
+
+## v5.32.2 (2026-09-28) - CalibratedRouter: Head Serves the Gate
+- calibrated_router.py: DecisionHead-backed Gate — decide() from the
+  trained head, ask_batch() answers the FULL pi-warden preset in ONE
+  forward pass (T30 counts passes, not assumes), escalate() stays
+  oracle-only (a trained head never fabricates oracle observations),
+  unregistered questions fail LOUD
+- v5.32.1 floor finding made actionable: `certainty` Score question
+  escapes the binary Choice confidence floor (1/K = 0.5) — demonstrated
+  in T30 (route_conf=1.00 floor vs risky certainty 0.01 vs clean 0.99)
+- decision_head.forward is now inference-only (@torch.no_grad)
+- T30 4/4; full decision suite 12/12; local regression 8/8 groups
+
+
+
+## v5.32.1 (2026-09-28) - RLCD Outcome Loop Closed
+- decision_data.py: RecordingGate (logs routing decisions with confidence
+  claims), records_from_runs (attaches env.verify outcomes as
+  route__target_conf -- the signal T28 proved necessary), and
+  rlcd_reward_adjustment (pure reward shaping for the milestone-13
+  agentic-GRPO loop)
+- T29 3/3: end-to-end RLCD oracle -- an overconfident confidence_fn
+  (0.95 everywhere) drives ThresholdGate runs; broken tasks are RISKY-
+  prefixed so outcomes are learnable from state text; the Brier-trained
+  head pulls RISKY-state confidence from 1.0 toward the floor while a
+  lambda=0 twin pins at 1.0
+- FINDING: binary Choice confidence (max softmax prob) has a HARD FLOOR
+  at 1/K = 0.5 -- it cannot express sub-50% certainty. Sub-floor
+  uncertainty needs the Noul/Score primitives (documented; this is why
+  Jev ships three types)
+
+
+
+## v5.32 (2026-09-28) - Typed Decision Layer (System One / Jev direction)
+- decision.py: Choice/Score/Noul schema-enforced primitives + pi-warden
+  guardrail preset; gate.py gains additive ask/ask_batch (T11-T19
+  contract unchanged, verified)
+- decision_head.py: non-autoregressive head answering K questions in one
+  pass; CE + OUTCOME-targeted Brier calibration. FINDING: Brier against
+  train-label correctness is provably redundant with CE (identical
+  confidences, A/B-verified); the term only bites against replay-verified
+  outcomes (RLCD) -- P2 wiring point defined
+- T27 5/5, T28 4/4
+- First real cross-scale anchor: Qwen3-0.6B (pure-torch hand-rolled
+  runner, no transformers) on the HeliosLM probe suites -- 0/15 tool,
+  0/3 file-env, 6/6 chat mode-choice; conf on wrong mean 0.893 max 1.000
+  (docs/qwen3_0.6b_anchor_2026-09-28.md). Overconfidence is
+  scale-invariant; agency is the wall, not mode selection
+
+
+
+## v5.30.2 (2026-09-27) - Chat SFT on Unbiased Data: text channel learns
+- Dataset filter fix: PROMPT_CAP=1500 (matches generate()'s window)
+  replaces <700 total-char filter, which had silently dropped every
+  magic-word text sample (longest transcripts); eval now stratified
+  20 tool + 20 text targets; T21 guards eval_mode_tool/text existence
+- Retrained: 4716 samples, final loss 0.2001 (v1: 0.3153 on biased data)
+- **mode-choice 11/40 (tool 0/20, text 11/20)**: the text channel IS
+  learned (55% correct mode choice on unseen prompts); tool-mode
+  production on long chat transcripts is a toy-model capacity limit
+  (short-prompt parse rate is 0.67, T17). Planned fix: BPE tokenizer
+  (P3 roadmap), not more char-level data. v1's 0/40 recorded as a
+  measurement artifact, not a model result
+- train_chat_tuned hardened for sandbox warfare: kill-safe resume
+  (seeded batch-order replay + LR fast-forward), HELIOS_CKPT_DIR escape
+  hatch, and _hf_sync (every save mirrored to HF; the sandbox re-chowns
+  the output tree to root ~hourly and wipes /tmp — HF is the source of
+  truth). Final checkpoint on chienhsinlin/helioslm
+- HF tooling note: the commits-API `files[].content` must be RAW text;
+  an earlier base64-as-content bug corrupted small-file uploads
+  (READMEs/jsons), fixed 2026-09-27
+
+
+
+## v5.31 (2026-09-26) - Frontier Gap-Fill: five reference modules
+Fills every gap found in the 2026-09-26 Qwen3-Max / DeepSeek-V4 / GLM-5
+comparison (all toy-scale, correctness-first, deviations recorded in
+docstrings, full local suite 16/16 green):
+
+- `src/blocks/mhc.py` + T22: manifold-constrained hyper-connections
+  (DS-V4 direction). HC core (T-path expansion + 3-path per-channel
+  mixing) + sqrt(3)-Lipschitz manifold constraint (row-normalized
+  mixing). Residual-equivalent init = migration starting point. V4's
+  exact form is unpublished; ours is the documented reference variant.
+- `src/attention/kv_compress.py` + T23: compressed attention (DS-V4
+  direction). HCA-style chunk-pooled memory slots (exclusive cumsum,
+  causality exact) + CSA-style top-k indexer. FP4 indexer simulated by
+  a linear head; learned compressors replaced by mean pooling (recorded).
+- `agent/envs/file_env.py` + T24: long-horizon env (GLM-5 direction).
+  Three families (write_read/write_transform/accumulate) with budgets
+  8/10/14 (vs 2-4 for toy envs) over the existing file tools; verified
+  end-to-end through AgentLoop + replay. Deliberately not in make_envs()
+  (SFT coverage is milestone-13 work).
+- `agent/think.py` + T25: tri-mode protocol (think/tool/text) +
+  ExperienceStore (Qwen3-Max direction). Think steps bypass the gate,
+  are transcript-visible, replay via verify_think_replay. Protocol-level
+  whole-thought reuse across turns (vs Qwen's token-level intra-generation
+  reuse -- recorded deviation). Earlier claim that verify_chat_replay
+  suffices for think steps was WRONG (parse_chat_turn chokes on think
+  markers); correction recorded.
+- `src/training/async_grpo.py` + T26: asynchronous GRPO skeleton
+  (GLM-5 direction). Rollout workers -> bounded queue -> learner calling
+  the SAME _learn_from_samples used by sync train_step (grpo.py refactored:
+  update math exists exactly once). Parity oracle: single worker/question
+  reproduces train_step loss bitwise (loss delta = 0.000000) and params
+  torch.equal. Back-pressure-aware put so stop() cannot be pinned by a
+  full queue. Thread-level skeleton; process/GPU-actor fleet is
+  milestone-13 infra.
+- `examples/train_chat_tuned.py` hardened: kill-safe resume (seeded
+  batch-order replay + LR fast-forward) + HELIOS_CKPT_DIR escape hatch
+  (periodic sandbox re-chown to root broke in-tree saves twice today).
+
+Bug patterns recorded (found by the new tests, fixed, worth not
+repeating): (1) reshaping einsum outputs without aligning semantic dims
+first (kv_compress, 5x); (2) eager-list construction side effects
+(file_env _phase -> thunk dispatch); (3) __len__ making a container
+falsy so `store or ExperienceStore()` silently swapped instances;
+(4) plain Queue.put pinning a worker against stop() under back-pressure;
+(5) sandbox periodic re-chown breaking long-training saves.
+
+
+
+## v5.30.1 (2026-09-25) - Chat SFT Follow-up Gate + Regenerated Checkpoints
+- `agent/finetune_data.py`: gen_chat_episode follow-up is gated by the
+  executor's own validator (`calc(answer * 2)`), not by a numeric check.
+  Two edge cases found and fixed, recorded not hidden:
+  1. str/compose envs finish with string answers -- calc on them raises
+     Name/syntax errors (crashed dataset builds)
+  2. numeric-looking strings from str_op reverse (e.g. "017") pass
+     float() but ast rejects leading zeros -- only the executor is the
+     correct gate
+- Discovered during first chat SFT run: the <700-char dataset filter
+  disproportionately drops magic-word text samples (they sit at episode
+  end with the longest transcripts) -> the 40-sample eval saw ZERO text
+  targets, so mode-choice was measured single-sided. Recorded; fix
+  (truncate instead of drop) planned for v5.30.2 with greedy-decode
+  re-measurement
+- Regenerated artifacts (old sandbox lost; seeded re-runs):
+  - tool_tuned_v5.27.pt: loss 0.2693 (original recorded 0.25) via
+    examples/train_tool_tuned.py, seed=5, 25.8 min CPU
+  - chat_tuned_v5.30.pt: loss 0.3153, hot-start, seed=6; mode-choice
+    0/40 recorded honestly (see filter bias above)
+  - T19 passes on the regenerated three-modes artifact (routing gate
+    PASS, strict-monotone tau, max conf on wrong 0.925 vs original
+    0.944 -- qualitative findings reproduce; weights are not bitwise
+    identical across torch builds, recorded)
+- Both checkpoints + summaries on HF: chienhsinlin/helioslm (and
+  helioslm-toy). HF push recipe for the sandbox: preupload -> LFS batch
+  (browser UA to pass Cloudflare) -> S3 PUT -> commit with lfsFiles;
+  hf-mirror blocks repo creation and the legacy /upload endpoint
+
+
+
+## v5.30 (2026-09-25) - Chat Capability: Dual-Mode Protocol + ChatSession
+- `agent/chat.py` (new): multi-turn ChatSession over the existing tool
+  protocol. Assistant output is dual-mode: a plain text reply OR a
+  @@tool@@ block (schema.parse_chat_turn). Text replies bypass the gate
+  entirely -- the gate governs tool routing only. Transcript markers
+  (##user##/##assistant##/##tool##) are printable ASCII because the vocab
+  is ord(c) < 1024 char-level. Recovery mirrors loop.py (PARSE_ERROR /
+  TOOL_ERROR enter the transcript, never a crash); verify_chat_replay
+  mirrors trajectory.verify_replay (DIRECT routing contract)
+- `agent/schema.py`: +parse_chat_turn() -- strict block parse whenever any
+  tool marker appears (never silently demoted to text), ("text", str)
+  otherwise; parse_tool_call unchanged
+- `agent/finetune_data.py`: +gen_chat_episode/build_chat_dataset -- chat
+  SFT samples whose prompts are the exact inference-time render (no
+  train/serve skew); episodes mix tool task + follow-up (transcript
+  memory) + direct text answer so the model learns to CHOOSE the output
+  mode (~3:1 tool:text)
+- scripted_chat_policy: chat-native correct policy covering all three env
+  task types + magic-word direct reply + follow-up referencing the FINISH
+  answer (shared by tests and SFT data generation)
+- T20 (10/10): dual-mode protocol, marker never-swallowed, calc/compose
+  chat tasks, ExplodingGate proves text bypasses the gate, parse/tool
+  error recovery, follow-up transcript memory, replay roundtrip + tamper
+  detection, T17 re-run regression. Full local suite: 15/15 test groups
+- Design records (chosen, not hidden): text reply = no actionable
+  commitment -> nothing to route/escalate (gate-on-text rejected);
+  escalate observations stay outside replay scope (same contract as
+  trajectories)
+
+
+
+## v5.29 (2026-09-25) - C Stage: Three-Mode Benchmark on the Real Checkpoint
+- `examples/benchmark_three_modes.py`: one model pass per task records
+  (answer, confidence); the tau-routing curve is computed offline by
+  thresholding -- the v5.22 routing-monotonicity discipline applied to a
+  REAL model with REAL confidence (geometric-mean token probability)
+- Measured (12 tasks, ep2 weights): direct=0.000, oracle=1.000,
+  tau curve 0.000 -> 0.083 -> 0.250 -> 0.333 -> 1.000 strictly monotone,
+  routing gate PASS
+- Headline finding (recorded, not hidden): the toy checkpoint is
+  SYSTEMATICALLY overconfident on wrong answers (max conf 0.944) --
+  routing still helps because confidences DIFFER across envs (str tasks
+  0.65-0.86 vs calc 0.92-0.94), but absolute calibration is poor. This is
+  exactly the failure class the v5.22 decision-audit toolkit exists to
+  measure (ECE/Brier); T19 asserts the finding is present
+- T19 (1/1): report structure, seeded reproducibility, tau-grid
+  monotonicity, overconfidence presence
+
+
+## v5.28 (2026-09-25) - Cost-Axis Alignment: Disagg Pareto Sweep
+- `examples/disagg_pareto.py`: three-axis (makespan / workers / worker-seconds)
+  Pareto sweep of the v5.25 disagg module across cache_heavy / cold / mixed
+  workloads; report artifact under benchmarks/ (seeded, reproducible)
+- Gate discipline refined with evidence: monotonicity gate holds on the
+  round_robin nested ladder, but cache_aware anti-monotonicity (~4%) is a
+  STRUCTURAL finding (same-key requests serialize on their cache holder,
+  so more workers can add makespan) -- recorded in the report, not hidden
+- T18 (3/3): pareto_front dominance logic, RR-ladder gate, report
+  reproducibility; the cache_aware finding is asserted-present for
+  cache_heavy workloads
+- This is the v5.28 cost-axis alignment artifact for spec-level comparison
+  against production serving cards (see docs/benchmark_alignment.md)
+
+
+## v5.27 (2026-09-25) - Tool-Tuned Checkpoint + Real-Model Hardening (Stage B)
+- `examples/train_tool_tuned.py`: train a tool-tuned lite checkpoint on
+  agent-loop replays (data format == inference format by construction);
+  char tokenizer (ord<1024, BOS=1023/EOS=1022/PAD=1021); periodic save +
+  resume for fragile training environments
+- `tests/test_v5_stage_b.py` (T17): end-to-end agent loop with the real
+  checkpoint on fresh tasks. Measured v5.27 baseline (1-epoch CPU): parse
+  0.15, finish 1/9, correct 0/9 -- floors are regression guards, magnitudes
+  reported not gated. Bottleneck is content copying, not the wire protocol
+- Sparse attention validated in the agent inference path: sparse_top_k=4
+  gives parse 0.147 / finish 1/9 / correct 0/9 ~= dense -- the v5.8 DSA
+  decode does not collapse the tool protocol end-to-end
+- Agent layer hardened by real-model findings (Stage B's purpose):
+  loop.py TOOL_ERROR recovery + ASCII-safe tool docs; trajectory.py
+  verify_replay mirrors TOOL_ERROR (T5 oracle consistency)
+- Known improvement path: epoch 2 + more data (resume supported);
+  content-copying weakness is the toy model's honest ceiling
+- v5.27.1 (2026-09-25): epoch-2 training via resume across sandbox kill
+  windows (loss 0.48 -> 0.25). T17 re-measured: parse 0.67 (12/18),
+  finish 4/6 -- 4.4x protocol gain confirms the bottleneck is data/steps,
+  not the wire format; correct stays 0 (content copying = skeleton limit)
+
+
+## v5.26 (2026-09-24) - Stage A: Real-Model Integration Oracles (T15)
+- `tests/test_v5_stage_a.py`: the v5.23-v5.25 toy oracles verified against the
+  REAL model (torch 2.8 CPU, 3/3 PASS):
+  - T15a AttnRes migration gate: zero-init `attn_res_gate` reproduces
+    `use_attention_residuals=False` BITWISE on HeliosLMv5
+  - T15b DSA sparse decode oracle: `sparse_top_k >= kv_len` is bit-identical
+    to dense (matches the config contract); k < kv_len asserts selection
+    validity (causal, current token force-selected, width K) + determinism;
+    greedy flips (7/8 on random weights) are REPORTED, not asserted —
+  the claim is narrowed to what is provable (same discipline as the DSA
+    two-layer oracle)
+  - T15c agent-loop smoke with the real toy checkpoint: loop runs with
+    model_fn backed by checkpoints/toy_v5.13.pt; PARSE_ERROR recovery 3/3
+    is the expected path (checkpoint not tool-trained; Stage B replaces it)
+- Key implementation facts established: sparse decode engages only at
+  seq==1 AND kv_len > k (prefill is always bit-identical); MoE router also
+  calls torch.topk (k=2) so selection instrumentation must filter by k
+- 3/3 stage-A tests (T15a/T15b/T15c)
+
+
+## v5.25 (2026-09-23) - Disagg Evolver Module (Mooncake-style, oracle-gated)
+- `agent/disagg.py`: prefill/decode disaggregation as an evolvable serving
+  module — greedy cache-aware routing, sojourn-latency model, DisaggConfig
+  duck-typed into HarnessEvolver's search space (three-axis Pareto:
+  makespan / n_workers / worker_seconds)
+- Monotonicity gate: on a FIXED workload fingerprint, adding workers must
+  never increase modeled makespan — violations are model bugs, not
+  trade-offs (the v5.22 routing-gate discipline applied to serving)
+- `agent/longctx.py`: needle/RULER probes with planted ground truth and
+  seeded corpora, comparable across model variants
+- Fix history (5 real-execution debug rounds, R1–R5): zero-divisor
+  generators, layer-0 AttnRes IndexError, SYSTEM.format brace trap,
+  workload/worker correlation in synthetic data, per-task alternation —
+  all caught by real runs on Windows / Python 3.14, fixed idempotently
+- 15/15 tests (incl. T13 disagg module, T16 longctx probes)
+
+## v5.24 (2026-09-23) - Attention Variants (two-layer oracles)
+- `agent/dsa.py`: DSA-style sparse top-k decode with a TWO-LAYER oracle:
+  fp32 certificate (pseudo-max gap => dropped mass < 2^-40) gating an
+  fp64 check (<=1e-9 vs dense decode). We do NOT claim fp32 bitwise
+  equivalence — the claim is narrowed to what is provable
+- `agent/attn_res.py`: AttnRes-style layer-output mixing
+  x_{l+1} = x_l + y_l + sum_i alpha[l][i] * y_i with alpha zero-init =>
+  bitwise migration gate against vanilla residual; post-training =>
+  determinism gate. Named attn_res_mixing pending K3 report alignment
+- 15/15 tests (incl. T11 DSA two-layer oracle, T12 AttnRes oracles)
+
+## v5.23 (2026-09-23) - Agent Layer (verifiable tool calling)
+- `agent/schema.py`: strict tool-call wire format and parser — 16 error
+  classes, JSON depth/size caps, parallel-call interface reserved
+- `agent/tools.py`: deterministic tools (AST-whitelist calc, str_op,
+  sandboxed file I/O, finish) — no network, no nondeterminism
+- `agent/trajectory.py`: trajectory serde + verify_replay — same ids =>
+  same observations, bitwise; tampering always caught (T5 hard oracle)
+- `agent/envs/`: calc / str / compose toy environments, ground truth by
+  construction (no LLM judge)
+- `agent/gate.py`: Fixed / Oracle / ThresholdGate(tau) + routing
+  monotonicity gate carried over from v5.22's decision-audit discipline
+- `agent/loop.py`: plan->act->observe loop with PARSE_ERROR recovery;
+  three-mode benchmark (direct / routed / oracle) on one task set:
+  direct <= routed <= oracle (T7)
+- `agent/benchmark.py` + `agent/finetune_data.py`: score_stream JSONL
+  export and tool-tuning data pipeline (teacher = scripted policy,
+  one sample per step — learn local mappings first, the loop composes)
+- 15/15 tests (T1–T9 agent layer oracles)
+
+
+## v5.22 (2026-09-21) - Decision-Layer Audit Toolkit
+- `eval/system_one.py`: calibration metrics (ECE / Brier / reliability
+  curve) against CONSTRUCTED ground truth — no reference LLM required,
+  the deterministic complement to LLM-as-judge validation
+- Routing monotonicity gate: with an always-correct escalation path,
+  correctness must be non-decreasing in the threshold tau; violations
+  mean the escalation path is broken, not a trade-off
+- evolve_threshold(): cheapest tau under a correctness floor — the
+  decision-layer analog of HarnessEvolver
+- MockSystemOne: controllable stand-in for System One-style decision
+  models (temperature knob produces measurable ECE U-shapes; grid search
+  on the metric recovers the optimum — the CI discipline a calibration
+  claim deserves)
+- Measured: ECE 0.022 (t=0.3) / 0.239 (t=1) / 0.429 (t=3); tau*=0.5
+  meets a 0.95 correctness floor at 5.2x less cost than full escalation
+- 61/61 tests + 9/9 integration
+
+## Local-line additions (merged into main 2026-10-06)
+> The local maintenance line evolved independently from v5.20 and
+> numbered its own v5.21/v5.22 releases (both 2026-09-21) before the
+> merge. Its v5.22 collides with the remote-line v5.22 above
+> (Decision-Layer Audit Toolkit), so the local entry keeps its label
+> with a `-L` suffix. All local-line tests were green at merge time.
+
+## v5.22-L (2026-09-21) - NVFP4 QAT Target + NoPE Option (local line)
 - `quantization/qat.py`: new QAT fake-quant target `method="nvfp4"` —
   the NVFP4 hierarchy (E2M1 values in 16-wide blocks, FP8-E4M3 block
   scales under a full-precision per-output-row scale), the format
