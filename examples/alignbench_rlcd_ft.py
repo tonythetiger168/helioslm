@@ -56,7 +56,7 @@ class ProbeDS(Dataset):
     def __getitem__(self, i):
         it = self.rows[i]
         enc = tok(render(it), return_tensors="pt", truncation=True,
-                  max_length=900)
+                  max_length=512)
         return {"input_ids": enc["input_ids"][0],
                 "attention_mask": enc["attention_mask"][0],
                 "label": int(it["label"])}
@@ -97,10 +97,17 @@ import torch as _t
 _t.cuda.synchronize()
 dev = "cuda"
 model = model.to(dev)
-opt = torch.optim.AdamW(model.parameters(), lr=1e-5, weight_decay=0.01)
+# 8GB VRAM discipline: bf16 optimizer states halve the AdamW footprint
+# (fp32 master would be 2.4GB + 4.8GB states + 2.4GB grads -- OOM on a
+# 4060); bf16 states are slightly noisier, acceptable at lr 1e-5
+opt = torch.optim.AdamW(model.parameters(), lr=1e-5, weight_decay=0.01,
+                        foreach=False)
+for g in opt.param_groups:
+    for p in g["params"]:
+        p.data = p.data.to(torch.bfloat16)
 EPOCHS = int(PLAN["training"]["epochs"])
 LAM = float(PLAN["training"]["rlcd_lambda"])
-BATCH = 8
+BATCH = 4
 loader = DataLoader(ProbeDS(train_rows), batch_size=BATCH, shuffle=True,
                     collate_fn=collate)
 total_steps = EPOCHS * len(loader)
@@ -160,7 +167,7 @@ with torch.no_grad():
             chunk = rows[i:i + 16]
             enc = tok([render(it) for it in chunk], return_tensors="pt",
                       padding=True, truncation=True,
-                      max_length=900).to(dev)
+                      max_length=512).to(dev)
             out = model(**enc)
             p = torch.softmax(out.logits[:, -1, :].float(), dim=-1)[:, YES]
             scores.extend(p.cpu().numpy().tolist())
