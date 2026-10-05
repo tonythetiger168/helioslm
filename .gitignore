@@ -41,3 +41,16 @@ logs/
 !checkpoints/
 !checkpoints/toy_v5.13.pt
 !checkpoints/toy_v5.13.json
+
+# Experiment data artifacts (untracked 2026-10-06: large, derivable;
+# they remain on disk — scripts read them from the working tree)
+all.jsonl
+qwen/
+qwen_rlcd_ft/
+qwen_feats.npz
+mid_feats.npz
+qwen_rlcd_ft_eval.json
+deepseek_full.json
+luna_full.json
+prompt_zero_scores.json
+smoke*.json
