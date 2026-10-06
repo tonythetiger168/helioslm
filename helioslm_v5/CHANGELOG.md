@@ -1,5 +1,33 @@
 # HeliosLM v5 Changelog
 
+## v5.43 (2026-10-06) - Env-Wired GRPO + Sparse Stability + Quant-Drift Gate
+- `src/training/env_grpo.py`: end-to-end multi-env GRPO loop — the wiring
+  the v5.42 report explicitly left open. `MultiEnvBatch` tasks ->
+  `GRPOTrainer._sample_response` (G per task) -> env-routed
+  `MultiEnvBatch.reward` -> the SHARED update math via a new
+  `rewards=` injection point on `_learn_from_samples`
+  (`compute_rewards` bypassed, never reimplemented; math byte-identical).
+  Per-env advantage normalization stays caller policy (same disclaimer as
+  `MultiEnvBatch`). M-T1 mode discipline replicated for sampling.
+  Test: `test_env_grpo_loop` in tests/test_v5.py (rollout routing checked
+  against independent env scoring; injected rewards verified to bypass
+  `compute_rewards`; wrong-length reward tensor fails loudly)
+- `eval/sparse_stability.py`: learned-sparse top-k self-consistency probe
+  — mean pairwise Jaccard of the lightning indexer's top-k sets under
+  repeated query-side Gaussian perturbation (deterministic via seeded
+  generator). Query-side only (decode-time cache is frozen by contract);
+  mechanical stability, NOT selection quality. Oracles: zero-noise ->
+  Jaccard exactly 1.0; top_k == kv_len stable under any noise; loud
+  errors on bad inputs. Test: `test_topk_self_consistency`
+- `agent/trust_gate_v2.py`: `apply_quant_drift` — merge an NVFP4 ECE
+  drift (`ece_quant - ece_bf16` from the v5.42 quant-calib probe) into a
+  gate's calibration record under a declared WIDEN-ONLY policy: positive
+  drift widens the abstain band by exactly the drift, a negative drift
+  never sharpens it, clamp at the gate's 0.5 validation ceiling, full
+  provenance fields kept (drift, policy, source). Test:
+  `test_quant_drift_trust_gate` (end-to-end: same p=0.84 DIRECTs on a
+  tight bf16 band, ESCALATEs after a +0.10 quant drift widens the band)
+
 ## v5.42 (2026-10-06) - Decision-Engine Tooling Wave (Phase 1.3 + Phase 2 + Phase 3)
 All pieces oracle-tested; claims scoped to what the oracles prove (see
 each module's docstring honesty notes).

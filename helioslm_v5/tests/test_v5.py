@@ -721,6 +721,189 @@ def test_grpo():
 
 
 # ----------------------------------------------------------------------
+# v5.43 (1/3): MultiEnv GRPO end-to-end loop — envs produce tasks, the
+# trainer samples, envs score, and the SHARED update math consumes
+# injected rewards (compute_rewards must be bypassed, not reimplemented)
+# ----------------------------------------------------------------------
+def test_env_grpo_loop():
+    from helioslm_v5.src.training.env_grpo import EnvGRPO
+    from helioslm_v5.src.training.envs import MultiEnvBatch
+    from helioslm_v5.src.training.grpo import GRPOTrainer
+
+    model, config = _lite_model(seed=311)
+    ref_model, _ = _lite_model(seed=411)  # different init -> non-trivial KL
+    config.grpo.group_size = 2
+    config.grpo.max_new_tokens = 4
+    trainer = GRPOTrainer(model, ref_model, config)
+    batch = MultiEnvBatch({"math": 2, "code": 1})
+    loop = EnvGRPO(trainer, batch)
+
+    out = loop.rollout(seed=0)
+    assert len(out["tasks"]) == 3
+    assert len(out["samples"]) == 3 * 2, "flat repeat-interleaved samples"
+    assert out["rewards"].shape == (6,)
+
+    # Env routing: independently recomputed env rewards must match the
+    # loop's rewards in exactly the same order.
+    recomputed = []
+    i = 0
+    for t in out["tasks"]:
+        for _ in range(2):
+            recomputed.append(batch.reward(t, out["samples"][i]["response"]))
+            assert out["samples"][i]["env"] == t["env"]
+            i += 1
+    assert torch.allclose(out["rewards"],
+                          torch.tensor(recomputed, dtype=torch.float32)), \
+        "loop rewards disagree with independent env scoring"
+
+    # Injected-reward path: env rewards must BYPASS compute_rewards (the
+    # math-answer heuristic would 0-out code-env RESULT literals that the
+    # env scores correctly — bypassing, not reimplementing, is the point).
+    def _boom(responses, answers):
+        raise AssertionError("compute_rewards must not run on the env path")
+
+    trainer.compute_rewards = _boom
+    stats = loop.train_step(seed=1)
+    assert isinstance(stats["loss"], float) and \
+        math.isfinite(stats["loss"])
+    assert stats["kl_penalty"] >= -1e-6, \
+        f"k3 KL estimator must be non-negative, got {stats['kl_penalty']}"
+    assert len(stats["env_rewards"]) == 6
+    assert set(stats["mean_reward_by_env"]) == {"math", "code"}
+    for name, m in stats["mean_reward_by_env"].items():
+        assert 0.0 <= m <= 1.0, f"{name} mean reward {m} out of [0, 1]"
+
+    # Loud error: a reward tensor of the wrong flat length is rejected.
+    try:
+        trainer._learn_from_samples(out["samples"], answers=None,
+                                    rewards=torch.zeros(5))
+        assert False, "wrong-length injected rewards must fail loudly"
+    except ValueError:
+        pass
+    _pass("test_env_grpo_loop",
+          f"loss={stats['loss']:.4f}, env rewards routed (3 tasks x "
+          f"G=2), compute_rewards bypassed, KL={stats['kl_penalty']:.6f}")
+
+
+# ----------------------------------------------------------------------
+# v5.43 (2/3): learned-sparse top-k self-consistency — zero noise is the
+# perfect-stability oracle, full-selection (top_k == kv_len) stays 1.0
+# under any noise, and loud errors guard the probe's own inputs
+# ----------------------------------------------------------------------
+def test_topk_self_consistency():
+    from helioslm_v5.eval.sparse_stability import topk_self_consistency
+    from helioslm_v5.src.attention.lightning_indexer import \
+        LearnedLightningIndexer
+
+    torch.manual_seed(0)
+    indexer = LearnedLightningIndexer(hidden_size=32, kv_latent_dim=16,
+                                      num_heads=4, head_dim=8).eval()
+    h = torch.randn(1, 3, 32)
+    c = torch.randn(1, 1, 20, 16)
+
+    # Zero noise -> identical selections -> Jaccard exactly 1.0.
+    r0 = topk_self_consistency(indexer, h, c, top_k=5, n_trials=4,
+                               noise_std=0.0)
+    assert r0["mean_jaccard"] == 1.0 and r0["min_jaccard"] == 1.0
+
+    # Selecting EVERYTHING is stable under arbitrary noise (degenerate but
+    # a real boundary: full selection cannot reshuffle).
+    r_full = topk_self_consistency(indexer, h, c, top_k=20, n_trials=4,
+                                   noise_std=0.5, seed=3)
+    assert r_full["mean_jaccard"] == 1.0
+
+    # Real noise on a random indexer: agreement stays in [0, 1] and is
+    # deterministic across calls with the same seed.
+    r1 = topk_self_consistency(indexer, h, c, top_k=5, n_trials=6,
+                               noise_std=0.3, seed=7)
+    r2 = topk_self_consistency(indexer, h, c, top_k=5, n_trials=6,
+                               noise_std=0.3, seed=7)
+    assert 0.0 <= r1["min_jaccard"] <= r1["mean_jaccard"] <= 1.0
+    assert r1["mean_jaccard"] == r2["mean_jaccard"], "same seed must repeat"
+    assert r1["mean_jaccard"] < 1.0, \
+        "noise_std=0.3 on a random indexer should reshuffle some top-k sets"
+
+    # Loud errors on bad probe inputs.
+    for bad in (lambda: topk_self_consistency(indexer, h, c, top_k=0),
+                lambda: topk_self_consistency(indexer, h, c, top_k=21),
+                lambda: topk_self_consistency(indexer, h, c, top_k=5,
+                                              n_trials=1),
+                lambda: topk_self_consistency(indexer, h, c, top_k=5,
+                                              noise_std=-0.1)):
+        try:
+            bad()
+            assert False, "bad probe input must fail loudly"
+        except ValueError:
+            pass
+    _pass("test_topk_self_consistency",
+          f"noise 0.0 -> 1.0; noise 0.3 (seed 7) mean Jaccard "
+          f"{r1['mean_jaccard']:.3f}; loud-input guards ok")
+
+
+# ----------------------------------------------------------------------
+# v5.43 (3/3): quant-drift-aware trust gate — a positive NVFP4 ECE drift
+# widens the abstain band (widen-only policy), provenance is preserved,
+# and the merged record passes TrustGateV2's own validation
+# ----------------------------------------------------------------------
+def test_quant_drift_trust_gate():
+    _agent_dir = str(Path(__file__).resolve().parent.parent / "agent")
+    if _agent_dir not in sys.path:
+        sys.path.insert(0, _agent_dir)
+    from decision_head import DecisionHead
+    from gate import Route
+    from trust_gate_v2 import TrustGateV2, apply_quant_drift
+    from types import SimpleNamespace
+
+    base = {"ece": 0.05, "n": 500}
+
+    # Positive drift widens the band by exactly the drift.
+    merged = apply_quant_drift(base, 0.03)
+    assert merged["ece"] == 0.08 and merged["quant_drift"] == 0.03
+    assert merged["policy"] == "widen-only" and "source" in merged
+    # Input record untouched (dict copied, not mutated).
+    assert base == {"ece": 0.05, "n": 500}
+
+    # WIDEN-ONLY: a negative drift (quantization helped) leaves the band
+    # at the bf16 record — trusting a lucky measurement to make the gate
+    # MORE aggressive is a policy choice kept out of the math.
+    assert apply_quant_drift(base, -0.04)["ece"] == 0.05
+
+    # Clamp at the TrustGateV2 validation ceiling.
+    assert apply_quant_drift(base, 10.0)["ece"] == 0.5
+
+    # Loud errors: no base record, out-of-range base, non-finite drift.
+    for bad in (lambda: apply_quant_drift(None, 0.1),
+                lambda: apply_quant_drift({"ece": 0.9, "n": 10}, 0.1),
+                lambda: apply_quant_drift(base, float("nan")),
+                lambda: apply_quant_drift(base, float("inf"))):
+        try:
+            bad()
+            assert False, "bad drift input must fail loudly"
+        except ValueError:
+            pass
+
+    # End-to-end: at p=0.84 with p*=0.8, a near-perfect bf16 record
+    # (ece=0.005, band [0.795, 0.805]) DIRECTs; a +0.10 quant drift widens
+    # the band to [0.65, 0.95] and the same p falls INSIDE it -> the gate
+    # abstains. Widening buys escalation, never aggression.
+    head = DecisionHead({"trust": ("noul", None)})
+    g = TrustGateV2(head, calibration={"ece": 0.005, "n": 500})
+    g.router.head.forward = lambda ids: {"trust": (0.84, None)}
+    call = SimpleNamespace(name="t.call")
+    assert g.decide(call, {}) == Route.DIRECT, \
+        "tight bf16 band must act at p=0.84"
+    g2 = TrustGateV2(DecisionHead({"trust": ("noul", None)}),
+                     calibration=apply_quant_drift(base, 0.10))
+    g2.router.head.forward = lambda ids: {"trust": (0.84, None)}
+    rec = g2.decide_explain(call, {})
+    assert rec["route"] == "ESCALATE" and \
+        abs(rec["margin"] - 0.15) < 1e-9, rec
+    _pass("test_quant_drift_trust_gate",
+          f"drift +0.03 -> ece 0.08; widen-only; same p=0.84 DIRECTs on "
+          f"bf16, ESCALATEs with +0.10 quant drift")
+
+
+# ----------------------------------------------------------------------
 # v5.6: Muon optimizer — Newton-Schulz orthogonalization quality, quadratic
 # convergence vs SGD, AdamW fallback for non-matrix params, muon=False
 # group routing
@@ -4575,6 +4758,10 @@ TESTS = [
     test_dualpipe,
     test_fp8_trainer,
     test_grpo,
+    # v5.43: multi-env GRPO wiring, sparse-stability probe, quant-drift gate
+    test_env_grpo_loop,
+    test_topk_self_consistency,
+    test_quant_drift_trust_gate,
     test_muon,
     test_streaming_audio,
     test_navit,

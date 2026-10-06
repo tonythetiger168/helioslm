@@ -248,7 +248,8 @@ class GRPOTrainer:
             # Restore the caller's original training mode (M-T1).
             self.model.train(prev_training)
 
-    def _learn_from_samples(self, samples: list, answers: list) -> dict:
+    def _learn_from_samples(self, samples: list, answers: list,
+                            rewards: Optional[torch.Tensor] = None) -> dict:
         """Steps 2-8 of GRPO: rewards, group advantages, reference log-probs,
         PPO-style clipped update with the k3 KL estimator, optimizer step.
 
@@ -258,15 +259,31 @@ class GRPOTrainer:
         never the update. `samples` is the flat, repeat-interleaved list
         (batch_size * group_size entries) in the same shape train_step
         builds; `answers` is per-question (len == len(samples)/group_size).
+
+        `rewards` (v5.43): optional flat per-sample reward tensor of shape
+        (len(samples),). When provided, `compute_rewards` is SKIPPED and
+        `answers` is ignored (pass None) — env-scored rewards from
+        env_grpo.py take this path. The update math below is untouched:
+        env wiring changes WHO scores, never HOW advantages or the clipped
+        surrogate are computed.
         """
         batch_size = len(samples) // self.group_size
         n_samples = len(samples)
 
-        all_responses = [s["response"] for s in samples]
-        # Rewards — each of the G responses of question i is scored against
-        # answers[i] (repeat-interleaved alignment).
-        all_answers = [a for a in answers for _ in range(self.group_size)]
-        rewards = self.compute_rewards(all_responses, all_answers)
+        if rewards is None:
+            all_responses = [s["response"] for s in samples]
+            # Rewards — each of the G responses of question i is scored
+            # against answers[i] (repeat-interleaved alignment).
+            all_answers = [a for a in answers for _ in range(self.group_size)]
+            rewards = self.compute_rewards(all_responses, all_answers)
+        else:
+            rewards = rewards.to(
+                device=self.device, dtype=torch.float32).reshape(-1)
+            if rewards.numel() != n_samples:
+                raise ValueError(
+                    f"injected rewards must be flat with one entry per "
+                    f"sample: got {rewards.numel()} for {n_samples} "
+                    f"samples (batch {batch_size} x group {self.group_size})")
 
         # Group-normalized advantages.
         rewards = rewards.view(batch_size, self.group_size)

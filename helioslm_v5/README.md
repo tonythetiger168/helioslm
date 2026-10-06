@@ -1,4 +1,4 @@
-# HeliosLM v5.42 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.43 - DeepSeek/K3-Style Architecture
 
 Reference LLM implementation with DeepSeek-V3-style efficiency techniques.
 All modules below are implemented and exercised by a CPU test suite with
@@ -18,6 +18,26 @@ misbehaving (see CHANGELOG). v5.5 is a feature release aligned with
 Kimi-K3-class architecture mechanisms: hybrid linear attention, LatentMoE,
 quantile balancing, cross-layer attention residuals, and SiTU-GLU (see
 CHANGELOG; unit suite now 44 tests).
+
+## v5.43 (2026-10-06): Env-Wired GRPO + Sparse Stability + Quant-Drift Gate
+Three cross-module closures on top of the v5.42 tooling wave, each
+oracle-tested in `tests/test_v5.py`:
+- **MultiEnv GRPO end-to-end loop** (`src/training/env_grpo.py`): the
+  wiring the v5.42 report left open — `MultiEnvBatch` produces tasks,
+  `GRPOTrainer` samples G responses per task, envs score, and the SHARED
+  update math consumes injected rewards (`_learn_from_samples` gained a
+  `rewards=` injection point; `compute_rewards` is bypassed, never
+  reimplemented). Per-env advantage normalization remains caller policy.
+- **Learned-sparse top-k self-consistency probe**
+  (`eval/sparse_stability.py`): mean pairwise Jaccard of the indexer's
+  top-k token sets under repeated query-side Gaussian perturbation — the
+  anti-shortcut stability metric for DSA-style sparse selection. Zero
+  noise is the perfect-stability oracle; full selection (top_k == kv_len)
+  is stable under any noise.
+- **Quant-drift-aware trust gate** (`agent/trust_gate_v2.py`):
+  `apply_quant_drift` merges an NVFP4 ECE drift from the v5.42
+  quant-calib probe into a gate's calibration record under a declared
+  WIDEN-ONLY policy (a lucky negative drift never sharpens the band).
 
 ## v5.42 (2026-10-06): Decision-Engine Tooling Wave
 Phase 1.3 + Phase 2 + Phase 3 of the local-decision-engine plan in one

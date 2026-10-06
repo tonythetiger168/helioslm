@@ -1,5 +1,5 @@
-"""HeliosLM v5.42 — TrustGate v2: calibrated probabilistic abstention
-(Phase 3.2).
+"""HeliosLM v5.43 — TrustGate v2: calibrated probabilistic abstention
+(Phase 3.2; v5.43 adds the quant-drift merge helper `apply_quant_drift`).
 
 v1 (``trust_gate.py``) routes on hard thresholds hi/lo against P(yes).
 Two things v1 cannot say: WHY the threshold is what it is, and how much to
@@ -36,6 +36,57 @@ except ImportError:
 # 0.25 = "a quarter of the probability scale of doubt"; it is a declared
 # policy, not an estimate.
 _UNCALIBRATED_MARGIN = 0.25
+
+
+def apply_quant_drift(calibration: dict, ece_drift: float) -> dict:
+    """Widen a recorded abstain band by a quantization-induced ECE drift.
+
+    Pairs TrustGate v2 with the v5.42 quant-calib cross probe: when an
+    NVFP4 fake-quant twin measures WORSE calibration than its bf16 origin
+    (``ece_drift = ece_quant - ece_bf16 > 0`` from
+    ``eval/quant_calib.compare_bf16_vs_nvfp4``), a gate that keeps the
+    bf16 band pretends the quantized probability is sharper than the
+    measurement says it is. This helper merges the drift into the
+    calibration record so the band widens accordingly.
+
+    Declared policy — WIDEN-ONLY: a negative drift (quantization helped
+    calibration) does NOT shrink the band below the bf16 record; trusting
+    a lucky measurement to make the gate MORE aggressive is a policy
+    choice, and the conservative default is to keep it out of the math.
+
+    Args:
+        calibration: {"ece": float in [0, 0.5], "n": int} measured on
+            HELD-OUT data (same rule as TrustGateV2; ``n`` is provenance).
+            None is a loud error — a drift against NO base record is
+            exactly the uncalibrated case the gate already tags loudly.
+        ece_drift: signed drift in ECE points from the quant-calib probe.
+
+    Returns:
+        A NEW dict (input never mutated) with the merged "ece", the raw
+        "quant_drift", the "policy" name, and a "source" string — every
+        field kept for audit provenance.
+    """
+    if calibration is None:
+        raise ValueError(
+            "apply_quant_drift needs a base calibration record; "
+            "widening an absent record is the uncalibrated case — "
+            "construct TrustGateV2 without calibration instead")
+    ece = float(calibration.get("ece", -1))
+    if not (0.0 <= ece <= 0.5):
+        raise ValueError("base calibration ece must be recorded in "
+                         "[0, 0.5]")
+    drift = float(ece_drift)
+    if drift != drift or abs(drift) == float("inf"):
+        raise ValueError(f"ece_drift must be a finite float, got "
+                         f"{ece_drift!r}")
+    merged = dict(calibration)
+    merged.update({
+        "ece": min(0.5, ece + max(drift, 0.0)),
+        "quant_drift": drift,
+        "policy": "widen-only",
+        "source": "eval/quant_calib.compare_bf16_vs_nvfp4",
+    })
+    return merged
 
 
 class TrustGateV2(Gate):
