@@ -169,6 +169,11 @@ latent (512 + 64 values/token). Full numbers and methodology:
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md) — reproducible on CPU via
 `python benchmarks/bench_cpu.py`.
 
+**Sparse × MTP acceptance sweep** (`benchmarks/bench_sparse_mtp.py`):
+extends the v5.16 break-even sweep with the missing sparse_top_k axis —
+MTP acceptance, CPU tok/s, and output overlap vs dense under DSA-style
+top-k decode; k ≥ L row is bitwise-equal to dense (test-enforced oracle).
+
 **v5.28 serving Pareto** (`benchmarks/disagg_pareto_2026-09-25.json`, regenerate via
 `python examples/disagg_pareto.py`): latency-cost curves for cache-heavy / cold / mixed
 workloads — the cost-axis alignment artifact, see

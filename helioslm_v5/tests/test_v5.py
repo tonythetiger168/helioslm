@@ -904,6 +904,86 @@ def test_quant_drift_trust_gate():
 
 
 # ----------------------------------------------------------------------
+# limitations round 2026-10-06: sparse top-k x MTP end-to-end acceptance
+# sweep — the axis the v5.16 break-even sweep (draft x cache state) does
+# not cover. Oracle: k >= kv_len must match dense draft=1 bitwise (ids
+# AND acceptance); k < kv_len reports overlap as data, never claims parity.
+# ----------------------------------------------------------------------
+def test_sparse_mtp_acceptance_sweep():
+    from benchmarks.bench_sparse_mtp import SCHEMA_KEYS, sweep_sparse_mtp
+
+    ckpt = str(_REPO_ROOT / "checkpoints" / "toy_v5.13.pt")
+    rows, details = sweep_sparse_mtp(ckpt, ks=[4, 10**6], max_new=8,
+                                     iters=2)
+
+    # Schema completeness and row count: 2 dense baselines + 2 sparse rows.
+    assert len(rows) == 4, f"expected 4 rows, got {len(rows)}"
+    for r in rows:
+        assert tuple(r.keys()) == SCHEMA_KEYS, (
+            f"row keys diverge from the P3-superset schema: "
+            f"{tuple(r.keys())}")
+
+    by_k = {r["sparse_top_k"]: r for r in rows if r["draft_depth"] == 1}
+    dense = by_k[None]
+    big = by_k[10**6]
+    sparse = by_k[4]
+
+    # k >= kv_len oracle: outputs AND acceptance bitwise-equal to dense.
+    for i in range(2):
+        assert details[(10**6, i)] == details[(None, i)], (
+            f"k=10**6 prompt {i} diverged from dense — the k >= kv_len "
+            "bit-identity oracle is broken")
+    assert big["acceptance"] == dense["acceptance"], (
+        "k >= kv_len acceptance must equal dense exactly")
+    assert big["output_overlap_vs_dense"] == 1.0
+
+    # Sparse row: measured values are in range and finite. Measured on
+    # this fixture (2 prompts x 8 tokens): overlap 0.625 — real
+    # divergence from dense, reported as data rather than hidden (the
+    # 1-prompt smoke run happened to be 1.0 on this checkpoint's large
+    # greedy margins; neither extreme is guaranteed). The assertion is
+    # range-only; any future drift shows up in the JSONL, not as a test
+    # failure.
+    assert 0.0 <= sparse["acceptance"] <= 1.0
+    assert 0.0 <= sparse["output_overlap_vs_dense"] <= 1.0
+    assert sparse["tok_s_out"] > 0 and sparse["n_tokens"] == 8
+    assert dense["gain_vs_dense_draft0"] is not None
+
+    # Determinism: a repeated run produces identical ids and acceptance
+    # (wall-clock fields excluded by construction — they are rounded
+    # measurements, not part of the oracle).
+    rows2, details2 = sweep_sparse_mtp(ckpt, ks=[4], max_new=8, iters=2)
+    for i in range(2):
+        assert details2[(4, i)] == details[(4, i)], (
+            "sparse MTP sweep is not deterministic")
+    assert rows2[2]["acceptance"] == sparse["acceptance"]
+
+    # Loud errors: missing checkpoint, bad k, learned indexer on a
+    # checkpoint without indexer weights.
+    _expect_raises(FileNotFoundError,
+                   lambda: sweep_sparse_mtp(str(_REPO_ROOT / "nope.pt"),
+                                            ks=[4], max_new=4, iters=1),
+                   "missing checkpoint")
+    _expect_raises(ValueError,
+                   lambda: sweep_sparse_mtp(ckpt, ks=[0], max_new=4,
+                                            iters=1),
+                   "sparse k = 0")
+    _expect_raises(ValueError,
+                   lambda: sweep_sparse_mtp(ckpt, ks=[4], max_new=4,
+                                            iters=1, indexer="magic"),
+                   "unknown indexer")
+    _expect_raises(ValueError,
+                   lambda: sweep_sparse_mtp(ckpt, ks=[4], max_new=4,
+                                            iters=1, indexer="learned"),
+                   "learned indexer w/o checkpoint weights")
+    _pass("test_sparse_mtp_acceptance_sweep",
+          f"schema ok, k>=L bitwise (ids+acceptance), dense acc "
+          f"{dense['acceptance']}, k=4 acc {sparse['acceptance']} overlap "
+          f"{sparse['output_overlap_vs_dense']}, deterministic, 4 loud "
+          "guards")
+
+
+# ----------------------------------------------------------------------
 # v5.6: Muon optimizer — Newton-Schulz orthogonalization quality, quadratic
 # convergence vs SGD, AdamW fallback for non-matrix params, muon=False
 # group routing
@@ -4762,6 +4842,8 @@ TESTS = [
     test_env_grpo_loop,
     test_topk_self_consistency,
     test_quant_drift_trust_gate,
+    # limitations round 2026-10-06
+    test_sparse_mtp_acceptance_sweep,
     test_muon,
     test_streaming_audio,
     test_navit,
