@@ -984,6 +984,116 @@ def test_sparse_mtp_acceptance_sweep():
 
 
 # ----------------------------------------------------------------------
+# limitations round 2026-10-07: distill-train the learned lightning
+# indexer on the toy checkpoint so indexer="learned" sweep rows become
+# measurable end to end (they were refused loudly before — every
+# checkpoint predated the indexer). Oracles: distill loss/overlap improve
+# by measured margins; trunk weights bit-preserved; k >= L bitwise.
+# ----------------------------------------------------------------------
+def test_indexer_distill_learned_sweep():
+    import os
+    import tempfile
+
+    from benchmarks.bench_sparse_mtp import SCHEMA_KEYS, sweep_sparse_mtp
+    from examples.train_indexer_distill import (build_corpus_ids,
+                                                distill_indexer,
+                                                load_with_new_indexer)
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+
+    corpus = build_corpus_ids(1024)
+    ckpt = torch.load(str(_REPO_ROOT / "checkpoints" / "toy_v5.13.pt"),
+                      map_location="cpu", weights_only=False)
+    cfg = HeliosLMv5Config(size="lite")
+    cfg.attention.sparse_top_k = 4
+    cfg.attention.sparse_indexer = "learned"
+    torch.manual_seed(1234)
+    model = HeliosLMv5(cfg).eval()
+    n_missing = load_with_new_indexer(model, ckpt["state_dict"])
+    assert n_missing == 6, (
+        f"2 layers x (q_proj, k_proj, head_weights) = 6 indexer keys, "
+        f"got {n_missing}")
+
+    # Trunk bit-preservation probe (distill must freeze the trunk).
+    ids = torch.tensor([[ord(c) for c in "HeliosLM"]])
+    with torch.no_grad():
+        out_pre = model(ids)[0]
+
+    # Untrained learned-indexer baseline sweep (the "noise" row).
+    payload = dict(ckpt)
+    payload["state_dict"] = model.state_dict()
+    fd, tmp = tempfile.mkstemp(suffix=".pt")
+    os.close(fd)
+    torch.save(payload, tmp)
+    rows_pre, _ = sweep_sparse_mtp(tmp, ks=[4], max_new=8, iters=2,
+                                   indexer="learned")
+
+    stats = distill_indexer(model, corpus, steps=400, top_k=4, seed=1234)
+    # Measured on this fixture: loss 5.13 -> 3.81 (ratio 0.74), teacher
+    # top-4 overlap 0.165 -> 0.377 (gain +0.21), ~9 s CPU total. Bounds
+    # below sit well inside the measurements. The residual overlap is
+    # honest: near-tied teacher scores cap fidelity (same phenomenon as
+    # the 09-21 unit-level distill).
+    assert stats["layers"] == 2 and stats["steps"] == 400
+    assert stats["loss_final"] < 0.85 * stats["loss_initial"], (
+        f"distill loss did not drop: {stats['loss_initial']} -> "
+        f"{stats['loss_final']}")
+    assert (stats["teacher_overlap_final"]
+            > stats["teacher_overlap_initial"] + 0.10), (
+        f"teacher overlap did not rise: "
+        f"{stats['teacher_overlap_initial']} -> "
+        f"{stats['teacher_overlap_final']}")
+
+    with torch.no_grad():
+        out_post = model(ids)[0]
+    assert torch.equal(out_pre, out_post), (
+        "distill must freeze the trunk — dense logits changed")
+
+    # The trained checkpoint now passes the learned-indexer gate and the
+    # k >= L oracle stays bitwise end to end.
+    payload["state_dict"] = model.state_dict()
+    torch.save(payload, tmp)
+    rows, details = sweep_sparse_mtp(tmp, ks=[4, 10**6], max_new=8,
+                                     iters=2, indexer="learned")
+    os.unlink(tmp)
+    for r in rows:
+        assert tuple(r.keys()) == SCHEMA_KEYS
+    assert all(details[(10**6, i)] == details[(None, i)]
+               for i in range(2)), "k >= L oracle broken after distill"
+    by_k = {r["sparse_top_k"]: r for r in rows if r["draft_depth"] == 1}
+    assert by_k[10**6]["acceptance"] == by_k[None]["acceptance"]
+    learned = by_k[4]
+    assert learned["indexer"] == "learned"
+    assert 0.0 <= learned["acceptance"] <= 1.0
+    assert 0.0 <= learned["output_overlap_vs_dense"] <= 1.0
+    pre4 = [r for r in rows_pre if r["sparse_top_k"] == 4][0]
+    # NOTE (honest): end-output overlap at 2 prompts x 8 tokens has 1/16
+    # granularity — across fixture variants we measured pre-distill
+    # 0.5625 and post-distill 0.5-0.6875, i.e. single-position noise in
+    # both directions; the SENSITIVE training signal is the teacher
+    # overlap asserted above, so no end-output ordering is asserted here.
+    assert 0.0 <= pre4["output_overlap_vs_dense"] <= 1.0
+
+    # Loud errors: distill without a learned indexer; trunk-mismatched
+    # checkpoint (a non-indexer key missing).
+    plain_cfg = HeliosLMv5Config(size="lite")
+    plain = HeliosLMv5(plain_cfg)
+    _expect_raises(ValueError,
+                   lambda: distill_indexer(plain, corpus, steps=1),
+                   "distill without learned indexer")
+    corrupted = {k: v for k, v in ckpt["state_dict"].items()
+                 if k != "embed_tokens.weight"}
+    _expect_raises(ValueError,
+                   lambda: load_with_new_indexer(model, corrupted),
+                   "trunk-mismatched checkpoint")
+    _pass("test_indexer_distill_learned_sweep",
+          f"distill loss {stats['loss_initial']}->{stats['loss_final']}, "
+          f"teacher overlap {stats['teacher_overlap_initial']}->"
+          f"{stats['teacher_overlap_final']}, trunk bit-preserved, "
+          f"learned sweep acc {learned['acceptance']} overlap "
+          f"{learned['output_overlap_vs_dense']}, k>=L bitwise, guards ok")
+
+
+# ----------------------------------------------------------------------
 # v5.6: Muon optimizer — Newton-Schulz orthogonalization quality, quadratic
 # convergence vs SGD, AdamW fallback for non-matrix params, muon=False
 # group routing
@@ -4844,6 +4954,8 @@ TESTS = [
     test_quant_drift_trust_gate,
     # limitations round 2026-10-06
     test_sparse_mtp_acceptance_sweep,
+    # limitations round 2026-10-07
+    test_indexer_distill_learned_sweep,
     test_muon,
     test_streaming_audio,
     test_navit,

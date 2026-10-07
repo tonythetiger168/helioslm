@@ -173,6 +173,10 @@ latent (512 + 64 values/token). Full numbers and methodology:
 extends the v5.16 break-even sweep with the missing sparse_top_k axis —
 MTP acceptance, CPU tok/s, and output overlap vs dense under DSA-style
 top-k decode; k ≥ L row is bitwise-equal to dense (test-enforced oracle).
+`indexer="learned"` rows need a checkpoint with indexer weights —
+`examples/train_indexer_distill.py` distills one from the toy checkpoint
+(DSA recipe: teacher = the head-mean free indexer, trunk frozen
+bit-exact).
 
 **v5.28 serving Pareto** (`benchmarks/disagg_pareto_2026-09-25.json`, regenerate via
 `python examples/disagg_pareto.py`): latency-cost curves for cache-heavy / cold / mixed

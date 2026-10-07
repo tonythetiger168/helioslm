@@ -70,11 +70,24 @@ def encode(prompt, vocab=1024):
     return torch.tensor([[ord(c) for c in prompt if ord(c) < vocab]])
 
 
-def _build_model(state_dict, sparse_top_k):
+def _build_model(state_dict, sparse_top_k, indexer):
     cfg = HeliosLMv5Config(size="lite")
     cfg.attention.sparse_top_k = sparse_top_k
+    if sparse_top_k is not None:
+        cfg.attention.sparse_indexer = indexer
     model = HeliosLMv5(cfg)
-    model.load_state_dict(state_dict)
+    missing, unexpected = model.load_state_dict(state_dict, strict=False)
+    # A distilled checkpoint carries indexer.* weights; dense/head-mean
+    # baselines tolerate (and ignore) exactly those keys. EVERYTHING else
+    # must match — a silently misloaded trunk invalidates the sweep.
+    bad_unexpected = [k for k in unexpected if ".indexer." not in k]
+    if missing or bad_unexpected:
+        raise ValueError(
+            f"checkpoint does not match the sweep model "
+            f"(sparse_top_k={sparse_top_k}, indexer={indexer}): missing "
+            f"{missing[:5]}, unexpected (non-indexer) "
+            f"{bad_unexpected[:5]}"
+        )
     model.eval()
     return model, cfg
 
@@ -130,7 +143,7 @@ def sweep_sparse_mtp(checkpoint, ks, max_new=32, iters=3,
 
     # Dense baselines (draft off = tok/s reference; draft on = overlap
     # and acceptance reference).
-    model_d, cfg_d = _build_model(state_dict, None)
+    model_d, cfg_d = _build_model(state_dict, None, indexer)
     dense_d0_toks = []
     dense_d1 = []
     for i, prompt in enumerate(prompts):
@@ -171,7 +184,7 @@ def sweep_sparse_mtp(checkpoint, ks, max_new=32, iters=3,
 
     # Sparse rows (draft on).
     for k in ks:
-        model_s, cfg_s = _build_model(state_dict, k)
+        model_s, cfg_s = _build_model(state_dict, k, indexer)
         per_prompt = []
         for i, prompt in enumerate(prompts):
             ids = encode(prompt)
