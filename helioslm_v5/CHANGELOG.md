@@ -1,5 +1,21 @@
 # HeliosLM v5 Changelog
 
+## v5.43 (2026-10-08) - Vanguard 2 Result + Glimmer Script
+- Gated hybrid (soft convex weight per benchmark, cross-val learned):
+  median 0.655 -- BELOW pure TF-IDF 0.774. Finding: oracle per-bench
+  selection (Level-1 0.796) is an OPTIMISTIC upper bound (test-set leg
+  choice), not a reproducible system; Qwen-enc drags down soft voting
+  on 35/41 benchmarks (w=1.0 chosen). Honest feature-engineering
+  ceiling is ~0.77, not 0.796
+- benchmarks/gated_hybrid_results.json
+- examples/alignbench_glimmer_ft.py: Vanguard 1 -- RLCD fine-tune of
+  Muse Glimmer-30B (agent-tuned Apache-2.0, 4-bit 24GB, single 4060).
+  Tests the instruct inductive-bias hypothesis that the Qwen3-0.6B
+  base-model failure (10/05) left open. If Glimmer has alignment-
+  detection inductive bias, 0.796 -> 0.85+ is the path past Jev 0.911
+
+
+
 ## v5.42 (2026-10-08) - RSI Routes 2 + 6 Prototypes
 - agent/self_gen_env.py: AI-generated curriculum (Absolute Zero minimal
   version) -- model generates expr/string tasks, shared grammar verifies
