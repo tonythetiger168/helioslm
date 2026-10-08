@@ -249,7 +249,9 @@ recorded).
 \toprule
 Detector & Median AUROC \\
 \midrule
-Jev zero-shot (cached, recomputed) & 0.859 \\
+Jev zero-shot generic (paper) & 0.886 \\
+Jev targeted split-half (paper) & 0.911 \\
+Jev zero-shot (our offline recompute) & 0.859 \\
 \textbf{Ours: TF-IDF readout (supervised)} & \textbf{0.726} \\
 Ours: char mean-pool head (supervised) & 0.561 \\
 Ours: char mean-pool head (LOBO transfer) & 0.542 \\
@@ -293,6 +295,24 @@ sits inside the paper's own baseline feature class; char/BPE mean-pool
 legs isolate the encoder bottleneck.}
 \label{fig:median}
 \end{figure}
+
+\textbf{Two calibrations from the vendor's own reporting}
+(63$\times$ cost coverage, 2026-10-08): (1) Jev's targeted split-half median is 0.911, not 0.886 -- our 0.726 sits 0.185 below the vendor's best; (2) the vendor's own ablation shows prompt engineering adds only $+0.006$ ($p{=}0.055$) -- ``retaining full probability'' beats ``crafting the perfect prompt.'' HeliosLM's policy-in-code route embodies this.
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}lr@{}}
+\toprule
+Method & Cost (19 benchmarks) \\
+\midrule
+Traditional LLM Judge & \$18.96 \\
+Jev (vendor) & \$0.30 (63$\times$) \\
+\textbf{HeliosLM open probe} & \textbf{\$0.02} (948$\times$) \\
+\bottomrule
+\end{tabular}
+\caption{The open-source audit is cheaper than the commercial detector it audits.}
+\label{tab:cost}
+\end{table}
 
 \textbf{We beat Jev's zero-shot numbers on 11/41 benchmarks}---
 sycophancy (0.78 vs.\ 0.43), faithfulness (0.68 vs.\ 0.37), confaide
