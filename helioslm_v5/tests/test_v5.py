@@ -1278,6 +1278,124 @@ def test_indexer_distill_learned_sweep():
 
 
 # ----------------------------------------------------------------------
+# limitations round 2026-10-08: sparse top-k through the vLLM-style
+# SERVING engine (watermark-padded continuous batching) — the engine
+# half of the residual "sparse x MTP/engine" item; the draft half stays
+# in bench_sparse_mtp.py because VLLMEngine has no draft/MTP interface
+# (asserted structurally below). Oracles: engine output is an exact
+# prefix of the same model's solo greedy reference on EVERY row; k >= L
+# bitwise vs the dense engine; overlap with k < L reported as data.
+# ----------------------------------------------------------------------
+def test_engine_sparse_serving():
+    from benchmarks.bench_engine_sparse import (ENGINE_NAME, SCHEMA_KEYS,
+                                                sweep_engine_sparse)
+    from helioslm_v5.src.inference.vllm_engine import VLLMEngine
+
+    ckpt = str(_REPO_ROOT / "checkpoints" / "toy_v5.13.pt")
+    rows, details = sweep_engine_sparse(ckpt, ks=[4, 10**6], max_new=8,
+                                        n_reqs=4)
+
+    # Schema completeness and row count: 1 dense baseline + 2 sparse rows.
+    assert len(rows) == 3, f"expected 3 rows, got {len(rows)}"
+    for r in rows:
+        assert tuple(r.keys()) == SCHEMA_KEYS, (
+            f"row keys diverge from the engine-serving schema: "
+            f"{tuple(r.keys())}")
+        assert r["engine"] == ENGINE_NAME
+        assert r["n_requests"] == 4
+        # Unequal prompts must admit at least one request with a
+        # watermark pad prefix — otherwise the padded batched decode
+        # path (the point of this sweep) never fired.
+        assert r["watermark_pad_requests"] >= 1, (
+            "no request was watermark-padded — the padded sparse "
+            "decode path was not exercised")
+
+    # Serving-correctness oracle: engine output is an exact prefix of the
+    # SAME model's solo greedy reference on EVERY row — including the
+    # sparse ones (pad K/V entries are masked out of the top-k selection
+    # by mla.py's masked_fill before topk, so padded batched decode must
+    # stay exact). Measured on this fixture: 1.0 on all rows.
+    for r in rows:
+        assert r["solo_prefix_match"] == 1.0, (
+            f"engine diverged from solo greedy on row k="
+            f"{r['sparse_top_k']}: {r['solo_prefix_match']}")
+
+    by_k = {r["sparse_top_k"]: r for r in rows}
+    big = by_k[10**6]
+    sparse = by_k[4]
+
+    # k >= kv_len oracle: the sparse path never activates, so the k >= L
+    # engine row MUST match the dense engine row on ids bitwise.
+    for i in range(4):
+        assert details[(10**6, i)] == details[(None, i)], (
+            f"k=10**6 request {i} diverged from the dense engine — the "
+            "k >= kv_len bit-identity oracle is broken")
+    assert big["output_overlap_vs_dense_engine"] == 1.0
+
+    # Sparse row: measured values are in range and finite. Measured on
+    # this fixture (4 requests x 8 tokens): overlap 0.375 vs the dense
+    # engine — real divergence, reported as data rather than hidden.
+    # The assertion is range-only; any drift shows up in the JSONL.
+    assert 0.0 <= sparse["output_overlap_vs_dense_engine"] <= 1.0
+    assert sparse["tok_s_out"] > 0 and sparse["n_tokens"] == 8
+    assert sparse["gain_vs_dense_engine"] is not None
+
+    # Determinism: a repeated run produces identical ids and overlap
+    # (wall-clock fields excluded by construction).
+    rows2, details2 = sweep_engine_sparse(ckpt, ks=[4], max_new=8,
+                                          n_reqs=4)
+    for i in range(4):
+        assert details2[(4, i)] == details[(4, i)], (
+            "engine sparse sweep is not deterministic")
+    assert (rows2[1]["output_overlap_vs_dense_engine"]
+            == sparse["output_overlap_vs_dense_engine"])
+
+    # Draft-path finding (loud documentation, 2026-10-08): VLLMEngine
+    # has NO draft/MTP/speculative interface — step() runs one trunk
+    # forward per cache-length group. A combined engine x draft
+    # measurement would require adding a draft path to the engine
+    # first; until then the draft half of the residual item lives in
+    # bench_sparse_mtp.py. Asserted structurally so this note cannot
+    # silently go stale if the engine later grows speculative decode.
+    draftish = [a for a in dir(VLLMEngine)
+                if any(s in a.lower() for s in ("draft", "speculat", "mtp"))]
+    assert not draftish, (
+        f"VLLMEngine gained a draft-like interface {draftish}: the "
+        "engine-half measurement can now include drafts — update "
+        "bench_engine_sparse.py and this note")
+
+    # Loud errors: missing checkpoint, bad k, unknown indexer, degenerate
+    # request count, learned indexer on a checkpoint without indexer
+    # weights.
+    _expect_raises(FileNotFoundError,
+                   lambda: sweep_engine_sparse(
+                       str(_REPO_ROOT / "nope.pt"), ks=[4], max_new=4,
+                       n_reqs=2),
+                   "missing checkpoint")
+    _expect_raises(ValueError,
+                   lambda: sweep_engine_sparse(ckpt, ks=[0], max_new=4,
+                                               n_reqs=2),
+                   "sparse k = 0")
+    _expect_raises(ValueError,
+                   lambda: sweep_engine_sparse(ckpt, ks=[4], max_new=4,
+                                               n_reqs=2, indexer="magic"),
+                   "unknown indexer")
+    _expect_raises(ValueError,
+                   lambda: sweep_engine_sparse(ckpt, ks=[4], max_new=4,
+                                               n_reqs=1),
+                   "n_reqs < 2")
+    _expect_raises(ValueError,
+                   lambda: sweep_engine_sparse(ckpt, ks=[4], max_new=4,
+                                               n_reqs=2, indexer="learned"),
+                   "learned indexer w/o checkpoint weights")
+    _pass("test_engine_sparse_serving",
+          f"schema ok, solo-prefix 1.0 on all rows, k>=L bitwise, k=4 "
+          f"overlap {sparse['output_overlap_vs_dense_engine']} tok/s "
+          f"{sparse['tok_s_out']} (gain {sparse['gain_vs_dense_engine']}), "
+          f"deterministic, no draft API, 5 loud guards")
+
+
+# ----------------------------------------------------------------------
 # v5.6: Muon optimizer — Newton-Schulz orthogonalization quality, quadratic
 # convergence vs SGD, AdamW fallback for non-matrix params, muon=False
 # group routing
@@ -5145,6 +5263,8 @@ TESTS = [
     test_sparse_mtp_acceptance_sweep,
     # limitations round 2026-10-07
     test_indexer_distill_learned_sweep,
+    # limitations round 2026-10-08
+    test_engine_sparse_serving,
     test_muon,
     test_streaming_audio,
     test_navit,
