@@ -1,4 +1,4 @@
-# HeliosLM v5.43 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.44 - DeepSeek/K3-Style Architecture
 
 Reference LLM implementation with DeepSeek-V3-style efficiency techniques.
 All modules below are implemented and exercised by a CPU test suite with
@@ -18,6 +18,34 @@ misbehaving (see CHANGELOG). v5.5 is a feature release aligned with
 Kimi-K3-class architecture mechanisms: hybrid linear attention, LatentMoE,
 quantile balancing, cross-layer attention residuals, and SiTU-GLU (see
 CHANGELOG; unit suite now 44 tests).
+
+## v5.44 (2026-10-08): Prefill Stability + Quant-Calib Pipeline + Async EnvGRPO
+Three closures on top of the v5.43 + limitations-round tooling, each
+oracle-tested in `tests/test_v5.py`:
+- **Prefill sparse-stability probe** (`eval/sparse_stability.py`): the
+  v5.43 decode-step probe extended to EVERY query position —
+  `prefill_stability` scores per-position top-k Jaccard agreement under
+  query-side Gaussian noise and reports per-position plus overall means
+  (positions weighted equally). `examples/train_indexer_distill.py`
+  gained `indexer_prefill_stability` and a `--stability-probe` flag that
+  measures the indexer's mechanical stability before vs. after
+  distillation (mechanical stability only — a stable-but-wrong indexer
+  scores 1.0; quality stays the distill loss's job).
+- **Quant-calib → TrustGate pipeline** (`eval/quant_calib.py`,
+  `agent/trust_gate_v2.py`): `ece_drift_from_report` recomputes the ECE
+  drift from the bf16/nvfp4 arms of a `compare_bf16_vs_nvfp4` report
+  (never the report's possibly-stale embedded copy), and
+  `trust_calibration_from_report` turns a probe report into a ready
+  `TrustGateV2` calibration record under the v5.43 widen-only policy —
+  a quantization that helped calibration never makes the gate more
+  aggressive than its bf16 evidence. Partial reports fail loudly.
+- **AsyncEnvGRPO** (`src/training/env_grpo.py`): the env-routed reward
+  path on the v5.31 AsyncGRPO producer/consumer skeleton — worker
+  threads produce (task, samples) groups, the learner scores them with
+  `MultiEnvBatch.reward` and applies the SAME shared update math
+  (`compute_rewards` bypassed, never reimplemented; asynchrony changes
+  who produces samples and when, never the mathematics). Every metrics
+  dict is env-tagged for per-env audit.
 
 ## v5.43 (2026-10-06): Env-Wired GRPO + Sparse Stability + Quant-Drift Gate
 Three cross-module closures on top of the v5.42 tooling wave, each

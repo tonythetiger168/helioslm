@@ -111,3 +111,35 @@ def compare_bf16_vs_nvfp4(model, tasks, n_bins: int = 10,
         "drift": {"accuracy": quant["accuracy"] - base["accuracy"],
                   "ece": quant["ece"] - base["ece"]},
     }
+
+
+def ece_drift_from_report(report: Dict) -> float:
+    """Recompute the ECE drift from a ``compare_bf16_vs_nvfp4`` report.
+
+    The drift is derived HERE from the two arms' recorded "ece" fields
+    instead of trusting any embedded "drift.ece" copy: a report that was
+    hand-edited, assembled from partial runs, or serialized through a
+    lossy path could carry a stale drift, and TrustGate's widen-only
+    policy rides on this number.
+
+    Args:
+        report: dict with "bf16" and "nvfp4" arms, each holding at least
+            an "ece" float (the ``run_quant_calib_probe`` arm shape
+            {"tag", "accuracy", "ece", "n"}).
+
+    Returns:
+        float(report["nvfp4"]["ece"]) - float(report["bf16"]["ece"]),
+        signed in ECE points (positive = quantization hurt calibration).
+
+    Loud errors: missing "bf16"/"nvfp4" arm, or an arm without an "ece"
+    field — silently defaulting a missing arm to 0 would manufacture a
+    drift out of nothing.
+    """
+    for arm_name in ("bf16", "nvfp4"):
+        arm = report.get(arm_name)
+        if not isinstance(arm, dict) or "ece" not in arm:
+            raise ValueError(
+                f"quant-calib report is missing a usable '{arm_name}' arm "
+                f"with an 'ece' field (got {arm!r}) — refusing to compute "
+                f"a drift from a partial report")
+    return float(report["nvfp4"]["ece"]) - float(report["bf16"]["ece"])

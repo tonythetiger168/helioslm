@@ -1,5 +1,62 @@
 # HeliosLM v5 Changelog
 
+## v5.44 (2026-10-08) - Prefill Stability + Quant-Calib Pipeline + Async EnvGRPO
+- `eval/sparse_stability.py`: `prefill_stability` — the v5.43 decode-step
+  top-k self-consistency probe extended to EVERY query position (batch 0).
+  For each position: reference top-k set + n_trials noisy sets (Gaussian
+  std on the query side, cache untouched) -> per-position mean pairwise
+  Jaccard; overall score = unweighted mean over positions. Documented
+  simplification: every position is scored against the SAME shared cache,
+  not the causal prefix (a pure function of (query, cache) matches the
+  deployed DSA call). Shared loud-input guards refactored into
+  `_validate_probe_inputs` / `_pairwise_jaccards`.
+  Test: `test_prefill_stability` (zero-noise and full-selection oracles
+  return exactly 1.0; same-seed determinism; mean == mean(per_position);
+  loud guards on top_k/n_trials/noise_std)
+- `examples/train_indexer_distill.py`: `indexer_prefill_stability(model,
+  ids, top_k, ...)` runs the probe per MLA layer against the layer's own
+  latent cache (same projection path as `teacher_overlap`);
+  `distill_indexer(..., stability_probe=)` records per-layer
+  `stability_initial`/`stability_final` (mean Jaccard) around training;
+  `--stability-probe` CLI flag. Probe is mechanical stability only — a
+  stable-but-wrong indexer scores 1.0; quality remains the distill loss's
+  job (honest docstring, no implied quality claim)
+- `eval/quant_calib.py`: `ece_drift_from_report(report)` recomputes
+  nvfp4_ece - bf16_ece from the two probe arms, never trusting the
+  report's embedded "drift.ece" copy (a hand-edited / lossy-serialized
+  report could carry a stale drift, and TrustGate's widen-only policy
+  rides on this number). Missing arm or missing "ece" -> loud ValueError
+  (no silent default-drift manufacturing).
+  Test: `test_trust_calibration_from_report`
+- `agent/trust_gate_v2.py`: `trust_calibration_from_report(report, n=None)`
+  — the quant-calib probe -> TrustGate v2 pipeline. Anchors on the bf16
+  arm and delegates the merge to `apply_quant_drift` (widen-only:
+  max(bf16, nvfp4) ECE; a quantization that improved calibration never
+  makes the gate more aggressive than its bf16 evidence). Returns a
+  record {"ece", "n", "quant_drift", "policy", "source"} that passes
+  TrustGateV2's own validation; verified end-to-end that a +0.03 drift
+  widens the band so p=0.84 against p*=0.8 ESCALATEs.
+  Test: `test_trust_calibration_from_report` (widen-only on both signs,
+  stale embedded drift ignored, n override, partial reports loud).
+  Note: 0.02 - 0.05 under IEEE754 double is -0.030000000000000002 —
+  the test asserts that side with a 1e-12 tolerance (quantified float
+  noise, threshold not relaxed semantically)
+- `src/training/env_grpo.py`: `AsyncEnvGRPO(AsyncGRPO)` — the env-routed
+  reward path on the v5.31 producer/consumer skeleton. Workers produce
+  (task, samples) groups (each sample env-tagged, back-pressure-aware
+  put, cooperative stop); the learner scores every group with
+  `MultiEnvBatch.reward` and calls the SHARED `_learn_from_samples(
+  samples, None, rewards=...)` — env rewards bypass `compute_rewards`,
+  the update math is byte-identical to the synchronous EnvGRPO loop.
+  Asynchrony changes WHO produces samples and WHEN, never the
+  mathematics (AsyncGRPO's documented toy-scale caveats carry over: no
+  weight-version sync, thread-level not process fleet). Every metrics
+  dict carries its task's "env" for per-env audit.
+  Test: `test_async_env_grpo` (3 tasks consumed exactly once under
+  G=2, env tags on every metrics dict, finite losses, non-negative k3
+  KL, compute_rewards bypass proven by monkeypatched raise, same-seed
+  run reproduces the env sequence, loud construction guards)
+
 ## v5.43 (2026-10-06) - Env-Wired GRPO + Sparse Stability + Quant-Drift Gate
 - `src/training/env_grpo.py`: end-to-end multi-env GRPO loop — the wiring
   the v5.42 report explicitly left open. `MultiEnvBatch` tasks ->

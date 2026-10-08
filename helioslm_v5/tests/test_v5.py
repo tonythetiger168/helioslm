@@ -904,6 +904,190 @@ def test_quant_drift_trust_gate():
 
 
 # ----------------------------------------------------------------------
+# v5.44 (1/3): prefill top-k stability — the decode-step probe extended to
+# EVERY query position; zero noise and full selection are the same two
+# oracles, per-position scores are reported and averaged equally
+# ----------------------------------------------------------------------
+def test_prefill_stability():
+    from helioslm_v5.eval.sparse_stability import prefill_stability
+    from helioslm_v5.src.attention.lightning_indexer import \
+        LearnedLightningIndexer
+
+    torch.manual_seed(0)
+    indexer = LearnedLightningIndexer(hidden_size=32, kv_latent_dim=16,
+                                      num_heads=4, head_dim=8).eval()
+    h = torch.randn(1, 3, 32)
+    c = torch.randn(1, 1, 20, 16)
+
+    # Zero noise -> every position perfectly consistent.
+    r0 = prefill_stability(indexer, h, c, top_k=5, n_trials=4,
+                           noise_std=0.0)
+    assert r0["mean_jaccard"] == 1.0
+    assert len(r0["per_position"]) == 3, "one score per query position"
+    assert all(v == 1.0 for v in r0["per_position"])
+
+    # Full selection (top_k == kv_len) is stable under arbitrary noise.
+    r_full = prefill_stability(indexer, h, c, top_k=20, n_trials=4,
+                               noise_std=0.5, seed=3)
+    assert r_full["mean_jaccard"] == 1.0
+
+    # Real noise: scores bounded, deterministic under the same seed, and
+    # the overall score is the mean of the per-position means.
+    r1 = prefill_stability(indexer, h, c, top_k=5, n_trials=6,
+                           noise_std=0.3, seed=7)
+    r2 = prefill_stability(indexer, h, c, top_k=5, n_trials=6,
+                           noise_std=0.3, seed=7)
+    assert 0.0 <= r1["mean_jaccard"] <= 1.0
+    assert all(0.0 <= v <= 1.0 for v in r1["per_position"])
+    assert abs(r1["mean_jaccard"]
+               - sum(r1["per_position"]) / len(r1["per_position"])) < 1e-12
+    assert r1["mean_jaccard"] == r2["mean_jaccard"], "same seed must repeat"
+
+    # Loud errors on bad probe inputs (same guards as the decode probe).
+    for bad in (lambda: prefill_stability(indexer, h, c, top_k=0),
+                lambda: prefill_stability(indexer, h, c, top_k=21),
+                lambda: prefill_stability(indexer, h, c, top_k=5,
+                                          n_trials=1),
+                lambda: prefill_stability(indexer, h, c, top_k=5,
+                                          noise_std=-0.1)):
+        try:
+            bad()
+            assert False, "bad probe input must fail loudly"
+        except ValueError:
+            pass
+    _pass("test_prefill_stability",
+          f"noise 0.0 -> 1.0 over {len(r0['per_position'])} positions; "
+          f"noise 0.3 (seed 7) mean {r1['mean_jaccard']:.3f}; loud guards ok")
+
+
+# ----------------------------------------------------------------------
+# v5.44 (2/3): quant-calib probe -> TrustGate pipeline — the drift is
+# recomputed from the two arms (never the report's embedded copy), the
+# merged record follows the widen-only policy, and a partial report is
+# a loud error
+# ----------------------------------------------------------------------
+def test_trust_calibration_from_report():
+    _agent_dir = str(Path(__file__).resolve().parent.parent / "agent")
+    if _agent_dir not in sys.path:
+        sys.path.insert(0, _agent_dir)
+    from trust_gate_v2 import trust_calibration_from_report
+    from helioslm_v5.eval.quant_calib import ece_drift_from_report
+
+    report1 = {"bf16": {"tag": "m/bf16", "accuracy": 0.6, "ece": 0.05,
+                        "n": 100},
+               "nvfp4": {"tag": "m/nvfp4-fakequant", "accuracy": 0.55,
+                         "ece": 0.08, "n": 100},
+               "drift": {"ece": 999.0}}  # stale embedded copy must be ignored
+    merged = trust_calibration_from_report(report1)
+    assert merged["ece"] == 0.08, "positive drift widens to the nvfp4 ECE"
+    assert merged["quant_drift"] == 0.03
+    assert merged["policy"] == "widen-only" and merged["n"] == 100
+
+    # WIDEN-ONLY through the pipeline: quantization that HELPED calibration
+    # (nvfp4 ece 0.02 < bf16 0.05) keeps the band at the bf16 record.
+    report2 = {"bf16": {"ece": 0.05, "n": 100},
+               "nvfp4": {"ece": 0.02, "n": 100}}
+    assert trust_calibration_from_report(report2)["ece"] == 0.05
+
+    # The drift helper recomputes from the arms, never the embedded field.
+    # (0.02 - 0.05 under IEEE754 double is -0.030000000000000002, so the
+    # negative-drift side asserts with an explicit 1e-12 tolerance instead
+    # of exact equality — the drift is float noise, not semantics.)
+    assert abs(ece_drift_from_report(report1) - 0.03) < 1e-12
+    assert abs(ece_drift_from_report(report2) - (-0.03)) < 1e-12
+    # n override is honored as provenance.
+    assert trust_calibration_from_report(report1, n=250)["n"] == 250
+
+    # The merged record passes TrustGateV2's own validation and widens the
+    # abstain band exactly like a hand-merged record (parity with the v5.43
+    # gate test: p=0.84, p*=0.8, bf16 ece 0.05 + 0.03 drift -> band
+    # [0.72, 0.88] -> ESCALATE).
+    from types import SimpleNamespace
+    from trust_gate_v2 import TrustGateV2
+    from decision_head import DecisionHead
+    from gate import Route
+    gate = TrustGateV2(DecisionHead({"trust": ("noul", None)}),
+                       calibration=merged)
+    gate.router.head.forward = lambda ids: {"trust": (0.84, None)}
+    rec = gate.decide_explain(SimpleNamespace(name="t.call"), {})
+    assert rec["route"] == "ESCALATE" and \
+        abs(rec["margin"] - 0.08) < 1e-9, rec
+
+    # Loud errors: a report missing either arm (or its ece) is partial
+    # evidence and must not manufacture a drift.
+    for bad_report in ({}, {"bf16": {"ece": 0.05}},
+                       {"nvfp4": {"ece": 0.08}},
+                       {"bf16": {"n": 5}, "nvfp4": {"ece": 0.08}}):
+        try:
+            trust_calibration_from_report(bad_report)
+            assert False, "partial report must fail loudly"
+        except ValueError:
+            pass
+    _pass("test_trust_calibration_from_report",
+          f"report ece 0.05->0.08 (drift {merged['quant_drift']}); "
+          f"widen-only keeps 0.05 when quant helped; stale embedded drift "
+          f"ignored; partial reports loud")
+
+
+# ----------------------------------------------------------------------
+# v5.44 (3/3): AsyncEnvGRPO — the env-routed reward path on the AsyncGRPO
+# producer/consumer skeleton: env tags ride every metrics dict, the update
+# math is the shared _learn_from_samples (compute_rewards bypassed), and
+# every dispatched task is consumed exactly once
+# ----------------------------------------------------------------------
+def test_async_env_grpo():
+    from helioslm_v5.src.training.async_grpo import AsyncGRPO
+    from helioslm_v5.src.training.env_grpo import AsyncEnvGRPO
+    from helioslm_v5.src.training.envs import MultiEnvBatch
+    from helioslm_v5.src.training.grpo import GRPOTrainer
+
+    model, config = _lite_model(seed=511)
+    ref_model, _ = _lite_model(seed=611)
+    config.grpo.group_size = 2
+    config.grpo.max_new_tokens = 4
+    trainer = GRPOTrainer(model, ref_model, config)
+    batch = MultiEnvBatch({"math": 2, "code": 1})
+    loop = AsyncEnvGRPO(trainer, batch, n_workers=1)
+    assert isinstance(loop, AsyncGRPO), "must ride the async skeleton"
+
+    # Loud construction errors mirror EnvGRPO's guards.
+    for bad in (lambda: AsyncEnvGRPO("not-a-trainer", batch),
+                lambda: AsyncEnvGRPO(trainer, {"math": 1})):
+        try:
+            bad()
+            assert False, "bad construction must fail loudly"
+        except ValueError:
+            pass
+
+    # Env rewards must bypass compute_rewards (same contract as the
+    # synchronous loop — the math-answer heuristic would mis-score code).
+    def _boom(responses, answers):
+        raise AssertionError("compute_rewards must not run on the env path")
+
+    trainer.compute_rewards = _boom
+    metrics = loop.run(seed=0)
+    assert len(metrics) == 3, "one metrics dict per dispatched task"
+    for m in metrics:
+        assert m["env"] in ("math", "code"), "every metrics dict env-tagged"
+        assert isinstance(m["loss"], float) and math.isfinite(m["loss"])
+        assert m["kl_penalty"] >= -1e-6
+    assert {m["env"] for m in metrics} == {"math", "code"}
+
+    # Determinism sanity: a second run with the same task seed reproduces
+    # the same env sequence (tasks are seeded, workers reseed per task).
+    loop2 = AsyncEnvGRPO(trainer, batch, n_workers=1)
+    loop2.trainer.compute_rewards = _boom
+    metrics2 = loop2.run(seed=0)
+    assert [m["env"] for m in metrics2] == [m["env"] for m in metrics]
+    loop.stop()
+    loop2.stop()
+    _pass("test_async_env_grpo",
+          f"{len(metrics)} tasks consumed (G=2), env tags "
+          f"{[m['env'] for m in metrics]}, compute_rewards bypassed, "
+          f"losses finite")
+
+
+# ----------------------------------------------------------------------
 # limitations round 2026-10-06: sparse top-k x MTP end-to-end acceptance
 # sweep — the axis the v5.16 break-even sweep (draft x cache state) does
 # not cover. Oracle: k >= kv_len must match dense draft=1 bitwise (ids
@@ -4952,6 +5136,11 @@ TESTS = [
     test_env_grpo_loop,
     test_topk_self_consistency,
     test_quant_drift_trust_gate,
+    # v5.44: prefill stability probe, quant-calib->TrustGate pipeline,
+    # async multi-env GRPO
+    test_prefill_stability,
+    test_trust_calibration_from_report,
+    test_async_env_grpo,
     # limitations round 2026-10-06
     test_sparse_mtp_acceptance_sweep,
     # limitations round 2026-10-07

@@ -1,5 +1,6 @@
-"""HeliosLM v5.43 — TrustGate v2: calibrated probabilistic abstention
-(Phase 3.2; v5.43 adds the quant-drift merge helper `apply_quant_drift`).
+"""HeliosLM v5.44 — TrustGate v2: calibrated probabilistic abstention
+(Phase 3.2; v5.43 adds the quant-drift merge helper `apply_quant_drift`;
+v5.44 adds the quant-calib pipeline entry `trust_calibration_from_report`).
 
 v1 (``trust_gate.py``) routes on hard thresholds hi/lo against P(yes).
 Two things v1 cannot say: WHY the threshold is what it is, and how much to
@@ -87,6 +88,52 @@ def apply_quant_drift(calibration: dict, ece_drift: float) -> dict:
         "source": "eval/quant_calib.compare_bf16_vs_nvfp4",
     })
     return merged
+
+
+def trust_calibration_from_report(report: dict, n: int = None) -> dict:
+    """Build a TrustGate calibration record straight from a quant-calib
+    drift report — the quant-calib probe to TrustGate v2 pipeline.
+
+    The base record anchors on the bf16 arm's measured ECE (the
+    unquantized evidence) and lets ``apply_quant_drift`` own the merge:
+    the gate's band then reflects ``max(bf16, nvfp4)`` ECE under the
+    declared widen-only policy — a quantization that improved
+    calibration never makes the gate more aggressive than its bf16
+    evidence, and a quantization that hurt it widens the band by
+    exactly the measured drift. The drift between arms is recomputed
+    here via ``ece_drift_from_report`` (never the report's embedded
+    copy) and recorded under "quant_drift" for audit.
+
+    Args:
+        report: output of ``eval/quant_calib.compare_bf16_vs_nvfp4``
+            with "bf16"/"nvfp4" arms each holding "ece" and "n".
+        n: provenance override for the record's sample count; defaults
+            to the probe arm's "n".
+
+    Returns:
+        A NEW calibration dict ready for ``TrustGateV2(calibration=...)``:
+        {"ece", "n", "quant_drift", "policy", "source"}.
+
+    Loud errors: missing/malformed arms surface from
+    ``ece_drift_from_report``; a probe arm whose ECE is outside
+    [0, 0.5] is rejected by the gate's own record guard.
+    """
+    from helioslm_v5.eval.quant_calib import ece_drift_from_report
+
+    base_arm = report.get("bf16")
+    if not isinstance(base_arm, dict) or "ece" not in base_arm:
+        raise ValueError(
+            "quant-calib report has no usable 'bf16' arm — cannot anchor "
+            "a calibration record to the unquantized measurement")
+    drift = ece_drift_from_report(report)
+    record = {
+        "ece": float(base_arm["ece"]),
+        "n": int(n if n is not None else base_arm.get("n", 0)),
+    }
+    # apply_quant_drift owns the widen-only policy: the band reflects
+    # max(bf16, nvfp4) ECE — a quantization that helped calibration
+    # never makes the gate more aggressive than its bf16 evidence.
+    return apply_quant_drift(record, drift)
 
 
 class TrustGateV2(Gate):

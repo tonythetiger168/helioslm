@@ -132,8 +132,39 @@ def teacher_overlap(model, ids, top_k):
     return sum(overlaps) / len(overlaps)
 
 
+@torch.no_grad()
+def indexer_prefill_stability(model, ids, top_k, n_trials=8, noise_std=0.05,
+                              seed=0):
+    """Per-layer prefill top-k stability of each learned indexer.
+
+    Runs ``prefill_stability`` (eval/sparse_stability.py) at every MLA
+    layer, against the layer's own latent cache — the same projection
+    path ``teacher_overlap`` uses. Returns {layer_index: stats dict}.
+    The probe is mechanical stability only (see the probe's honest
+    scope notes): a stable-but-wrong indexer scores 1.0 here.
+    """
+    from helioslm_v5.eval.sparse_stability import prefill_stability
+
+    store = _hidden_per_layer(model, ids)
+    stats = {}
+    with torch.no_grad():
+        for mla, hidden in store.items():
+            pos, _ = mla._resolve_positions(hidden, 0, None)
+            qn, qr, c, kr = mla._project_new_tokens(hidden, pos)
+            c = c.unsqueeze(1)
+            layer_idx = list(model.layers).index(
+                next(l for l in model.layers
+                     if getattr(l, "attention", None) is mla))
+            stats[layer_idx] = prefill_stability(
+                mla.indexer, hidden, c, top_k, n_trials=n_trials,
+                noise_std=noise_std, seed=seed)
+    return stats
+
+
 def distill_indexer(model, corpus_ids, steps=400, seq_len=32, batch_size=4,
-                    lr=3e-3, top_k=4, seed=1234, log_every=0):
+                    lr=3e-3, top_k=4, seed=1234, log_every=0,
+                    stability_probe=False, stability_trials=8,
+                    stability_noise=0.05):
     """Distill every learned-indexer layer against its own teacher.
 
     All non-indexer parameters are frozen (trunk bit-preserved). Returns a
@@ -150,6 +181,11 @@ def distill_indexer(model, corpus_ids, steps=400, seq_len=32, batch_size=4,
     eval_ids = _sample_windows(corpus_ids, 2, seq_len + 1, gen)
     loss0 = _distill_loss(model, mla_layers, eval_ids).item()
     ov0 = teacher_overlap(model, eval_ids, top_k)
+    stab0 = None
+    if stability_probe:
+        stab0 = indexer_prefill_stability(
+            model, eval_ids, top_k, n_trials=stability_trials,
+            noise_std=stability_noise, seed=seed)
 
     model.train()
     t0 = time.time()
@@ -165,7 +201,7 @@ def distill_indexer(model, corpus_ids, steps=400, seq_len=32, batch_size=4,
 
     loss1 = _distill_loss(model, mla_layers, eval_ids).item()
     ov1 = teacher_overlap(model, eval_ids, top_k)
-    return {
+    stats = {
         "layers": len(mla_layers),
         "steps": steps,
         "loss_initial": round(loss0, 4),
@@ -174,6 +210,15 @@ def distill_indexer(model, corpus_ids, steps=400, seq_len=32, batch_size=4,
         "teacher_overlap_final": round(ov1, 4),
         "wall_seconds": round(time.time() - t0, 1),
     }
+    if stability_probe:
+        stab1 = indexer_prefill_stability(
+            model, eval_ids, top_k, n_trials=stability_trials,
+            noise_std=stability_noise, seed=seed)
+        stats["stability_initial"] = {
+            k: round(v["mean_jaccard"], 4) for k, v in stab0.items()}
+        stats["stability_final"] = {
+            k: round(v["mean_jaccard"], 4) for k, v in stab1.items()}
+    return stats
 
 
 def _distill_loss(model, mla_layers, ids):
@@ -231,6 +276,8 @@ def main():
     ap.add_argument("--sparse-top-k", type=int, default=4)
     ap.add_argument("--lr", type=float, default=3e-3)
     ap.add_argument("--seed", type=int, default=1234)
+    ap.add_argument("--stability-probe", action="store_true",
+                    help="also measure prefill top-k stability before/after")
     args = ap.parse_args()
 
     if not os.path.exists(args.checkpoint):
@@ -252,7 +299,8 @@ def main():
     stats = distill_indexer(model, corpus, steps=args.steps,
                             seq_len=args.seq_len, batch_size=args.batch_size,
                             lr=args.lr, top_k=args.sparse_top_k,
-                            seed=args.seed, log_every=100)
+                            seed=args.seed, log_every=100,
+                            stability_probe=args.stability_probe)
     print("distill stats:", stats)
 
     payload = dict(ckpt)  # preserve original meta fields
