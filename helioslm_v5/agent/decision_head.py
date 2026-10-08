@@ -103,7 +103,12 @@ class DecisionHead(nn.Module):
                     if a is None:
                         labels[n].append(0.5)
                     elif isinstance(a, str):
+                        if a is None:
+                        labels[n].append(0.5)
+                    elif isinstance(a, str):
                         labels[n].append(_NOUL_IDX[a])
+                    else:
+                        labels[n].append(float(a))
                     else:
                         labels[n].append(float(a))
                 else:  # score: raw float target; a missing answer fills

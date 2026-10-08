@@ -74,3 +74,14 @@
 | HF token rotate（09-26 最終版 `hf_ZOye…`，chienhsinlin 帳號） | 完成 |
 | checkpoint HF 快照（`chienhsinlin/helioslm`：README+雙 pt+雙 json；`helioslm-toy` 亦有一份） | 完成 |
 | ep2 checkpoint 復原（重跑完成，loss 0.2693，已推 HF `chienhsinlin/helioslm`） | 完成 |
+
+## 第二條線：Colibri MoE 效率層（2026-10-05 至 10-08）
+
+RLCD 決策層主線之外，10/05-10/08 展開第二條線：Colibri 調研 → MoE
+專家卸載 → 本地決策引擎。已交付：TieredExpertCache / TopKRouter /
+SparseMoELayer / ExpertPrefetcher（examples/moe/）；CalibratedPrefetcher
+（v5.41，DecisionHead 做 prefetch、低信心拓寬 = TrustGate 推理層版本）；
+T40 3/3。已知限制：SparseMoELayer tiered forward 設計斷層（記錄）。
+兩線交叉點：prefetch miss = 真 outcome，RLCD Brier 項有真牙齒。
+RLCD-FT 結論：0.6B base 無 alignment 檢測 inductive bias，Level 1
+0.796 仍是全線最佳。
