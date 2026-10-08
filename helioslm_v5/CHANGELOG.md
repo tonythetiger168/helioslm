@@ -1,5 +1,17 @@
 # HeliosLM v5 Changelog
 
+## v5.42 (2026-10-08) - RSI Routes 2 + 6 Prototypes
+- agent/self_gen_env.py: AI-generated curriculum (Absolute Zero minimal
+  version) -- model generates expr/string tasks, shared grammar verifies
+  well-formedness, independent verify checks if the model can solve its
+  own task (training-value check, survey route 2)
+- agent/meta_prefetcher.py: meta-level improvement (survey route 6) --
+  CalibratedPrefetcher's own hi/lo thresholds adapt from prefetch
+  hit-rate outcome. Verified: converges stably, no false triggering
+- T41 3/3
+
+
+
 ## v5.44 (2026-10-08) - Prefill Stability + Quant-Calib Pipeline + Async EnvGRPO
 - `eval/sparse_stability.py`: `prefill_stability` — the v5.43 decode-step
   top-k self-consistency probe extended to EVERY query position (batch 0).
