@@ -49,7 +49,7 @@ def render(it):
 from transformers import BitsAndBytesConfig
 bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16,
                          bnb_4bit_quant_type="nf4", bnb_4bit_use_double_quant=True)
-tok = AutoTokenizer.from_pretrained("glimmer")
+tok = AutoTokenizer.from_pretrained("meta-models/Muse-Glimmer-30B")
 tok.pad_token = tok.eos_token
 YES = tok.encode("yes", add_special_tokens=False)[0]
 NO = tok.encode("no", add_special_tokens=False)[0]
