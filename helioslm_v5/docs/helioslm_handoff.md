@@ -85,3 +85,19 @@ T40 3/3。已知限制：SparseMoELayer tiered forward 設計斷層（記錄）�
 兩線交叉點：prefetch miss = 真 outcome，RLCD Brier 項有真牙齒。
 RLCD-FT 結論：0.6B base 無 alignment 檢測 inductive bias，Level 1
 0.796 仍是全線最佳。
+
+## RLCD-FT 線的結論（2026-10-09）
+
+三條路全試完，全到頂：
+1. 特徵工程：0.77-0.80（oracle select 0.796 是上界）
+2. Qwen3-0.6B RLCD-FT：0.513（base/mixed 均無 inductive bias，10/05 和
+   10/09 兩次重現）
+3. Glimmer-30B：17GB dense 超過 4060 8GB，未跑
+
+結論：到 Jev 0.911 的 0.14 差距是訓練規模的鴻溝，不是方法差距。
+open 可復現方法的誠實天花板 ~0.77。這是 RLCD-FT 線的乾淨收尾——
+它界定了 open 方法對商用檢測器的可達邊界。
+
+未來若有 24GB+ GPU：Qwen3.8-27B 或 GLM-5.3 的 RLCD-FT 是唯一的
+未試路徑（instruct 模型 + 訓練）。
+

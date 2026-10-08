@@ -1,5 +1,21 @@
 # HeliosLM v5 Changelog
 
+## v5.44 (2026-10-09) - RLCD-FT Final Verdict: The 0.911 Gap is Scale, Not Method
+- Qwen3-0.6B RLCD-FT rerun (10/09, non-thinking hybrid): test median
+  AUROC 0.513, train 0.514 -- identical to the 10/05 base-model result.
+  The mixed base+instruct weights carry NO alignment-detection inductive
+  bias in either mode. THREE paths now exhausted:
+  (1) feature engineering (TF-IDF / per-bench-select): 0.77-0.80 honest
+  ceiling; (2) small-model RLCD-FT: 0.51 (no inductive bias);
+  (3) large-model (Glimmer 17GB): exceeds 4060 8GB.
+- CONCLUSION: the 0.14 gap to Jev's 0.911 is a TRAINING-SCALE chasm,
+  not a methodological one. Open engineering methods top out at ~0.77;
+  0.911 is the territory of product-scale trained models. This is the
+  honest closing finding of the RLCD-FT line -- it bounds what open
+  reproducible methods can achieve against commercial detectors
+
+
+
 ## v5.43 (2026-10-08) - Vanguard 2 Result + Glimmer Script
 - Gated hybrid (soft convex weight per benchmark, cross-val learned):
   median 0.655 -- BELOW pure TF-IDF 0.774. Finding: oracle per-bench
