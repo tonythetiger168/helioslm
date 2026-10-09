@@ -600,3 +600,114 @@ class ExcelPlugin:
         ctx.register("excel.read", read)
         ctx.register("excel.write", write)
 
+class SearchPlugin:
+    """Local search over a corpus (no external API). For HF-integration
+    later, this wraps Tavily/Exa behind the same interface."""
+
+    def apply(self, ctx):
+        def search(query, corpus, top_k=5):
+            scored = [(sum(1 for w in query.lower().split() if w in doc.lower()),
+                       doc) for doc in corpus]
+            scored.sort(key=lambda x: -x[0])
+            results = [d for s, d in scored[:top_k] if s > 0]
+            ctx.effect("search", {"q": query[:40], "hits": len(results)},
+                       replay_fn=lambda p: True)
+            return {"results": results, "n": len(results)}
+        ctx.register("search.query", search)
+
+
+class WebSearchPlugin:
+    """Web search interface. Requires an API key (Tavily/Exa/Serp).
+    Records the key-name (not value) for audit."""
+
+    def __init__(self, provider="tavily", api_key_env=None):
+        self.provider, self.api_key_env = provider, api_key_env
+
+    def apply(self, ctx):
+        import os
+        def web_search(query, max_results=5):
+            key = os.environ.get(self.api_key_env) if self.api_key_env else None
+            if not key:
+                return {"error": f"no API key for {self.provider} "
+                        f"(set ${self.api_key_env})"}
+            # provider-specific call would go here; recorded for audit
+            ctx.effect("web_search", {"q": query[:40],
+                                      "provider": self.provider},
+                       replay_fn=lambda p: True)
+            return {"stub": True, "provider": self.provider,
+                    "note": "provider call not implemented -- "
+                            "interface ready"}
+        ctx.register("web.search", web_search)
+
+
+class PDFPlugin:
+    """PDF text extraction. Uses pypdf if installed, else stub."""
+
+    def apply(self, ctx):
+        def extract_text(path):
+            try:
+                from pypdf import PdfReader
+                r = PdfReader(path)
+                text = "\n".join(p.extract_text() or "" for p in r.pages[:20])
+                ctx.effect("pdf_extract", {"path": path[:50]},
+                           replay_fn=lambda p: True)
+                return {"text": text[:5000], "pages": len(r.pages)}
+            except ImportError:
+                return {"error": "pypdf not installed (pip install pypdf)"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        ctx.register("pdf.extract", extract_text)
+
+
+class SQLitePlugin:
+    """SQLite read/write, constrained to a db path."""
+
+    def __init__(self, db_path=":memory:"):
+        self.db_path = db_path
+
+    def apply(self, ctx):
+        import sqlite3
+        def query(sql, params=None):
+            conn = sqlite3.connect(self.db_path)
+            try:
+                cur = conn.execute(sql, params or [])
+                if sql.strip().upper().startswith("SELECT"):
+                    rows = cur.fetchall()
+                    cols = [d[0] for d in cur.description] if cur.description else []
+                    ctx.effect("sqlite_read", {"sql": sql[:60]},
+                               replay_fn=lambda p: True)
+                    return {"columns": cols, "rows": rows[:100]}
+                else:
+                    conn.commit()
+                    ctx.effect("sqlite_write", {"sql": sql[:60]},
+                               replay_fn=lambda p: True)
+                    return {"affected": cur.rowcount}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+            finally:
+                conn.close()
+        ctx.register("sqlite.query", query)
+
+
+class TemplatePlugin:
+    """Plugin scaffolding -- the 'new-plugin-template' analog."""
+
+    TEMPLATE = '''class {name}Plugin:
+    """{desc}"""
+
+    def apply(self, ctx):
+        def {name}_op(arg):
+            ctx.effect("{name}", {{"arg": str(arg)[:50]}},
+                       replay_fn=lambda p: True)
+            return {{"ok": True}}
+        ctx.register("{name}.op", {name}_op)
+'''
+
+    def apply(self, ctx):
+        def scaffold(name, desc):
+            code = self.TEMPLATE.format(name=name.lower(), desc=desc)
+            ctx.effect("scaffold", {"name": name},
+                       replay_fn=lambda p: True)
+            return {"code": code}
+        ctx.register("plugin.scaffold", scaffold)
+

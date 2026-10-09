@@ -1,5 +1,13 @@
 # HeliosLM v5 Changelog
 
+## v1.9 (2026-10-09) - common plugins batch 1 (local no-dep)
+- SearchPlugin (local corpus) / WebSearchPlugin (interface stub) /
+  PDFPlugin (pypdf) / SQLitePlugin (constrained db) / TemplatePlugin
+  (plugin scaffolding)
+- T51 4/4
+
+
+
 ## v1.9 (2026-10-09) - extended agent plugins
 - SQLitePlugin / GitHubPlugin / SearchPlugin / SlackPlugin / ExcelPlugin
   (CSV fallback). All degrade gracefully without tokens/network
