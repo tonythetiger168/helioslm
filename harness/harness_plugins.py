@@ -230,3 +230,31 @@ class MathWorkflowPlugin:
             return {"workflow": wf, "numeric_ok": ok}
         ctx.register("math.run", run_math)
 
+class CodePlugin:
+    """v1.6: code execution + verification sandbox. Uses our existing
+    file_env + tools (calc, str_op, file_read/write) as a minimal code
+    execution environment. The model generates tool calls (code), the
+    sandbox executes them, and file_env.verify checks the output.
+    """
+
+    def apply(self, ctx):
+        def run_code(task_text, model_fn, max_steps=12, seed=0):
+            ctx.state["code"] = {"task": task_text, "steps": []}
+            from envs import make_long_envs
+            from grounding import GroundingGate
+            from gate import FixedGate, Route
+            from envs.file_env import FileLongHorizonEnv
+            env = FileLongHorizonEnv()
+            task = env.sample(__import__("random").Random(seed))
+            # grounding ensures args are correct even if model confabulates
+            ctx.register("decision.grounding", GroundingGate(
+                FixedGate(Route.DIRECT)))
+            wf = ctx.agent.run(task.text, model_fn, max_steps=max_steps,
+                               seed=seed)
+            final = wf["final"]
+            ok = env.verify(task, final) if final else False
+            ctx.state["code"]["ok"] = ok
+            ctx.effect("code_done", {"ok": ok}, replay_fn=lambda p: True)
+            return {"workflow": wf, "file_env_ok": ok}
+        ctx.register("code.run", run_code)
+

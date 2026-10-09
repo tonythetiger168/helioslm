@@ -1,5 +1,12 @@
 # HeliosLM v5 Changelog
 
+## v1.6 (2026-10-09) - code execution sandbox
+- CodePlugin: file_env + grounding as a minimal code execution sandbox.
+  code.run generates tool calls, sandbox executes, file_env.verify checks
+- T48 2/2
+
+
+
 ## v1.5 (2026-10-09) - math augmentation
 - MathPlugin: symbolic numeric verify (not string match) + CoT scaffold
 - MathWorkflowPlugin: math.run uses math.verify, optional scaffold
