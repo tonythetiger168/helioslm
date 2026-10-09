@@ -148,8 +148,12 @@ def _search_image(query):
 
 
 def _search_video(query):
-    """Placeholder: return a sample video URL (Pixabay CDN)."""
-    return "https://cdn.pixabay.com/video/2023/10/22/186115-877653463_large.mp4"
+    """Video sources with CORS * (tested 2026-10-09): MDN interactive
+    examples (CC0 flower.mp4) + W3C test suite."""
+    return [
+        "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
+        "https://www.w3.org/2010/05/video/mediafiles/foreman-orig.mp4",
+    ]
 
 
 def _tts_audio(text, out_path="/tmp/tts.mp3"):
@@ -385,8 +389,12 @@ h1{{color:#0ff}}</style></head><body>
                 return {"response": reply, "confidence": 0.95,
                         "route": "MEDIA", "effects": 1, "backend": "media"}
         if any(k in msg_l for k in ("video", "影片", "视频", "play video")):
-            url = _search_video(msg)
-            reply = f'<video controls src="{url}" style="max-width:100%"></video>'
+            urls = _search_video(msg)
+            srcs = "".join(f'<source src="{u}">' for u in urls)
+            reply = (f'<video controls style="max-width:100%">'
+                     f'{srcs}'
+                     f'Your browser does not support the video tag.</video>'
+                     f'<br><small>sources: {len(urls)}</small>')
             _sessions.setdefault(sid, []).append(("user", msg))
             _sessions[sid].append(("assistant", reply))
             self.ctx.effect("media_vid", {"q": msg[:40]},
