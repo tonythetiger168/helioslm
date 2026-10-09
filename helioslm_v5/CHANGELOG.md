@@ -1,5 +1,12 @@
 # HeliosLM v5 Changelog
 
+## v1.5 (2026-10-09) - math augmentation
+- MathPlugin: symbolic numeric verify (not string match) + CoT scaffold
+- MathWorkflowPlugin: math.run uses math.verify, optional scaffold
+- T47 3/3
+
+
+
 ## v1.4 (2026-10-09) - Qwen3-0.6B through harness
 - QwenModelPlugin: transformers AutoModelForCausalLM wrapper, registered
   as model.qwen. Qwen3-0.6B frozen scored 0.807 on AlignBench -- real

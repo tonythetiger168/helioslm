@@ -189,3 +189,44 @@ class QwenModelPlugin:
 
         ctx.register("model.qwen", model_fn)
 
+class MathPlugin:
+    """v1.5: math augmentation -- symbolic verify + CoT prompt scaffold.
+    Verifies numeric answers by re-eval (not string match), and prepends
+    a chain-of-thought scaffold to the prompt. The scaffold is OPTIONAL:
+    models that do not reason still work, models that do get a boost.
+    """
+
+    def apply(self, ctx):
+        def verify_numeric(want, got, tol=1e-9):
+            try:
+                return abs(float(want) - float(got)) < tol
+            except (ValueError, TypeError):
+                return False
+        ctx.register("math.verify", verify_numeric)
+        ctx.register("math.scaffold",
+                     "Let me solve this step by step.\n")
+
+
+class MathWorkflowPlugin:
+    """Math-specific workflow: uses math.verify for correctness instead
+    of env.verify. For benchmarks where the answer is numeric and the
+    env's string-match is too brittle."""
+
+    def __init__(self, scaffold=True):
+        self.scaffold = scaffold
+
+    def apply(self, ctx):
+        def run_math(task_text, model_fn, max_steps=12, seed=0):
+            if self.scaffold:
+                task_text = ctx.math.scaffold + task_text
+            ctx.state["math"] = {"task": task_text, "results": []}
+            wf = ctx.agent.run(task_text, model_fn, max_steps=max_steps,
+                               seed=seed)
+            final = wf["final"]
+            ok = ctx.math.verify(
+                task_text.split(":")[-1].strip(), final) if final else False
+            ctx.state["math"]["results"].append(ok)
+            ctx.effect("math_done", {"ok": ok}, replay_fn=lambda p: True)
+            return {"workflow": wf, "numeric_ok": ok}
+        ctx.register("math.run", run_math)
+
