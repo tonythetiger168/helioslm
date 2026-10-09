@@ -1,5 +1,17 @@
 # HeliosLM v5 Changelog
 
+## v5.45 (2026-10-09) - helios-harness: Cordis-style plugin shell
+- harness/harness_core.py: Context (DI + reversible effects + dotted
+  namespace) -- temporal: replay-verified effects; spatial: dependency
+  injection, Cordis-inspired
+- harness/harness_plugins.py: ModelPlugin / ToolPlugin / SessionPlugin
+  / DecisionPlugin (grounding+trust+prefetcher) / LoopPlugin -- wraps
+  existing modules, no reimplementation
+- helioslm_v5/tests/test_harness.py: T42 4/4 (DI, effect replay, plugin
+  composition, grounded loop through the harness)
+
+
+
 ## v5.44 (2026-10-09) - RLCD-FT Final Verdict: The 0.911 Gap is Scale, Not Method
 - Qwen3-0.6B RLCD-FT rerun (10/09, non-thinking hybrid): test median
   AUROC 0.513, train 0.514 -- identical to the 10/05 base-model result.
