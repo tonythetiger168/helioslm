@@ -82,7 +82,7 @@ def _resolve_backend(ctx):
                 headers={"Content-Type": "application/json",
                          "Authorization": f"Bearer {key}"})
             try:
-                r = json.loads(_u.request.urlopen(req, timeout=60).read())
+                r = json.loads(_u.urlopen(req, timeout=60).read())
                 return r["choices"][0]["message"]["content"] or ""
             except Exception as e:
                 return f"[api error: {str(e)[:100]}]"

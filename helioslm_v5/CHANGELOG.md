@@ -1,5 +1,11 @@
 # HeliosLM v5 Changelog
 
+## v1.29b (2026-10-09) - fix api backend urlopen
+- web_ui: _u.request.urlopen -> _u.urlopen (module attribute error
+  broke api backend chat)
+
+
+
 ## v1.29 (2026-10-09) - API-first backend + mixed SFT for open chat
 - web_ui: backend priority API > qwen > smoke (API models are
   instruction-tuned; our mid/Qwen are tool-protocol models that
