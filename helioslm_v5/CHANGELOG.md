@@ -1,5 +1,12 @@
 # HeliosLM v5 Changelog
 
+## v1.10 (2026-10-09) - GitHub + PostgreSQL plugins
+- GitHubPlugin: repo info / list issues / create issue (TrustGate-gated)
+- PostgresPlugin: read/write via psycopg2 or pg8000
+- T52 3/3
+
+
+
 ## v1.9 (2026-10-09) - common plugins batch 1 (local no-dep)
 - SearchPlugin (local corpus) / WebSearchPlugin (interface stub) /
   PDFPlugin (pypdf) / SQLitePlugin (constrained db) / TemplatePlugin

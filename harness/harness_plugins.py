@@ -711,3 +711,95 @@ class TemplatePlugin:
             return {"code": code}
         ctx.register("plugin.scaffold", scaffold)
 
+class GitHubPlugin:
+    """GitHub repo operations. Requires GITHUB_TOKEN env. Read-only by
+    default; write ops (create issue) are gated by TrustGate."""
+
+    def apply(self, ctx):
+        import os
+        def _api(path, method="GET", body=None):
+            token = os.environ.get("GITHUB_TOKEN")
+            if not token:
+                return {"error": "GITHUB_TOKEN not set"}
+            import urllib.request
+            req = urllib.request.Request(
+                "https://api.github.com" + path,
+                method=method,
+                data=json.dumps(body).encode() if body else None,
+                headers={"Authorization": f"token {token}",
+                         "Accept": "application/vnd.github.v3+json",
+                         "User-Agent": "helios-harness"})
+            try:
+                r = json.loads(urllib.request.urlopen(req, timeout=30).read())
+                ctx.effect("github", {"path": path[:50], "method": method},
+                           replay_fn=lambda p: True)
+                return r
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        def get_repo(owner, repo):
+            return _api(f"/repos/{owner}/{repo}")
+        def list_issues(owner, repo, state="open", n=10):
+            r = _api(f"/repos/{owner}/{repo}/issues?state={state}&per_page={n}")
+            if isinstance(r, list):
+                return [{"number": i["number"], "title": i["title"]}
+                        for i in r if "pull_request" not in i]
+            return r
+        def create_issue(owner, repo, title, body=""):
+            decision = ctx._services.get("decision.trust")
+            if decision:
+                from schema import ToolCall
+                from gate import Route
+                route = decision.decide(
+                    ToolCall("github", {"op": "create_issue"}),
+                    {"task": title})
+                if route.value == "ESCALATE":
+                    return {"error": "blocked by TrustGate"}
+            return _api(f"/repos/{owner}/{repo}/issues", "POST",
+                        {"title": title, "body": body})
+        ctx.register("github.get_repo", get_repo)
+        ctx.register("github.list_issues", list_issues)
+        ctx.register("github.create_issue", create_issue)
+
+
+class PostgresPlugin:
+    """PostgreSQL read/write. Requires psycopg2 or pg80000."""
+
+    def __init__(self, dsn=None, dsn_env="DATABASE_URL"):
+        self.dsn, self.dsn_env = dsn, dsn_env
+
+    def apply(self, ctx):
+        import os
+        def query(sql, params=None):
+            dsn = self.dsn or os.environ.get(self.dsn_env)
+            if not dsn:
+                return {"error": f"no DSN (set ${self.dsn_env})"}
+            try:
+                import psycopg2
+                conn = psycopg2.connect(dsn)
+            except ImportError:
+                try:
+                    import pg8000.dbapi as pg
+                    conn = pg.connect(dsn)
+                except ImportError:
+                    return {"error": "psycopg2 or pg8000 required"}
+            try:
+                cur = conn.cursor()
+                cur.execute(sql, params or [])
+                if sql.strip().upper().startswith("SELECT"):
+                    rows = cur.fetchall()
+                    cols = [d.name if hasattr(d, "name") else d[0]
+                            for d in cur.description]
+                    ctx.effect("pg_read", {"sql": sql[:60]},
+                               replay_fn=lambda p: True)
+                    return {"columns": cols, "rows": [list(r) for r in rows[:100]]}
+                else:
+                    conn.commit()
+                    ctx.effect("pg_write", {"sql": sql[:60]},
+                               replay_fn=lambda p: True)
+                    return {"affected": cur.rowcount}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+            finally:
+                conn.close()
+        ctx.register("postgres.query", query)
+
