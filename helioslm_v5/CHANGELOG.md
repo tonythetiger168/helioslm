@@ -1,5 +1,11 @@
 # HeliosLM v5 Changelog
 
+## v1.38 (2026-10-09) - video sources with audio priority
+- web_ui: _search_video returns foreman (W3C, speech audio) first,
+  BigBuckBunny (blender mirror, music) second, flower (silent) last
+
+
+
 ## v1.37 (2026-10-09) - audio mime fix + tts input clean
 - web_ui: /audio/ endpoint returns correct mime (wav vs mp3) + Accept-
   Ranges; TTS input strips trigger words (speak/say/play) so the

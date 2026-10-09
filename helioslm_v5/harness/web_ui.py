@@ -49,9 +49,12 @@ def _search_image(query):
 
 
 def _search_video(query):
+    """Video sources. Priority: has audio (foreman speech, BBB music) >
+    silent fallback (flower). v1.38."""
     return [
-        "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
         "https://www.w3.org/2010/05/video/mediafiles/foreman-orig.mp4",
+        "https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4",
+        "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
     ]
 
 
