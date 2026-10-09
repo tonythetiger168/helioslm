@@ -1,5 +1,16 @@
 # HeliosLM v5 Changelog
 
+## v1.26 (2026-10-09) - chat backend resolution + UI polish
+- web_ui: backend priority qwen-local > API (OPENAI_BASE+KEY) > smoke
+  echo. Chat replies carry real confidence (length-based heuristic for
+  now; API self-consistency TODO). UI shows backend name, tool-style
+  effect count line
+- smoke model now echoes user input (conversational feel)
+- /backend endpoint reports resolved backend
+- T68
+
+
+
 ## v1.25 (2026-10-09) - web chat (calibrated)
 - web_ui: /chat endpoint + HTML chat UI (green terminal style). Chat
   uses ChatSession; each reply carries confidence badge (green>=0.7,
