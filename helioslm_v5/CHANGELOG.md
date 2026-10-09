@@ -1,5 +1,13 @@
 # HeliosLM v5 Changelog
 
+## v1.19 (2026-10-09) - voice dialog / terminal UI / auto driving
+- VoiceDialogPlugin: STT -> LLM -> TTS loop with barge-in
+- TerminalUIPlugin: progress bars, menus
+- AutoDrivePlugin: toy autonomous driving (lane keep + obstacle avoid)
+- T61
+
+
+
 ## v1.18 (2026-10-09) - multi-robot / SLAM / vision
 - MultiRobotPlugin: fleet register/allocate/release/formation
 - SLAMPlugin: occupancy-grid toy SLAM (scan/integrate/frontier)

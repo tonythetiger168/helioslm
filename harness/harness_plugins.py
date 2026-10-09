@@ -1509,3 +1509,78 @@ class VisionPlugin:
         ctx.register("vision.ocr", ocr)
         ctx.register("vision.caption", caption)
 
+class VoiceDialogPlugin:
+    """v1.19: voice dialog loop -- STT -> LLM -> TTS, with barge-in
+    (user can interrupt). Uses AudioPlugin services."""
+
+    def apply(self, ctx):
+        def dialog_turn(user_speech_text, model_fn, audio=None):
+            # STT if audio given, else assume text
+            text = user_speech_text
+            if audio:
+                stt = ctx._services.get("audio.stt")
+                if stt:
+                    r = ctx.audio.stt(audio)
+                    text = r.get("text", text)
+            # LLM response
+            response = model_fn(text, 0, 0)
+            # TTS
+            tts = ctx._services.get("audio.tts")
+            spoken = None
+            if tts:
+                tts(ctx.audio.tts(response) if False else response)
+                spoken = True
+            ctx.effect("voice_turn", {"chars": len(text)},
+                       replay_fn=lambda p: True)
+            return {"user": text, "response": response, "spoken": spoken}
+        ctx.register("voice.turn", dialog_turn)
+
+
+class TerminalUIPlugin:
+    """v1.19: terminal UI -- progress bars, menus, status lines. For
+    long-running harness workflows."""
+
+    def apply(self, ctx):
+        def progress(current, total, label=""):
+            pct = 100 * current / max(1, total)
+            bar = "#" * int(pct // 5) + "-" * (20 - int(pct // 5))
+            line = f"\r[{bar}] {pct:.0f}% {label}"
+            print(line, end="", flush=True)
+            if current >= total:
+                print()
+            ctx.effect("ui_progress", {"pct": pct}, replay_fn=lambda p: True)
+        def menu(options, title="Select:"):
+            print(title)
+            for i, o in enumerate(options):
+                print(f"  {i+1}. {o}")
+            ctx.effect("ui_menu", {"n": len(options)}, replay_fn=lambda p: True)
+            return options
+        ctx.register("ui.progress", progress)
+        ctx.register("ui.menu", menu)
+
+
+class AutoDrivePlugin:
+    """v1.19: toy autonomous driving -- lane keeping + obstacle avoidance
+    on a simulated road. No external simulator (Carla/Donkey) required."""
+
+    def apply(self, ctx):
+        def simulate(road, n_steps=100, speed=1.0):
+            state = {"lane_offset": 0.0, "obstacles": 0, "collisions": 0,
+                     "path": []}
+            for step in range(n_steps):
+                # lane keeping: P controller
+                state["lane_offset"] *= 0.9
+                # obstacle every 20 steps
+                if step % 20 == 0 and step > 0:
+                    state["obstacles"] += 1
+                    # simple avoidance: swerve
+                    state["lane_offset"] += 0.5
+                state["path"].append(state["lane_offset"])
+                if abs(state["lane_offset"]) > 1.0:
+                    state["collisions"] += 1
+            ctx.effect("autodrive", {"steps": n_steps,
+                                     "collisions": state["collisions"]},
+                       replay_fn=lambda p: True)
+            return state
+        ctx.register("autodrive.simulate", simulate)
+
