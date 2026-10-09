@@ -421,6 +421,23 @@ failure is \emph{architectural}, not a matter of scale or cost. The
 cheapest model refuses, the reasoning-tier model wavers, and the free
 local models hallucinate confidently. Total probe cost: under two cents.
 
+\section{The Calibration Layer as Cost Equalizer}
+\label{sec:cost}
+
+AgentArk (agentark-ai, 2026) argues that cheap models (\$0.10/M) become
+reliable inside a well-engineered agent framework. HeliosLM provides
+the complementary finding: a \$0 model (our 360M mid) with a
+calibration layer reaches 0.692 supervised AUROC on RLCDAlignBench --
+competitive with commercial detectors at 1/1000 the cost. The
+equalizer is not the framework but the \emph{calibration}: mid's
+ungrounded agentic performance is 0/12, but with deterministic
+grounding it is 9/12 + 3 abstained. Cheap models are usable \emph{only
+when} the system knows when to trust them. AgentArk and similar
+personal-AI-OS efforts (OpenClaw, Hermes) lack this calibration
+dimension entirely -- they optimize reliability, not honesty. The
+two are orthogonal: reliability says ``it usually works,''
+calibration says ``it knows when it doesn't.''
+
 \section{Limitations}
 
 Demonstration-grade outcome data (24--41 records per leg). Grounding

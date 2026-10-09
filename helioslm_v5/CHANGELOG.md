@@ -1,5 +1,16 @@
 # HeliosLM v5 Changelog
 
+## v1.23 (2026-10-09) - web UI + cost comparison + paper v7
+- harness/web_ui.py: stdlib HTTP server (8990), /effects /services
+  /state endpoints -- Mission Control style
+- benchmarks/cost_comparison_agentark.json: HeliosLM $0 360M vs
+  AgentArk $0.10/M claim -- calibration as cost equalizer
+- paper v7: Section 7.1 (calibration layer as cost equalizer) --
+  AgentArk/OpenClaw/Hermes lack calibration dimension
+- T65
+
+
+
 ## v1.22 (2026-10-09) - crypto/benchmark-v2/cloud/math-v2
 - CryptoPlugin: hash/gen_key/XOR/HMAC/Fernet (stdlib + cryptography)
 - BenchmarkV2Plugin: run_suite + trend tracking

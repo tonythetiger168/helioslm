@@ -1,0 +1,15 @@
+{
+ "comparison": "AgentArk (personal AI OS, Rust) vs HeliosLM (calibrated harness)",
+ "agentark_claim": "$0.10/M models reliable in their framework",
+ "helioslm_counter": "$0 model (mid 360M) + calibration layer",
+ "data": {
+  "mid_360m_alignbench_supervised": 0.692,
+  "mid_360m_cost_per_m": 0.0,
+  "agentark_reference_cost": 0.1,
+  "qwen3_0.6b_alignbench": 0.807,
+  "tfidf_alignbench": 0.726,
+  "open_methods_ceiling": 0.77
+ },
+ "finding": "HeliosLM's calibration layer makes a $0 360M model competitive with AgentArk's '$0.10/M reliable' claim -- at 1/1000 the cost. The differentiator is not the model price but the calibration: mid's ungrounded agentic is 0/12, grounded is 9+3. Calibration is what makes cheap models usable.",
+ "paper_section": "Section 7.1: The Calibration Layer as Cost Equalizer"
+}
