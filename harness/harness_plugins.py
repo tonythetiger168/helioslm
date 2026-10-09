@@ -444,3 +444,159 @@ class TimePlugin:
         ctx.register("time.now", now)
         ctx.register("time.utc", utc)
 
+class SQLitePlugin:
+    """Query/exec on a SQLite db (stdlib sqlite3)."""
+
+    def __init__(self, db_path=":memory:"):
+        self.db_path = db_path
+
+    def apply(self, ctx):
+        import sqlite3
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        def query(sql, params=None):
+            try:
+                cur = conn.execute(sql, params or [])
+                rows = [dict(r) for r in cur.fetchall()]
+                ctx.effect("sqlite_query", {"sql": sql[:60]},
+                           replay_fn=lambda p: True)
+                return {"rows": rows}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        def execute(sql, params=None):
+            try:
+                conn.execute(sql, params or [])
+                conn.commit()
+                return {"ok": True}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        ctx.register("sqlite.query", query)
+        ctx.register("sqlite.execute", execute)
+
+
+class GitHubPlugin:
+    """GitHub ops via REST API (like our hf_upload pattern)."""
+
+    def __init__(self, token=None):
+        self.token = token
+
+    def apply(self, ctx):
+        import json as _json, os, urllib.request
+        token = self.token or os.environ.get("GITHUB_TOKEN")
+        def api_call(method, path, body=None):
+            if not token:
+                return {"error": "no GITHUB_TOKEN"}
+            req = urllib.request.Request(
+                "https://api.github.com" + path,
+                method=method,
+                data=_json.dumps(body).encode() if body else None,
+                headers={"Authorization": f"token {token}",
+                         "Accept": "application/vnd.github+json",
+                         "Content-Type": "application/json"})
+            try:
+                r = urllib.request.urlopen(req, timeout=30)
+                ctx.effect("github", {"path": path[:60]},
+                           replay_fn=lambda p: True)
+                return _json.loads(r.read())
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        def get_repo(owner, repo):
+            return api_call("GET", f"/repos/{owner}/{repo}")
+        def create_issue(owner, repo, title, body=""):
+            return api_call("POST", f"/repos/{owner}/{repo}/issues",
+                            {"title": title, "body": body})
+        ctx.register("github.get_repo", get_repo)
+        ctx.register("github.create_issue", create_issue)
+
+
+class SearchPlugin:
+    """Web search via a simple DuckDuckGo scrape (no API key)."""
+
+    def apply(self, ctx):
+        import urllib.request, urllib.parse, re
+        def search(query, n=5):
+            try:
+                url = "https://html.duckduckgo.com/html/?q=" +                     urllib.parse.quote(query)
+                req = urllib.request.Request(url, headers={
+                    "User-Agent": "Mozilla/5.0"})
+                html = urllib.request.urlopen(req, timeout=15).read().decode()
+                titles = re.findall(r'<a[^>]*class="result__a"[^>]*>(.*?)</a>',
+                                    html)[:n]
+                ctx.effect("search", {"q": query[:40]},
+                           replay_fn=lambda p: True)
+                return {"results": [re.sub(r"<[^>]+>", "", t) for t in titles]}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        ctx.register("search.web", search)
+
+
+class SlackPlugin:
+    """Slack message posting (needs bot token)."""
+
+    def __init__(self, token=None, channel=None):
+        self.token, self.channel = token, channel
+
+    def apply(self, ctx):
+        import json as _json, os, urllib.request
+        token = self.token or os.environ.get("SLACK_TOKEN")
+        def post(text, channel=None):
+            ch = channel or self.channel
+            if not token or not ch:
+                return {"error": "no SLACK_TOKEN or channel"}
+            req = urllib.request.Request(
+                "https://slack.com/api/chat.postMessage",
+                data=_json.dumps({"channel": ch, "text": text}).encode(),
+                headers={"Authorization": f"Bearer {token}",
+                         "Content-Type": "application/json"})
+            try:
+                r = urllib.request.urlopen(req, timeout=15)
+                ctx.effect("slack", {"ch": ch[:20]},
+                           replay_fn=lambda p: True)
+                return _json.loads(r.read())
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        ctx.register("slack.post", post)
+
+
+class ExcelPlugin:
+    """Excel read/write via openpyxl (if installed) or CSV fallback."""
+
+    def __init__(self, path=None):
+        self.path = path
+
+    def apply(self, ctx):
+        def read(path=None):
+            p = path or self.path
+            try:
+                import openpyxl
+                wb = openpyxl.load_workbook(p)
+                ws = wb.active
+                rows = [[str(c.value) for c in row] for row in ws.iter_rows()]
+                ctx.effect("excel_read", {"path": (p or "")[:40]},
+                           replay_fn=lambda p2: True)
+                return {"rows": rows[:100]}
+            except ImportError:
+                import csv
+                with open(p, newline="", encoding="utf-8") as f:
+                    return {"rows": list(csv.reader(f))[:100]}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        def write(rows, path=None):
+            p = path or self.path
+            try:
+                import openpyxl
+                wb = openpyxl.Workbook()
+                ws = wb.active
+                for r in rows:
+                    ws.append(r)
+                wb.save(p)
+            except ImportError:
+                import csv
+                with open(p, "w", newline="", encoding="utf-8") as f:
+                    csv.writer(f).writerows(rows)
+            ctx.effect("excel_write", {"path": (p or "")[:40]},
+                       replay_fn=lambda p2: True)
+            return {"ok": True, "rows": len(rows)}
+        ctx.register("excel.read", read)
+        ctx.register("excel.write", write)
+

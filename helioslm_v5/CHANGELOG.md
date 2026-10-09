@@ -1,5 +1,12 @@
 # HeliosLM v5 Changelog
 
+## v1.9 (2026-10-09) - extended agent plugins
+- SQLitePlugin / GitHubPlugin / SearchPlugin / SlackPlugin / ExcelPlugin
+  (CSV fallback). All degrade gracefully without tokens/network
+- T51 5/5
+
+
+
 ## v1.8 (2026-10-09) - DeepSeek-harness style agent plugins
 - MemoryPlugin (ExperienceStore wrapper) / TerminalPlugin (gated) /
   FetchPlugin / FilesystemPlugin (path-escape blocked) / TimePlugin
