@@ -158,3 +158,34 @@ class MidModelPlugin:
 
         ctx.register("model.mid", model_fn)
 
+class QwenModelPlugin:
+    """v1.4: Qwen3-0.6B as a harness model_fn. Uses transformers
+    AutoModelForCausalLM (the hand-rolled runner stays for benchmarks).
+    Qwen3-0.6B frozen scored 0.807 on AlignBench -- usable as a real
+    decision-capable model in the harness."""
+
+    def __init__(self, model_dir="qwen"):
+        self.model_dir = model_dir
+
+    def apply(self, ctx):
+        import os
+        if not os.path.exists(self.model_dir):
+            ctx.register("model.qwen", None)
+            return
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        tok = AutoTokenizer.from_pretrained(self.model_dir)
+        model = AutoModelForCausalLM.from_pretrained(
+            self.model_dir, torch_dtype=torch.bfloat16).eval()
+
+        def model_fn(prompt, seed, step, max_new=96):
+            enc = tok(prompt, return_tensors="pt", truncation=True,
+                      max_length=900)
+            with torch.no_grad():
+                out = model.generate(**enc, max_new_tokens=max_new,
+                                     do_sample=False, pad_token_id=tok.eos_token_id)
+            return tok.decode(out[0][enc["input_ids"].shape[1]:],
+                              skip_special_tokens=True)
+
+        ctx.register("model.qwen", model_fn)
+

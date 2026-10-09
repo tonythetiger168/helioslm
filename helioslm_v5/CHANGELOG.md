@@ -1,5 +1,13 @@
 # HeliosLM v5 Changelog
 
+## v1.4 (2026-10-09) - Qwen3-0.6B through harness
+- QwenModelPlugin: transformers AutoModelForCausalLM wrapper, registered
+  as model.qwen. Qwen3-0.6B frozen scored 0.807 on AlignBench -- real
+  decision-capable model in the harness
+- T46: loads + chat mode (im_start template)
+
+
+
 ## v1.3 (2026-10-09) - real mid model through harness
 - MidModelPlugin: loads paired mid_sft_v5.33.pt + .tok.json as
   model.mid (v5.33 pairing discipline). End-to-end: real model_fn
