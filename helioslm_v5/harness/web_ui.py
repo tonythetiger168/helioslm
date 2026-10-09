@@ -169,65 +169,121 @@ def _tts_audio(text, out_path="/tmp/tts.mp3"):
             return None
 
 
-_CHAT_HTML = """<!DOCTYPE html><html><head><title>helios-chat</title>
+_CHAT_HTML = """<!DOCTYPE html><html><head><title>helios-harness</title>
 <style>
-body{font-family:monospace;background:#0a0a0a;color:#0f0;padding:1em;max-width:900px;margin:auto}
-h1{color:#0ff;font-size:1.2em}#backend{color:#888;font-size:0.7em}
-#log{height:420px;overflow-y:auto;border:1px solid#0f0;padding:8px;margin-bottom:8px}
-.msg{margin:6px 0;padding:4px 8px;border-left:3px solid}
-.user{border-color:#0ff;background:#001a1a}
-.assistant{border-color:#0f0;background:#001a00}
-.tool{border-color:#fa0;background:#1a1000;font-size:0.85em;color:#fa0}
-.badge{float:right;font-weight:bold}
-input{width:70%;background:#111;color:#0f0;border:1px solid#0f0;padding:8px;font-family:monospace;font-size:1em}
-button{background:#0f0;color:#000;border:none;padding:8px 16px;cursor:pointer;font-family:monospace;font-size:1em}
-.conf-high{color:#0f0}.conf-med{color:#ff0}.conf-low{color:#f00}.conf-none{color:#888}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'Segoe UI',monospace,sans-serif;background:#0d1117;color:#c9d1d9;height:100vh;display:flex;overflow:hidden}
+/* left sidebar */
+#sidebar{width:220px;background:#010409;border-right:1px solid#21262d;display:flex;flex-direction:column;padding:12px}
+#sidebar .brand{color:#58a6ff;font-weight:bold;font-size:1.1em;margin-bottom:16px}
+#sidebar .section{color:#8b949e;font-size:0.75em;text-transform:uppercase;margin:12px 0 6px}
+#sidebar .item{padding:6px 10px;border-radius:6px;cursor:pointer;color:#c9d1d9;font-size:0.9em}
+#sidebar .item:hover{background:#161b22}
+#sidebar .item.active{background:#1f6feb;color:#fff}
+#sidebar .spacer{flex:1}
+#sidebar .backend{font-size:0.75em;color:#8b949e}
+/* main */
+#main{flex:1;display:flex;flex-direction:column}
+#header{padding:10px 16px;border-bottom:1px solid#21262d;display:flex;align-items:center;gap:12px}
+#header h1{font-size:1em;color:#c9d1d9;font-weight:600}
+#header .badge{font-size:0.75em;padding:2px 8px;border-radius:10px}
+.badge.high{background:#238636;color:#fff}
+.badge.med{background:#9e6a03;color:#fff}
+.badge.low{background:#da3633;color:#fff}
+.badge.none{background:#30363d;color:#8b949e}
+/* chat */
+#chat{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.msg{max-width:75%;padding:10px 14px;border-radius:8px;line-height:1.5;font-size:0.92em}
+.msg.user{align-self:flex-end;background:#1f6feb;color:#fff}
+.msg.assistant{align-self:flex-start;background:#161b22;border:1px solid#30363d}
+.msg.tool{align-self:flex-start;background:#0d1117;border:1px solid#21262d;font-size:0.8em;color:#8b949e;font-family:monospace}
+.msg .meta{font-size:0.7em;opacity:0.7;margin-top:4px}
+.msg img,.msg video,.msg audio{max-width:100%;border-radius:6px;margin-top:6px}
+/* input */
+#inputbar{padding:12px 16px;border-top:1px solid#21262d;display:flex;gap:8px}
+#q{flex:1;background:#0d1117;border:1px solid#30363d;border-radius:8px;color:#c9d1d9;padding:10px 14px;font-size:0.95em;outline:none}
+#q:focus{border-color:#1f6feb}
+#sendbtn{background:#238636;color:#fff;border:none;border-radius:8px;padding:10px 20px;cursor:pointer;font-size:0.95em}
+#sendbtn:hover{background:#2ea043}
+/* right panel */
+#right{width:260px;background:#010409;border-left:1px solid#21262d;padding:12px;overflow-y:auto;font-size:0.8em}
+#right .section{color:#8b949e;font-size:0.72em;text-transform:uppercase;margin:10px 0 6px}
+#right .effect{padding:4px 8px;border-bottom:1px solid#161b22;font-family:monospace;color:#8b949e}
+#right .effect .id{color:#58a6ff}
 </style></head><body>
-<h1>helios-chat <span id="backend"></span></h1>
-<div id="log"></div>
-<input id="q" placeholder="Ask something..." autofocus>
-<button onclick="send()">Send</button>
+<div id="sidebar">
+  <div class="brand">helios-harness</div>
+  <div class="section">Session</div>
+  <div class="item active" id="sid-label">session</div>
+  <div class="section">Backend</div>
+  <div class="item" id="backend-label">...</div>
+  <div class="spacer"></div>
+  <div class="backend" id="stats"></div>
+</div>
+<div id="main">
+  <div id="header"><h1>Chat</h1><span class="badge none" id="backend-badge">no cal</span></div>
+  <div id="chat"></div>
+  <div id="inputbar">
+    <input id="q" placeholder="Ask anything..." autofocus>
+    <button id="sendbtn" onclick="send()">Send</button>
+  </div>
+</div>
+<div id="right">
+  <div class="section">Effects audit</div>
+  <div id="effects-list"></div>
+</div>
 <script>
 let sid = Math.random().toString(36).slice(2,8);
-function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
-function add(cls, html) {
-  let d=document.createElement('div'); d.className='msg '+cls; d.innerHTML=html;
-  document.getElementById('log').appendChild(d);
-  document.getElementById('log').scrollTop=1e6;
+document.getElementById('sid-label').textContent = 'sid: ' + sid;
+function esc(x){return x.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function addMsg(cls, html, meta) {
+  let d = document.createElement('div'); d.className = 'msg ' + cls; d.innerHTML = html;
+  if (meta) { let m = document.createElement('div'); m.className='meta'; m.innerHTML = meta; d.appendChild(m); }
+  document.getElementById('chat').appendChild(d);
+  document.getElementById('chat').scrollTop = 1e6;
 }
-function badge(c) {
-  if(c==null) return '<span class="badge conf-none">[no cal]</span>';
-  let cls=c>=0.7?'conf-high':c>=0.3?'conf-med':'conf-low';
-  return `<span class="badge ${cls}">[${c.toFixed(2)}]</span>`;
+function confBadge(c) {
+  if (c == null) return '<span class="badge none">no cal</span>';
+  let cls = c>=0.7?'high':c>=0.3?'med':'low';
+  return `<span class="badge ${cls}">${c.toFixed(2)}</span>`;
+}
+function loadEffects() {
+  fetch('/effects').then(r=>r.json()).then(d=>{
+    let el = document.getElementById('effects-list');
+    el.innerHTML = d.effects.slice(-15).reverse().map(e =>
+      `<div class="effect"><span class="id">${e.id}</span> ${e.kind}</div>`).join('');
+    document.getElementById('stats').textContent = d.n + ' effects total';
+  });
 }
 async function send() {
-  let q=document.getElementById('q').value; if(!q) return;
-  document.getElementById('q').value='';
-  add('user','<b>you</b>: '+esc(q));
-  add('assistant','<i>thinking...</i>');
+  let q = document.getElementById('q').value; if (!q) return;
+  document.getElementById('q').value = '';
+  addMsg('user', esc(q));
+  addMsg('assistant', '<i>thinking...</i>');
   try {
-    let r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({sid:sid,message:q})});
-    let d=await r.json();
-    document.getElementById('log').lastChild.remove();
-    if(d.error){add('assistant','<b>error</b>: '+esc(d.error));return;}
-    let resp = d.response;
-    if (resp.startsWith('<img') || resp.startsWith('<video') || resp.startsWith('<audio')) {
-      add('assistant', `<b>agent</b> ${badge(d.confidence)}:<br>${resp}`);
+    let r = await fetch('/chat', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({sid:sid, message:q})});
+    let d = await r.json();
+    document.getElementById('chat').lastChild.remove();
+    if (d.error) { addMsg('assistant', '<b>error</b>: ' + esc(d.error)); return; }
+    document.getElementById('backend-badge').outerHTML = confBadge(d.confidence).replace('class="badge','id="backend-badge" class="badge');
+    let body = d.response;
+    if (body.startsWith('<img') || body.startsWith('<video') || body.startsWith('<audio')) {
+      addMsg('assistant', body, `backend: ${d.backend} | effects +${d.effects}`);
     } else {
-      add('assistant',`<b>agent</b> ${badge(d.confidence)}: ${esc(resp)}`);
+      addMsg('assistant', esc(body), `backend: ${d.backend} | effects +${d.effects}`);
     }
-    if(d.route==='ESCALATE') add('tool','<b>trust</b>: ESCALATED (low confidence)');
-    add('tool',`<b>effects</b>: +${d.effects} | <b>backend</b>: ${d.backend}`);
+    loadEffects();
   } catch(e) {
-    document.getElementById('log').lastChild.remove();
-    add('assistant','<b>error</b>: '+esc(String(e)));
+    document.getElementById('chat').lastChild.remove();
+    addMsg('assistant', '<b>error</b>: ' + esc(String(e)));
   }
 }
-document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')send()});
-fetch('/backend').then(r=>r.json()).then(d=>{
-  document.getElementById('backend').textContent='backend: '+d.backend;
+document.getElementById('q').addEventListener('keydown', e => {if(e.key==='Enter')send()});
+fetch('/backend').then(r=>r.json()).then(d => {
+  document.getElementById('backend-label').textContent = d.backend;
 });
+loadEffects();
 </script></body></html>"""
 
 

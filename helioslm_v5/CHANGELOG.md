@@ -1,5 +1,13 @@
 # HeliosLM v5 Changelog
 
+## v1.32 (2026-10-09) - DeepSeek-Harness style 3-pane UI
+- web_ui: left sidebar (session/backend/effects audit trail), center
+  chat (GitHub-dark style, confidence badges), right panel (live
+  effects feed). Modeled on DeepSeek-Harness's Mission Control layout
+- T74
+
+
+
 ## v1.31b (2026-10-09) - fix missing urllib.parse import
 - web_ui: _search_image now imports urllib.parse locally (the module-
   level name 'urllib' was not available in that scope)
