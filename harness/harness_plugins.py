@@ -1290,3 +1290,63 @@ class RobotControlPlugin:
         ctx.register("robot.gripper", gripper)
         ctx.register("robot.state", get_state)
 
+class AgentSwarmPlugin:
+    """v1.17: multi-agent swarm. Leader decomposes a task, delegates to
+    workers, aggregates results. Blackboard for shared state. Each
+    worker runs through the same harness (effects audited per agent)."""
+
+    def __init__(self, n_workers=3):
+        self.n_workers = n_workers
+
+    def apply(self, ctx):
+        def spawn_swarm(task_text, model_fns):
+            # model_fns: dict {worker_name: model_fn}
+            ctx.state["swarm"] = {
+                "task": task_text,
+                "blackboard": {},
+                "workers": {},
+                "results": []}
+            n = min(self.n_workers, len(model_fns))
+            workers = dict(list(model_fns.items())[:n])
+            for name, fn in workers.items():
+                ctx.state["swarm"]["workers"][name] = {"status": "idle"}
+            ctx.effect("swarm_spawn", {"n": n}, replay_fn=lambda p: True)
+            return {"workers": list(workers.keys()), "n": n}
+
+        def delegate(worker_name, sub_task, model_fn):
+            ctx.state["swarm"]["workers"][worker_name] = {"status": "busy",
+                                                           "task": sub_task}
+            ctx.effect("swarm_delegate",
+                       {"worker": worker_name, "task": sub_task[:40]},
+                       replay_fn=lambda p: True)
+            # worker runs the task through the harness
+            wf = ctx.agent.run(sub_task, model_fn, max_steps=6)
+            result = wf["final"]
+            ctx.state["swarm"]["workers"][worker_name] = {"status": "done",
+                                                           "result": result}
+            ctx.state["swarm"]["results"].append(
+                {"worker": worker_name, "result": result})
+            ctx.state["swarm"]["blackboard"][worker_name] = result
+            ctx.effect("swarm_done",
+                       {"worker": worker_name, "ok": result is not None},
+                       replay_fn=lambda p: True)
+            return result
+
+        def aggregate():
+            results = ctx.state["swarm"]["results"]
+            # simple majority/concat aggregation
+            finals = [r["result"] for r in results if r["result"]]
+            if not finals:
+                return None
+            # if all same, return it; else return list
+            if len(set(finals)) == 1:
+                return finals[0]
+            return finals
+        def blackboard():
+            return ctx.state["swarm"]["blackboard"]
+
+        ctx.register("swarm.spawn", spawn_swarm)
+        ctx.register("swarm.delegate", delegate)
+        ctx.register("swarm.aggregate", aggregate)
+        ctx.register("swarm.blackboard", blackboard)
+

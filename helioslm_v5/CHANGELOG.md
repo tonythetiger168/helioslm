@@ -1,5 +1,12 @@
 # HeliosLM v5 Changelog
 
+## v1.17 (2026-10-09) - agent swarm support
+- AgentSwarmPlugin: leader-worker delegation, shared blackboard, per-
+  worker effects audited. swarm.spawn / .delegate / .aggregate / .blackboard
+- T59
+
+
+
 ## v1.16 (2026-10-09) - robot control plugin
 - RobotControlPlugin: mobile base / arm / gripper, mock kinematic
   simulator (default) or ROS2 interface. All movements TrustGate-gated
