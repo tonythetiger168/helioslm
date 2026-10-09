@@ -1,5 +1,13 @@
 # HeliosLM v5 Changelog
 
+## v1.15 (2026-10-09) - benchmark + report plugins
+- BenchmarkPlugin: RLCDAlignBench summary (char/tfidf/jev medians),
+  api_probe summary -- the paper's numbers as runnable code
+- ReportPlugin: markdown report from benchmark results
+- T57
+
+
+
 ## v1.14 (2026-10-09) - blender/omi plugins (DeepSeek coverage complete)
 - BlenderPlugin (headless blender python script gen + run) / OmiPlugin
   (BLE wearable stub via bleak)

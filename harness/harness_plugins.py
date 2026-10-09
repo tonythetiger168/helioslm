@@ -1178,3 +1178,56 @@ class OmiPlugin:
         ctx.register("omi.connect", connect)
         ctx.register("omi.transcribe", transcribe)
 
+class BenchmarkPlugin:
+    """v1.15: benchmark suite -- the paper's numbers as a runnable
+    plugin. Loads RLCDAlignBench artifacts and reports medians. Requires
+    benchmarks/*.json in the repo."""
+
+    def apply(self, ctx):
+        import json, os
+        def _load(name):
+            for cand in (f"benchmarks/{name}", f"../benchmarks/{name}"):
+                if os.path.exists(cand):
+                    return json.load(open(cand))
+            return None
+        def alignbench_summary():
+            out = {}
+            for name, key in [("alignbench_char_results.json", "char"),
+                              ("alignbench_tfidf_results.json", "tfidf"),
+                              ("alignbench_jev_zero_shot_auroc.json", "jev")]:
+                d = _load(name)
+                if d:
+                    vals = [v["auroc"] for v in d.values()
+                            if isinstance(v, dict) and "auroc" in v]                            if isinstance(d, dict) and any(
+                               isinstance(v, dict) for v in d.values())                            else list(d.values())
+                    vals = [v for v in vals if isinstance(v, (int, float))]
+                    if vals:
+                        vals.sort()
+                        out[key] = round(vals[len(vals)//2], 3)
+            ctx.effect("benchmark", {"n": len(out)}, replay_fn=lambda p: True)
+            return out
+        def api_probe_summary():
+            d = _load("api_probe_summary_2026-10-04.json")
+            if d:
+                ctx.effect("api_probe", {"models": len(d.get("models", {}))},
+                           replay_fn=lambda p: True)
+            return d or {"error": "api_probe_summary not found"}
+        ctx.register("benchmark.alignbench", alignbench_summary)
+        ctx.register("benchmark.api_probe", api_probe_summary)
+
+
+class ReportPlugin:
+    """v1.15: generate a markdown report from benchmark results."""
+
+    def apply(self, ctx):
+        def gen_report():
+            ab = ctx.benchmark.alignbench()
+            lines = ["# HeliosLM Benchmark Report", "",
+                     "| Leg | Median AUROC |", "|---|---|"]
+            for k, v in ab.items():
+                lines.append(f"| {k} | {v} |")
+            md = "\n".join(lines)
+            ctx.effect("report", {"legs": len(ab)}, replay_fn=lambda p: True)
+            return md
+        ctx.register("report.gen", gen_report)
+
