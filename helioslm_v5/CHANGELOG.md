@@ -1,5 +1,13 @@
 # HeliosLM v5 Changelog
 
+## v1.31 (2026-10-09) - media in chat: image/video/sound
+- web_ui: chat intercepts image/video/sound requests -> serves media
+  directly (<img> picsum, <video> pixabay sample, <audio> pyttsx3/gTTS
+  via /audio/ endpoint). UI renders media tags; JSON endpoints remain
+- T72
+
+
+
 ## v1.30 (2026-10-09) - Qwen3 thinking off + think block strip
 - web_ui: apply_chat_template(enable_thinking=False) -- Qwen3's
   internal <think> reasoning no longer leaks into the reply

@@ -139,6 +139,35 @@ def _resolve_backend(ctx):
     return ("smoke", echo_fn)
 
 
+# --- media backends (v1.31): image search, video search, TTS ---
+
+def _search_image(query):
+    """Placeholder image via picsum. For real search, plug Unsplash API."""
+    return f"https://picsum.photos/seed/{urllib.parse.quote(query)[:20]}/400/300"
+
+
+def _search_video(query):
+    """Placeholder: return a sample video URL (Pixabay CDN)."""
+    return "https://cdn.pixabay.com/video/2023/10/22/186115-877653463_large.mp4"
+
+
+def _tts_audio(text, out_path="/tmp/tts.mp3"):
+    """Local TTS via pyttsx3 -> WAV, or gTTS if online."""
+    try:
+        import pyttsx3
+        engine = pyttsx3.init()
+        engine.save_to_file(text, out_path)
+        engine.runAndWait()
+        return out_path
+    except Exception:
+        try:
+            from gtts import gTTS
+            gTTS(text).save(out_path)
+            return out_path
+        except Exception:
+            return None
+
+
 _CHAT_HTML = """<!DOCTYPE html><html><head><title>helios-chat</title>
 <style>
 body{font-family:monospace;background:#0a0a0a;color:#0f0;padding:1em;max-width:900px;margin:auto}
@@ -181,7 +210,12 @@ async function send() {
     let d=await r.json();
     document.getElementById('log').lastChild.remove();
     if(d.error){add('assistant','<b>error</b>: '+esc(d.error));return;}
-    add('assistant',`<b>agent</b> ${badge(d.confidence)}: ${esc(d.response)}`);
+    let resp = d.response;
+    if (resp.startsWith('<img') || resp.startsWith('<video') || resp.startsWith('<audio')) {
+      add('assistant', `<b>agent</b> ${badge(d.confidence)}:<br>${resp}`);
+    } else {
+      add('assistant',`<b>agent</b> ${badge(d.confidence)}: ${esc(resp)}`);
+    }
     if(d.route==='ESCALATE') add('tool','<b>trust</b>: ESCALATED (low confidence)');
     add('tool',`<b>effects</b>: +${d.effects} | <b>backend</b>: ${d.backend}`);
   } catch(e) {
@@ -240,6 +274,19 @@ h1{{color:#0ff}}</style></head><body>
 <table><tr><th>id</th><th>kind</th><th>payload</th></tr>{rows}</table>
 </body></html>"""
             self._html(page)
+        elif self.path.startswith("/audio/"):
+            import os as _os
+            fname = self.path[len("/audio/"):]
+            fpath = f"/tmp/{fname}"
+            if _os.path.exists(fpath):
+                data = open(fpath, "rb").read()
+                self.send_response(200)
+                self.send_header("Content-Type", "audio/mpeg")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            else:
+                self._json({"error": "not found"}, 404)
         elif self.path == "/effects":
             self._json({"effects": [{"id": e.id, "kind": e.kind,
                                      "payload": str(e.payload)[:80]}
@@ -266,6 +313,40 @@ h1{{color:#0ff}}</style></head><body>
         # that protocol is for our toy envs; Qwen/base models have never
         # seen @@tool@@ and ramble). Multi-turn via _sessions transcript.
         name, backend_fn = _backend["name"], _backend["fn"]
+        # v1.31: media interception -- image / video / sound
+        msg_l = msg.lower()
+        if any(k in msg_l for k in ("show me", "show", "picture", "image",
+                                     "photo", "画", "图")):
+            url = _search_image(msg)
+            reply = f'<img src="{url}" style="max-width:100%">' \
+                    if not msg_l.startswith("show me a video") else None
+            if reply:
+                _sessions.setdefault(sid, []).append(("user", msg))
+                _sessions[sid].append(("assistant", reply))
+                self.ctx.effect("media_img", {"q": msg[:40]},
+                                replay_fn=lambda p: True)
+                return {"response": reply, "confidence": 0.95,
+                        "route": "MEDIA", "effects": 1, "backend": "media"}
+        if any(k in msg_l for k in ("video", "影片", "视频", "play video")):
+            url = _search_video(msg)
+            reply = f'<video controls src="{url}" style="max-width:100%"></video>'
+            _sessions.setdefault(sid, []).append(("user", msg))
+            _sessions[sid].append(("assistant", reply))
+            self.ctx.effect("media_vid", {"q": msg[:40]},
+                            replay_fn=lambda p: True)
+            return {"response": reply, "confidence": 0.95,
+                    "route": "MEDIA", "effects": 1, "backend": "media"}
+        if any(k in msg_l for k in ("sound", "audio", "voice", "speak",
+                                     "say", "声音", "播放", "念")):
+            path = _tts_audio(msg)
+            if path and os.path.exists(path):
+                reply = f'<audio controls src="/audio/{os.path.basename(path)}"></audio>'
+                _sessions.setdefault(sid, []).append(("user", msg))
+                _sessions[sid].append(("assistant", reply))
+                self.ctx.effect("media_aud", {"q": msg[:40]},
+                                replay_fn=lambda p: True)
+                return {"response": reply, "confidence": 0.95,
+                        "route": "MEDIA", "effects": 1, "backend": "media"}
         if sid not in _sessions:
             _sessions[sid] = []
         _sessions[sid].append(("user", msg))
