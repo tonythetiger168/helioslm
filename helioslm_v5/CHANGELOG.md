@@ -1,5 +1,14 @@
 # HeliosLM v5 Changelog
 
+## v1.21 (2026-10-09) - protein/chem/RL/hardware plugins
+- ProteinPlugin: validate/mol_weight/hydrophobicity/fold_toy/chem formula
+  weight/pH/bond energy
+- RLPlugin: train_grpo (harness service) + rlcd_reward
+- HardwarePlugin: Arduino/ESP32 serial, GPIO (Pi), I2C stubs
+- T63
+
+
+
 ## v1.20 (2026-10-09) - DNA sequence analysis plugin
 - DNAPlugin: validate/reverse_complement/GC/transcribe/translate (codon
   table)/align (Needleman-Wunsch)/PCR primers/restriction sites

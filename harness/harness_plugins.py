@@ -1725,3 +1725,161 @@ class DNAPlugin:
         ctx.register("dna.pcr_primers", pcr_primers)
         ctx.register("dna.restriction_sites", restriction_sites)
 
+class ProteinPlugin:
+    """v1.21: protein structure + chemistry. Pure Python (no Biopython/
+    RDKit required). Sequence analysis, toy folding (hydrophobic
+    collapse), molecular weight, formula parsing."""
+
+    def apply(self, ctx):
+        AA_MASS = {"A": 71.08, "R": 156.19, "N": 114.10, "D": 115.09,
+                   "C": 103.15, "Q": 128.13, "E": 129.12, "G": 57.05,
+                   "H": 137.14, "I": 113.16, "L": 113.16, "K": 128.17,
+                   "M": 131.19, "F": 147.18, "P": 97.12, "S": 87.08,
+                   "T": 101.11, "W": 186.21, "Y": 163.18, "V": 99.13}
+        AA_HYDRO = {"I": 4.5, "V": 4.2, "L": 3.8, "F": 2.8, "C": 2.5,
+                    "M": 1.9, "A": 1.8, "G": -0.4, "T": -0.7, "S": -0.8,
+                    "W": -0.9, "Y": -1.3, "P": -1.6, "H": -3.2, "E": -3.5,
+                    "Q": -3.5, "D": -3.5, "N": -3.5, "K": -3.9, "R": -4.5}
+        ELEMENTS = {"H": 1.008, "C": 12.011, "N": 14.007, "O": 15.999,
+                    "P": 30.974, "S": 32.06, "Cl": 35.45, "Na": 22.99,
+                    "Mg": 24.305, "K": 39.098, "Ca": 40.078}
+
+        def validate(seq):
+            ok = all(c in AA_MASS for c in seq.upper())
+            ctx.effect("protein_validate", {"len": len(seq)},
+                       replay_fn=lambda p: True)
+            return {"ok": ok, "len": len(seq)}
+        def mol_weight(seq):
+            w = sum(AA_MASS.get(c.upper(), 0) for c in seq)
+            ctx.effect("protein_mw", {"mw": round(w, 2)},
+                       replay_fn=lambda p: True)
+            return round(w, 2)
+        def hydrophobicity(seq):
+            vals = [AA_HYDRO.get(c.upper(), 0) for c in seq]
+            if not vals:
+                return 0.0
+            return round(sum(vals) / len(vals), 2)
+        def fold_toy(seq):
+            # hydrophobic collapse: hydrophobic residues tend to core
+            seq_u = seq.upper()
+            core = [c for c in seq_u if AA_HYDRO.get(c, 0) > 0]
+            surface = [c for c in seq_u if AA_HYDRO.get(c, 0) <= 0]
+            ctx.effect("protein_fold", {"core": len(core)},
+                       replay_fn=lambda p: True)
+            return {"core": "".join(core), "surface": "".join(surface),
+                    "n_core": len(core), "n_surface": len(surface)}
+        def formula_weight(formula):
+            # parse simple formula like H2O, C6H12O6, NaCl
+            import re
+            total = 0.0
+            for elem, count in re.findall(r"([A-Z][a-z]?)(\d*)", formula):
+                n = int(count) if count else 1
+                if elem not in ELEMENTS:
+                    return {"error": f"unknown element {elem}"}
+                total += ELEMENTS[elem] * n
+            ctx.effect("chem_mw", {"formula": formula[:20]},
+                       replay_fn=lambda p: True)
+            return round(total, 3)
+        def ph(buffer_conc, acid_conc, pka):
+            # Henderson-Hasselbalch: pH = pKa + log([A-]/[HA])
+            import math
+            if acid_conc <= 0:
+                return {"error": "acid_conc must be > 0"}
+            ph = pka + math.log10(buffer_conc / acid_conc)
+            ctx.effect("chem_ph", {"ph": round(ph, 2)},
+                       replay_fn=lambda p: True)
+            return round(ph, 2)
+        def bond_energy(bonds):
+            # bonds: dict {bond_type: count}, kJ/mol
+            ENERGIES = {"C-C": 347, "C=C": 614, "C-H": 413, "O-H": 463,
+                        "C-O": 358, "C=O": 799, "N-H": 391, "C-N": 305}
+            total = sum(ENERGIES.get(b, 0) * n for b, n in bonds.items())
+            ctx.effect("chem_bonds", {"total": total}, replay_fn=lambda p: True)
+            return total
+
+        ctx.register("protein.validate", validate)
+        ctx.register("protein.mol_weight", mol_weight)
+        ctx.register("protein.hydrophobicity", hydrophobicity)
+        ctx.register("protein.fold_toy", fold_toy)
+        ctx.register("chem.formula_weight", formula_weight)
+        ctx.register("chem.ph", ph)
+        ctx.register("chem.bond_energy", bond_energy)
+
+
+class RLPlugin:
+    """v1.21: RL training interface. Wraps GRPO trainer + our RLCD
+    reward shaping as a harness service."""
+
+    def apply(self, ctx):
+        def train_grpo(model, ref, config, questions, answers, steps=10):
+            try:
+                from helioslm_v5.src.training.grpo import GRPOTrainer
+                trainer = GRPOTrainer(model, ref, config, tokenizer=None)
+                metrics = []
+                for i in range(steps):
+                    m = trainer.train_step(questions, answers)
+                    metrics.append(m)
+                    ctx.effect("grpo_step", {"step": i, "loss": m["loss"]},
+                               replay_fn=lambda p: True)
+                return {"metrics": metrics}
+            except ImportError as e:
+                return {"error": f"training module not available: {e}"}
+        def rlcd_reward(rewards, confs, outcomes, lam=1.0):
+            try:
+                from helioslm_v5.agent.decision_data import \
+                    rlcd_reward_adjustment
+                return rlcd_reward_adjustment(rewards, confs, outcomes, lam)
+            except ImportError:
+                # inline fallback
+                return [r - lam * (c - o) ** 2
+                        for r, c, o in zip(rewards, confs, outcomes)]
+        ctx.register("rl.train_grpo", train_grpo)
+        ctx.register("rl.rlcd_reward", rlcd_reward)
+
+
+class HardwarePlugin:
+    """v1.21: more hardware interfaces. Arduino/ESP32 serial, I2C/SPI
+    stubs, GPIO (Raspberry Pi)."""
+
+    def apply(self, ctx):
+        def arduino_write(port, command):
+            try:
+                import serial
+                with serial.Serial(port, 9600, timeout=5) as ser:
+                    ser.write(command.encode())
+                    ctx.effect("arduino", {"port": port[:20]},
+                               replay_fn=lambda p: True)
+                    return {"ok": True, "sent": command}
+            except ImportError:
+                return {"error": "pyserial not installed"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        def gpio_write(pin, value):
+            try:
+                import RPi.GPIO as GPIO
+                GPIO.setmode(GPIO.BCM)
+                GPIO.setup(pin, GPIO.OUT)
+                GPIO.output(pin, bool(value))
+                ctx.effect("gpio", {"pin": pin, "val": value},
+                           replay_fn=lambda p: True)
+                return {"ok": True}
+            except ImportError:
+                return {"error": "RPi.GPIO not installed (not a Pi?)"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        def i2c_write(addr, reg, value):
+            # stub -- requires smbus2
+            try:
+                import smbus2
+                bus = smbus2.SMBus(1)
+                bus.write_byte_data(addr, reg, value)
+                ctx.effect("i2c", {"addr": addr}, replay_fn=lambda p: True)
+                return {"ok": True}
+            except ImportError:
+                return {"error": "smbus2 not installed"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        ctx.register("hw.arduino_write", arduino_write)
+        ctx.register("hw.gpio_write", gpio_write)
+        ctx.register("hw.i2c_write", i2c_write)
+
