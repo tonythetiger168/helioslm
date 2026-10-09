@@ -1,5 +1,12 @@
 # HeliosLM v5 Changelog
 
+## v1.37 (2026-10-09) - audio mime fix + tts input clean
+- web_ui: /audio/ endpoint returns correct mime (wav vs mp3) + Accept-
+  Ranges; TTS input strips trigger words (speak/say/play) so the
+  spoken text is the actual content, not the command
+
+
+
 ## v1.36 (2026-10-09) - clean web_ui rewrite
 - All fixes consolidated: cross-platform media dir, multi-source video
   with local proxy, gTTS-first, Qwen3 thinking off, reply cleaning,

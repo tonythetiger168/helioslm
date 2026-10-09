@@ -280,9 +280,12 @@ h1{{color:#0ff}}</style></head><body>
             fpath = os.path.join(_MEDIA_DIR, fname)
             if os.path.exists(fpath):
                 data = open(fpath, "rb").read()
+                ext = fname.rsplit(".", 1)[-1].lower()
+                mime = "audio/wav" if ext == "wav" else "audio/mpeg"
                 self.send_response(200)
-                self.send_header("Content-Type", "audio/mpeg")
+                self.send_header("Content-Type", mime)
                 self.send_header("Content-Length", str(len(data)))
+                self.send_header("Accept-Ranges", "bytes")
                 self.end_headers()
                 self.wfile.write(data)
             else:
@@ -345,7 +348,11 @@ h1{{color:#0ff}}</style></head><body>
         # audio
         if any(k in msg_l for k in ("sound", "audio", "voice", "speak",
                                      "say", "声音", "播放", "念")):
-            path = _tts_audio(msg)
+            # strip the trigger word from TTS input
+            tts_text = msg
+            for w in ("speak", "say", "play", "sound", "audio", "voice"):
+                tts_text = tts_text.replace(w, "")
+            path = _tts_audio(tts_text.strip())
             if path:
                 import shutil
                 ext = "wav" if path.endswith(".wav") else "mp3"
