@@ -1,5 +1,14 @@
 # HeliosLM v5 Changelog
 
+## v1.22 (2026-10-09) - crypto/benchmark-v2/cloud/math-v2
+- CryptoPlugin: hash/gen_key/XOR/HMAC/Fernet (stdlib + cryptography)
+- BenchmarkV2Plugin: run_suite + trend tracking
+- CloudPlugin: AWS S3 / GCP Storage / Azure Blob stubs
+- MathV2Plugin: matmul/stats/DFT magnitudes
+- T64
+
+
+
 ## v1.21 (2026-10-09) - protein/chem/RL/hardware plugins
 - ProteinPlugin: validate/mol_weight/hydrophobicity/fold_toy/chem formula
   weight/pH/bond energy

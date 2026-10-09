@@ -1883,3 +1883,203 @@ class HardwarePlugin:
         ctx.register("hw.gpio_write", gpio_write)
         ctx.register("hw.i2c_write", i2c_write)
 
+class CryptoPlugin:
+    """v1.22: encryption/decryption. stdlib-only (hashlib, secrets,
+    base64). No external crypto deps. Symmetric (XOR + Fernet if
+    cryptography installed), hashing, HMAC, key gen."""
+
+    def apply(self, ctx):
+        import hashlib, hmac as hmac_mod, secrets, base64
+
+        def hash_text(text, algo="sha256"):
+            h = hashlib.new(algo)
+            h.update(text.encode())
+            ctx.effect("crypto_hash", {"algo": algo}, replay_fn=lambda p: True)
+            return h.hexdigest()
+        def gen_key(nbytes=32):
+            key = secrets.token_hex(nbytes)
+            ctx.effect("crypto_keygen", {"nbytes": nbytes},
+                       replay_fn=lambda p: True)
+            return key
+        def xor_crypt(data, key):
+            # toy symmetric -- NOT secure, for pedagogy only
+            key_bytes = key.encode()
+            out = bytes(b ^ key_bytes[i % len(key_bytes)]
+                        for i, b in enumerate(data.encode()))
+            ctx.effect("crypto_xor", {"len": len(data)},
+                       replay_fn=lambda p: True)
+            return base64.b64encode(out).decode()
+        def xor_decrypt(b64_data, key):
+            data = base64.b64decode(b64_data)
+            key_bytes = key.encode()
+            out = bytes(b ^ key_bytes[i % len(key_bytes)]
+                        for i, b in enumerate(data))
+            return out.decode()
+        def hmac_sign(message, key):
+            sig = hmac_mod.new(key.encode(), message.encode(),
+                               hashlib.sha256).hexdigest()
+            ctx.effect("crypto_hmac", {}, replay_fn=lambda p: True)
+            return sig
+        def hmac_verify(message, key, sig):
+            expected = hmac_mod.new(key.encode(), message.encode(),
+                                    hashlib.sha256).hexdigest()
+            return hmac_mod.compare_digest(expected, sig)
+        def fernet_encrypt(text, key=None):
+            try:
+                from cryptography.fernet import Fernet
+                if key is None:
+                    key = Fernet.generate_key()
+                f = Fernet(key)
+                tok = f.encrypt(text.encode())
+                ctx.effect("crypto_fernet", {"len": len(text)},
+                           replay_fn=lambda p: True)
+                return {"token": tok.decode(), "key": key.decode()
+                        if isinstance(key, bytes) else key}
+            except ImportError:
+                return {"error": "cryptography not installed"}
+        def fernet_decrypt(token, key):
+            try:
+                from cryptography.fernet import Fernet
+                return Fernet(key).decrypt(token.encode()).decode()
+            except ImportError:
+                return {"error": "cryptography not installed"}
+            except Exception as e:
+                return {"error": str(e)[:100]}
+
+        ctx.register("crypto.hash", hash_text)
+        ctx.register("crypto.gen_key", gen_key)
+        ctx.register("crypto.xor_encrypt", xor_crypt)
+        ctx.register("crypto.xor_decrypt", xor_decrypt)
+        ctx.register("crypto.hmac_sign", hmac_sign)
+        ctx.register("crypto.hmac_verify", hmac_verify)
+        ctx.register("crypto.fernet_encrypt", fernet_encrypt)
+        ctx.register("crypto.fernet_decrypt", fernet_decrypt)
+
+
+class BenchmarkV2Plugin:
+    """v1.22: benchmark hardening -- run a full eval suite (mid/Qwen/
+    API probes) and emit a report with trend tracking. Requires
+    benchmarks/*.json artifacts."""
+
+    def apply(self, ctx):
+        def run_suite(legs=("char", "tfidf", "qwen_enc")):
+            results = {}
+            for leg in legs:
+                fn = ctx._services.get(f"benchmark.{leg}")
+                if fn:
+                    results[leg] = fn()
+            ctx.effect("bench_v2", {"legs": len(results)},
+                       replay_fn=lambda p: True)
+            return results
+        def trend(current, previous):
+            # simple diff: which legs improved / regressed
+            out = {}
+            for leg in current:
+                if leg in previous:
+                    diff = current[leg] - previous[leg]
+                    out[leg] = {"delta": round(diff, 3),
+                                "trend": "up" if diff > 0 else
+                                         "down" if diff < 0 else "flat"}
+            ctx.effect("bench_trend", {"legs": len(out)},
+                       replay_fn=lambda p: True)
+            return out
+        ctx.register("bench.run_suite", run_suite)
+        ctx.register("bench.trend", trend)
+
+
+class CloudPlugin:
+    """v1.22: cloud service interfaces. AWS/GCP/Azure stubs (boto3/
+    google-cloud/azure-sdk required for real calls)."""
+
+    def apply(self, ctx):
+        def aws_s3_list(bucket, prefix="", max_keys=10):
+            try:
+                import boto3
+                s3 = boto3.client("s3")
+                r = s3.list_objects_v2(Bucket=bucket, Prefix=prefix,
+                                       MaxKeys=max_keys)
+                objs = [o["Key"] for o in r.get("Contents", [])]
+                ctx.effect("aws_s3", {"bucket": bucket, "n": len(objs)},
+                           replay_fn=lambda p: True)
+                return {"objects": objs}
+            except ImportError:
+                return {"error": "boto3 not installed"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        def gcp_storage_list(bucket, prefix="", max_results=10):
+            try:
+                from google.cloud import storage
+                client = storage.Client()
+                blobs = client.list_blobs(bucket, prefix=prefix,
+                                          max_results=max_results)
+                names = [b.name for b in blobs]
+                ctx.effect("gcp_storage", {"bucket": bucket, "n": len(names)},
+                           replay_fn=lambda p: True)
+                return {"blobs": names}
+            except ImportError:
+                return {"error": "google-cloud-storage not installed"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        def azure_blob_list(container, prefix="", max_results=10):
+            try:
+                from azure.storage.blob import BlobServiceClient
+                # connection string from env
+                import os
+                conn = os.environ.get("AZURE_STORAGE_CONN")
+                if not conn:
+                    return {"error": "AZURE_STORAGE_CONN not set"}
+                svc = BlobServiceClient.from_connection_string(conn)
+                cont = svc.get_container_client(container)
+                blobs = [b.name for b in cont.list_blobs(name_starts_with=prefix,
+                                                         results_per_page=max_results)]
+                ctx.effect("azure_blob", {"container": container,
+                                          "n": len(blobs)},
+                           replay_fn=lambda p: True)
+                return {"blobs": blobs[:max_results]}
+            except ImportError:
+                return {"error": "azure-storage-blob not installed"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        ctx.register("cloud.aws_s3_list", aws_s3_list)
+        ctx.register("cloud.gcp_storage_list", gcp_storage_list)
+        ctx.register("cloud.azure_blob_list", azure_blob_list)
+
+
+class MathV2Plugin:
+    """v1.22: more science -- linear algebra, stats, signal processing."""
+
+    def apply(self, ctx):
+        def matmul(a, b):
+            # pure python matmul
+            if not a or not b:
+                return []
+            n, m, p = len(a), len(b), len(b[0])
+            out = [[sum(a[i][k] * b[k][j] for k in range(m))
+                    for j in range(p)] for i in range(n)]
+            ctx.effect("linalg_matmul", {"n": n, "m": m, "p": p},
+                       replay_fn=lambda p: True)
+            return out
+        def stats(nums):
+            if not nums:
+                return {}
+            n = len(nums)
+            mean = sum(nums) / n
+            var = sum((x - mean) ** 2 for x in nums) / n
+            return {"n": n, "mean": round(mean, 3), "var": round(var, 3),
+                    "min": min(nums), "max": max(nums)}
+        def fft_magnitudes(samples):
+            # DFT (toy, no numpy)
+            n = len(samples)
+            mags = []
+            for k in range(n // 2):
+                re = sum(samples[t] * __import__("math").cos(
+                    2 * 3.14159 * k * t / n) for t in range(n))
+                im = -sum(samples[t] * __import__("math").sin(
+                    2 * 3.14159 * k * t / n) for t in range(n))
+                mags.append(round((re ** 2 + im ** 2) ** 0.5, 3))
+            ctx.effect("fft", {"n": n}, replay_fn=lambda p: True)
+            return mags
+        ctx.register("linalg.matmul", matmul)
+        ctx.register("stats.summary", stats)
+        ctx.register("signal.fft_magnitudes", fft_magnitudes)
+
