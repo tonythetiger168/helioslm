@@ -323,3 +323,124 @@ class ICWorkflowPlugin:
             return {"rtl": rtl, "lint": lint, "uvm": uvm}
         ctx.register("ic.run", run_ic)
 
+class MemoryPlugin:
+    """DeepSeek-harness style: persistent memory across sessions.
+    Wraps ExperienceStore (think.py) as a harness service."""
+
+    def apply(self, ctx):
+        try:
+            from think import ExperienceStore
+            store = ExperienceStore()
+        except ImportError:
+            store = None
+        def remember(key, thought, outcome):
+            if store:
+                store.remember(key, thought, outcome)
+            ctx.effect("memory_remember", {"key": key[:40]},
+                       replay_fn=lambda p: True)
+        def recall(key):
+            if store:
+                return store.recall(key)
+            return None
+        ctx.register("memory.remember", remember)
+        ctx.register("memory.recall", recall)
+
+
+class TerminalPlugin:
+    """DeepSeek-harness style: local command execution. DANGEROUS ops
+    are gated by TrustGate (if wired)."""
+
+    def apply(self, ctx):
+        import subprocess
+        def run(cmd, timeout=30, gated=True):
+            if gated:
+                from gate import Route
+                from schema import ToolCall
+                # simulate TrustGate decision (if wired)
+                decision = ctx._services.get("decision.trust")
+                if decision:
+                    route = decision.decide(ToolCall("terminal", {"cmd": cmd}),
+                                            {"task": cmd})
+                    if route.value == "ESCALATE":
+                        return {"error": "blocked by TrustGate", "cmd": cmd}
+            try:
+                r = subprocess.run(cmd, shell=True, capture_output=True,
+                                   text=True, timeout=timeout)
+                ctx.effect("terminal", {"cmd": cmd[:60]},
+                           replay_fn=lambda p: True)
+                return {"stdout": r.stdout[:2000], "stderr": r.stderr[:500],
+                        "rc": r.returncode}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        ctx.register("terminal.run", run)
+
+
+class FetchPlugin:
+    """DeepSeek-harness style: HTTP fetch (probe_api.py is the basis)."""
+
+    def apply(self, ctx):
+        import urllib.request
+        def fetch(url, timeout=30):
+            try:
+                req = urllib.request.Request(url, headers={
+                    "User-Agent": "helios-harness/1.0"})
+                data = urllib.request.urlopen(req, timeout=timeout).read()
+                ctx.effect("fetch", {"url": url[:60]},
+                           replay_fn=lambda p: True)
+                return {"status": 200, "body": data[:5000].decode(
+                    errors="replace"), "bytes": len(data)}
+            except Exception as e:
+                return {"error": str(e)[:200], "url": url}
+        ctx.register("fetch.get", fetch)
+
+
+class FilesystemPlugin:
+    """DeepSeek-harness style: local file ops beyond toy file_env.
+    Read/write any file under a root dir (default cwd)."""
+
+    def __init__(self, root="."):
+        self.root = root
+
+    def apply(self, ctx):
+        import os
+        root = os.path.abspath(self.root)
+        def read(path):
+            full = os.path.join(root, path)
+            if not full.startswith(root):
+                return {"error": "path escape blocked"}
+            try:
+                with open(full, encoding="utf-8", errors="replace") as f:
+                    ctx.effect("fs_read", {"path": path[:60]},
+                               replay_fn=lambda p: True)
+                    return {"content": f.read()[:5000]}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        def write(path, content):
+            full = os.path.join(root, path)
+            if not full.startswith(root):
+                return {"error": "path escape blocked"}
+            try:
+                with open(full, "w", encoding="utf-8") as f:
+                    f.write(content)
+                ctx.effect("fs_write", {"path": path[:60]},
+                           replay_fn=lambda p: True)
+                return {"ok": True, "bytes": len(content)}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        ctx.register("fs.read", read)
+        ctx.register("fs.write", write)
+
+
+class TimePlugin:
+    """DeepSeek-harness style: time utilities."""
+
+    def apply(self, ctx):
+        import datetime
+        def now():
+            ctx.effect("time_now", {}, replay_fn=lambda p: True)
+            return datetime.datetime.now().isoformat()
+        def utc():
+            return datetime.datetime.utcnow().isoformat() + "Z"
+        ctx.register("time.now", now)
+        ctx.register("time.utc", utc)
+

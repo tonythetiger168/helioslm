@@ -1,5 +1,13 @@
 # HeliosLM v5 Changelog
 
+## v1.8 (2026-10-09) - DeepSeek-harness style agent plugins
+- MemoryPlugin (ExperienceStore wrapper) / TerminalPlugin (gated) /
+  FetchPlugin / FilesystemPlugin (path-escape blocked) / TimePlugin
+- All register as ctx.<name>.<op>, with per-call audit effects
+- T50 5/5
+
+
+
 ## v1.7 (2026-10-09) - IC design + verification support
 - ICPlugin: RTL gen (Verilog/SV), structural lint (no simulator), UVM
   testbench scaffold, coverage closure. ic.run = spec -> RTL -> lint
