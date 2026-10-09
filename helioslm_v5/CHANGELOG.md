@@ -1,5 +1,11 @@
 # HeliosLM v5 Changelog
 
+## v1.37 (2026-10-09) - collapsible right panel
+- web_ui: right effects panel has collapse button (-), floating
+  expand button (+) bottom-right when hidden. Like DeepSeek-Harness
+
+
+
 ## v1.39 (2026-10-09) - local generated video with tone
 - web_ui: _gen_local_video -- PIL frames (bouncing ball) + sine WAV +
   ffmpeg -> MP4 with audio. Zero external deps. External sources kept

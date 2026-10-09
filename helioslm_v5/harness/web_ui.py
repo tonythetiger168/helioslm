@@ -219,7 +219,10 @@ body{font-family:-apple-system,'Segoe UI',monospace,sans-serif;background:#0d111
   </div>
 </div>
 <div id="right">
-  <div class="section">Effects audit</div>
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <div class="section" style="margin:0">Effects audit</div>
+    <button onclick="toggleRight()" style="background:none;border:none;color:#58a6ff;cursor:pointer;font-size:1.2em;padding:0 4px" title="collapse">-</button>
+  </div>
   <div id="effects-list"></div>
 </div>
 <script>
@@ -270,6 +273,27 @@ async function send() {
   }
 }
 document.getElementById('q').addEventListener('keydown', e => {if(e.key==='Enter')send()});
+function toggleRight() {
+  let r = document.getElementById('right');
+  let btn = r.querySelector('button');
+  if (r.style.display === 'none') {
+    r.style.display = '';
+    btn.textContent = '-';
+  } else {
+    r.style.display = 'none';
+    // add a floating expand button
+    let fab = document.getElementById('right-fab');
+    if (!fab) {
+      fab = document.createElement('button');
+      fab.id = 'right-fab';
+      fab.textContent = '+';
+      fab.style.cssText = 'position:fixed;right:12px;bottom:80px;background:#1f6feb;color:#fff;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;font-size:1.2em;z-index:100';
+      fab.onclick = toggleRight;
+      document.body.appendChild(fab);
+    }
+    fab.style.display = '';
+  }
+}
 fetch('/backend').then(r=>r.json()).then(d => {
   document.getElementById('backend-label').textContent = d.backend;
 });
