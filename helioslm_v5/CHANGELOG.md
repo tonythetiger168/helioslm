@@ -1,5 +1,15 @@
 # HeliosLM v5 Changelog
 
+## v5.46 (2026-10-09) - harness deep workflow
+- harness_plugins: StatePlugin (dict-backed ctx.state, cross-plugin
+  persistence) + PresetPlugin (minimal/full named wiring)
+- T43 4/4: state persistence, full preset wiring, effect-log audit
+  viewer, multi-step pipeline with per-task effect verification
+- The Context now supports real multi-step agent pipelines, not just
+  single-loop toy runs
+
+
+
 ## v5.45 (2026-10-09) - helios-harness: Cordis-style plugin shell
 - harness/harness_core.py: Context (DI + reversible effects + dotted
   namespace) -- temporal: replay-verified effects; spatial: dependency

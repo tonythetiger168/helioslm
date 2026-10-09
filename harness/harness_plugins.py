@@ -49,3 +49,33 @@ class LoopPlugin:
                 ctx.decision.grounding,
                 max_steps=max_steps)
         ctx.register("loop.make", make_loop)
+
+class StatePlugin:
+    """Workflow state: a dict-backed store for multi-step pipelines.
+    Registered as ctx.state, accessible across plugin boundaries."""
+
+    def apply(self, ctx):
+        ctx.register("state", {})
+
+
+class PresetPlugin:
+    """Named presets wiring the standard plugin set.
+    minimal: model+tools only. full: + session+decision+loop+state."""
+
+    PRESETS = {"minimal", "full"}
+
+    def __init__(self, name, model_fn=None):
+        assert name in self.PRESETS
+        self.name, self.model_fn = name, model_fn
+
+    def apply(self, ctx):
+        ctx.register("preset", self.name)
+        if self.model_fn:
+            ctx.use(ModelPlugin(self.name, self.model_fn))
+        ctx.use(ToolPlugin())
+        if self.name == "full":
+            ctx.use(SessionPlugin())
+            ctx.use(DecisionPlugin())
+            ctx.use(LoopPlugin())
+            ctx.use(StatePlugin())
+
