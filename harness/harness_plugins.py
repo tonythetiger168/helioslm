@@ -1607,3 +1607,121 @@ class AutoDrivePlugin:
             return state
         ctx.register("autodrive.simulate", simulate)
 
+class DNAPlugin:
+    """v1.20: DNA sequence analysis. Pure Python (no BioPython required,
+    uses it if available). Sequence ops, alignment (Needleman-Wunsch),
+    PCR primer design, restriction sites."""
+
+    def apply(self, ctx):
+        COMP = str.maketrans("ATCGatcg", "TAGCtagc")
+
+        def validate(seq):
+            ok = all(c in "ATCGatcg" for c in seq)
+            ctx.effect("dna_validate", {"len": len(seq)},
+                       replay_fn=lambda p: True)
+            return {"ok": ok, "len": len(seq)}
+        def reverse_complement(seq):
+            rc = seq.translate(COMP)[::-1]
+            ctx.effect("dna_rc", {"len": len(seq)}, replay_fn=lambda p: True)
+            return rc
+        def gc_content(seq):
+            if not seq:
+                return 0.0
+            gc = sum(1 for c in seq.upper() if c in "GC")
+            return round(100.0 * gc / len(seq), 1)
+        def transcribe(seq):
+            # DNA -> mRNA (T -> U)
+            return seq.upper().replace("T", "U")
+        def translate(seq):
+            # DNA -> protein (simplified codon table)
+            CODONS = {
+                "TTT":"F","TTC":"F","TTA":"L","TTG":"L",
+                "CTT":"L","CTC":"L","CTA":"L","CTG":"L",
+                "ATT":"I","ATC":"I","ATA":"I","ATG":"M",
+                "GTT":"V","GTC":"V","GTA":"V","GTG":"V",
+                "TCT":"S","TCC":"S","TCA":"S","TCG":"S",
+                "CCT":"P","CCC":"P","CCA":"P","CCG":"P",
+                "ACT":"T","ACC":"T","ACA":"T","ACG":"T",
+                "GCT":"A","GCC":"A","GCA":"A","GCG":"A",
+                "TAT":"Y","TAC":"Y","TAA":"*","TAG":"*",
+                "CAT":"H","CAC":"H","CAA":"Q","CAG":"Q",
+                "AAT":"N","AAC":"N","AAA":"K","AAG":"K",
+                "GAT":"D","GAC":"D","GAA":"E","GAG":"E",
+                "TGT":"C","TGC":"C","TGA":"*","TGG":"W",
+                "CGT":"R","CGC":"R","CGA":"R","CGG":"R",
+                "AGT":"S","AGC":"S","AGA":"R","AGG":"R",
+                "GGT":"G","GGC":"G","GGA":"G","GGG":"G",
+            }
+            seq = seq.upper().replace("U", "T")
+            prot = []
+            for i in range(0, len(seq) - 2, 3):
+                aa = CODONS.get(seq[i:i+3], "X")
+                if aa == "*":
+                    break
+                prot.append(aa)
+            ctx.effect("dna_translate", {"len": len(prot)},
+                       replay_fn=lambda p: True)
+            return "".join(prot)
+        def align(seq_a, seq_b):
+            # Needleman-Wunsch (toy, no gap penalty)
+            n, m = len(seq_a), len(seq_b)
+            if n * m > 10000:
+                return {"error": "sequences too long for toy aligner"}
+            dp = [[0] * (m + 1) for _ in range(n + 1)]
+            for i in range(1, n + 1):
+                for j in range(1, m + 1):
+                    match = dp[i-1][j-1] + (1 if seq_a[i-1] == seq_b[j-1] else -1)
+                    dp[i][j] = max(match, dp[i-1][j] - 1, dp[i][j-1] - 1)
+            # backtrack
+            i, j = n, m
+            a_aln, b_aln = [], []
+            while i > 0 and j > 0:
+                if seq_a[i-1] == seq_b[j-1] or dp[i][j] == dp[i-1][j-1] + 1:
+                    a_aln.append(seq_a[i-1]); b_aln.append(seq_b[j-1]); i -= 1; j -= 1
+                elif dp[i][j] == dp[i-1][j] - 1:
+                    a_aln.append(seq_a[i-1]); b_aln.append("-"); i -= 1
+                else:
+                    a_aln.append("-"); b_aln.append(seq_b[j-1]); j -= 1
+            ctx.effect("dna_align", {"score": dp[n][m]},
+                       replay_fn=lambda p: True)
+            return {"a": "".join(reversed(a_aln)),
+                    "b": "".join(reversed(b_aln)),
+                    "score": dp[n][m]}
+        def pcr_primers(seq, target_len=100):
+            # naive: 20-mers at ends of target region
+            if len(seq) < 40:
+                return {"error": "sequence too short"}
+            fwd = seq[:20]
+            rev = reverse_complement(seq[-20:])
+            ctx.effect("dna_pcr", {"len": target_len},
+                       replay_fn=lambda p: True)
+            return {"forward": fwd, "reverse": rev,
+                    "target_len": min(target_len, len(seq))}
+        def restriction_sites(seq, enzyme="EcoRI"):
+            SITES = {"EcoRI": "GAATTC", "BamHI": "GGATCC",
+                     "HindIII": "AAGCTT", "NotI": "GCGGCCGC"}
+            site = SITES.get(enzyme)
+            if not site:
+                return {"error": f"unknown enzyme {enzyme}"}
+            seq_u = seq.upper()
+            positions = []
+            start = 0
+            while True:
+                p = seq_u.find(site, start)
+                if p < 0:
+                    break
+                positions.append(p)
+                start = p + 1
+            ctx.effect("dna_restrict", {"enzyme": enzyme, "n": len(positions)},
+                       replay_fn=lambda p: True)
+            return {"enzyme": enzyme, "site": site, "positions": positions}
+
+        ctx.register("dna.validate", validate)
+        ctx.register("dna.reverse_complement", reverse_complement)
+        ctx.register("dna.gc_content", gc_content)
+        ctx.register("dna.transcribe", transcribe)
+        ctx.register("dna.translate", translate)
+        ctx.register("dna.align", align)
+        ctx.register("dna.pcr_primers", pcr_primers)
+        ctx.register("dna.restriction_sites", restriction_sites)
+

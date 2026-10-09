@@ -1,5 +1,12 @@
 # HeliosLM v5 Changelog
 
+## v1.20 (2026-10-09) - DNA sequence analysis plugin
+- DNAPlugin: validate/reverse_complement/GC/transcribe/translate (codon
+  table)/align (Needleman-Wunsch)/PCR primers/restriction sites
+- T62
+
+
+
 ## v1.19 (2026-10-09) - voice dialog / terminal UI / auto driving
 - VoiceDialogPlugin: STT -> LLM -> TTS loop with barge-in
 - TerminalUIPlugin: progress bars, menus
