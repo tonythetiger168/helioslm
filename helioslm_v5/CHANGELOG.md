@@ -1,5 +1,13 @@
 # HeliosLM v5 Changelog
 
+## v1.13 (2026-10-09) - video/audio plugins
+- VideoPlugin (gen interface stub) / AudioPlugin (TTS local pyttsx3 +
+  external stub, STT speech_recognition) / NanoVideoPlugin (ffmpeg
+  slideshow)
+- T55
+
+
+
 ## v1.12 (2026-10-09) - niche plugins
 - MCPWizardPlugin (MCP server wrap stub) / TmuxPlugin (session mgr) /
   EverythingPlugin (local file search)

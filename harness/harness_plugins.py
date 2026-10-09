@@ -1004,3 +1004,114 @@ class EverythingPlugin:
             return {"hits": hits, "n": len(hits)}
         ctx.register("everything.search", search)
 
+class VideoPlugin:
+    """Video generation interface. Wraps external APIs (Runway/Pika/
+    Sora-class) behind a common harness interface. No local fallback
+    (video gen is compute-prohibitive locally)."""
+
+    def __init__(self, provider="stub", api_key_env=None):
+        self.provider, self.api_key_env = provider, api_key_env
+
+    def apply(self, ctx):
+        import os
+        def generate(prompt, duration_s=5, resolution="720p"):
+            key = os.environ.get(self.api_key_env) if self.api_key_env else None
+            if not key:
+                return {"error": f"no API key for {self.provider} "
+                        f"(set ${self.api_key_env})"}
+            ctx.effect("video_gen", {"prompt": prompt[:50],
+                                     "provider": self.provider},
+                       replay_fn=lambda p: True)
+            return {"stub": True, "provider": self.provider,
+                    "note": "provider call not implemented"}
+        ctx.register("video.generate", generate)
+
+
+class AudioPlugin:
+    """Audio/TTS generation. Local fallback: pyttsx3 (offline TTS).
+    External: ElevenLabs/OpenAI TTS (api_key_env)."""
+
+    def __init__(self, provider="auto", api_key_env=None):
+        self.provider, self.api_key_env = provider, api_key_env
+
+    def apply(self, ctx):
+        import os
+        def tts(text, out_path=None):
+            # external first
+            key = os.environ.get(self.api_key_env) if self.api_key_env else None
+            if key and self.provider != "local":
+                ctx.effect("tts_external", {"chars": len(text)},
+                           replay_fn=lambda p: True)
+                return {"stub": True, "provider": self.provider,
+                        "note": "external TTS not implemented"}
+            # local fallback
+            try:
+                import pyttsx3
+                engine = pyttsx3.init()
+                if out_path:
+                    engine.save_to_file(text, out_path)
+                    engine.runAndWait()
+                    ctx.effect("tts_local", {"chars": len(text)},
+                               replay_fn=lambda p: True)
+                    return {"ok": True, "path": out_path}
+                engine.say(text)
+                engine.runAndWait()
+                return {"ok": True, "spoken": True}
+            except ImportError:
+                return {"error": "pyttsx3 not installed and no external key"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        def stt(audio_path):
+            try:
+                import speech_recognition as sr
+                r = sr.Recognizer()
+                with sr.AudioFile(audio_path) as source:
+                    audio = r.record(source)
+                text = r.recognize_google(audio)
+                ctx.effect("stt", {"path": audio_path[:40]},
+                           replay_fn=lambda p: True)
+                return {"text": text}
+            except ImportError:
+                return {"error": "speech_recognition not installed"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        ctx.register("audio.tts", tts)
+        ctx.register("audio.stt", stt)
+
+
+class NanoVideoPlugin:
+    """Lightweight video from images + audio (ffmpeg slideshow).
+    The 'nano-pdf' analog for video -- minimal local generation."""
+
+    def apply(self, ctx):
+        import subprocess, os
+        def from_images(image_paths, audio_path=None, out_path="out.mp4",
+                        duration_per_image=2):
+            try:
+                if not image_paths:
+                    return {"error": "no images"}
+                # ffmpeg concat demuxer
+                list_file = "/tmp/ffmpeg_list.txt"
+                with open(list_file, "w") as f:
+                    for img in image_paths:
+                        f.write(f"file '{img}'\n")
+                        f.write(f"duration {duration_per_image}\n")
+                cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                       "-i", list_file, "-vsync", "vfr", "-pix_fmt", "yuv420p"]
+                if audio_path:
+                    cmd += ["-i", audio_path, "-c:a", "aac", "-shortest"]
+                cmd += [out_path]
+                r = subprocess.run(cmd, capture_output=True, text=True,
+                                   timeout=120)
+                if r.returncode != 0:
+                    return {"error": r.stderr[-200:]}
+                ctx.effect("nano_video", {"images": len(image_paths)},
+                           replay_fn=lambda p: True)
+                return {"ok": True, "path": out_path,
+                        "size": os.path.getsize(out_path)}
+            except FileNotFoundError:
+                return {"error": "ffmpeg not installed"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        ctx.register("nanovideo.from_images", from_images)
+
