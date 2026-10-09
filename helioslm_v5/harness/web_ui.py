@@ -58,13 +58,22 @@ def _resolve_backend(ctx):
             tok = AutoTokenizer.from_pretrained("qwen")
             model = AutoModelForCausalLM.from_pretrained(
                 "qwen", torch_dtype=torch.bfloat16).eval()
-            def qwen_fn(prompt, seed, step, max_new=128):
-                enc = tok(prompt, return_tensors="pt", truncation=True,
+            def qwen_fn(prompt, seed, step, max_new=256):
+                # v1.27: use Qwen3 chat template + greedy + stop at
+                # <|im_end|>. The previous raw-prompt path made base-
+                # model Qwen ramble and repeat the input.
+                messages = [{"role": "user", "content": prompt}]
+                text = tok.apply_chat_template(
+                    messages, tokenize=False, add_generation_prompt=True)
+                enc = tok(text, return_tensors="pt", truncation=True,
                           max_length=900)
                 with torch.no_grad():
-                    out = model.generate(**enc, max_new_tokens=max_new,
-                                         do_sample=False,
-                                         pad_token_id=tok.eos_token_id)
+                    out = model.generate(
+                        **enc, max_new_tokens=max_new,
+                        do_sample=False,
+                        pad_token_id=tok.eos_token_id,
+                        eos_token_id=[tok.eos_token_id,
+                                      tok.convert_tokens_to_ids("<|im_end|>")])
                 return tok.decode(out[0][enc["input_ids"].shape[1]:],
                                   skip_special_tokens=True)
             return ("qwen-local", qwen_fn)
@@ -92,10 +101,9 @@ def _resolve_backend(ctx):
         return ("api", api_fn)
     # 3. smoke echo
     def echo_fn(prompt, seed, step):
-        for line in prompt.splitlines():
-            if line.startswith("##user## "):
-                return f"I heard you say: {line[9:100]}"
-        return "Tell me more."
+        # v1.27: chat-template style -- the UI now sends bare user text,
+        # so echo it back conversationally
+        return f"I heard you say: {prompt[:200]}. Tell me more!"
     return ("smoke", echo_fn)
 
 
@@ -222,25 +230,28 @@ h1{{color:#0ff}}</style></head><body>
             self._json({"error": "not found"}, 404)
 
     def _chat(self, sid, msg):
-        from gate import FixedGate, Route
-        from chat import ChatSession
-        from tools import build_default_registry
+        # v1.27: direct conversational chat (no ChatSession tool loop --
+        # that protocol is for our toy envs; Qwen/base models have never
+        # seen @@tool@@ and ramble). Multi-turn via _sessions transcript.
         name, backend_fn = _backend["name"], _backend["fn"]
-        state = {"conf": None}
-        def model_fn(prompt, seed, step):
-            out = backend_fn(prompt, seed, step)
-            state["conf"] = 0.5 + 0.4 * min(1.0, len(out) / 100.0)
-            return out
         if sid not in _sessions:
-            reg, impls = build_default_registry()
-            _sessions[sid] = ChatSession(model_fn, reg, impls,
-                                         FixedGate(Route.DIRECT), max_steps=4)
-        session = _sessions[sid]
+            _sessions[sid] = []
+        _sessions[sid].append(("user", msg))
+        # build transcript
+        transcript = "\n".join(f"{'User' if r=='user' else 'Assistant'}: {t}"
+                                for r, t in _sessions[sid][-6:])
         before = len(self.ctx.effects)
-        final = session.send(msg, seed=0)
+        reply = backend_fn(transcript, 0, 0)
+        _sessions[sid].append(("assistant", reply))
+        # real calibration: for qwen we could read softmax; for now
+        # use a length heuristic, recorded honestly
+        conf = 0.5 + 0.4 * min(1.0, len(reply) / 100.0) if reply else None
+        self.ctx.effect("chat", {"sid": sid, "msg": msg[:50],
+                                 "reply": reply[:50]},
+                        replay_fn=lambda p: True)
         new_effects = len(self.ctx.effects) - before
-        return {"response": str(final) if final else "(no reply)",
-                "confidence": state["conf"],
+        return {"response": reply or "(no reply)",
+                "confidence": conf,
                 "route": "DIRECT",
                 "effects": new_effects,
                 "backend": name}

@@ -1,5 +1,16 @@
 # HeliosLM v5 Changelog
 
+## v1.27 (2026-10-09) - direct chat (fix garbled Qwen output)
+- web_ui: _chat now uses DIRECT conversational chat (no ChatSession
+  tool loop -- Qwen/base models have never seen @@tool@@ and produced
+  PARSE_ERROR loops). Multi-turn via in-memory transcript
+- qwen_fn: use apply_chat_template (Qwen3 instruct format) + stop at
+  <|im_end|> -- fixes rambling/repetition
+- smoke echo: conversational reply
+- T69
+
+
+
 ## v1.26 (2026-10-09) - chat backend resolution + UI polish
 - web_ui: backend priority qwen-local > API (OPENAI_BASE+KEY) > smoke
   echo. Chat replies carry real confidence (length-based heuristic for
