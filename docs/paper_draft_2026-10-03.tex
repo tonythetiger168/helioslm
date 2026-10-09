@@ -95,7 +95,21 @@ spot is calibration, which we quantify below (Sec.~\ref{sec:scale}).
 \citep{rlcdalignbench} detects alignment failures in \emph{other}
 models' outputs (task-INTER); we are the task-INTRA branch (an agent
 policing itself) and independently recompute their detector's numbers
-offline. \textbf{GRPO} \citep{shao2024grpo} provides our RLVR-flavored
+offline. \paragraph{Concurrent open RLCD implementations.}
+Three independent efforts appeared while this work was in progress,
+confirming the paradigm's timeliness: \emph{OpenJev-RLCD} (arXiv
+2609.38850, Sep 2026) demonstrates RLCD on reasoning tasks with GRPO
+reinforcement; \emph{rlcd-modernbert-151m} (HuggingFace, Sep 2026) is a
+single-decision classifier with an explicit abstention route; and the
+commercial Jev/TypeSafe ecosystem continues to expand. Our contribution
+is complementary and distinct: we are the only implementation with
+(i) cross-scale evidence (8.5M/360M/Qwen3-0.6B), (ii) a canonical
+benchmark comparison (RLCDAlignBench, 7,193 instances), (iii) an
+API-probe audit of commercial models across the price spectrum, and
+(iv) an efficiency arm (calibrated MoE prefetching). The calibration
+findings we report are agnostic to which open implementation is used.
+
+\textbf{GRPO} \citep{shao2024grpo} provides our RLVR-flavored
 base trainer; Hyper-Connections \citep{hu2025hc} and DeepSeek-V4's mHC
 and compressed-attention designs \citep{deepseekv4} inform our
 architecture references, as do Qwen3-Max's tool-use routing
