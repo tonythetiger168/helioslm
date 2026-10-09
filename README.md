@@ -20,7 +20,7 @@ A from-scratch PyTorch reference implementation of a modern LLM stack: MLA atten
 > **Also:** the open-source reference for the **RLCD "decision layer"** paradigm — calibrated confidence on acting models, verified across three scales and on the 7,193-instance RLCDAlignBench. Working paper: `docs/paper_draft_2026-10-03.tex` ([repo](https://github.com/tonythetiger168/helioslm/blob/main/docs/paper_draft_2026-10-03.tex) | [HF](https://huggingface.co/chienhsinlin/helioslm/tree/main/docs)).
 
 [![CI](https://github.com/tonythetiger168/helioslm/actions/workflows/ci.yml/badge.svg)](https://github.com/tonythetiger168/helioslm/actions)
-![Tests](https://img.shields.io/badge/tests-150%2B%20unit%20%2B%20integration%20%2B%20oracle-brightgreen)
+![Tests](https://img.shields.io/badge/tests-300%2B%20unit%20%2B%20integration%20%2B%20oracle-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![PyTorch](https://img.shields.io/badge/framework-PyTorch%20(pure)-ee4c2c)
 
@@ -35,6 +35,111 @@ A from-scratch PyTorch reference implementation of a modern LLM stack: MLA atten
 | **A practitioner** evaluating serving/quantization techniques | vLLM-style paged engine, GPTQ/AWQ/FP8/MXFP4 quantization, MTP speculative decoding — all inspectable |
 
 **Honest positioning:** this is a correctness-focused reference implementation, not a throughput-optimized production engine (see [Known Limitations](#known-limitations)).
+
+## Harness Plugins (v1.0-v1.22, 23 releases)
+
+All plugins register as `ctx.<name>.<op>` with per-call audit effects.
+Install extras as needed: `pip install openpyxl python-docx python-pptx
+pytesseract pyserial cryptography psycopg2 boto3 google-cloud-storage
+azure-storage-blob pyttsx3 speech_recognition ultralytics transformers`
+
+### Core (always available)
+| Plugin | Namespace | Key ops |
+|---|---|---|
+| ModelPlugin | `ctx.model.*` | mid (360M HeliosLM), qwen (Qwen3-0.6B) |
+| ToolPlugin | `ctx.tools.*` | registry, impls (calc/str/file_read/file_write/finish) |
+| SessionPlugin | `ctx.session.*` | new (append-only, replay-verified) |
+| DecisionPlugin | `ctx.decision.*` | grounding, trust, prefetcher |
+| LoopPlugin | `ctx.loop.*` | make (AgentLoop factory) |
+| StatePlugin | `ctx.state` | dict-backed, cross-plugin persistence |
+| PresetPlugin | `ctx.preset` | minimal / full wiring |
+
+### Agent (v1.8)
+| Plugin | Namespace | Key ops |
+|---|---|---|
+| MemoryPlugin | `ctx.memory.*` | remember, recall (ExperienceStore) |
+| TerminalPlugin | `ctx.terminal.*` | run (TrustGate-gated) |
+| FetchPlugin | `ctx.fetch.*` | get (HTTP) |
+| FilesystemPlugin | `ctx.fs.*` | read, write (path-escape blocked) |
+| TimePlugin | `ctx.time.*` | now, utc |
+
+### Common (v1.9)
+| Plugin | Namespace | Key ops |
+|---|---|---|
+| SearchPlugin | `ctx.search.*` | query (local corpus) |
+| WebSearchPlugin | `ctx.web.*` | search (Tavily/Exa stub) |
+| PDFPlugin | `ctx.pdf.*` | extract (pypdf) |
+| SQLitePlugin | `ctx.sqlite.*` | query (constrained db) |
+| TemplatePlugin | `ctx.plugin.*` | scaffold (new-plugin template) |
+
+### Services (v1.10)
+| Plugin | Namespace | Key ops |
+|---|---|---|
+| GitHubPlugin | `ctx.github.*` | get_repo, list_issues, create_issue (TrustGate-gated) |
+| PostgresPlugin | `ctx.postgres.*` | query (psycopg2/pg8000) |
+
+### Office (v1.11)
+| Plugin | Namespace | Key ops |
+|---|---|---|
+| ExcelPlugin | `ctx.excel.*` | read, write (openpyxl) |
+| DocxPlugin | `ctx.docx.*` | read, write (python-docx) |
+| PptxPlugin | `ctx.pptx.*` | write (python-pptx) |
+| YouTubePlugin | `ctx.youtube.*` | transcript (youtube-transcript-api) |
+
+### Niche (v1.12)
+| Plugin | Namespace | Key ops |
+|---|---|---|
+| MCPWizardPlugin | `ctx.mcp.*` | wrap (MCP server) |
+| TmuxPlugin | `ctx.tmux.*` | new, list, send |
+| EverythingPlugin | `ctx.everything.*` | search (local file content) |
+
+### Media (v1.13)
+| Plugin | Namespace | Key ops |
+|---|---|---|
+| VideoPlugin | `ctx.video.*` | generate (Runway/Pika stub) |
+| AudioPlugin | `ctx.audio.*` | tts (pyttsx3/external), stt |
+| NanoVideoPlugin | `ctx.nanovideo.*` | from_images (ffmpeg slideshow) |
+
+### Hardware (v1.14, v1.16, v1.18, v1.21)
+| Plugin | Namespace | Key ops |
+|---|---|---|
+| BlenderPlugin | `ctx.blender.*` | gen, run (headless blender) |
+| OmiPlugin | `ctx.omi.*` | connect, transcribe (BLE wearable) |
+| RobotControlPlugin | `ctx.robot.*` | move_base, move_arm, gripper (mock/ROS2, TrustGate-gated) |
+| MultiRobotPlugin | `ctx.fleet.*` | register, allocate, formation |
+| HardwarePlugin | `ctx.hw.*` | arduino_write, gpio_write, i2c_write |
+
+### Science (v1.15, v1.20-v1.22)
+| Plugin | Namespace | Key ops |
+|---|---|---|
+| BenchmarkPlugin | `ctx.benchmark.*` | alignbench, api_probe |
+| ReportPlugin | `ctx.report.*` | gen (markdown from benchmarks) |
+| BenchmarkV2Plugin | `ctx.bench.*` | run_suite, trend |
+| DNAPlugin | `ctx.dna.*` | validate, reverse_complement, gc, transcribe, translate, align, pcr_primers, restriction_sites |
+| ProteinPlugin | `ctx.protein.*` | validate, mol_weight, hydrophobicity, fold_toy |
+| ChemPlugin | `ctx.chem.*` | formula_weight, ph, bond_energy |
+| MathV2Plugin | `ctx.linalg.*`, `ctx.stats.*`, `ctx.signal.*` | matmul, summary, fft_magnitudes |
+
+### Collaboration (v1.17, v1.19)
+| Plugin | Namespace | Key ops |
+|---|---|---|
+| AgentSwarmPlugin | `ctx.swarm.*` | spawn, delegate, aggregate, blackboard |
+| VoiceDialogPlugin | `ctx.voice.*` | turn (STT->LLM->TTS with barge-in) |
+| TerminalUIPlugin | `ctx.ui.*` | progress, menu |
+
+### Autonomy (v1.18, v1.19)
+| Plugin | Namespace | Key ops |
+|---|---|---|
+| SLAMPlugin | `ctx.slam.*` | create_map, scan, integrate, frontier |
+| VisionPlugin | `ctx.vision.*` | detect, ocr, caption |
+| AutoDrivePlugin | `ctx.autodrive.*` | simulate (lane keep + obstacle avoid) |
+
+### Security / Cloud / RL (v1.21-v1.22)
+| Plugin | Namespace | Key ops |
+|---|---|---|
+| CryptoPlugin | `ctx.crypto.*` | hash, gen_key, xor_encrypt/decrypt, hmac_sign/verify, fernet |
+| RLPlugin | `ctx.rl.*` | train_grpo, rlcd_reward |
+| CloudPlugin | `ctx.cloud.*` | aws_s3_list, gcp_storage_list, azure_blob_list |
 
 ## Paper Highlights (for HF Papers)
 
