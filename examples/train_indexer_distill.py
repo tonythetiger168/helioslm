@@ -161,10 +161,58 @@ def indexer_prefill_stability(model, ids, top_k, n_trials=8, noise_std=0.05,
     return stats
 
 
+def stability_gate(stab_final: dict, stability_min: float) -> None:
+    """Loud quality gate for a distilled indexer's prefill stability.
+
+    ``prefill_stability`` scores MECHANICAL selection stability, not
+    selection quality — but an indexer whose top-k sets reshuffle under
+    query-side jitter at the deployed noise level is not shippable as
+    "distilled" either: downstream sparse-attention paths (and the
+    v5.44+ trust story around them) assume the selection is a stable
+    function of the query. This gate refuses (ValueError) instead of
+    silently returning stats that fail the floor.
+
+    Args:
+        stab_final: {layer_index: prefill_stability stats dict} as
+            returned by ``indexer_prefill_stability``.
+        stability_min: required minimum per-layer "mean_jaccard"
+            (float in [0, 1], inclusive).
+
+    Loud errors: an empty stats dict, a layer stats dict without
+    "mean_jaccard", a floor outside [0, 1], or any layer below the
+    floor — the error lists every offending layer with its measured
+    value, so the failure is actionable rather than a bare refusal.
+    """
+    if not stab_final:
+        raise ValueError(
+            "stability_gate got an empty stats dict — there is no "
+            "measured stability to gate on (run the probe first)")
+    floor = float(stability_min)
+    if floor != floor or not (0.0 <= floor <= 1.0):
+        raise ValueError(f"stability_min must be a float in [0, 1], got "
+                         f"{stability_min!r}")
+    offenders = []
+    for layer_idx, stats in stab_final.items():
+        if not isinstance(stats, dict) or "mean_jaccard" not in stats:
+            raise ValueError(
+                f"layer {layer_idx} stats lack a 'mean_jaccard' field "
+                f"(got {stats!r}) — refusing to gate on malformed input")
+        if float(stats["mean_jaccard"]) < floor:
+            offenders.append(
+                (layer_idx, float(stats["mean_jaccard"])))
+    if offenders:
+        detail = ", ".join(f"layer {i}: {v:.4f}" for i, v in offenders)
+        raise ValueError(
+            f"prefill stability below the {floor:.4f} floor — {detail}. "
+            f"An unstable indexer must not be silently shipped as "
+            f"distilled; retrain (more steps / different lr) or lower "
+            f"the floor explicitly after eyeballing the numbers")
+
+
 def distill_indexer(model, corpus_ids, steps=400, seq_len=32, batch_size=4,
                     lr=3e-3, top_k=4, seed=1234, log_every=0,
                     stability_probe=False, stability_trials=8,
-                    stability_noise=0.05):
+                    stability_noise=0.05, stability_min=None):
     """Distill every learned-indexer layer against its own teacher.
 
     All non-indexer parameters are frozen (trunk bit-preserved). Returns a
@@ -218,6 +266,14 @@ def distill_indexer(model, corpus_ids, steps=400, seq_len=32, batch_size=4,
             k: round(v["mean_jaccard"], 4) for k, v in stab0.items()}
         stats["stability_final"] = {
             k: round(v["mean_jaccard"], 4) for k, v in stab1.items()}
+        if stability_min is not None:
+            stability_gate(stab1, stability_min)
+            stats["stability_floor"] = float(stability_min)
+    elif stability_min is not None:
+        raise ValueError(
+            "stability_min was given without stability_probe=True — "
+            "gating on a measurement that was never taken is a silent "
+            "no-op dressed as a check; pass stability_probe=True")
     return stats
 
 
@@ -278,6 +334,10 @@ def main():
     ap.add_argument("--seed", type=int, default=1234)
     ap.add_argument("--stability-probe", action="store_true",
                     help="also measure prefill top-k stability before/after")
+    ap.add_argument("--stability-min", type=float, default=None,
+                    help="loud-fail if any layer's final prefill stability "
+                         "mean Jaccard is below this floor (requires "
+                         "--stability-probe)")
     args = ap.parse_args()
 
     if not os.path.exists(args.checkpoint):
@@ -300,7 +360,8 @@ def main():
                             seq_len=args.seq_len, batch_size=args.batch_size,
                             lr=args.lr, top_k=args.sparse_top_k,
                             seed=args.seed, log_every=100,
-                            stability_probe=args.stability_probe)
+                            stability_probe=args.stability_probe,
+                            stability_min=args.stability_min)
     print("distill stats:", stats)
 
     payload = dict(ckpt)  # preserve original meta fields

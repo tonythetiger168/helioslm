@@ -1,4 +1,4 @@
-# HeliosLM v5.44 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.47 - DeepSeek/K3-Style Architecture
 
 Reference LLM implementation with DeepSeek-V3-style efficiency techniques.
 All modules below are implemented and exercised by a CPU test suite with
@@ -18,6 +18,35 @@ misbehaving (see CHANGELOG). v5.5 is a feature release aligned with
 Kimi-K3-class architecture mechanisms: hybrid linear attention, LatentMoE,
 quantile balancing, cross-layer attention residuals, and SiTU-GLU (see
 CHANGELOG; unit suite now 44 tests).
+
+## v5.47 (2026-10-09): Regression Locks + Trust Pipeline Example + Stability Floor
+Maintenance round on top of the merged remote line (RLCD verdicts,
+helios-harness v5.45/v5.46, sparse-through-engine sweep), each
+oracle-tested in `tests/test_v5.py`:
+- **decision_head repair + regression lock** (`agent/decision_head.py`):
+  commit 6d96cec's "noul fix" had duplicated the noul target branches
+  into an IndentationError that reached main undetected — restored to
+  the v5.36d semantics (None -> 0.5, yes/no via `_NOUL_IDX`, raw
+  floats) and added a loud empty-records guard so the next corruption
+  fails at the boundary with the real cause.
+- **quant-calib → TrustGate end-to-end example**
+  (`examples/quant_calib_trust_gate.py`): the v5.44 pipeline math wired
+  into a runnable script — probe report in (honest "mechanics on an
+  untrained model" banner), calibrated TrustGateV2 decision record out,
+  widen-only band visible in the printed numbers.
+- **Indexer distillation stability floor**
+  (`examples/train_indexer_distill.py`): `stability_gate` + the
+  `--stability-min` flag refuse to silently ship an indexer whose
+  prefill top-k selection reshuffles past the caller's floor; the
+  refusal names every offending layer. `stability_min` without the
+  probe is a loud error, not a silent no-op.
+- **helios-harness repairs** (`harness/harness_plugins.py`): the
+  agent-module path is built with os.path (the forward-slash rsplit
+  broke every plugin import on Windows) and a `finish` call is now
+  terminal in the agent workflow (T44's `wf["final"]` was stuck at
+  None); plus the `test_calibrated_prefetcher` import repair. Remote
+  modules run green: harness 4/4, deep 4/4, workflow 2/2, prefetcher
+  3/3.
 
 ## v5.44 (2026-10-08): Prefill Stability + Quant-Calib Pipeline + Async EnvGRPO
 Three closures on top of the v5.43 + limitations-round tooling, each

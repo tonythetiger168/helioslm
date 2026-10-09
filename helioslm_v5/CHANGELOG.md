@@ -130,6 +130,64 @@
 
 
 
+## v5.47 (2026-10-09) - Regression Locks + Trust Pipeline Example + Stability Floor
+- `agent/decision_head.py`: REPAIR — commit 6d96cec ("v5.41: ... + noul
+  fix") duplicated the noul target branches and left invalid
+  indentation; the file was a SyntaxError on import for every consumer
+  (trust gates, calibrated router, RLCD paths) yet reached main. The
+  noul branch is restored to the v5.36d semantics (None -> 0.5,
+  yes/no strings via _NOUL_IDX, raw floats pass through), verified
+  byte-identical to 88ff4a6's logic. New loud guard: `_targets` on an
+  empty record list raises a named ValueError instead of an opaque
+  torch.stack runtime error. Test: `test_decision_head_noul_targets`
+  (three noul forms + score None-fill + choice index locked at 1e-4;
+  empty-records loud)
+- `examples/quant_calib_trust_gate.py` (new): end-to-end quant-calib ->
+  TrustGate v2 wiring demo. `run_probe_demo` runs the bf16-vs-NVFP4
+  probe on the untrained lite model (printed banner repeats the
+  module's honesty constraint: mechanics, not a drift claim);
+  `run_gate_demo` feeds any well-formed report through
+  `trust_calibration_from_report` into TrustGateV2 and returns the
+  decide_explain record (widen-only band auditable in the numbers).
+  Test: `test_quant_calib_trust_gate_example` (probe schema both arms;
+  hand-built report -> margin 0.08, p=0.84 ESCALATE, p=0.99 DIRECT;
+  partial report loud)
+- `examples/train_indexer_distill.py`: `stability_gate(stab_final,
+  stability_min)` — loud quality floor on per-layer prefill stability
+  mean Jaccard: below-floor layers named with measured values in the
+  error; empty/malformed stats and floors outside [0, 1] also loud.
+  `distill_indexer(..., stability_min=)` + `--stability-min` flag;
+  passing the floor records "stability_floor" in stats. `stability_min`
+  without `stability_probe=True` is a loud error (a gate on a
+  measurement never taken is theatre, not a check). Mechanical
+  stability only — the gate does NOT claim selection quality.
+  Test: `test_indexer_stability_min_gate` (inclusive boundary; below /
+  near-boundary / empty / malformed / out-of-range loud; offenders
+  listed; distill wiring refuses probe-less gating)
+- `harness/harness_plugins.py`: two repairs on the v1.2/v1.3 remote
+  line. (a) The agent-module path was built with a forward-slash rsplit
+  — on Windows it silently pointed at a nonexistent directory and every
+  bare import (tools/trajectory/gate/schema/...) died with
+  ModuleNotFoundError; now os.path-based with a loud missing-directory
+  refusal. (b) `AgentWorkflowPlugin` never treated a `finish` call as
+  terminal (parse_chat_turn classifies it as "tool"), so the workflow
+  looped to max_steps with "final" stuck at None — T44's own assertion
+  `wf["final"] == "2"` failed on every run; finish now submits the
+  answer and breaks. Covered by the remote modules' own oracles now
+  running green: test_harness 4/4, test_harness_deep 4/4,
+  test_agent_workflow 2/2.
+- `helioslm_v5/tests/test_calibrated_prefetcher.py`: repair — the bare
+  `from calibrated_prefetcher import ...` could never resolve
+  (CalibratedPrefetcher lives in the repo-root agent/ package, not
+  helioslm_v5/agent); mirrors test_selfgen_meta's dual-path discipline.
+  test_calibrated_prefetcher 3/3 green.
+- Version note: config model_name was still v5.44 while this CHANGELOG
+  already carried v5.45 (helios-harness) and v5.46 (harness deep
+  workflow) — and a SECOND v5.44 entry (RLCD-FT verdict, 10-09). The
+  +1 rule is applied to the config as usual; v5.45/v5.46 are taken by
+  the harness line, so this round takes v5.47 to keep versions unique
+  and monotone. The v5.44 collision is recorded here, not papered over.
+
 ## v1.3 (2026-10-09) - real mid model through harness
 - MidModelPlugin: loads paired mid_sft_v5.33.pt + .tok.json as
   model.mid (v5.33 pairing discipline). End-to-end: real model_fn

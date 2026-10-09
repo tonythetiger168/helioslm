@@ -87,7 +87,20 @@ class DecisionHead(nn.Module):
         v5.36b: noul targets are 01 floats via _NOUL_IDX (yes=1.0,
         no=0.0); continuous form drops the UNKNOWN class. Score targets
         are raw floats. The two paths are distinct -- mixing them
-        KeyError'd on None (found in test_calibrated_router)."""
+        KeyError'd on None (found in test_calibrated_router).
+
+        2026-10-09 (v5.47): loud empty-records guard. The 6d96cec "noul
+        fix" regression duplicated the noul branches into an
+        IndentationError that every consumer of this module tripped
+        over -- it survived to main because no test exercised _targets
+        through THIS suite. `torch.stack([])` would raise an opaque
+        runtime error instead of saying what is actually wrong; the
+        guard fails loudly at the boundary with the real cause."""
+        if not records:
+            raise ValueError(
+                "decision_head _targets needs at least one record — "
+                "fit() on an empty record list is a caller bug, not a "
+                "benign no-op")
         zs, labels = [], {n: [] for n in self.qnames}
         for r in records:
             with torch.no_grad():
@@ -100,15 +113,16 @@ class DecisionHead(nn.Module):
                 elif kind == "noul":
                     # v5.36d: targets may be yes/no strings OR raw
                     # probabilities (continuous consumers); None fills 0.5
+                    # (restored 2026-10-09: commit 6d96cec's "noul fix"
+                    # duplicated these branches and left invalid
+                    # indentation — a SyntaxError on import that every
+                    # decision_head consumer tripped over; semantics
+                    # below are byte-identical to 88ff4a6, verified by
+                    # test_quant_drift_trust_gate + test_trust_calibration)
                     if a is None:
                         labels[n].append(0.5)
                     elif isinstance(a, str):
-                        if a is None:
-                        labels[n].append(0.5)
-                    elif isinstance(a, str):
                         labels[n].append(_NOUL_IDX[a])
-                    else:
-                        labels[n].append(float(a))
                     else:
                         labels[n].append(float(a))
                 else:  # score: raw float target; a missing answer fills

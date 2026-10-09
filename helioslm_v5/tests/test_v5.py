@@ -1088,6 +1088,154 @@ def test_async_env_grpo():
 
 
 # ----------------------------------------------------------------------
+# v5.47 (1/3): decision_head noul-target regression — the 6d96cec "noul
+# fix" duplicated the branches into an IndentationError that reached main
+# undetected; the three-branch semantics (None -> 0.5, yes/no strings via
+# _NOUL_IDX, raw floats) are locked here, plus the new empty-records
+# loud guard
+# ----------------------------------------------------------------------
+def test_decision_head_noul_targets():
+    _agent_dir = str(Path(__file__).resolve().parent.parent / "agent")
+    if _agent_dir not in sys.path:
+        sys.path.insert(0, _agent_dir)
+    from decision_head import DecisionHead
+
+    head = DecisionHead({"t": ("noul", None), "s": ("score", None),
+                         "c": ("choice", ("a", "b"))})
+
+    def _rec(t_ans, s_ans, c_ans):
+        return {"ids": torch.tensor([1, 2, 3]),
+                "answers": {"t": t_ans, "s": s_ans, "c": c_ans}}
+
+    records = [_rec("yes", 0.9, "b"), _rec("no", 0.1, "a"),
+               _rec(None, 0.5, "b"), _rec(0.7, None, "a")]
+    _, labels = head._targets(records)
+
+    # noul: None fills 0.5, strings map via _NOUL_IDX, raw floats pass
+    # through (the exact branches 6d96cec corrupted). Targets are float32
+    # tensors, so compare at 1e-4 (float32(0.7) != 0.7 exactly).
+    assert [round(v, 4) for v in labels["t"].tolist()] == \
+        [1.0, 0.0, 0.5, 0.7], labels["t"]
+    # score: raw floats; a missing answer fills 0.0 (documented policy).
+    assert [round(v, 4) for v in labels["s"].tolist()] == \
+        [0.9, 0.1, 0.5, 0.0], labels["s"]
+    # choice: index into the option tuple.
+    assert labels["c"].tolist() == [1, 0, 1, 0], labels["c"]
+
+    # Loud guard: empty records fail at the boundary with the real cause
+    # (previously a bare torch.stack runtime error).
+    try:
+        head._targets([])
+        assert False, "empty records must fail loudly"
+    except ValueError as e:
+        assert "at least one record" in str(e), e
+    _pass("test_decision_head_noul_targets",
+          "noul None/str/float + score None-fill + choice idx locked; "
+          "empty-records loud guard ok")
+
+
+# ----------------------------------------------------------------------
+# v5.47 (2/3): quant-calib -> TrustGate end-to-end example — the v5.44
+# pipeline math wired into a runnable script: probe report in, calibrated
+# gate decision record out, widen-only band visible in the numbers
+# ----------------------------------------------------------------------
+def test_quant_calib_trust_gate_example():
+    from examples.quant_calib_trust_gate import run_gate_demo, run_probe_demo
+
+    # Section 1: the real probe on the untrained lite model — mechanics
+    # smoke only (the module's own honesty constraint), both arms present
+    # and schema-complete.
+    report = run_probe_demo(n_tasks=8, seed=0)
+    for side in ("bf16", "nvfp4"):
+        assert report[side]["n"] == 8
+        assert 0.0 <= report[side]["ece"] <= 1.0
+        assert 0.0 <= report[side]["accuracy"] <= 1.0
+    assert "fakequant" in report["method"]
+
+    # Section 2: deterministic band math on a hand-built report — the same
+    # record the pipeline test (v5.44) locks, now through the example's
+    # own wiring. p*=0.8, +0.03 drift widens the band to [0.72, 0.88].
+    demo = {"bf16": {"tag": "x/bf16", "accuracy": 0.6, "ece": 0.05,
+                     "n": 100},
+            "nvfp4": {"tag": "x/nvfp4", "accuracy": 0.6, "ece": 0.08,
+                      "n": 100}}
+    rec = run_gate_demo(demo, p_trust=0.84)
+    assert rec["calibrated"] and abs(rec["p_star"] - 0.8) < 1e-9
+    assert abs(rec["margin"] - 0.08) < 1e-9, rec
+    assert rec["route"] == "ESCALATE", rec
+    # Far outside the widened band -> DIRECT (widening buys escalation,
+    # never aggression).
+    assert run_gate_demo(demo, p_trust=0.99)["route"] == "DIRECT"
+    assert run_gate_demo(demo, p_trust=0.05)["route"] == "ESCALATE"
+
+    # Loud: a report missing an arm must not produce a gate decision.
+    try:
+        run_gate_demo({"bf16": {"ece": 0.05, "n": 10}})
+        assert False, "partial report must fail loudly"
+    except ValueError:
+        pass
+    _pass("test_quant_calib_trust_gate_example",
+          f"probe arms ok (drift {report['drift']['ece']:+.4f}, mechanics "
+          f"only); demo band [0.72, 0.88] -> p=0.84 ESCALATE, p=0.99 "
+          f"DIRECT; partial report loud")
+
+
+# ----------------------------------------------------------------------
+# v5.47 (3/3): indexer distillation stability floor — a loud quality
+# gate that refuses to silently ship an indexer whose prefill top-k
+# selection reshuffles past the caller's floor
+# ----------------------------------------------------------------------
+def test_indexer_stability_min_gate():
+    from examples.train_indexer_distill import distill_indexer, stability_gate
+
+    # Pass: layers at/above the floor (boundary inclusive).
+    stability_gate({0: {"mean_jaccard": 0.95}, 1: {"mean_jaccard": 0.5}},
+                   0.5)
+
+    # Loud: below floor, boundary exclusive on the low side, empty stats,
+    # malformed layer stats, floor outside [0, 1].
+    for bad in (lambda: stability_gate({0: {"mean_jaccard": 0.4}}, 0.5),
+                lambda: stability_gate({0: {"mean_jaccard": 0.49999}},
+                                       0.5),
+                lambda: stability_gate({}, 0.5),
+                lambda: stability_gate({0: {}}, 0.5),
+                lambda: stability_gate({0: {"mean_jaccard": 0.9}}, 1.5),
+                lambda: stability_gate({0: {"mean_jaccard": 0.9}}, -0.1)):
+        try:
+            bad()
+            assert False, "bad stability gate input must fail loudly"
+        except ValueError:
+            pass
+
+    # The refusal names every offending layer with its measured value.
+    try:
+        stability_gate({0: {"mean_jaccard": 0.4}, 3: {"mean_jaccard": 0.2}},
+                       0.5)
+        assert False, "below-floor layers must fail loudly"
+    except ValueError as e:
+        assert "layer 0" in str(e) and "layer 3" in str(e), e
+
+    # Wiring: stability_min without stability_probe is a loud error, not
+    # a silent no-op (a gate on a measurement never taken is theatre).
+    from helioslm_v5.configs.config_v5 import HeliosLMv5Config
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+    cfg = HeliosLMv5Config(size="lite")
+    cfg.attention.sparse_indexer = "learned"
+    cfg.attention.sparse_top_k = 4
+    torch.manual_seed(0)
+    model = HeliosLMv5(cfg).eval()
+    corpus = list(range(256)) * 2  # ids only; the guard fires at the end
+    try:
+        distill_indexer(model, corpus, steps=0, stability_min=0.9)
+        assert False, "stability_min without stability_probe must fail"
+    except ValueError as e:
+        assert "stability_probe" in str(e), e
+    _pass("test_indexer_stability_min_gate",
+          "floor inclusive pass; below/empty/malformed/out-of-range loud; "
+          "offenders listed; distill wiring refuses probe-less gating")
+
+
+# ----------------------------------------------------------------------
 # limitations round 2026-10-06: sparse top-k x MTP end-to-end acceptance
 # sweep — the axis the v5.16 break-even sweep (draft x cache state) does
 # not cover. Oracle: k >= kv_len must match dense draft=1 bitwise (ids
@@ -5259,6 +5407,11 @@ TESTS = [
     test_prefill_stability,
     test_trust_calibration_from_report,
     test_async_env_grpo,
+    # v5.47: repaired-decision-head regression lock, quant-calib example
+    # wiring, indexer stability floor
+    test_decision_head_noul_targets,
+    test_quant_calib_trust_gate_example,
+    test_indexer_stability_min_gate,
     # limitations round 2026-10-06
     test_sparse_mtp_acceptance_sweep,
     # limitations round 2026-10-07

@@ -1,6 +1,20 @@
 """helios-harness plugins - snap existing modules into the Context."""
+import os
 import sys
-_AGENT = __file__.rsplit("/", 2)[0] + "/helioslm_v5/agent"
+
+# The agent modules live in helioslm_v5/agent (repo-internal convention).
+# 2026-10-09 (v5.47): the original line built this path with a
+# forward-slash rsplit, which on Windows leaves the path untouched and
+# silently points at a nonexistent directory — every bare import below
+# then died with ModuleNotFoundError. os.path is cross-platform; a
+# missing directory is now loud at insert time rather than confusing
+# at first import.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_AGENT = os.path.join(_ROOT, "helioslm_v5", "agent")
+if not os.path.isdir(_AGENT):
+    raise ValueError(f"harness plugins cannot find the agent modules at "
+                     f"{_AGENT} — refusing to run with a broken import "
+                     f"path")
 if _AGENT not in sys.path:
     sys.path.insert(0, _AGENT)
 
@@ -117,6 +131,15 @@ class AgentWorkflowPlugin:
                         obs = f"TOOL_ERROR: {e}"
                 ctx.state["workflow"]["steps"][-1]["obs"] = obs
                 transcript += f"\n{raw}\nstep {step}: {obs}"
+                # Terminal call: finish submits the final answer. Without
+                # this the workflow looped forever — parse_chat_turn
+                # classifies a finish call as "tool", so "final" stayed
+                # None and the caller's T44 assertion (wf["final"] == "2")
+                # failed on every run (fixed 2026-10-09, v5.47).
+                if call.name == "finish":
+                    ctx.state["workflow"]["final"] = str(
+                        call.args.get("answer"))
+                    break
             return ctx.state["workflow"]
         ctx.register("agent.run", run)
 

@@ -5,8 +5,13 @@ from pathlib import Path
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "agent"))
+# 2026-10-09 (v5.47): CalibratedPrefetcher lives in the repo-root agent/
+# package (alongside self_gen_env / meta_prefetcher), NOT in
+# helioslm_v5/agent — the bare import died with ModuleNotFoundError on
+# every platform. Mirror test_selfgen_meta's dual-path discipline.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from calibrated_prefetcher import CalibratedPrefetcher
+from agent.calibrated_prefetcher import CalibratedPrefetcher
 from trajectory import text_to_ids
 
 
