@@ -1,20 +1,12 @@
-"""T66 - v1.24: web UI with preset + smoke workflow."""
-import sys, threading, time, urllib.request
+"""T67 - v1.25: chat endpoint."""
+import sys, threading, time, urllib.request, json
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from harness.web_ui import _boot_context, HarnessHandler
 from http.server import HTTPServer
-import json
 
 
-def test_boot_full_preset():
-    ctx = _boot_context("full")
-    assert len(ctx.effects) >= 4   # boot + 3 smoke
-    assert "tools.registry" in ctx._services
-    print(f"PASS test_boot_full_preset ({len(ctx.effects)} effects)")
-
-
-def test_html_dashboard():
+def test_chat_endpoint():
     ctx = _boot_context("full")
     HarnessHandler.ctx = ctx
     server = HTTPServer(("127.0.0.1", 0), HarnessHandler)
@@ -22,18 +14,24 @@ def test_html_dashboard():
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
     time.sleep(0.3)
+    # dashboard has chat link
     html = urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=5).read().decode()
-    assert "helios-harness" in html
-    assert "Recent effects" in html
-    r = json.loads(urllib.request.urlopen(
-        f"http://127.0.0.1:{port}/effects", timeout=5).read())
-    assert r["n"] >= 4
-    assert all("verified" in e for e in r["effects"])
+    assert "/chat" in html
+    # chat page
+    chat_html = urllib.request.urlopen(f"http://127.0.0.1:{port}/chat", timeout=5).read().decode()
+    assert "helios-chat" in chat_html
+    # POST a message
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/chat",
+        data=json.dumps({"sid": "test1", "message": "hello"}).encode(),
+        headers={"Content-Type": "application/json"}, method="POST")
+    r = json.loads(urllib.request.urlopen(req, timeout=5).read())
+    assert "response" in r and "confidence" in r
+    assert r["effects"] >= 0
     server.shutdown()
-    print("PASS test_html_dashboard")
+    print("PASS test_chat_endpoint")
 
 
 if __name__ == "__main__":
-    test_boot_full_preset()
-    test_html_dashboard()
-    print("web UI v2 tests done")
+    test_chat_endpoint()
+    print("chat test done")

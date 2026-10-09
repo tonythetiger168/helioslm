@@ -1,5 +1,15 @@
 # HeliosLM v5 Changelog
 
+## v1.25 (2026-10-09) - web chat (calibrated)
+- web_ui: /chat endpoint + HTML chat UI (green terminal style). Chat
+  uses ChatSession; each reply carries confidence badge (green>=0.7,
+  yellow>=0.3, red<0.3). TrustGate ESCALATE shown. POST /chat with
+  {sid, message} -> {response, confidence, route, effects}
+- dashboard links to /chat
+- T67
+
+
+
 ## v1.24 (2026-10-09) - web UI hardening
 - harness/web_ui.py: --preset flag (minimal/full/agent), boot smoke
   workflow (3 tasks -> effects non-empty), HTML dashboard at / with
