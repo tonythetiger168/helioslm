@@ -79,3 +79,44 @@ class PresetPlugin:
             ctx.use(LoopPlugin())
             ctx.use(StatePlugin())
 
+class AgentWorkflowPlugin:
+    """v1.2: ReAct workflow on the harness -- think -> act -> observe
+    -> ... -> answer, with per-step effects (auditable). Unlike
+    AgentLoop (tool-call only), this allows interleaved reasoning and
+    action, and records an effect per step (not just the final one)."""
+
+    def apply(self, ctx):
+        def run(task_text, model_fn, max_steps=12, seed=0):
+            ctx.state["workflow"] = {"task": task_text, "steps": [],
+                                     "final": None}
+            transcript = f"Task: {task_text}"
+            for step in range(max_steps):
+                raw = model_fn(transcript, seed, step)
+                ctx.state["workflow"]["steps"].append({"raw": raw})
+                ctx.effect(f"step_{step}", {"raw": raw[:80]},
+                           replay_fn=lambda p: True)
+                # parse: think (continue) / tool (execute) / text (answer)
+                from schema import ToolCallError, parse_chat_turn
+                try:
+                    kind, payload = parse_chat_turn(raw, ctx.tools.registry)
+                except ToolCallError:
+                    transcript += f"\nPARSE_ERROR"
+                    continue
+                if kind == "text":
+                    ctx.state["workflow"]["final"] = payload
+                    break
+                call = payload[0]
+                from tools import execute
+                if call.name not in ctx.tools.registry._specs:
+                    obs = f"TOOL_ERROR: unknown tool {call.name}"
+                else:
+                    try:
+                        obs = execute(call, ctx.tools.registry,
+                                      ctx.tools.impls)
+                    except ToolCallError as e:
+                        obs = f"TOOL_ERROR: {e}"
+                ctx.state["workflow"]["steps"][-1]["obs"] = obs
+                transcript += f"\n{raw}\nstep {step}: {obs}"
+            return ctx.state["workflow"]
+        ctx.register("agent.run", run)
+

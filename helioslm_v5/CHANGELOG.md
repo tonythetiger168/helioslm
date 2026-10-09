@@ -1,5 +1,14 @@
 # HeliosLM v5 Changelog
 
+## v1.2 (2026-10-09) - agent workflow plugin
+- harness_plugins: AgentWorkflowPlugin -- ReAct workflow (think ->
+  act -> observe -> answer) with per-step effects (auditable).
+  Unlike AgentLoop (tool only), interleaves reasoning and action
+- T44 2/2: workflow runs + per-step audit, long-horizon file env
+- v1.2 = v1.1 harness + real multi-step agent (not toy)
+
+
+
 ## v5.46 (2026-10-09) - harness deep workflow
 - harness_plugins: StatePlugin (dict-backed ctx.state, cross-plugin
   persistence) + PresetPlugin (minimal/full named wiring)
