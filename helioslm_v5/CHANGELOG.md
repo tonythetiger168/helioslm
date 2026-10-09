@@ -1,5 +1,13 @@
 # HeliosLM v5 Changelog
 
+## v1.39 (2026-10-09) - local generated video with tone
+- web_ui: _gen_local_video -- PIL frames (bouncing ball) + sine WAV +
+  ffmpeg -> MP4 with audio. Zero external deps. External sources kept
+  as fallback only (foreman/BBB 404 from user's network)
+- requires: pip install pillow, ffmpeg in PATH
+
+
+
 ## v1.38 (2026-10-09) - video sources with audio priority
 - web_ui: _search_video returns foreman (W3C, speech audio) first,
   BigBuckBunny (blender mirror, music) second, flower (silent) last

@@ -58,6 +58,61 @@ def _search_video(query):
     ]
 
 
+def _gen_local_video(out_name, seconds=5, fps=10, w=320, h=240):
+    """Generate a local video with tone audio (PIL frames + WAV + ffmpeg).
+    Zero external deps. Returns serving name or None."""
+    import math, struct, wave
+    os.makedirs(_MEDIA_DIR, exist_ok=True)
+    base = os.path.join(_MEDIA_DIR, out_name.replace(".mp4", ""))
+    # 1) frames
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError:
+        return None
+    frames_dir = base + "_frames"
+    os.makedirs(frames_dir, exist_ok=True)
+    n_frames = int(seconds * fps)
+    for i in range(n_frames):
+        img = Image.new("RGB", (w, h), (30, 30, 60))
+        d = ImageDraw.Draw(img)
+        # bouncing ball
+        x = int(w / 2 + 80 * math.sin(2 * math.pi * i / n_frames))
+        y = int(h / 2 + 60 * math.cos(2 * math.pi * i / n_frames))
+        d.ellipse([x-20, y-20, x+20, y+20], fill=(255, 100, 100))
+        d.text((10, 10), f"helios {i/n_frames:.1f}s", fill=(0, 255, 0))
+        img.save(f"{frames_dir}/f_{i:04d}.png")
+    # 2) audio: A4 sine
+    wav_path = base + ".wav"
+    fr = 22050
+    with wave.open(wav_path, "w") as wf:
+        wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(fr)
+        for i in range(int(seconds * fr)):
+            amp = int(12000 * math.sin(2 * math.pi * 440 * i / fr))
+            wf.writeframes(struct.pack("<h", amp))
+    # 3) ffmpeg mux
+    try:
+        import subprocess as sp
+        cmd = ["ffmpeg", "-y",
+               "-framerate", str(fps),
+               "-i", f"{frames_dir}/f_%04d.png",
+               "-i", wav_path,
+               "-c:v", "libx264", "-pix_fmt", "yuv420p",
+               "-c:a", "aac", "-shortest",
+               os.path.join(_MEDIA_DIR, out_name)]
+        r = sp.run(cmd, capture_output=True, text=True, timeout=60)
+        if r.returncode != 0:
+            print(f"[media] ffmpeg failed: {r.stderr[-200:]}", flush=True)
+            return None
+        # cleanup
+        import shutil
+        shutil.rmtree(frames_dir, ignore_errors=True)
+        os.unlink(wav_path)
+        return out_name
+    except FileNotFoundError:
+        print("[media] ffmpeg not installed", flush=True)
+        return None
+
+
 def _proxy_video(url, out_name):
     os.makedirs(_MEDIA_DIR, exist_ok=True)
     out_path = os.path.join(_MEDIA_DIR, out_name)
@@ -330,12 +385,15 @@ h1{{color:#0ff}}</style></head><body>
                     "effects": 1, "backend": "media"}
         # video
         if any(k in msg_l for k in ("video", "影片", "视频", "play video")):
-            urls = _search_video(msg)
-            local = None
-            for u in urls:
-                local = _proxy_video(u, f"vid_{sid}_{int(time.time())}.mp4")
-                if local:
-                    break
+            # v1.39: local generated video first (has tone audio, zero
+            # external deps); external download as fallback
+            local = _gen_local_video(f"vid_{sid}_{int(time.time())}.mp4")
+            if not local:
+                urls = _search_video(msg)
+                for u in urls:
+                    local = _proxy_video(u, f"vid_{sid}_{int(time.time())}.mp4")
+                    if local:
+                        break
             if local:
                 reply = (f'<video controls style="max-width:100%">'
                          f'<source src="/video/{local}" type="video/mp4">'
