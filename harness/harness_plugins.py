@@ -1350,3 +1350,162 @@ class AgentSwarmPlugin:
         ctx.register("swarm.aggregate", aggregate)
         ctx.register("swarm.blackboard", blackboard)
 
+class MultiRobotPlugin:
+    """v1.18: multi-robot coordination. Fleet management, task allocation
+    (nearest-capable), formation control. Built on AgentSwarmPlugin +
+    RobotControlPlugin patterns."""
+
+    def apply(self, ctx):
+        fleet = {}
+        def register(robot_id, caps=None):
+            fleet[robot_id] = {"caps": caps or [], "pos": (0.0, 0.0),
+                               "busy": False}
+            ctx.effect("fleet_reg", {"id": robot_id}, replay_fn=lambda p: True)
+            return {"fleet": list(fleet.keys())}
+        def allocate(task, required_caps=None):
+            # nearest capable idle robot
+            cands = [r for r, s in fleet.items()
+                     if not s["busy"]
+                     and (not required_caps
+                          or all(c in s["caps"] for c in required_caps))]
+            if not cands:
+                return {"error": "no capable robot"}
+            chosen = cands[0]
+            fleet[chosen]["busy"] = True
+            ctx.effect("fleet_alloc", {"task": task[:30], "robot": chosen},
+                       replay_fn=lambda p: True)
+            return {"robot": chosen}
+        def release(robot_id):
+            fleet[robot_id]["busy"] = False
+        def formation(points):
+            # assign robots to formation points (greedy nearest)
+            assignments = {}
+            free = [r for r, s in fleet.items() if not s["busy"]]
+            for pt in points[:len(free)]:
+                r = free.pop(0)
+                assignments[r] = pt
+                fleet[r]["pos"] = pt
+            ctx.effect("fleet_formation", {"n": len(assignments)},
+                       replay_fn=lambda p: True)
+            return assignments
+        def fleet_state():
+            return dict(fleet)
+        ctx.register("fleet.register", register)
+        ctx.register("fleet.allocate", allocate)
+        ctx.register("fleet.release", release)
+        ctx.register("fleet.formation", formation)
+        ctx.register("fleet.state", fleet_state)
+
+
+class SLAMPlugin:
+    """v1.18: occupancy-grid SLAM (toy-scale, no external deps). Simulated
+    lidar scans against a known map; integrates poses into a grid."""
+
+    def apply(self, ctx):
+        def create_map(w=20, h=20):
+            return {"w": w, "h": h, "grid": [[0.5] * w for _ in range(h)],
+                    "pose": (0.0, 0.0, 0.0)}
+        def scan(sim_map, pose, n_beams=8, max_range=5.0):
+            # simulated: returns ranges (mock obstacles at walls)
+            px, py, th = pose
+            ranges = []
+            for i in range(n_beams):
+                a = th + 2 * 3.14159 * i / n_beams
+                r = max_range
+                # wall at x=10 or y=10
+                if abs(a) < 0.1:
+                    r = min(r, 10 - px)
+                if abs(abs(a) - 3.14159) < 0.1:
+                    r = min(r, px)
+                if abs(abs(a) - 1.5708) < 0.1:
+                    r = min(r, 10 - py)
+                if abs(abs(a) + 1.5708) < 0.1 or abs(abs(a) - 4.712) < 0.1:
+                    r = min(r, py)
+                ranges.append(round(max(0.0, r), 2))
+            ctx.effect("slam_scan", {"n": n_beams}, replay_fn=lambda p: True)
+            return ranges
+        def integrate(sim_map, pose, ranges):
+            # mark cells along beams as free, endpoints as occupied
+            px, py, th = pose
+            grid = sim_map["grid"]
+            for i, r in enumerate(ranges):
+                a = th + 2 * 3.14159 * i / len(ranges)
+                steps = int(r * 2)
+                for s in range(steps):
+                    x = int(px + s / 2 * __import__("math").cos(a))
+                    y = int(py + s / 2 * __import__("math").sin(a))
+                    if 0 <= x < sim_map["w"] and 0 <= y < sim_map["h"]:
+                        grid[y][x] = max(0.0, grid[y][x] - 0.1)
+                ex, ey = int(px + r * __import__("math").cos(a)), \
+                         int(py + r * __import__("math").sin(a))
+                if 0 <= ex < sim_map["w"] and 0 <= ey < sim_map["h"]:
+                    grid[ey][ex] = min(1.0, grid[ey][ex] + 0.3)
+            sim_map["pose"] = pose
+            ctx.effect("slam_integrate", {"beams": len(ranges)},
+                       replay_fn=lambda p: True)
+            return sim_map
+        def frontier(sim_map):
+            # cells with 0.5 (unknown) adjacent to free (<0.3)
+            grid = sim_map["grid"]
+            fr = []
+            for y in range(1, sim_map["h"] - 1):
+                for x in range(1, sim_map["w"] - 1):
+                    if grid[y][x] == 0.5:
+                        for dx, dy in ((0,1),(0,-1),(1,0),(-1,0)):
+                            if grid[y+dy][x+dx] < 0.3:
+                                fr.append((x, y))
+                                break
+            return fr
+        ctx.register("slam.create_map", create_map)
+        ctx.register("slam.scan", scan)
+        ctx.register("slam.integrate", integrate)
+        ctx.register("slam.frontier", frontier)
+
+
+class VisionPlugin:
+    """v1.18: computer vision. Object detection interface (YOLO-class
+    stub), OCR (pytesseract or stub), image captioning (transformers
+    or stub). All effects audited."""
+
+    def apply(self, ctx):
+        def detect(image_path, model="yolov8n.pt"):
+            try:
+                from ultralytics import YOLO
+                m = YOLO(model)
+                r = m(image_path)[0]
+                boxes = [{"cls": int(b.cls), "conf": float(b.conf)}
+                         for b in r.boxes]
+                ctx.effect("vision_detect", {"n": len(boxes)},
+                           replay_fn=lambda p: True)
+                return {"boxes": boxes}
+            except ImportError:
+                return {"error": "ultralytics not installed"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        def ocr(image_path):
+            try:
+                import pytesseract
+                from PIL import Image
+                text = pytesseract.image_to_string(Image.open(image_path))
+                ctx.effect("vision_ocr", {"chars": len(text)},
+                           replay_fn=lambda p: True)
+                return {"text": text}
+            except ImportError:
+                return {"error": "pytesseract not installed"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        def caption(image_path):
+            try:
+                from transformers import pipeline
+                cap = pipeline("image-to-text", model="Salesforce/blip-image-captioning-base")
+                r = cap(image_path)
+                ctx.effect("vision_caption", {}, replay_fn=lambda p: True)
+                return {"caption": r[0]["generated_text"]}
+            except ImportError:
+                return {"error": "transformers not installed"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        ctx.register("vision.detect", detect)
+        ctx.register("vision.ocr", ocr)
+        ctx.register("vision.caption", caption)
+

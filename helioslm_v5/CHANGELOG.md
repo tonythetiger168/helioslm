@@ -1,5 +1,14 @@
 # HeliosLM v5 Changelog
 
+## v1.18 (2026-10-09) - multi-robot / SLAM / vision
+- MultiRobotPlugin: fleet register/allocate/release/formation
+- SLAMPlugin: occupancy-grid toy SLAM (scan/integrate/frontier)
+- VisionPlugin: detect (YOLO stub) / OCR (pytesseract) / caption
+  (transformers BLIP)
+- T60
+
+
+
 ## v1.17 (2026-10-09) - agent swarm support
 - AgentSwarmPlugin: leader-worker delegation, shared blackboard, per-
   worker effects audited. swarm.spawn / .delegate / .aggregate / .blackboard
