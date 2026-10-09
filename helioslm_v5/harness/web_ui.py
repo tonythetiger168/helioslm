@@ -143,6 +143,7 @@ def _resolve_backend(ctx):
 
 def _search_image(query):
     """Placeholder image via picsum. For real search, plug Unsplash API."""
+    import urllib.parse
     return f"https://picsum.photos/seed/{urllib.parse.quote(query)[:20]}/400/300"
 
 

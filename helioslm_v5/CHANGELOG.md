@@ -1,5 +1,11 @@
 # HeliosLM v5 Changelog
 
+## v1.31b (2026-10-09) - fix missing urllib.parse import
+- web_ui: _search_image now imports urllib.parse locally (the module-
+  level name 'urllib' was not available in that scope)
+
+
+
 ## v1.31 (2026-10-09) - media in chat: image/video/sound
 - web_ui: chat intercepts image/video/sound requests -> serves media
   directly (<img> picsum, <video> pixabay sample, <audio> pyttsx3/gTTS
