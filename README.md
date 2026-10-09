@@ -36,6 +36,35 @@ A from-scratch PyTorch reference implementation of a modern LLM stack: MLA atten
 
 **Honest positioning:** this is a correctness-focused reference implementation, not a throughput-optimized production engine (see [Known Limitations](#known-limitations)).
 
+## Paper Highlights (for HF Papers)
+
+**One-liner:** The open-source reference for the RLCD "decision layer" --
+calibrated confidence on acting models, measured across three scales
+(8.5M / 360M / Qwen3-0.6B) and on the 7,193-instance RLCDAlignBench.
+
+**Why this matters for the HF community:**
+- Open-weight models now span the full price spectrum ($0 -> $0.14/M ->
+  $0.20/M frontier tiers) but NO vendor publishes calibration-on-wrong-
+  answers curves. This repo is the open, replay-verifiable measurement.
+- The API probe (GPT-5.6 Luna + DeepSeek V4 Flash) found THREE distinct
+  calibration failure modes across the price spectrum: stable
+  hallucination (360M/Qwen), unstable hallucination (Luna), refusal
+  (V4 Flash) -- none healthy. Probe cost: $0.02.
+- On RLCDAlignBench our supervised TF-IDF readout reaches 0.726 median
+  AUROC and beats the commercial Jev detector's zero-shot numbers on
+  11/41 benchmarks. The open audit is 15x cheaper than the commercial
+  detector it audits.
+- HeliosLM's policy-in-code route (GroundingGate, CalibratedPrefetcher)
+  is the engineering embodiment of the vendor's own finding: prompt
+  engineering adds only +0.006 AUROC (p=0.055) -- retaining full
+  probability and routing decisions in code is what works.
+
+**Artifacts:** paper PDF + LaTeX in `docs/`; all benchmark JSONs in
+`benchmarks/`; three-tier deployment (lite 8.5M / mid 360M / full V3-class)
+with per-task replay verification and tokenizer-fingerprint pairing.
+
+cc @osanseviero @philschmid for HF Papers consideration
+
 ## Paper
 
 **Calibrated Agency: An Open-Source RLCD Stack, from Toy Scale to 360M, with a
