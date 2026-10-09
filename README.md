@@ -206,6 +206,41 @@ fingerprints and benchmark data in
 [huggingface.co/chienhsinlin/helioslm](https://huggingface.co/chienhsinlin/helioslm),
 and the paper source + PDF in `docs/`.
 
+## Plugins (helios-harness)
+
+The harness ships with 35+ plugins covering DeepSeek-Harness scenarios and beyond.
+All plugins register as `ctx.<name>.<op>` with per-call audit effects.
+
+| Category | Plugins | Version |
+|---|---|---|
+| Core | Model, Tool, Session, Decision (grounding/trust/prefetcher), Loop, State, Preset | v1.1–v1.3 |
+| Agent | Memory, Terminal (TrustGate-gated), Fetch, Filesystem, Time | v1.8 |
+| Common | Search (local), WebSearch (stub), PDF, SQLite, Template | v1.9 |
+| Services | GitHub (gated), PostgreSQL | v1.10 |
+| Office | Excel, Docx, Pptx, YouTube | v1.11 |
+| Niche | MCP-wizard, Tmux, Everything | v1.12 |
+| Media | Video, Audio (TTS/STT), NanoVideo | v1.13 |
+| Hardware | Blender, Omi (BLE) | v1.14 |
+| Robot | RobotControl (mock/ROS2), MultiRobot, SLAM, Vision | v1.16–v1.18 |
+| Agentic | AgentWorkflow (ReAct), AgentSwarm | v1.2, v1.17 |
+| Science | DNA, Protein, Chem, Math-v2 | v1.20–v1.22 |
+| RL | GRPO training, RLCD reward shaping | v1.21 |
+| Crypto | Hash/XOR/HMAC/Fernet | v1.22 |
+| Cloud | AWS S3, GCP Storage, Azure Blob | v1.22 |
+| Benchmark | AlignBench summary, Report gen, Trend | v1.15, v1.22 |
+| Voice/UI | VoiceDialog, TerminalUI, AutoDrive | v1.19 |
+| IC | RTL gen, UVM scaffold, Coverage | v1.7 |
+
+**Usage:**
+```python
+from harness.harness_core import Context
+from harness.harness_plugins import *
+ctx = Context()
+ctx.use(PresetPlugin("full", model_fn=my_fn))
+ctx.use(RobotControlPlugin(mode="mock"))
+ctx.robot.move_base(1.0, 0.0, 0.0)   # TrustGate-gated, effect-audited
+```
+
 ## Deployment tiers
 
 Three rungs, each with one recorded reason to exist (no spectrum theater):
