@@ -1,5 +1,12 @@
 # HeliosLM v5 Changelog
 
+## v1.30 (2026-10-09) - Qwen3 thinking off + think block strip
+- web_ui: apply_chat_template(enable_thinking=False) -- Qwen3's
+  internal <think> reasoning no longer leaks into the reply
+- _clean_reply strips any stray <think>...</think> blocks
+
+
+
 ## v1.29b (2026-10-09) - fix api backend urlopen
 - web_ui: _u.request.urlopen -> _u.urlopen (module attribute error
   broke api backend chat)

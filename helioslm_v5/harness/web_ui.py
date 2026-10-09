@@ -51,6 +51,8 @@ def _boot_context(preset="full"):
 def _clean_reply(text):
     """Strip Qwen base's hallucinated self-marks and repeated lines."""
     # remove harness-style self references the base model invents
+    import re as _re
+    text = _re.sub(r"<think>.*?</think>", "", text, flags=_re.DOTALL)
     for bad in ("##assistant##", "##user##", "HeliosLM", "I am HeliosLM"):
         text = text.replace(bad, "")
     # dedup consecutive identical lines
@@ -108,7 +110,8 @@ def _resolve_backend(ctx):
                     {"role": "user", "content": prompt},
                 ]
                 text = tok.apply_chat_template(
-                    messages, tokenize=False, add_generation_prompt=True)
+                    messages, tokenize=False, add_generation_prompt=True,
+                    enable_thinking=False)   # v1.30: no <think> blocks
                 enc = tok(text, return_tensors="pt", truncation=True,
                           max_length=900)
                 with torch.no_grad():
@@ -120,8 +123,13 @@ def _resolve_backend(ctx):
                         pad_token_id=tok.eos_token_id,
                         eos_token_id=[tok.eos_token_id,
                                       tok.convert_tokens_to_ids("<|im_end|>")])
-                return tok.decode(out[0][enc["input_ids"].shape[1]:],
-                                  skip_special_tokens=True)
+                reply = tok.decode(out[0][enc["input_ids"].shape[1]:],
+                                   skip_special_tokens=True)
+                # strip any stray think blocks (older Qwen3 versions)
+                import re as _re
+                reply = _re.sub(r"<think>.*?</think>", "", reply,
+                                flags=_re.DOTALL).strip()
+                return reply
             return ("qwen-local", qwen_fn)
         except Exception:
             pass
