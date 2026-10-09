@@ -48,6 +48,20 @@ def _boot_context(preset="full"):
     return ctx
 
 
+def _clean_reply(text):
+    """Strip Qwen base's hallucinated self-marks and repeated lines."""
+    # remove harness-style self references the base model invents
+    for bad in ("##assistant##", "##user##", "HeliosLM", "I am HeliosLM"):
+        text = text.replace(bad, "")
+    # dedup consecutive identical lines
+    lines = text.split("\n")
+    out = []
+    for ln in lines:
+        if not out or ln.strip() != out[-1].strip():
+            out.append(ln)
+    return "\n".join(out).strip()
+
+
 def _resolve_backend(ctx):
     """Pick the best available chat backend. Returns (name, fn)."""
     # 1. Qwen local
@@ -62,15 +76,24 @@ def _resolve_backend(ctx):
                 # v1.27: use Qwen3 chat template + greedy + stop at
                 # <|im_end|>. The previous raw-prompt path made base-
                 # model Qwen ramble and repeat the input.
-                messages = [{"role": "user", "content": prompt}]
+                # v1.28: minimal system prompt -- Qwen base hallucinates
+                # an identity if we leak our harness instructions. Keep
+                # it as bare "You are a helpful assistant."
+                messages = [
+                    {"role": "system",
+                     "content": "You are a helpful assistant."},
+                    {"role": "user", "content": prompt},
+                ]
                 text = tok.apply_chat_template(
                     messages, tokenize=False, add_generation_prompt=True)
                 enc = tok(text, return_tensors="pt", truncation=True,
                           max_length=900)
                 with torch.no_grad():
                     out = model.generate(
-                        **enc, max_new_tokens=max_new,
+                        **enc, max_new_tokens=min(max_new, 150),
                         do_sample=False,
+                        repetition_penalty=1.3,
+                        no_repeat_ngram_size=3,
                         pad_token_id=tok.eos_token_id,
                         eos_token_id=[tok.eos_token_id,
                                       tok.convert_tokens_to_ids("<|im_end|>")])
@@ -242,6 +265,8 @@ h1{{color:#0ff}}</style></head><body>
                                 for r, t in _sessions[sid][-6:])
         before = len(self.ctx.effects)
         reply = backend_fn(transcript, 0, 0)
+        # v1.28: strip hallucinated self-marks and dedup
+        reply = _clean_reply(reply)
         _sessions[sid].append(("assistant", reply))
         # real calibration: for qwen we could read softmax; for now
         # use a length heuristic, recorded honestly

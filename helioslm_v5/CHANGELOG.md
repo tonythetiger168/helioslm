@@ -1,5 +1,15 @@
 # HeliosLM v5 Changelog
 
+## v1.28 (2026-10-09) - repetition control + reply cleaning
+- web_ui: qwen generation with repetition_penalty=1.3, no_repeat_
+  ngram_size=3, max_new<=150; minimal system prompt (Qwen base
+  hallucinated an identity from leaked harness instructions)
+- _clean_reply: strips ##assistant##/##user##/HeliosLM hallucinations,
+  dedups consecutive identical lines
+- T70
+
+
+
 ## v1.27 (2026-10-09) - direct chat (fix garbled Qwen output)
 - web_ui: _chat now uses DIRECT conversational chat (no ChatSession
   tool loop -- Qwen/base models have never seen @@tool@@ and produced
