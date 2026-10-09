@@ -1,5 +1,12 @@
 # HeliosLM v5 Changelog
 
+## v1.11 (2026-10-09) - office plugins
+- ExcelPlugin (openpyxl) / DocxPlugin (python-docx) / PptxPlugin
+  (python-pptx) / YouTubePlugin (transcript-api)
+- T53
+
+
+
 ## v1.10 (2026-10-09) - GitHub + PostgreSQL plugins
 - GitHubPlugin: repo info / list issues / create issue (TrustGate-gated)
 - PostgresPlugin: read/write via psycopg2 or pg8000

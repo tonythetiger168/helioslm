@@ -803,3 +803,117 @@ class PostgresPlugin:
                 conn.close()
         ctx.register("postgres.query", query)
 
+class ExcelPlugin:
+    """Excel read/write via openpyxl."""
+
+    def apply(self, ctx):
+        def write(path, rows):
+            try:
+                from openpyxl import Workbook
+                wb = Workbook()
+                ws = wb.active
+                for row in rows:
+                    ws.append(row)
+                wb.save(path)
+                ctx.effect("excel_write", {"path": path[:50]},
+                           replay_fn=lambda p: True)
+                return {"ok": True, "rows": len(rows)}
+            except ImportError:
+                return {"error": "openpyxl not installed"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        def read(path):
+            try:
+                from openpyxl import load_workbook
+                wb = load_workbook(path)
+                ws = wb.active
+                rows = [[c.value for c in row] for row in ws.iter_rows()]
+                ctx.effect("excel_read", {"path": path[:50]},
+                           replay_fn=lambda p: True)
+                return {"rows": rows[:100]}
+            except ImportError:
+                return {"error": "openpyxl not installed"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        ctx.register("excel.write", write)
+        ctx.register("excel.read", read)
+
+
+class DocxPlugin:
+    """Word doc read/write via python-docx."""
+
+    def apply(self, ctx):
+        def write(path, paragraphs):
+            try:
+                from docx import Document
+                doc = Document()
+                for p in paragraphs:
+                    doc.add_paragraph(str(p))
+                doc.save(path)
+                ctx.effect("docx_write", {"path": path[:50]},
+                           replay_fn=lambda p: True)
+                return {"ok": True, "paragraphs": len(paragraphs)}
+            except ImportError:
+                return {"error": "python-docx not installed"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        def read(path):
+            try:
+                from docx import Document
+                doc = Document(path)
+                paras = [p.text for p in doc.paragraphs if p.text.strip()]
+                ctx.effect("docx_read", {"path": path[:50]},
+                           replay_fn=lambda p: True)
+                return {"paragraphs": paras[:50]}
+            except ImportError:
+                return {"error": "python-docx not installed"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        ctx.register("docx.write", write)
+        ctx.register("docx.read", read)
+
+
+class PptxPlugin:
+    """PowerPoint via python-pptx."""
+
+    def apply(self, ctx):
+        def write(path, slides):
+            try:
+                from pptx import Presentation
+                prs = Presentation()
+                for slide_content in slides:
+                    slide = prs.slides.add_slide(
+                        prs.slide_layouts[1])
+                    slide.shapes.title.text = str(slide_content.get("title", ""))
+                    body = slide.placeholders[1].text_frame
+                    for point in slide_content.get("points", []):
+                        body.add_paragraph().text = str(point)
+                prs.save(path)
+                ctx.effect("pptx_write", {"path": path[:50]},
+                           replay_fn=lambda p: True)
+                return {"ok": True, "slides": len(slides)}
+            except ImportError:
+                return {"error": "python-pptx not installed"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        ctx.register("pptx.write", write)
+
+
+class YouTubePlugin:
+    """YouTube transcript via youtube-transcript-api (no external key)."""
+
+    def apply(self, ctx):
+        def transcript(video_id):
+            try:
+                from youtube_transcript_api import YouTubeTranscriptApi
+                t = YouTubeTranscriptApi.get_transcript(video_id)
+                text = " ".join(seg["text"] for seg in t[:100])
+                ctx.effect("youtube", {"id": video_id[:20]},
+                           replay_fn=lambda p: True)
+                return {"text": text[:5000], "segments": len(t)}
+            except ImportError:
+                return {"error": "youtube-transcript-api not installed"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        ctx.register("youtube.transcript", transcript)
+
