@@ -1,5 +1,12 @@
 # HeliosLM v5 Changelog
 
+## v1.34 (2026-10-09) - video local proxy
+- web_ui: /video/<name> endpoint; _chat downloads video source to
+  /tmp then serves locally -- eliminates browser CORS/encoding issues
+  with external <video> tags
+
+
+
 ## v1.33c (2026-10-09) - video: multi-source CORS-safe (MDN + W3C)
 - web_ui: _search_video returns list (MDN flower.mp4 + W3C foreman),
   <video> gets multiple <source>. Previous single-URL Pixabay +

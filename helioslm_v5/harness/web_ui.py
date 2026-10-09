@@ -148,12 +148,29 @@ def _search_image(query):
 
 
 def _search_video(query):
-    """Video sources with CORS * (tested 2026-10-09): MDN interactive
-    examples (CC0 flower.mp4) + W3C test suite."""
+    """Video sources with CORS * (tested 2026-10-09)."""
     return [
         "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
         "https://www.w3.org/2010/05/video/mediafiles/foreman-orig.mp4",
     ]
+
+
+def _proxy_video(url, out_name):
+    """Download video to local /tmp and return local serving path.
+    Browser <video> has issues with external CORS/encoding; local
+    serving is the reliable path."""
+    import shutil
+    out_path = f"/tmp/{out_name}"
+    if not os.path.exists(out_path):
+        try:
+            import urllib.request as _u
+            req = _u.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            data = _u.urlopen(req, timeout=60).read()
+            with open(out_path, "wb") as f:
+                f.write(data)
+        except Exception:
+            return None
+    return out_name
 
 
 def _tts_audio(text, out_path="/tmp/tts.mp3"):
@@ -335,6 +352,19 @@ h1{{color:#0ff}}</style></head><body>
 <table><tr><th>id</th><th>kind</th><th>payload</th></tr>{rows}</table>
 </body></html>"""
             self._html(page)
+        elif self.path.startswith("/video/"):
+            import os as _os
+            fname = self.path[len("/video/"):]
+            fpath = f"/tmp/{fname}"
+            if _os.path.exists(fpath):
+                data = open(fpath, "rb").read()
+                self.send_response(200)
+                self.send_header("Content-Type", "video/mp4")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            else:
+                self._json({"error": "not found"}, 404)
         elif self.path.startswith("/audio/"):
             import os as _os
             fname = self.path[len("/audio/"):]
@@ -390,11 +420,21 @@ h1{{color:#0ff}}</style></head><body>
                         "route": "MEDIA", "effects": 1, "backend": "media"}
         if any(k in msg_l for k in ("video", "影片", "视频", "play video")):
             urls = _search_video(msg)
-            srcs = "".join(f'<source src="{u}">' for u in urls)
-            reply = (f'<video controls style="max-width:100%">'
-                     f'{srcs}'
-                     f'Your browser does not support the video tag.</video>'
-                     f'<br><small>sources: {len(urls)}</small>')
+            # try each source until one downloads
+            local = None
+            for u in urls:
+                local = _proxy_video(u, f"vid_{sid}_{int(time.time())}.mp4")
+                if local:
+                    break
+            if local:
+                reply = (f'<video controls style="max-width:100%">'
+                         f'<source src="/video/{local}" type="video/mp4">'
+                         f'Your browser does not support the video tag.'
+                         f'</video>'
+                         f'<br><small>local: {local}</small>')
+            else:
+                reply = ("<b>video download failed</b> -- "
+                         "check network or try again")
             _sessions.setdefault(sid, []).append(("user", msg))
             _sessions[sid].append(("assistant", reply))
             self.ctx.effect("media_vid", {"q": msg[:40]},
