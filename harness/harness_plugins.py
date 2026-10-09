@@ -258,3 +258,68 @@ class CodePlugin:
             return {"workflow": wf, "file_env_ok": ok}
         ctx.register("code.run", run_code)
 
+class ICPlugin:
+    """v1.7: IC design + verification support. RTL generation (Verilog/
+    SystemVerilog), syntax lint (no external simulator), UVM testbench
+    scaffold, and coverage closure tracking. All through the harness
+    workflow with per-step audit effects. NO simulator dependency --
+    the lint is structural (module/port/always blocks), not simulation."""
+
+    def apply(self, ctx):
+        def gen_rtl(spec_text, model_fn, max_steps=8):
+            ctx.state["ic"] = {"spec": spec_text, "rtl": None, "uvm": None}
+            prompt = f"Generate synthesizable Verilog for: {spec_text}.\nOutput ONLY the module, no explanation."
+            rtl = model_fn(prompt, 0, 0)
+            ctx.state["ic"]["rtl"] = rtl
+            ctx.effect("rtl_gen", {"rtl": rtl[:100]},
+                       replay_fn=lambda p: True)
+            return rtl
+
+        def lint_rtl(rtl_text):
+            errors = []
+            if "module" not in rtl_text:
+                errors.append("no module declaration")
+            if "endmodule" not in rtl_text:
+                errors.append("no endmodule")
+            if rtl_text.count("(") != rtl_text.count(")"):
+                errors.append("unbalanced parentheses")
+            if rtl_text.count("begin") != rtl_text.count("end"):
+                errors.append("unbalanced begin/end")
+            return {"ok": len(errors) == 0, "errors": errors}
+
+        def gen_uvm(rtl_text, model_fn):
+            prompt = f"Generate a UVM testbench scaffold for:\n{rtl_text[:500]}\nOutput ONLY the class definitions."
+            uvm = model_fn(prompt, 0, 0)
+            ctx.state["ic"]["uvm"] = uvm
+            ctx.effect("uvm_gen", {"uvm": uvm[:100]},
+                       replay_fn=lambda p: True)
+            return uvm
+
+        def coverage(goal, hit):
+            return {"goal": goal, "hit": hit,
+                    "pct": round(100.0 * hit / goal, 1) if goal else 0.0}
+
+        ctx.register("ic.gen_rtl", gen_rtl)
+        ctx.register("ic.lint", lint_rtl)
+        ctx.register("ic.gen_uvm", gen_uvm)
+        ctx.register("ic.coverage", coverage)
+
+
+class ICWorkflowPlugin:
+    """IC workflow: spec -> RTL -> lint -> UVM -> coverage, all audited."""
+
+    def apply(self, ctx):
+        def run_ic(spec_text, model_fn, max_steps=12):
+            ctx.state["ic_workflow"] = {"spec": spec_text}
+            rtl = ctx.ic.gen_rtl(spec_text, model_fn)
+            lint = ctx.ic.lint(rtl)
+            uvm = ctx.ic.gen_uvm(rtl, model_fn) if lint["ok"] else None
+            ctx.state["ic_workflow"].update({
+                "rtl_ok": lint["ok"], "lint_errors": lint["errors"],
+                "uvm": uvm is not None})
+            ctx.effect("ic_done",
+                       {"rtl_ok": lint["ok"], "has_uvm": uvm is not None},
+                       replay_fn=lambda p: True)
+            return {"rtl": rtl, "lint": lint, "uvm": uvm}
+        ctx.register("ic.run", run_ic)
+

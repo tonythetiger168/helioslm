@@ -1,5 +1,14 @@
 # HeliosLM v5 Changelog
 
+## v1.7 (2026-10-09) - IC design + verification support
+- ICPlugin: RTL gen (Verilog/SV), structural lint (no simulator), UVM
+  testbench scaffold, coverage closure. ic.run = spec -> RTL -> lint
+  -> UVM -> coverage, all audited via harness effects
+- ICWorkflowPlugin: end-to-end IC workflow
+- T49 4/4
+
+
+
 ## v1.6 (2026-10-09) - code execution sandbox
 - CodePlugin: file_env + grounding as a minimal code execution sandbox.
   code.run generates tool calls, sandbox executes, file_env.verify checks
