@@ -1,5 +1,16 @@
 # HeliosLM v5 Changelog
 
+## v1.29 (2026-10-09) - API-first backend + mixed SFT for open chat
+- web_ui: backend priority API > qwen > smoke (API models are
+  instruction-tuned; our mid/Qwen are tool-protocol models that
+  hallucinate in open chat). Set OPENAI_BASE+OPENAI_KEY env
+- examples/train_mid_sft_mix.py: add databricks-dolly-15k open-domain
+  data to mid's SFT mix -- mid becomes a general chat assistant while
+  keeping tool ability. Hot-start from mid_sft_v5.33.pt
+- T71
+
+
+
 ## v1.28 (2026-10-09) - repetition control + reply cleaning
 - web_ui: qwen generation with repetition_penalty=1.3, no_repeat_
   ngram_size=3, max_new<=150; minimal system prompt (Qwen base

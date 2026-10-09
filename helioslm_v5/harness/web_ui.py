@@ -63,8 +63,31 @@ def _clean_reply(text):
 
 
 def _resolve_backend(ctx):
-    """Pick the best available chat backend. Returns (name, fn)."""
-    # 1. Qwen local
+    """Pick the best available chat backend. Returns (name, fn).
+    v1.29 priority: API > qwen-local > smoke. API models (DeepSeek,
+    GPT) are instruction-tuned and converse reliably; our mid/Qwen
+    are tool-protocol models that hallucinate in open chat."""
+    # 1. API backend (best conversational quality)
+    base = os.environ.get("OPENAI_BASE")
+    key = os.environ.get("OPENAI_KEY") or os.environ.get("OPENAI_API_KEY")
+    if base and key:
+        import urllib.request as _u
+        def api_fn(prompt, seed, step, max_new=256):
+            body = {"model": os.environ.get("OPENAI_MODEL", "deepseek-chat"),
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": max_new}
+            req = _u.Request(
+                base.rstrip("/") + "/chat/completions",
+                data=json.dumps(body).encode(),
+                headers={"Content-Type": "application/json",
+                         "Authorization": f"Bearer {key}"})
+            try:
+                r = json.loads(_u.request.urlopen(req, timeout=60).read())
+                return r["choices"][0]["message"]["content"] or ""
+            except Exception as e:
+                return f"[api error: {str(e)[:100]}]"
+        return ("api", api_fn)
+    # 2. Qwen local
     if os.path.exists("qwen/config.json"):
         try:
             import torch
@@ -102,31 +125,9 @@ def _resolve_backend(ctx):
             return ("qwen-local", qwen_fn)
         except Exception:
             pass
-    # 2. API backend
-    base = os.environ.get("OPENAI_BASE")
-    key = os.environ.get("OPENAI_KEY") or os.environ.get("OPENAI_API_KEY")
-    if base and key:
-        import urllib.request
-        def api_fn(prompt, seed, step, max_new=256):
-            body = {"model": os.environ.get("OPENAI_MODEL", "gpt-5.6-luna"),
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": max_new}
-            req = urllib.request.Request(
-                base.rstrip("/") + "/chat/completions",
-                data=json.dumps(body).encode(),
-                headers={"Content-Type": "application/json",
-                         "Authorization": f"Bearer {key}"})
-            try:
-                r = json.loads(urllib.request.urlopen(req, timeout=60).read())
-                return r["choices"][0]["message"]["content"] or ""
-            except Exception as e:
-                return f"[api error: {str(e)[:100]}]"
-        return ("api", api_fn)
     # 3. smoke echo
     def echo_fn(prompt, seed, step):
-        # v1.27: chat-template style -- the UI now sends bare user text,
-        # so echo it back conversationally
-        return f"I heard you say: {prompt[:200]}. Tell me more!"
+        return f"[no LLM backend configured] I heard: {prompt[:100]}"
     return ("smoke", echo_fn)
 
 
