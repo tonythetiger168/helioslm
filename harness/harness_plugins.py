@@ -120,3 +120,41 @@ class AgentWorkflowPlugin:
             return ctx.state["workflow"]
         ctx.register("agent.run", run)
 
+class MidModelPlugin:
+    """v1.3: real model_fn from the mid 360M checkpoint. Loads paired
+    tokenizer + weights (v5.33 pairing discipline). For harness runs
+    where grounding handles content; model provides the tool sequence."""
+
+    def __init__(self, ckpt_dir="checkpoints"):
+        self.ckpt_dir = ckpt_dir
+
+    def apply(self, ctx):
+        import os, torch
+        from helioslm_v5.configs.config_v5 import HeliosLMv5Config
+        from helioslm_v5.src.model_v5 import HeliosLMv5
+        from helioslm_v5.src.tokenizer.bpe import BOS, HeliosBPE
+        ck = self.ckpt_dir
+        tok = HeliosBPE.load(os.path.join(ck, "mid_sft_v5.33.tok.json"))
+        model = HeliosLMv5(HeliosLMv5Config(size="mid"))
+        model.load_state_dict(torch.load(
+            os.path.join(ck, "mid_sft_v5.33.pt"), map_location="cpu"))
+        model.eval()
+        bos = tok.vocab[BOS]
+
+        def model_fn(prompt, seed, step, max_new=96):
+            ids = [bos] + tok.encode(prompt)
+            input_ids = torch.tensor([ids])
+            with torch.no_grad():
+                for _ in range(max_new):
+                    logits, _, _ = model(input_ids,
+                                         attention_mask=torch.ones_like(input_ids))
+                    probs = torch.softmax(logits[0, -1], dim=-1)
+                    nxt = int(probs.argmax())
+                    if nxt == tok.vocab["<eos>"]:
+                        break
+                    input_ids = torch.cat([input_ids,
+                                           torch.tensor([[nxt]])], dim=1)
+            return tok.decode(input_ids[0, len(ids):].tolist())
+
+        ctx.register("model.mid", model_fn)
+

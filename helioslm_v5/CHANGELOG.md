@@ -1,5 +1,14 @@
 # HeliosLM v5 Changelog
 
+## v1.3 (2026-10-09) - real mid model through harness
+- MidModelPlugin: loads paired mid_sft_v5.33.pt + .tok.json as
+  model.mid (v5.33 pairing discipline). End-to-end: real model_fn
+  drives the agent workflow, grounding fixes content
+- T45: mid model loads + runs chat task through harness (result
+  recorded honestly -- mid is weak on agentic, grounding helps)
+
+
+
 ## v1.2 (2026-10-09) - agent workflow plugin
 - harness_plugins: AgentWorkflowPlugin -- ReAct workflow (think ->
   act -> observe -> answer) with per-step effects (auditable).
