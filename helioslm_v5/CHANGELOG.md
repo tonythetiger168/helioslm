@@ -1,5 +1,12 @@
 # HeliosLM v5 Changelog
 
+## v1.12 (2026-10-09) - niche plugins
+- MCPWizardPlugin (MCP server wrap stub) / TmuxPlugin (session mgr) /
+  EverythingPlugin (local file search)
+- T54
+
+
+
 ## v1.11 (2026-10-09) - office plugins
 - ExcelPlugin (openpyxl) / DocxPlugin (python-docx) / PptxPlugin
   (python-pptx) / YouTubePlugin (transcript-api)

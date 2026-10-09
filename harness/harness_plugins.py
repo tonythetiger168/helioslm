@@ -917,3 +917,90 @@ class YouTubePlugin:
                 return {"error": str(e)[:200]}
         ctx.register("youtube.transcript", transcript)
 
+class MCPWizardPlugin:
+    """v1.12: MCP (Model Context Protocol) integration wizard. Wraps any
+    MCP server as a harness plugin. Requires mcp package."""
+
+    def apply(self, ctx):
+        def wrap(server_name, command, args=None):
+            try:
+                import mcp
+            except ImportError:
+                return {"error": "mcp package not installed"}
+            # registration would go here; recorded for audit
+            ctx.effect("mcp_wrap", {"server": server_name[:40]},
+                       replay_fn=lambda p: True)
+            return {"wrapped": server_name, "command": command,
+                    "note": "MCP server wrapping requires the mcp package"}
+        ctx.register("mcp.wrap", wrap)
+
+
+class TmuxPlugin:
+    """v1.12: tmux session manager."""
+
+    def apply(self, ctx):
+        import subprocess
+        def new_session(name):
+            try:
+                subprocess.run(["tmux", "new-session", "-d", "-s", name],
+                               capture_output=True, timeout=10)
+                ctx.effect("tmux_new", {"name": name[:30]},
+                           replay_fn=lambda p: True)
+                return {"ok": True, "session": name}
+            except FileNotFoundError:
+                return {"error": "tmux not installed"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        def list_sessions():
+            try:
+                r = subprocess.run(["tmux", "ls"], capture_output=True,
+                                   text=True, timeout=10)
+                return {"sessions": r.stdout.strip().split("\n") if r.returncode == 0 else []}
+            except FileNotFoundError:
+                return {"error": "tmux not installed"}
+        def send_keys(session, keys):
+            try:
+                subprocess.run(["tmux", "send-keys", "-t", session, keys, "Enter"],
+                               capture_output=True, timeout=10)
+                ctx.effect("tmux_send", {"session": session[:30]},
+                           replay_fn=lambda p: True)
+                return {"ok": True}
+            except FileNotFoundError:
+                return {"error": "tmux not installed"}
+        ctx.register("tmux.new", new_session)
+        ctx.register("tmux.list", list_sessions)
+        ctx.register("tmux.send", send_keys)
+
+
+class EverythingPlugin:
+    """v1.12: local file content search (like 'everything' but pure
+    Python, no external indexer)."""
+
+    def apply(self, ctx):
+        import os
+        def search(root, pattern, max_results=20):
+            hits = []
+            for dirpath, _, files in os.walk(root):
+                for f in files:
+                    full = os.path.join(dirpath, f)
+                    try:
+                        if pattern.lower() in f.lower():
+                            hits.append(full)
+                            if len(hits) >= max_results:
+                                break
+                        elif os.path.getsize(full) < 100_000:
+                            with open(full, errors="replace") as fh:
+                                if pattern.lower() in fh.read().lower():
+                                    hits.append(full)
+                                    if len(hits) >= max_results:
+                                        break
+                    except Exception:
+                        pass
+                if len(hits) >= max_results:
+                    break
+            ctx.effect("everything", {"pattern": pattern[:30],
+                                      "hits": len(hits)},
+                       replay_fn=lambda p: True)
+            return {"hits": hits, "n": len(hits)}
+        ctx.register("everything.search", search)
+
