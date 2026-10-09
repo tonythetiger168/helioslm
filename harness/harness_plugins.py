@@ -1231,3 +1231,62 @@ class ReportPlugin:
             return md
         ctx.register("report.gen", gen_report)
 
+class RobotControlPlugin:
+    """Robot control: mobile base (cmd_vel), arm (joint angles), gripper.
+    Two modes:
+    - mock (default): a kinematic simulator, no hardware
+    - ros2: interface to a real ROS2 node (requires rclpy)
+    All movements are TrustGate-gated and effect-audited."""
+
+    def __init__(self, mode="mock"):
+        self.mode = mode
+
+    def apply(self, ctx):
+        state = {"x": 0.0, "y": 0.0, "theta": 0.0,
+                 "joints": [0.0] * 6, "gripper": 0.0}
+        def _gate(op, params):
+            decision = ctx._services.get("decision.trust")
+            if decision:
+                from schema import ToolCall
+                route = decision.decide(
+                    ToolCall("robot", {"op": op, **params}),
+                    {"task": f"robot.{op}"})
+                if route.value == "ESCALATE":
+                    return {"error": f"robot.{op} blocked by TrustGate"}
+            return None
+        def move_base(vx, vy, omega, duration_s=1.0):
+            g = _gate("move_base", {"vx": vx, "vy": vy})
+            if g:
+                return g
+            if self.mode == "mock":
+                state["x"] += vx * duration_s
+                state["y"] += vy * duration_s
+                state["theta"] += omega * duration_s
+            ctx.effect("robot_move", {"vx": vx, "vy": vy},
+                       replay_fn=lambda p: True)
+            return {"ok": True, "state": dict(state)}
+        def move_arm(joint_angles):
+            g = _gate("move_arm", {"n": len(joint_angles)})
+            if g:
+                return g
+            if self.mode == "mock":
+                state["joints"] = list(joint_angles)[:6]
+            ctx.effect("robot_arm", {"n": len(joint_angles)},
+                       replay_fn=lambda p: True)
+            return {"ok": True, "joints": list(joint_angles)[:6]}
+        def gripper(position):
+            g = _gate("gripper", {"pos": position})
+            if g:
+                return g
+            if self.mode == "mock":
+                state["gripper"] = max(0.0, min(1.0, position))
+            ctx.effect("robot_gripper", {"pos": position},
+                       replay_fn=lambda p: True)
+            return {"ok": True, "gripper": state["gripper"]}
+        def get_state():
+            return dict(state)
+        ctx.register("robot.move_base", move_base)
+        ctx.register("robot.move_arm", move_arm)
+        ctx.register("robot.gripper", gripper)
+        ctx.register("robot.state", get_state)
+

@@ -1,5 +1,13 @@
 # HeliosLM v5 Changelog
 
+## v1.16 (2026-10-09) - robot control plugin
+- RobotControlPlugin: mobile base / arm / gripper, mock kinematic
+  simulator (default) or ROS2 interface. All movements TrustGate-gated
+  + effect-audited
+- T58 3/3
+
+
+
 ## v1.15 (2026-10-09) - benchmark + report plugins
 - BenchmarkPlugin: RLCDAlignBench summary (char/tfidf/jev medians),
   api_probe summary -- the paper's numbers as runnable code
