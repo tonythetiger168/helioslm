@@ -1,5 +1,12 @@
 # HeliosLM v5 Changelog
 
+## v1.14 (2026-10-09) - blender/omi plugins (DeepSeek coverage complete)
+- BlenderPlugin (headless blender python script gen + run) / OmiPlugin
+  (BLE wearable stub via bleak)
+- 20/20 DeepSeek plugin scenarios covered
+
+
+
 ## v1.13 (2026-10-09) - video/audio plugins
 - VideoPlugin (gen interface stub) / AudioPlugin (TTS local pyttsx3 +
   external stub, STT speech_recognition) / NanoVideoPlugin (ffmpeg

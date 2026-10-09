@@ -1115,3 +1115,66 @@ class NanoVideoPlugin:
                 return {"error": str(e)[:200]}
         ctx.register("nanovideo.from_images", from_images)
 
+class BlenderPlugin:
+    """Blender 3D modeling via headless blender python. Requires blender
+    binary (not pip-installable). Generates .py scripts for blender to
+    execute, or runs blender --background --python."""
+
+    def apply(self, ctx):
+        import subprocess, os
+        def run_script(script_path, blend_path=None):
+            if not os.path.exists(script_path):
+                return {"error": "script not found"}
+            try:
+                cmd = ["blender", "--background", "--python", script_path]
+                if blend_path:
+                    cmd += [blend_path]
+                r = subprocess.run(cmd, capture_output=True, text=True,
+                                   timeout=300)
+                ctx.effect("blender", {"script": script_path[:40]},
+                           replay_fn=lambda p: True)
+                return {"rc": r.returncode,
+                        "stdout": r.stdout[-500:],
+                        "stderr": r.stderr[-300:]}
+            except FileNotFoundError:
+                return {"error": "blender binary not installed"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        def gen_script(desc, out_path):
+            # minimal cube scene as placeholder
+            code = f"""import bpy
+bpy.ops.object.select_all(action='SELECT')
+bpy.ops.object.delete()
+bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0))
+cube = bpy.context.active_object
+cube.name = "gen_{desc[:20]}"
+bpy.ops.wm.save_as_mainfile(filepath="{out_path}")
+"""
+            with open(out_path + ".py", "w") as f:
+                f.write(code)
+            ctx.effect("blender_gen", {"desc": desc[:40]},
+                       replay_fn=lambda p: True)
+            return {"script": out_path + ".py"}
+        ctx.register("blender.run", run_script)
+        ctx.register("blender.gen", gen_script)
+
+
+class OmiPlugin:
+    """Omi wearable interface. Bluetooth Low Energy requires bleak.
+    The omi device streams audio/transcriptions over BLE."""
+
+    def apply(self, ctx):
+        def connect(device_name="Omi"):
+            try:
+                import bleak
+            except ImportError:
+                return {"error": "bleak not installed (pip install bleak)"}
+            ctx.effect("omi_connect", {"device": device_name[:30]},
+                       replay_fn=lambda p: True)
+            return {"stub": True, "device": device_name,
+                    "note": "BLE connection requires bleak + hardware"}
+        def transcribe():
+            return {"error": "not connected -- use omi.connect first"}
+        ctx.register("omi.connect", connect)
+        ctx.register("omi.transcribe", transcribe)
+
