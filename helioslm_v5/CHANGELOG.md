@@ -1,5 +1,13 @@
 # HeliosLM v5 Changelog
 
+## v1.36 (2026-10-09) - clean web_ui rewrite
+- All fixes consolidated: cross-platform media dir, multi-source video
+  with local proxy, gTTS-first, Qwen3 thinking off, reply cleaning,
+  3-pane DeepSeek-style UI. Single source of truth (previous
+  patch-accumulation failed to land on main)
+
+
+
 ## v1.34 (2026-10-09) - video local proxy
 - web_ui: /video/<name> endpoint; _chat downloads video source to
   /tmp then serves locally -- eliminates browser CORS/encoding issues
