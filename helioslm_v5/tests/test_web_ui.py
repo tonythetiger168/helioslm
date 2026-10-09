@@ -1,34 +1,39 @@
-"""T65 - v1.23: Web UI."""
+"""T66 - v1.24: web UI with preset + smoke workflow."""
 import sys, threading, time, urllib.request
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from harness.harness_core import Context
-from harness.harness_plugins import PresetPlugin
+from harness.web_ui import _boot_context, HarnessHandler
+from http.server import HTTPServer
+import json
 
 
-def test_web_ui_endpoints():
-    ctx = Context()
-    ctx.use(PresetPlugin("full", model_fn=None))
-    ctx.effect("test", {"hello": "world"})
-    from harness.web_ui import HarnessHandler, main
+def test_boot_full_preset():
+    ctx = _boot_context("full")
+    assert len(ctx.effects) >= 4   # boot + 3 smoke
+    assert "tools.registry" in ctx._services
+    print(f"PASS test_boot_full_preset ({len(ctx.effects)} effects)")
+
+
+def test_html_dashboard():
+    ctx = _boot_context("full")
     HarnessHandler.ctx = ctx
-    from http.server import HTTPServer
     server = HTTPServer(("127.0.0.1", 0), HarnessHandler)
     port = server.server_address[1]
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
-    time.sleep(0.5)
+    time.sleep(0.3)
+    html = urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=5).read().decode()
+    assert "helios-harness" in html
+    assert "Recent effects" in html
     r = json.loads(urllib.request.urlopen(
         f"http://127.0.0.1:{port}/effects", timeout=5).read())
-    assert r["n"] == 1
-    r2 = json.loads(urllib.request.urlopen(
-        f"http://127.0.0.1:{port}/services", timeout=5).read())
-    assert "tools.registry" in r2["services"]
+    assert r["n"] >= 4
+    assert all("verified" in e for e in r["effects"])
     server.shutdown()
-    print("PASS test_web_ui_endpoints")
+    print("PASS test_html_dashboard")
 
 
 if __name__ == "__main__":
-    import json
-    test_web_ui_endpoints()
-    print("web UI test done")
+    test_boot_full_preset()
+    test_html_dashboard()
+    print("web UI v2 tests done")

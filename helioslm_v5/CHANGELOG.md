@@ -1,5 +1,14 @@
 # HeliosLM v5 Changelog
 
+## v1.24 (2026-10-09) - web UI hardening
+- harness/web_ui.py: --preset flag (minimal/full/agent), boot smoke
+  workflow (3 tasks -> effects non-empty), HTML dashboard at / with
+  recent effects table, /plugins endpoint
+- /effects now returns verified flag per effect
+- T66: boot preset, smoke workflow, HTML dashboard
+
+
+
 ## v1.23 (2026-10-09) - web UI + cost comparison + paper v7
 - harness/web_ui.py: stdlib HTTP server (8990), /effects /services
   /state endpoints -- Mission Control style
