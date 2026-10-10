@@ -2074,3 +2074,4 @@ class MathV2Plugin:
         ctx.register("linalg.matmul", matmul)
         ctx.register("stats.summary", stats)
         ctx.register("signal.fft_magnitudes", fft_magnitudes)
+
