@@ -695,7 +695,7 @@ color:var(--dim);display:flex;flex-direction:column;gap:4px}
 #main{flex:1;display:flex;flex-direction:column;min-width:0}
 #topbar{padding:10px 16px;border-bottom:1px solid var(--border);display:flex;
 align-items:center;gap:10px;background:var(--panel)}
-#sessTitle{font-weight:600;flex:1;overflow:hidden;text-overflow:nowrap}
+#sessTitle{font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .badge{font-size:11px;padding:2px 8px;border-radius:10px;border:1px solid var(--border);
 color:var(--dim)}
 .badge.on{color:var(--ok);border-color:var(--ok)}
@@ -798,7 +798,7 @@ function md(src){
   const blocks = [];
   s = s.replace(/```(\w*)\n?([\s\S]*?)```/g, (m, lang, code) => {
     blocks.push('<pre><button class="copyBtn">copy</button><code>' + code + '</code></pre>');
-    return " " + (blocks.length - 1) + " ";
+    return "\x00" + (blocks.length - 1) + "\x00";
   });
   s = s.replace(/`([^`\n]+)`/g, "<code>$1</code>")
        .replace(/^### (.*)$/gm, "<h3>$1</h3>")
@@ -813,7 +813,7 @@ function md(src){
     return "\n<ul>" + items + "</ul>";
   });
   s = s.replace(/\n{2,}/g, "<br><br>").replace(/\n/g, "<br>");
-  s = s.replace(/ (\d+) /g, (m, i) => blocks[+i]);
+  s = s.replace(/\x00(\d+)\x00/g, (m, i) => blocks[+i]);
   return s;
 }
 document.addEventListener("click", e => {
