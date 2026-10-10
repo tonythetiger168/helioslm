@@ -1,5 +1,5 @@
 ---
-license: mit
+license: apache-2.0
 tags:
 - helioslm
 - rlcd
@@ -259,7 +259,7 @@ in `__post_init__` (no silent truncation).
 
 ```bash
 pip install torch
-python -m helioslm_v5.tests.test_v5     # 48 unit tests
+python -m helioslm_v5.tests.test_v5     # 84 unit tests
 python integration_test_v51.py          # 9 end-to-end integration tests
 python -m helioslm_v5.tests.test_agent  # 9 agent-layer oracles (v5.23)
 python -m helioslm_v5.tests.test_v5_stage_a   # T15 real-model oracles (v5.26)
@@ -276,19 +276,17 @@ python helioslm_v5/tests/test_decision_head.py   # T28 DecisionHead calibration 
 ```
 
 ```python
+import torch
 from helioslm_v5.configs.config_v5 import HeliosLMv5Config
 from helioslm_v5.src.model_v5 import HeliosLMv5
 
 model = HeliosLMv5(HeliosLMv5Config(size="lite"))   # CPU-friendly
-out = model.generate([[1, 2, 3]], max_new_tokens=20, temperature=0)
+out = model.generate(torch.tensor([[1, 2, 3]]), max_new_tokens=20, temperature=0)
 print(out)
+# tensor([[  1,   2,   3, 754, 754, 754, 754, 754, 754, 754, 666, 136, ...]])
+# (random init -> gibberish ids; load checkpoints/toy_v5.13.pt for text)
 ```
 
-<!-- TODO: paste actual generate() output here, e.g.:
-```
-generated: [[1, 2, 3, ...]]
-```
-Nothing sells an LLM repo like showing it produce tokens. -->
 
 ## Capabilities at a glance
 
