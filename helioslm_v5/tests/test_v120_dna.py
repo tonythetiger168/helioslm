@@ -44,7 +44,9 @@ def test_dna_pcr_and_restriction():
     p = ctx.dna.pcr_primers(SEQ)
     assert "forward" in p and "reverse" in p
     r = ctx.dna.restriction_sites("AAA" + "GAATTC" + "BBB" + "GAATTC", "EcoRI")
-    assert r["positions"] == [3, 13]
+    # 0-based positions: GAATTC starts at index 3 and 12 (the old
+    # expectation [3, 13] mixed 0-based and 1-based conventions)
+    assert r["positions"] == [3, 12]
     print("PASS test_dna_pcr_and_restriction")
 
 
