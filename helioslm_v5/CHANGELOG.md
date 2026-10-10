@@ -1,5 +1,15 @@
 # HeliosLM v5 Changelog
 
+## v1.38 (2026-10-10) - TTS/Video fixes
+- web_ui: _tts_audio priority edge-tts (Microsoft neural, best quality)
+  > gTTS > pyttsx3, with per-backend logging
+- _proxy_video: browser Referer header + ftyp magic-byte verification
+  (rejects HTML error pages that masquerade as mp4)
+- TTS failure message shows exact pip command
+- T76
+
+
+
 ## v1.37 (2026-10-09) - collapsible right panel
 - web_ui: right effects panel has collapse button (-), floating
   expand button (+) bottom-right when hidden. Like DeepSeek-Harness

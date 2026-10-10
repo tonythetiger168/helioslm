@@ -119,11 +119,24 @@ def _proxy_video(url, out_name):
     if not os.path.exists(out_path) or os.path.getsize(out_path) < 1000:
         try:
             import urllib.request as _u
-            req = _u.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            req = _u.Request(url, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                              "AppleWebKit/537.36 (KHTML, like Gecko) "
+                              "Chrome/126.0 Safari/537.36",
+                "Referer": "https://developer.mozilla.org/",
+                "Accept": "video/mp4,video/*,*/*",
+            })
             data = _u.urlopen(req, timeout=60).read()
+            # verify real mp4 (starts with ftyp box) not HTML error page
+            if len(data) < 10000 or data[4:8] != b"ftyp":
+                print(f"[media] BAD content (not mp4): {data[:80]!r}",
+                      flush=True)
+                os.unlink(out_path) if os.path.exists(out_path) else None
+                return None
             with open(out_path, "wb") as f:
                 f.write(data)
-            print(f"[media] downloaded {out_name}: {len(data)} bytes", flush=True)
+            print(f"[media] downloaded {out_name}: {len(data)} bytes",
+                  flush=True)
         except Exception as e:
             print(f"[media] download failed: {e}", flush=True)
             return None
@@ -131,18 +144,38 @@ def _proxy_video(url, out_name):
 
 
 def _tts_audio(text, out_path=None):
+    """TTS priority: edge-tts (Microsoft, best quality) > gTTS > pyttsx3.
+    edge-tts: pip install edge-tts -- uses Microsoft neural voices online.
+    gTTS: pip install gtts -- Google Translate TTS.
+    pyttsx3: offline, robot voice, Windows built-in."""
     import time as _t
     if out_path is None:
         out_path = os.path.join(_MEDIA_DIR, f"tts_{int(_t.time())}.mp3")
     os.makedirs(_MEDIA_DIR, exist_ok=True)
-    text = text[:150]
+    text = text[:200]
+    # 1) edge-tts (best quality)
+    try:
+        import edge_tts
+        import asyncio
+        async def _gen():
+            comm = edge_tts.Communicate(text, "en-US-AriaNeural")
+            await comm.save(out_path)
+        asyncio.run(_gen())
+        if os.path.getsize(out_path) > 1000:
+            print(f"[tts] edge-tts ok: {out_path}", flush=True)
+            return out_path
+    except Exception as e:
+        print(f"[tts] edge-tts failed: {e}", flush=True)
+    # 2) gTTS
     try:
         from gtts import gTTS
         gTTS(text, lang="en").save(out_path)
         if os.path.getsize(out_path) > 500:
+            print(f"[tts] gTTS ok: {out_path}", flush=True)
             return out_path
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[tts] gTTS failed: {e}", flush=True)
+    # 3) pyttsx3 offline
     try:
         wav = out_path.replace(".mp3", ".wav")
         import pyttsx3
@@ -151,8 +184,8 @@ def _tts_audio(text, out_path=None):
         engine.runAndWait()
         if os.path.exists(wav) and os.path.getsize(wav) > 500:
             return wav
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[tts] pyttsx3 failed: {e}", flush=True)
     return None
 
 
@@ -447,7 +480,8 @@ h1{{color:#0ff}}</style></head><body>
                          f'<source src="/audio/{safe}" type="audio/{ext}">'
                          f'</audio><br><small>{safe}</small>')
             else:
-                reply = "<b>TTS failed</b> -- pip install gtts"
+                reply = ("<b>TTS failed</b> -- run: "
+                         "<code>pip install edge-tts gtts pyttsx3</code>")
             _sessions.setdefault(sid, []).append(("user", msg))
             _sessions[sid].append(("assistant", reply))
             self.ctx.effect("media_aud", {"q": msg[:40]}, replay_fn=lambda p: True)
