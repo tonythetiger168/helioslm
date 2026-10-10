@@ -684,6 +684,7 @@ class GitHubPlugin:
             token = self.token or os.environ.get("GITHUB_TOKEN")
             if not token:
                 return {"error": "GITHUB_TOKEN not set"}
+            import json
             import urllib.request
             req = urllib.request.Request(
                 "https://api.github.com" + path,
@@ -2074,4 +2075,3 @@ class MathV2Plugin:
         ctx.register("linalg.matmul", matmul)
         ctx.register("stats.summary", stats)
         ctx.register("signal.fft_magnitudes", fft_magnitudes)
-
