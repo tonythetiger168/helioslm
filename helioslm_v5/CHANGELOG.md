@@ -1,5 +1,13 @@
 # HeliosLM v5 Changelog
 
+## v1.39 (2026-10-10) - Blender open movies as video sources
+- web_ui: _search_video routes story/sci-fi/long -> Sintel (720p/480p
+  mkv), else Big Buck Bunny (320x180 mp4 / 640x360 m4v). Blender
+  movies are CC-BY with stable download.blender.org mirrors. Replaces
+  W3C foreman + MDN flower which had issues
+
+
+
 ## v1.38 (2026-10-10) - TTS/Video fixes
 - web_ui: _tts_audio priority edge-tts (Microsoft neural, best quality)
   > gTTS > pyttsx3, with per-backend logging

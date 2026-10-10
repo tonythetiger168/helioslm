@@ -49,10 +49,16 @@ def _search_image(query):
 
 
 def _search_video(query):
-    """Video sources. Priority: has audio (foreman speech, BBB music) >
-    silent fallback (flower). v1.38."""
+    """Blender open movies (CC-BY, stable mirrors). Big Buck Bunny for
+    short/cartoon requests, Sintel for story/sci-fi/long requests."""
+    q = query.lower()
+    if any(k in q for k in ("sintel", "sci-fi", "science fiction", "fantasy",
+                             "long", "movie", "story", "故事", "科幻")):
+        return [
+            "https://download.blender.org/durian/movies/Sintel.2010.720p.mkv",
+            "https://download.blender.org/durian/movies/Sintel.2010.480p.mkv",
+        ]
     return [
-        "https://www.w3.org/2010/05/video/mediafiles/foreman-orig.mp4",
         "https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4",
         "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
     ]
