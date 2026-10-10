@@ -42,7 +42,7 @@ def test_robot_trustgate_gating():
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "agent"))
     from trajectory import text_to_ids
     recs = [{"ids": torch.tensor(text_to_ids("robot move")),
-             "answers": {"trust": "no", "trust__target_conf": 0.0}}}
+             "answers": {"trust": "no", "trust__target_conf": 0.0}}
             for _ in range(20)]
     head.fit(recs, epochs=300, lr=1e-1)
     head.eval()

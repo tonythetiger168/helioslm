@@ -14,7 +14,10 @@ def test_sqlite():
     ctx.sqlite.execute("CREATE TABLE t (a, b)")
     ctx.sqlite.execute("INSERT INTO t VALUES (?, ?)", ["x", 1])
     r = ctx.sqlite.query("SELECT * FROM t")
-    assert r["rows"] == [{"a": "x", "b": 1}]
+    # query() returns plain sqlite3 tuples (see test_v19_common);
+    # columns are available separately via r["columns"]
+    assert r["rows"] == [("x", 1)]
+    assert r["columns"] == ["a", "b"]
     print("PASS test_sqlite")
 
 

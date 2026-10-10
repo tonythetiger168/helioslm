@@ -8,6 +8,13 @@ from harness.harness_plugins import (ICPlugin, ICWorkflowPlugin,
 
 
 def _fake_model(prompt, seed, step):
+    # UVM first: the gen_uvm prompt embeds the RTL (which contains
+    # "module"), so checking "module" first misroutes UVM requests to RTL
+    if "UVM" in prompt:
+        return """class adder_test extends uvm_test;
+  function void build_phase(uvm_phase phase);
+  endfunction
+endclass"""
     if "Verilog" in prompt or "module" in prompt:
         return """module adder(input [7:0] a, b, output [8:0] sum);
   assign sum = a + b;

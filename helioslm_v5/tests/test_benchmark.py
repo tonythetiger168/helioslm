@@ -21,8 +21,13 @@ def test_benchmark_three_modes():
         f"direct={res['direct'][0]} routed={res['routed_tau0.5'][0]}"
     assert res["direct"][0] == 1.0, \
         "scripted policy must be perfect ??pipeline bug if not"
-    export_score_stream(res["direct"][1], "/tmp/test_stream.jsonl")
-    assert Path("/tmp/test_stream.jsonl").stat().st_size > 0
+    # hermetic temp path: a hardcoded /tmp file collides across users and
+    # parallel runs (PermissionError when a previous run left it root-owned)
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        out = str(Path(td) / "test_stream.jsonl")
+        export_score_stream(res["direct"][1], out)
+        assert Path(out).stat().st_size > 0
 
 
 if __name__ == "__main__":
