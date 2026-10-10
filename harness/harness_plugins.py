@@ -299,6 +299,7 @@ class ICPlugin:
             return rtl
 
         def lint_rtl(rtl_text):
+            import re
             errors = []
             if "module" not in rtl_text:
                 errors.append("no module declaration")
@@ -306,7 +307,11 @@ class ICPlugin:
                 errors.append("no endmodule")
             if rtl_text.count("(") != rtl_text.count(")"):
                 errors.append("unbalanced parentheses")
-            if rtl_text.count("begin") != rtl_text.count("end"):
+            # Word-boundary counts: plain str.count("end") matches the
+            # "end" inside endmodule/endfunction/endclass, so every
+            # valid module linted as "unbalanced begin/end"
+            if (len(re.findall(r"\bbegin\b", rtl_text))
+                    != len(re.findall(r"\bend\b", rtl_text))):
                 errors.append("unbalanced begin/end")
             return {"ok": len(errors) == 0, "errors": errors}
 
@@ -357,12 +362,15 @@ class MemoryPlugin:
         except ImportError:
             store = None
         def remember(key, thought, outcome):
-            if store:
+            # NOTE: `if store:` would call ExperienceStore.__len__ (a
+            # fresh store has 0 entries -> falsy -> remember() silently
+            # dropped everything). Identity check is the intent.
+            if store is not None:
                 store.remember(key, thought, outcome)
             ctx.effect("memory_remember", {"key": key[:40]},
                        replay_fn=lambda p: True)
         def recall(key):
-            if store:
+            if store is not None:
                 return store.recall(key)
             return None
         ctx.register("memory.remember", remember)
@@ -426,10 +434,20 @@ class FilesystemPlugin:
 
     def apply(self, ctx):
         import os
-        root = os.path.abspath(self.root)
+        root = os.path.realpath(self.root)
+
+        def _resolve(path):
+            # realpath collapses ../ before the containment check — the
+            # old `join().startswith(root)` string check let "../x"
+            # escape (join keeps the dots, so the prefix always matched)
+            full = os.path.realpath(os.path.join(root, path))
+            if full != root and not full.startswith(root + os.sep):
+                return None
+            return full
+
         def read(path):
-            full = os.path.join(root, path)
-            if not full.startswith(root):
+            full = _resolve(path)
+            if full is None:
                 return {"error": "path escape blocked"}
             try:
                 with open(full, encoding="utf-8", errors="replace") as f:
@@ -439,8 +457,8 @@ class FilesystemPlugin:
             except Exception as e:
                 return {"error": str(e)[:200]}
         def write(path, content):
-            full = os.path.join(root, path)
-            if not full.startswith(root):
+            full = _resolve(path)
+            if full is None:
                 return {"error": "path escape blocked"}
             try:
                 with open(full, "w", encoding="utf-8") as f:
@@ -466,92 +484,6 @@ class TimePlugin:
             return datetime.datetime.utcnow().isoformat() + "Z"
         ctx.register("time.now", now)
         ctx.register("time.utc", utc)
-
-class SQLitePlugin:
-    """Query/exec on a SQLite db (stdlib sqlite3)."""
-
-    def __init__(self, db_path=":memory:"):
-        self.db_path = db_path
-
-    def apply(self, ctx):
-        import sqlite3
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        def query(sql, params=None):
-            try:
-                cur = conn.execute(sql, params or [])
-                rows = [dict(r) for r in cur.fetchall()]
-                ctx.effect("sqlite_query", {"sql": sql[:60]},
-                           replay_fn=lambda p: True)
-                return {"rows": rows}
-            except Exception as e:
-                return {"error": str(e)[:200]}
-        def execute(sql, params=None):
-            try:
-                conn.execute(sql, params or [])
-                conn.commit()
-                return {"ok": True}
-            except Exception as e:
-                return {"error": str(e)[:200]}
-        ctx.register("sqlite.query", query)
-        ctx.register("sqlite.execute", execute)
-
-
-class GitHubPlugin:
-    """GitHub ops via REST API (like our hf_upload pattern)."""
-
-    def __init__(self, token=None):
-        self.token = token
-
-    def apply(self, ctx):
-        import json as _json, os, urllib.request
-        token = self.token or os.environ.get("GITHUB_TOKEN")
-        def api_call(method, path, body=None):
-            if not token:
-                return {"error": "no GITHUB_TOKEN"}
-            req = urllib.request.Request(
-                "https://api.github.com" + path,
-                method=method,
-                data=_json.dumps(body).encode() if body else None,
-                headers={"Authorization": f"token {token}",
-                         "Accept": "application/vnd.github+json",
-                         "Content-Type": "application/json"})
-            try:
-                r = urllib.request.urlopen(req, timeout=30)
-                ctx.effect("github", {"path": path[:60]},
-                           replay_fn=lambda p: True)
-                return _json.loads(r.read())
-            except Exception as e:
-                return {"error": str(e)[:200]}
-        def get_repo(owner, repo):
-            return api_call("GET", f"/repos/{owner}/{repo}")
-        def create_issue(owner, repo, title, body=""):
-            return api_call("POST", f"/repos/{owner}/{repo}/issues",
-                            {"title": title, "body": body})
-        ctx.register("github.get_repo", get_repo)
-        ctx.register("github.create_issue", create_issue)
-
-
-class SearchPlugin:
-    """Web search via a simple DuckDuckGo scrape (no API key)."""
-
-    def apply(self, ctx):
-        import urllib.request, urllib.parse, re
-        def search(query, n=5):
-            try:
-                url = "https://html.duckduckgo.com/html/?q=" +                     urllib.parse.quote(query)
-                req = urllib.request.Request(url, headers={
-                    "User-Agent": "Mozilla/5.0"})
-                html = urllib.request.urlopen(req, timeout=15).read().decode()
-                titles = re.findall(r'<a[^>]*class="result__a"[^>]*>(.*?)</a>',
-                                    html)[:n]
-                ctx.effect("search", {"q": query[:40]},
-                           replay_fn=lambda p: True)
-                return {"results": [re.sub(r"<[^>]+>", "", t) for t in titles]}
-            except Exception as e:
-                return {"error": str(e)[:200]}
-        ctx.register("search.web", search)
-
 
 class SlackPlugin:
     """Slack message posting (needs bot token)."""
@@ -581,62 +513,44 @@ class SlackPlugin:
         ctx.register("slack.post", post)
 
 
-class ExcelPlugin:
-    """Excel read/write via openpyxl (if installed) or CSV fallback."""
-
-    def __init__(self, path=None):
-        self.path = path
-
-    def apply(self, ctx):
-        def read(path=None):
-            p = path or self.path
-            try:
-                import openpyxl
-                wb = openpyxl.load_workbook(p)
-                ws = wb.active
-                rows = [[str(c.value) for c in row] for row in ws.iter_rows()]
-                ctx.effect("excel_read", {"path": (p or "")[:40]},
-                           replay_fn=lambda p2: True)
-                return {"rows": rows[:100]}
-            except ImportError:
-                import csv
-                with open(p, newline="", encoding="utf-8") as f:
-                    return {"rows": list(csv.reader(f))[:100]}
-            except Exception as e:
-                return {"error": str(e)[:200]}
-        def write(rows, path=None):
-            p = path or self.path
-            try:
-                import openpyxl
-                wb = openpyxl.Workbook()
-                ws = wb.active
-                for r in rows:
-                    ws.append(r)
-                wb.save(p)
-            except ImportError:
-                import csv
-                with open(p, "w", newline="", encoding="utf-8") as f:
-                    csv.writer(f).writerows(rows)
-            ctx.effect("excel_write", {"path": (p or "")[:40]},
-                       replay_fn=lambda p2: True)
-            return {"ok": True, "rows": len(rows)}
-        ctx.register("excel.read", read)
-        ctx.register("excel.write", write)
-
 class SearchPlugin:
-    """Local search over a corpus (no external API). For HF-integration
-    later, this wraps Tavily/Exa behind the same interface."""
+    """Search: local corpus scoring (offline, deterministic) + a
+    DuckDuckGo web scrape (no API key) under the same plugin.
+
+    NOTE: this class used to be defined TWICE in this file (a local-only
+    version later shadowed the web-capable one), which broke
+    ``ctx.search.web`` — merged so both APIs coexist."""
 
     def apply(self, ctx):
-        def search(query, corpus, top_k=5):
-            scored = [(sum(1 for w in query.lower().split() if w in doc.lower()),
-                       doc) for doc in corpus]
+        def query(query_text, corpus, top_k=5):
+            scored = [(sum(1 for w in query_text.lower().split()
+                           if w in doc.lower()), doc)
+                      for doc in corpus]
             scored.sort(key=lambda x: -x[0])
             results = [d for s, d in scored[:top_k] if s > 0]
-            ctx.effect("search", {"q": query[:40], "hits": len(results)},
+            ctx.effect("search", {"q": query_text[:40], "hits": len(results)},
                        replay_fn=lambda p: True)
             return {"results": results, "n": len(results)}
-        ctx.register("search.query", search)
+
+        def web(query_text, n=5):
+            try:
+                import urllib.request, urllib.parse, re
+                url = ("https://html.duckduckgo.com/html/?q=" +
+                       urllib.parse.quote(query_text))
+                req = urllib.request.Request(url, headers={
+                    "User-Agent": "Mozilla/5.0"})
+                html = urllib.request.urlopen(req, timeout=15).read().decode()
+                titles = re.findall(r'<a[^>]*class="result__a"[^>]*>(.*?)</a>',
+                                    html)[:n]
+                ctx.effect("search_web", {"q": query_text[:40]},
+                           replay_fn=lambda p: True)
+                return {"results": [re.sub(r"<[^>]+>", "", t)
+                                    for t in titles]}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+
+        ctx.register("search.query", query)
+        ctx.register("search.web", web)
 
 
 class WebSearchPlugin:
@@ -683,33 +597,54 @@ class PDFPlugin:
 
 
 class SQLitePlugin:
-    """SQLite read/write, constrained to a db path."""
+    """SQLite read/write on one persistent connection (stdlib sqlite3).
+
+    Two entry points: ``sqlite.query`` (SELECT -> {"columns", "rows"} as
+    plain tuples; other statements commit and return {"affected"}) and
+    ``sqlite.execute`` (write-and-commit -> {"ok": True}).
+
+    NOTE: a persistent connection is required — a per-call connect makes
+    the default ":memory:" database vanish between statements. This
+    class also used to be defined twice in this file (a dict-rows
+    version was shadowed by a tuple-rows version); merged so both entry
+    points exist, keeping the tuple-rows format for ``query``."""
 
     def __init__(self, db_path=":memory:"):
         self.db_path = db_path
 
     def apply(self, ctx):
         import sqlite3
+        conn = sqlite3.connect(self.db_path)
+
         def query(sql, params=None):
-            conn = sqlite3.connect(self.db_path)
             try:
                 cur = conn.execute(sql, params or [])
                 if sql.strip().upper().startswith("SELECT"):
                     rows = cur.fetchall()
-                    cols = [d[0] for d in cur.description] if cur.description else []
+                    cols = ([d[0] for d in cur.description]
+                            if cur.description else [])
                     ctx.effect("sqlite_read", {"sql": sql[:60]},
                                replay_fn=lambda p: True)
                     return {"columns": cols, "rows": rows[:100]}
-                else:
-                    conn.commit()
-                    ctx.effect("sqlite_write", {"sql": sql[:60]},
-                               replay_fn=lambda p: True)
-                    return {"affected": cur.rowcount}
+                conn.commit()
+                ctx.effect("sqlite_write", {"sql": sql[:60]},
+                           replay_fn=lambda p: True)
+                return {"affected": cur.rowcount}
             except Exception as e:
                 return {"error": str(e)[:200]}
-            finally:
-                conn.close()
+
+        def execute(sql, params=None):
+            try:
+                conn.execute(sql, params or [])
+                conn.commit()
+                ctx.effect("sqlite_execute", {"sql": sql[:60]},
+                           replay_fn=lambda p: True)
+                return {"ok": True}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+
         ctx.register("sqlite.query", query)
+        ctx.register("sqlite.execute", execute)
 
 
 class TemplatePlugin:
@@ -735,13 +670,18 @@ class TemplatePlugin:
         ctx.register("plugin.scaffold", scaffold)
 
 class GitHubPlugin:
-    """GitHub repo operations. Requires GITHUB_TOKEN env. Read-only by
-    default; write ops (create issue) are gated by TrustGate."""
+    """GitHub repo operations. Token from constructor or GITHUB_TOKEN
+    env. Read-only by default; write ops (create issue) are gated by
+    TrustGate. (Used to be defined twice in this file; this merged
+    version keeps the TrustGate-gated superset API.)"""
+
+    def __init__(self, token=None):
+        self.token = token
 
     def apply(self, ctx):
         import os
         def _api(path, method="GET", body=None):
-            token = os.environ.get("GITHUB_TOKEN")
+            token = self.token or os.environ.get("GITHUB_TOKEN")
             if not token:
                 return {"error": "GITHUB_TOKEN not set"}
             import urllib.request
@@ -827,37 +767,79 @@ class PostgresPlugin:
         ctx.register("postgres.query", query)
 
 class ExcelPlugin:
-    """Excel read/write via openpyxl."""
+    """Excel read/write via openpyxl, with a CSV fallback when openpyxl
+    is not installed. Accepts both call conventions that evolved in this
+    file (it used to be defined twice): ``write(path, rows)`` and
+    ``write(rows)`` with a constructor-bound path; same for ``read``."""
+
+    def __init__(self, path=None):
+        self.path = path
 
     def apply(self, ctx):
-        def write(path, rows):
-            try:
-                from openpyxl import Workbook
-                wb = Workbook()
-                ws = wb.active
-                for row in rows:
-                    ws.append(row)
-                wb.save(path)
-                ctx.effect("excel_write", {"path": path[:50]},
-                           replay_fn=lambda p: True)
-                return {"ok": True, "rows": len(rows)}
-            except ImportError:
-                return {"error": "openpyxl not installed"}
-            except Exception as e:
-                return {"error": str(e)[:200]}
-        def read(path):
-            try:
-                from openpyxl import load_workbook
-                wb = load_workbook(path)
-                ws = wb.active
-                rows = [[c.value for c in row] for row in ws.iter_rows()]
-                ctx.effect("excel_read", {"path": path[:50]},
-                           replay_fn=lambda p: True)
-                return {"rows": rows[:100]}
-            except ImportError:
-                return {"error": "openpyxl not installed"}
-            except Exception as e:
-                return {"error": str(e)[:200]}
+        import os
+
+        def _split(a, b, path_kw):
+            # (path, rows) if the first arg looks like a filesystem
+            # path, else (rows) — the two historical signatures
+            if isinstance(a, (str, os.PathLike)) and b is not None:
+                return str(a), b
+            return (path_kw or self.path), a
+
+        def write(a, b=None, path=None):
+            p, rows = _split(a, b, path)
+            if not p:
+                return {"error": "no path (pass one or construct with path=)"}
+            # engine by extension: .csv stays CSV even when openpyxl is
+            # installed (load_workbook refuses .csv on the way back)
+            if str(p).lower().endswith(".csv"):
+                import csv
+                with open(p, "w", newline="", encoding="utf-8") as f:
+                    csv.writer(f).writerows(rows)
+            else:
+                try:
+                    from openpyxl import Workbook
+                    wb = Workbook()
+                    ws = wb.active
+                    for row in rows:
+                        ws.append(row)
+                    wb.save(p)
+                except ImportError:
+                    import csv
+                    with open(p, "w", newline="", encoding="utf-8") as f:
+                        csv.writer(f).writerows(rows)
+                except Exception as e:
+                    return {"error": str(e)[:200]}
+            ctx.effect("excel_write", {"path": str(p)[:50]},
+                       replay_fn=lambda p2: True)
+            return {"ok": True, "rows": len(rows)}
+
+        def read(path=None):
+            p = path or self.path
+            if not p:
+                return {"error": "no path (pass one or construct with path=)"}
+            if str(p).lower().endswith(".csv"):
+                import csv
+                try:
+                    with open(p, newline="", encoding="utf-8") as f:
+                        rows = list(csv.reader(f))
+                except Exception as e:
+                    return {"error": str(e)[:200]}
+            else:
+                try:
+                    from openpyxl import load_workbook
+                    wb = load_workbook(p)
+                    ws = wb.active
+                    rows = [[c.value for c in row] for row in ws.iter_rows()]
+                except ImportError:
+                    import csv
+                    with open(p, newline="", encoding="utf-8") as f:
+                        rows = list(csv.reader(f))
+                except Exception as e:
+                    return {"error": str(e)[:200]}
+            ctx.effect("excel_read", {"path": str(p)[:50]},
+                       replay_fn=lambda p2: True)
+            return {"rows": rows[:100]}
+
         ctx.register("excel.write", write)
         ctx.register("excel.read", read)
 
@@ -991,7 +973,8 @@ class TmuxPlugin:
             except FileNotFoundError:
                 return {"error": "tmux not installed"}
         ctx.register("tmux.new", new_session)
-        ctx.register("tmux.list", list_sessions)
+        ctx.register("tmux.list_sessions", list_sessions)
+        ctx.register("tmux.list", list_sessions)  # legacy alias
         ctx.register("tmux.send", send_keys)
 
 
@@ -1220,9 +1203,16 @@ class BenchmarkPlugin:
                               ("alignbench_jev_zero_shot_auroc.json", "jev")]:
                 d = _load(name)
                 if d:
-                    vals = [v["auroc"] for v in d.values()
-                            if isinstance(v, dict) and "auroc" in v]                            if isinstance(d, dict) and any(
-                               isinstance(v, dict) for v in d.values())                            else list(d.values())
+                    # (fixed: the original line jammed the conditional
+                    # expression onto the comprehension's closing line —
+                    # a syntax error that made the whole module
+                    # unimportable on main)
+                    if isinstance(d, dict) and any(
+                            isinstance(v, dict) for v in d.values()):
+                        vals = [v["auroc"] for v in d.values()
+                                if isinstance(v, dict) and "auroc" in v]
+                    else:
+                        vals = list(d.values())
                     vals = [v for v in vals if isinstance(v, (int, float))]
                     if vals:
                         vals.sort()
@@ -2068,10 +2058,12 @@ class MathV2Plugin:
             return {"n": n, "mean": round(mean, 3), "var": round(var, 3),
                     "min": min(nums), "max": max(nums)}
         def fft_magnitudes(samples):
-            # DFT (toy, no numpy)
+            # Full DFT magnitude spectrum (toy, no numpy): n bins out
+            # for n samples in — the name says FFT, not rfft, so callers
+            # get the complete (symmetric) spectrum
             n = len(samples)
             mags = []
-            for k in range(n // 2):
+            for k in range(n):
                 re = sum(samples[t] * __import__("math").cos(
                     2 * 3.14159 * k * t / n) for t in range(n))
                 im = -sum(samples[t] * __import__("math").sin(
@@ -2082,4 +2074,3 @@ class MathV2Plugin:
         ctx.register("linalg.matmul", matmul)
         ctx.register("stats.summary", stats)
         ctx.register("signal.fft_magnitudes", fft_magnitudes)
-
