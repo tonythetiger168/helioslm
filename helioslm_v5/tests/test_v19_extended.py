@@ -12,9 +12,14 @@ def test_sqlite():
     ctx = Context()
     ctx.use(SQLitePlugin())
     ctx.sqlite.execute("CREATE TABLE t (a, b)")
-    ctx.sqlite.execute("INSERT INTO t VALUES (?, ?)", ["x", 1])
+    r = ctx.sqlite.execute("INSERT INTO t VALUES (?, ?)", ["x", 1])
+    assert r.get("affected") == 1, r
     r = ctx.sqlite.query("SELECT * FROM t")
-    assert r["rows"] == [{"a": "x", "b": 1}]
+    # v5.48 dedup: the surviving unified API returns tuple rows with
+    # columns listed apart (the shadowing duplicate that once made this
+    # test expect dicts was removed — see harness_plugins.SQLitePlugin).
+    assert r["rows"] == [("x", 1)], r
+    assert r["columns"] == ["a", "b"], r
     print("PASS test_sqlite")
 
 

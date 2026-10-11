@@ -195,8 +195,16 @@ class QwenModelPlugin:
         if not os.path.exists(self.model_dir):
             ctx.register("model.qwen", None)
             return
-        import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
+        # v5.48: the qwen/ dir can exist without transformers installed
+        # (e.g. the CPU regression env). Without this guard apply()
+        # raised ModuleNotFoundError out of ctx.use() and the T46 skip
+        # contract ("model.qwen is None -> SKIP") was unreachable.
+        try:
+            import torch
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+        except ImportError:
+            ctx.register("model.qwen", None)
+            return
         tok = AutoTokenizer.from_pretrained(self.model_dir)
         model = AutoModelForCausalLM.from_pretrained(
             self.model_dir, torch_dtype=torch.bfloat16).eval()
@@ -299,6 +307,7 @@ class ICPlugin:
             return rtl
 
         def lint_rtl(rtl_text):
+            import re as _re
             errors = []
             if "module" not in rtl_text:
                 errors.append("no module declaration")
@@ -306,7 +315,12 @@ class ICPlugin:
                 errors.append("no endmodule")
             if rtl_text.count("(") != rtl_text.count(")"):
                 errors.append("unbalanced parentheses")
-            if rtl_text.count("begin") != rtl_text.count("end"):
+            # v5.48: raw str.count("end") also matches the "end" inside
+            # "endmodule", so any module with no begin/end blocks at all
+            # (e.g. pure assign statements) falsely failed lint. Word-
+            # boundary counting excludes endmodule/endcase/etc.
+            if len(_re.findall(r"\bbegin\b", rtl_text)) != \
+               len(_re.findall(r"\bend\b", rtl_text)):
                 errors.append("unbalanced begin/end")
             return {"ok": len(errors) == 0, "errors": errors}
 
@@ -356,13 +370,18 @@ class MemoryPlugin:
             store = ExperienceStore()
         except ImportError:
             store = None
+        # v5.48 fix: `if store:` is ALWAYS False for a freshly built
+        # ExperienceStore — it defines __len__ (think.py), so an empty
+        # store is falsy (the T25 trap think.py itself documents).
+        # remember/recall silently no-op'd forever. Explicit None check,
+        # same discipline as ThinkSession.__init__.
         def remember(key, thought, outcome):
-            if store:
+            if store is not None:
                 store.remember(key, thought, outcome)
             ctx.effect("memory_remember", {"key": key[:40]},
                        replay_fn=lambda p: True)
         def recall(key):
-            if store:
+            if store is not None:
                 return store.recall(key)
             return None
         ctx.register("memory.remember", remember)
@@ -426,10 +445,23 @@ class FilesystemPlugin:
 
     def apply(self, ctx):
         import os
-        root = os.path.abspath(self.root)
+        root = os.path.realpath(self.root)
+
+        def _resolve(path):
+            # v5.48: normalize BEFORE the prefix check. A raw join lets
+            # "../escape.txt" pass the startswith filter (the string
+            # "<root>/../escape" still starts with <root>), so the escape
+            # was never blocked on Windows. realpath collapses ".." first;
+            # the trailing-sep check also rejects sibling dirs that merely
+            # share the root's name prefix (e.g. "/root2/x").
+            full = os.path.realpath(os.path.join(root, path))
+            if full != root and not full.startswith(root + os.sep):
+                return None
+            return full
+
         def read(path):
-            full = os.path.join(root, path)
-            if not full.startswith(root):
+            full = _resolve(path)
+            if full is None:
                 return {"error": "path escape blocked"}
             try:
                 with open(full, encoding="utf-8", errors="replace") as f:
@@ -439,8 +471,8 @@ class FilesystemPlugin:
             except Exception as e:
                 return {"error": str(e)[:200]}
         def write(path, content):
-            full = os.path.join(root, path)
-            if not full.startswith(root):
+            full = _resolve(path)
+            if full is None:
                 return {"error": "path escape blocked"}
             try:
                 with open(full, "w", encoding="utf-8") as f:
@@ -468,31 +500,61 @@ class TimePlugin:
         ctx.register("time.utc", utc)
 
 class SQLitePlugin:
-    """Query/exec on a SQLite db (stdlib sqlite3)."""
+    """SQLite read/write, constrained to a db path (stdlib sqlite3).
+
+    v5.48 dedup: two SQLitePlugin classes coexisted here (remote v1.9
+    batches 0451ef3 and c28c601 each added one; the later shadow dropped
+    `sqlite.execute`, so T51's sqlite test AttributeError'd on main).
+    This is the SINGLE surviving definition — c28c601's unified `query`
+    (per-call connection, tuple rows, read/write by statement kind)
+    plus an `execute` convenience for write statements so both v1.9
+    test modules can drive it."""
 
     def __init__(self, db_path=":memory:"):
         self.db_path = db_path
 
     def apply(self, ctx):
         import sqlite3
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
+        # Connection policy (v5.48): ":memory:" needs ONE persistent
+        # connection — a per-call connect() hands every statement a FRESH
+        # empty database (T51's create-then-insert landed on two different
+        # connections and died with "no such table"). File-backed dbs
+        # survive per-call connects, and a lingering connection holds a
+        # Windows file lock that makes the caller's tempfile cleanup blow
+        # up with WinError 32 — so files get short-lived connections.
+        if self.db_path == ":memory:":
+            mem_conn = sqlite3.connect(self.db_path)
+        else:
+            mem_conn = None
         def query(sql, params=None):
+            conn = mem_conn or sqlite3.connect(self.db_path)
             try:
                 cur = conn.execute(sql, params or [])
-                rows = [dict(r) for r in cur.fetchall()]
-                ctx.effect("sqlite_query", {"sql": sql[:60]},
-                           replay_fn=lambda p: True)
-                return {"rows": rows}
+                if sql.strip().upper().startswith("SELECT"):
+                    rows = cur.fetchall()
+                    cols = [d[0] for d in cur.description] if cur.description else []
+                    ctx.effect("sqlite_read", {"sql": sql[:60]},
+                               replay_fn=lambda p: True)
+                    return {"columns": cols, "rows": rows[:100]}
+                else:
+                    conn.commit()
+                    ctx.effect("sqlite_write", {"sql": sql[:60]},
+                               replay_fn=lambda p: True)
+                    return {"affected": cur.rowcount}
             except Exception as e:
                 return {"error": str(e)[:200]}
+            finally:
+                if mem_conn is None:
+                    conn.close()
         def execute(sql, params=None):
-            try:
-                conn.execute(sql, params or [])
-                conn.commit()
-                return {"ok": True}
-            except Exception as e:
-                return {"error": str(e)[:200]}
+            """Write-statement convenience over query() (v5.48): the
+            0451ef3 batch exposed this name; keeping it costs one alias
+            and un-breaks T51. Loud: SELECT via execute() returns an
+            error dict instead of silently running."""
+            if sql.strip().upper().startswith("SELECT"):
+                return {"error": "execute() is for write statements — "
+                                 "use query() for SELECT"}
+            return query(sql, params)
         ctx.register("sqlite.query", query)
         ctx.register("sqlite.execute", execute)
 
@@ -532,27 +594,6 @@ class GitHubPlugin:
         ctx.register("github.create_issue", create_issue)
 
 
-class SearchPlugin:
-    """Web search via a simple DuckDuckGo scrape (no API key)."""
-
-    def apply(self, ctx):
-        import urllib.request, urllib.parse, re
-        def search(query, n=5):
-            try:
-                url = "https://html.duckduckgo.com/html/?q=" +                     urllib.parse.quote(query)
-                req = urllib.request.Request(url, headers={
-                    "User-Agent": "Mozilla/5.0"})
-                html = urllib.request.urlopen(req, timeout=15).read().decode()
-                titles = re.findall(r'<a[^>]*class="result__a"[^>]*>(.*?)</a>',
-                                    html)[:n]
-                ctx.effect("search", {"q": query[:40]},
-                           replay_fn=lambda p: True)
-                return {"results": [re.sub(r"<[^>]+>", "", t) for t in titles]}
-            except Exception as e:
-                return {"error": str(e)[:200]}
-        ctx.register("search.web", search)
-
-
 class SlackPlugin:
     """Slack message posting (needs bot token)."""
 
@@ -582,20 +623,40 @@ class SlackPlugin:
 
 
 class ExcelPlugin:
-    """Excel read/write via openpyxl (if installed) or CSV fallback."""
+    """Excel read/write via openpyxl (if installed) or CSV fallback.
+
+    v5.48: two duplicate definitions once coexisted (remote v1.9 batches
+    0451ef3 and c28c601); the later one shadowed this one and used a
+    different call convention. Merged into this single class supporting
+    BOTH conventions:
+      - write(path, rows) / read(path)  (explicit path)
+      - write(rows) / read()            (default path from ExcelPlugin(path=...))
+    Values are returned as-is (no str coercion) so numeric cells
+    round-trip exactly. .csv paths always go through the csv module
+    (openpyxl cannot read them); xlsx goes through openpyxl.
+    """
 
     def __init__(self, path=None):
         self.path = path
 
     def apply(self, ctx):
-        def read(path=None):
-            p = path or self.path
+        def read(*args):
+            p = args[0] if args else self.path
+            if not p:
+                return {"error": "no path given (pass path or ExcelPlugin(path=...))"}
+            if str(p).lower().endswith(".csv"):
+                import csv
+                with open(p, newline="", encoding="utf-8") as f:
+                    rows = list(csv.reader(f))
+                ctx.effect("excel_read", {"path": str(p)[:40]},
+                           replay_fn=lambda p2: True)
+                return {"rows": rows[:100]}
             try:
                 import openpyxl
                 wb = openpyxl.load_workbook(p)
                 ws = wb.active
-                rows = [[str(c.value) for c in row] for row in ws.iter_rows()]
-                ctx.effect("excel_read", {"path": (p or "")[:40]},
+                rows = [[c.value for c in row] for row in ws.iter_rows()]
+                ctx.effect("excel_read", {"path": str(p)[:40]},
                            replay_fn=lambda p2: True)
                 return {"rows": rows[:100]}
             except ImportError:
@@ -604,8 +665,23 @@ class ExcelPlugin:
                     return {"rows": list(csv.reader(f))[:100]}
             except Exception as e:
                 return {"error": str(e)[:200]}
-        def write(rows, path=None):
-            p = path or self.path
+        def write(*args):
+            if len(args) == 2:
+                p, rows = args
+            elif len(args) == 1:
+                p, rows = self.path, args[0]
+            else:
+                raise ValueError(
+                    "excel.write expects (path, rows) or (rows)")
+            if not p:
+                return {"error": "no path given (pass path or ExcelPlugin(path=...))"}
+            if str(p).lower().endswith(".csv"):
+                import csv
+                with open(p, "w", newline="", encoding="utf-8") as f:
+                    csv.writer(f).writerows(rows)
+                ctx.effect("excel_write", {"path": str(p)[:40]},
+                           replay_fn=lambda p2: True)
+                return {"ok": True, "rows": len(rows)}
             try:
                 import openpyxl
                 wb = openpyxl.Workbook()
@@ -617,17 +693,28 @@ class ExcelPlugin:
                 import csv
                 with open(p, "w", newline="", encoding="utf-8") as f:
                     csv.writer(f).writerows(rows)
-            ctx.effect("excel_write", {"path": (p or "")[:40]},
+            ctx.effect("excel_write", {"path": str(p)[:40]},
                        replay_fn=lambda p2: True)
             return {"ok": True, "rows": len(rows)}
         ctx.register("excel.read", read)
         ctx.register("excel.write", write)
 
 class SearchPlugin:
-    """Local search over a corpus (no external API). For HF-integration
-    later, this wraps Tavily/Exa behind the same interface."""
+    """Unified search plugin registering BOTH services:
+    - search.query: local corpus keyword search (no external API).
+      For HF-integration later, this wraps Tavily/Exa behind the same
+      interface.
+    - search.web: live web search via a simple DuckDuckGo scrape (no API
+      key). Returns {"error": ...} when offline instead of raising.
+
+    v5.48 note: two SearchPlugin classes once coexisted in this file
+    (remote v1.9 batches 0451ef3 and c28c601 each added one; the second
+    shadowed the first). They are now merged into this single class so
+    both test suites (test_v19_common, test_v19_extended) pass.
+    """
 
     def apply(self, ctx):
+        import urllib.request, urllib.parse, re
         def search(query, corpus, top_k=5):
             scored = [(sum(1 for w in query.lower().split() if w in doc.lower()),
                        doc) for doc in corpus]
@@ -636,7 +723,22 @@ class SearchPlugin:
             ctx.effect("search", {"q": query[:40], "hits": len(results)},
                        replay_fn=lambda p: True)
             return {"results": results, "n": len(results)}
+        def web_search(query, n=5):
+            try:
+                url = ("https://html.duckduckgo.com/html/?q="
+                       + urllib.parse.quote(query))
+                req = urllib.request.Request(url, headers={
+                    "User-Agent": "Mozilla/5.0"})
+                html = urllib.request.urlopen(req, timeout=15).read().decode()
+                titles = re.findall(r'<a[^>]*class="result__a"[^>]*>(.*?)</a>',
+                                    html)[:n]
+                ctx.effect("search", {"q": query[:40]},
+                           replay_fn=lambda p: True)
+                return {"results": [re.sub(r"<[^>]+>", "", t) for t in titles]}
+            except Exception as e:
+                return {"error": str(e)[:200]}
         ctx.register("search.query", search)
+        ctx.register("search.web", web_search)
 
 
 class WebSearchPlugin:
@@ -682,34 +784,8 @@ class PDFPlugin:
         ctx.register("pdf.extract", extract_text)
 
 
-class SQLitePlugin:
-    """SQLite read/write, constrained to a db path."""
-
-    def __init__(self, db_path=":memory:"):
-        self.db_path = db_path
-
-    def apply(self, ctx):
-        import sqlite3
-        def query(sql, params=None):
-            conn = sqlite3.connect(self.db_path)
-            try:
-                cur = conn.execute(sql, params or [])
-                if sql.strip().upper().startswith("SELECT"):
-                    rows = cur.fetchall()
-                    cols = [d[0] for d in cur.description] if cur.description else []
-                    ctx.effect("sqlite_read", {"sql": sql[:60]},
-                               replay_fn=lambda p: True)
-                    return {"columns": cols, "rows": rows[:100]}
-                else:
-                    conn.commit()
-                    ctx.effect("sqlite_write", {"sql": sql[:60]},
-                               replay_fn=lambda p: True)
-                    return {"affected": cur.rowcount}
-            except Exception as e:
-                return {"error": str(e)[:200]}
-            finally:
-                conn.close()
-        ctx.register("sqlite.query", query)
+# (v5.48) the second, shadowing SQLitePlugin definition that lived here
+# was REMOVED — its behavior is merged into the single definition above.
 
 
 class TemplatePlugin:
@@ -826,40 +902,11 @@ class PostgresPlugin:
                 conn.close()
         ctx.register("postgres.query", query)
 
-class ExcelPlugin:
-    """Excel read/write via openpyxl."""
 
-    def apply(self, ctx):
-        def write(path, rows):
-            try:
-                from openpyxl import Workbook
-                wb = Workbook()
-                ws = wb.active
-                for row in rows:
-                    ws.append(row)
-                wb.save(path)
-                ctx.effect("excel_write", {"path": path[:50]},
-                           replay_fn=lambda p: True)
-                return {"ok": True, "rows": len(rows)}
-            except ImportError:
-                return {"error": "openpyxl not installed"}
-            except Exception as e:
-                return {"error": str(e)[:200]}
-        def read(path):
-            try:
-                from openpyxl import load_workbook
-                wb = load_workbook(path)
-                ws = wb.active
-                rows = [[c.value for c in row] for row in ws.iter_rows()]
-                ctx.effect("excel_read", {"path": path[:50]},
-                           replay_fn=lambda p: True)
-                return {"rows": rows[:100]}
-            except ImportError:
-                return {"error": "openpyxl not installed"}
-            except Exception as e:
-                return {"error": str(e)[:200]}
-        ctx.register("excel.write", write)
-        ctx.register("excel.read", read)
+# (v5.48) REMOVED: a duplicate `ExcelPlugin` lived here (remote v1.9 batch
+# c28c601). It shadowed the merged definition above and used an
+# incompatible write(path, rows) convention. Behavior is merged into the
+# single definition near the top of this file.
 
 
 class DocxPlugin:
@@ -992,6 +1039,9 @@ class TmuxPlugin:
                 return {"error": "tmux not installed"}
         ctx.register("tmux.new", new_session)
         ctx.register("tmux.list", list_sessions)
+        # v5.48: test_v112 calls ctx.tmux.list_sessions(); the v1.12
+        # batch registered only "tmux.list". Alias, same function.
+        ctx.register("tmux.list_sessions", list_sessions)
         ctx.register("tmux.send", send_keys)
 
 
@@ -2068,10 +2118,13 @@ class MathV2Plugin:
             return {"n": n, "mean": round(mean, 3), "var": round(var, 3),
                     "min": min(nums), "max": max(nums)}
         def fft_magnitudes(samples):
-            # DFT (toy, no numpy)
+            # DFT (toy, no numpy) — FULL spectrum: n input samples -> n
+            # magnitude bins (k = 0..n-1). v5.48: the old range(n // 2)
+            # one-sided cutoff returned 8 bins for a 16-sample signal;
+            # test_math_v2 (and any caller counting bins) expects n.
             n = len(samples)
             mags = []
-            for k in range(n // 2):
+            for k in range(n):
                 re = sum(samples[t] * __import__("math").cos(
                     2 * 3.14159 * k * t / n) for t in range(n))
                 im = -sum(samples[t] * __import__("math").sin(

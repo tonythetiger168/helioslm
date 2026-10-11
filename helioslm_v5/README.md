@@ -1,4 +1,4 @@
-# HeliosLM v5.47 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.48 - DeepSeek/K3-Style Architecture
 
 Reference LLM implementation with DeepSeek-V3-style efficiency techniques.
 All modules below are implemented and exercised by a CPU test suite with
@@ -18,6 +18,48 @@ misbehaving (see CHANGELOG). v5.5 is a feature release aligned with
 Kimi-K3-class architecture mechanisms: hybrid linear attention, LatentMoE,
 quantile balancing, cross-layer attention residuals, and SiTU-GLU (see
 CHANGELOG; unit suite now 44 tests).
+
+## v5.48 (2026-10-10): Harness Plugin Repair Round — Falsy Memory Store, SQLite Conn Policy, FS Escape, Dedup
+Maintenance round on the merged remote line (remote v1.9 batches had
+landed duplicate plugin classes on main), each oracle-tested in
+`tests/test_v5.py` (`test_harness_memory_sqlite_fs_repair`):
+- **MemoryPlugin falsy-store trap** (`harness/harness_plugins.py`):
+  `if store:` is always False for a freshly built `ExperienceStore`
+  (it defines `__len__`, so an empty store is falsy — the T25 trap
+  think.py itself documents), so remember/recall silently no-op'd.
+  Now an explicit `is not None` check, same discipline as
+  `ThinkSession.__init__`.
+- **SQLitePlugin connection policy**: one persistent connection for
+  `:memory:` (a per-call connect() hands every statement a fresh empty
+  db — T51's create-then-insert died with "no such table"), short-lived
+  connections for file dbs (a lingering connection holds a Windows
+  file lock and tempfile cleanup dies with WinError 32). The dedup'd
+  single definition keeps c28c601's tuple-rows `query` plus an
+  `execute` write-convenience (0451ef3's name); SELECT via `execute`
+  returns a loud error dict.
+- **FilesystemPlugin escape fix**: the raw `full.startswith(root)`
+  check never fired for `../x` (the joined string still starts with
+  the root prefix). Paths are realpath-normalized BEFORE the prefix
+  check, which also rejects sibling dirs sharing the root's name.
+- **Duplicate-class dedup (loud record)**: the two remote v1.9 batches
+  each added same-named classes; the later definitions shadowed the
+  earlier ones. Single surviving definitions now: SQLitePlugin,
+  SearchPlugin (merged to register BOTH `search.query` local corpus
+  and `search.web` DuckDuckGo scrape), ExcelPlugin (supports both
+  `write(path, rows)` and `write(rows)` conventions, `.csv` always via
+  the csv module, values round-trip uncoerced). REMOVED stubs left in
+  place with comments. Remote modules now green: agent plugins 5/5,
+  common 4/4, extended 5/5, office 4/4.
+- **Six more remote-red modules repaired to green**: TmuxPlugin gains a
+  `tmux.list_sessions` alias (T54); QwenModelPlugin degrades to the
+  documented SKIP contract when transformers is not installed (T46);
+  ICPlugin lint counts begin/end on word boundaries so a begin-free
+  module isn't unbalanced by its own `endmodule` (T49); MathV2Plugin
+  `fft_magnitudes` returns the full n-bin DFT spectrum (T58);
+  test_v116_robot's stray-brace SyntaxError and test_v17_ic's fake-model
+  branch order (UVM vs module) fixed; test_v120_dna's restriction
+  expectation corrected to hand-verified 0-based [3, 12].
+  Full regression: 68/68 modules PASS (baseline today: 62/68).
 
 ## v5.47 (2026-10-09): Regression Locks + Trust Pipeline Example + Stability Floor
 Maintenance round on top of the merged remote line (RLCD verdicts,

@@ -18,6 +18,35 @@
 
 
 
+
+## v5.48 (2026-10-10) - harness plugin repair round
+- harness: MemoryPlugin `if store:` falsy trap fixed (explicit None
+  check) — empty ExperienceStore no longer disables remember/recall
+- harness: SQLitePlugin single definition (dedup of remote v1.9
+  duplicates); :memory: gets one persistent connection, file dbs get
+  short-lived ones (Windows file lock on tempfile cleanup, WinError 32)
+- harness: FilesystemPlugin path escape actually blocked — realpath
+  normalization before the root-prefix check (raw startswith let
+  "../escape" through)
+- harness: SearchPlugin dedup+merge: one class registers search.query
+  (local corpus) AND search.web (DuckDuckGo scrape, offline -> error dict)
+- harness: ExcelPlugin dedup+merge: supports write(path, rows) and
+  write(rows); .csv always via csv module; values round-trip uncoerced
+- tests: test_v5.py gains test_harness_memory_sqlite_fs_repair
+  (84/84 PASS); remote test_v18 5/5, test_v19_common 4/4,
+  test_v19_extended 5/5, test_v111_office 4/4 now green
+- harness: six more remote-red modules repaired to green —
+  TmuxPlugin registers tmux.list_sessions alias (T54);
+  QwenModelPlugin skips loudly-gracefully when transformers is absent
+  (T46); ICPlugin lint counts begin/end on word boundaries so
+  endmodule no longer unbalances a begin-free module (T49);
+  MathV2Plugin fft_magnitudes returns the full n-bin spectrum (T58);
+  test_v116_robot stray-brace SyntaxError fixed; test_v17_ic fake
+  model checks "UVM" before "module"; test_v120_dna restriction
+  expectation corrected to hand-verified 0-based [3, 12] (old [3, 13]
+  was off-by-one and inconsistent under any indexing)
+- full regression: 68/68 modules PASS (was 62/68 at baseline)
+
 ## v1.37 (2026-10-09) - collapsible right panel
 - web_ui: right effects panel has collapse button (-), floating
   expand button (+) bottom-right when hidden. Like DeepSeek-Harness
