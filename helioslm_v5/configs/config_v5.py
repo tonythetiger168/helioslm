@@ -128,6 +128,18 @@ class AttentionConfig:
     # relative to main attention (the "lightning" property).
     indexer_num_heads: int = 4
     indexer_head_dim: int = 32
+    # IndexShare (B1-1): share ONE learned indexer across every
+    # ``indexer_share_every`` MLA layers (GLM-5.2/5.3-style shared sparse
+    # indexer) instead of one indexer per MLA layer. MLA layers are
+    # numbered 0..M-1 in model order (hybrid interleaving included);
+    # layer m shares the indexer of layer m - (m % indexer_share_every),
+    # the group leader, which owns the registered parameters. 1 =
+    # per-layer (default, bit-identical to the 2026-09-21 behaviour).
+    # Indexer memory and per-step key-projection cost drop by
+    # ~1 - 1/indexer_share_every; each layer still scores its OWN cache,
+    # so selection semantics per layer are unchanged. Requires
+    # sparse_indexer="learned" ("head_mean" has no parameters to share).
+    indexer_share_every: int = 1
     # Sparse prefill (same round): when True and sparse_top_k is set,
     # PREFILL also selects top-k keys per query in index space (the v5.8
     # simplification kept prefill dense). Queries with fewer visible keys
@@ -601,13 +613,20 @@ class HeliosLMv5Config:
                 "attention.sparse_top_k to be set (the learned lightning "
                 "indexer only exists to pick the top-k set)"
             )
-        for _name in ("indexer_num_heads", "indexer_head_dim"):
+        for _name in ("indexer_num_heads", "indexer_head_dim",
+                      "indexer_share_every"):
             _value = getattr(a, _name)
             if not isinstance(_value, int) or _value <= 0:
                 raise ValueError(
                     f"attention.{_name} must be a positive integer, got "
                     f"{_value!r}"
                 )
+        if a.indexer_share_every > 1 and a.sparse_indexer != "learned":
+            raise ValueError(
+                "attention.indexer_share_every > 1 requires "
+                "attention.sparse_indexer='learned' — the 'head_mean' "
+                "indexer has no parameters, so there is nothing to share"
+            )
         if not isinstance(a.sparse_prefill, bool):
             raise ValueError(
                 f"attention.sparse_prefill must be a bool, got "

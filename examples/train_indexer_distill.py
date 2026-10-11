@@ -123,7 +123,8 @@ def teacher_overlap(model, ids, top_k):
             qa = torch.einsum("bhqd,hdc->bhqc", qn, w_uk)
             teacher = (qa.mean(1, keepdim=True) @ c.transpose(-2, -1)
                        + qr.mean(1, keepdim=True) @ kr.transpose(-2, -1))
-            student = mla.indexer(hidden, c)
+            # IndexShare-safe: followers score with the leader's indexer.
+            student = mla._effective_indexer()(hidden, c)
             tk = teacher.topk(top_k, -1).indices
             sk = student.topk(top_k, -1).indices
             overlaps.append(
@@ -156,7 +157,7 @@ def indexer_prefill_stability(model, ids, top_k, n_trials=8, noise_std=0.05,
                 next(l for l in model.layers
                      if getattr(l, "attention", None) is mla))
             stats[layer_idx] = prefill_stability(
-                mla.indexer, hidden, c, top_k, n_trials=n_trials,
+                mla._effective_indexer(), hidden, c, top_k, n_trials=n_trials,
                 noise_std=noise_std, seed=seed)
     return stats
 
