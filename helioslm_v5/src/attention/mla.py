@@ -275,7 +275,7 @@ class MLA(nn.Module):
     reassociation (verified by the test suite at atol 1e-4).
     """
 
-    def __init__(self, config):
+    def __init__(self, config, shared_indexer=None):
         super().__init__()
         self.hidden_size = config.hidden_size
         self.num_heads = config.attention.num_attention_heads
@@ -380,6 +380,12 @@ class MLA(nn.Module):
                 f"sparse_indexer must be 'head_mean' or 'learned', got "
                 f"{self.sparse_indexer!r}"
             )
+        if shared_indexer is not None and self.sparse_indexer != "learned":
+            raise ValueError(
+                "shared_indexer was provided but sparse_indexer is "
+                f"{self.sparse_indexer!r}; only 'learned' indexers can be "
+                "shared (the 'head_mean' indexer has no parameters)"
+            )
         if self.sparse_indexer == "learned":
             if self.sparse_top_k is None:
                 raise ValueError(
@@ -390,12 +396,35 @@ class MLA(nn.Module):
             from helioslm_v5.src.attention.lightning_indexer import (
                 LearnedLightningIndexer,
             )
-            self.indexer = LearnedLightningIndexer(
-                self.hidden_size,
-                self.kv_latent_dim,
-                int(getattr(config.attention, "indexer_num_heads", 4)),
-                int(getattr(config.attention, "indexer_head_dim", 32)),
-            )
+            if shared_indexer is None:
+                self.indexer = LearnedLightningIndexer(
+                    self.hidden_size,
+                    self.kv_latent_dim,
+                    int(getattr(config.attention, "indexer_num_heads", 4)),
+                    int(getattr(config.attention, "indexer_head_dim", 32)),
+                )
+            else:
+                # IndexShare (B1-1): score with the group leader's
+                # indexer. Held as an UNREGISTERED attribute so the shared
+                # module is not double-registered in this layer's
+                # state_dict (the leader owns the parameters).
+                if not isinstance(shared_indexer, LearnedLightningIndexer):
+                    raise TypeError(
+                        "shared_indexer must be a LearnedLightningIndexer, "
+                        f"got {type(shared_indexer).__name__}"
+                    )
+                if (shared_indexer.q_proj.in_features != self.hidden_size
+                        or shared_indexer.k_proj.in_features
+                        != self.kv_latent_dim):
+                    raise ValueError(
+                        "shared_indexer shape mismatch: expected "
+                        f"q_proj.in_features={self.hidden_size} and "
+                        f"k_proj.in_features={self.kv_latent_dim}, got "
+                        f"{shared_indexer.q_proj.in_features} and "
+                        f"{shared_indexer.k_proj.in_features}"
+                    )
+                self.indexer = None
+                object.__setattr__(self, "_shared_indexer", shared_indexer)
         if self.sparse_prefill and self.sparse_top_k is None:
             raise ValueError(
                 "sparse_prefill=True requires sparse_top_k to be set"
@@ -783,7 +812,8 @@ class MLA(nn.Module):
         if sparse_decode or sparse_prefill:
             if self.sparse_indexer == "learned":
                 # [B, 1, seq, kv_len]; keys re-derived from the cache.
-                index_scores = self.indexer(hidden_states, c_kv)
+                index_scores = self._effective_indexer()(
+                    hidden_states, c_kv)
             else:
                 index_scores = torch.matmul(
                     q_absorbed.mean(dim=1, keepdim=True), c_kv.transpose(-2, -1)
@@ -1001,6 +1031,19 @@ class MLA(nn.Module):
             "absorbed_reduction_vs_mha_pct": (1 - latent / mha) * 100,
         }
 
+    def _effective_indexer(self):
+        """The indexer this layer scores with.
+
+        Default (``indexer_share_every=1``): the layer's own registered
+        ``self.indexer``. IndexShare (``indexer_share_every>1``): the
+        group leader's indexer, referenced unregistered via
+        ``_shared_indexer``. Only defined when ``sparse_indexer ==
+        "learned"`` — callers keep the existing mode guard.
+        """
+        if self.indexer is not None:
+            return self.indexer
+        return self._shared_indexer
+
     def get_sparse_attention_stats(self, seq_len):
         """Analytic key-selection accounting for ``sparse_top_k`` (values,
         not wall-clock — no unmeasured speed claims).
@@ -1043,12 +1086,21 @@ class MLA(nn.Module):
             "prefill_selected_pairs": selected_pairs,
             "prefill_dense_pairs": dense_pairs,
             "prefill_pair_ratio": selected_pairs / dense_pairs,
+            # IndexShare: a follower OWNS no indexer parameters but
+            # SCORES with the leader's — report the scorer actually used
+            # plus an explicit sharing flag.
             "indexer_params": (
-                sum(p.numel() for p in self.indexer.parameters())
+                sum(p.numel() for p in self._effective_indexer()
+                    .parameters())
                 if self.sparse_indexer == "learned" else 0
             ),
+            "indexer_shared": (
+                self.indexer is None
+                if self.sparse_indexer == "learned" else False
+            ),
             "indexer_flops_per_scored_pair": (
-                2 * self.indexer.num_heads * self.indexer.head_dim
+                2 * self._effective_indexer().num_heads
+                * self._effective_indexer().head_dim
                 if self.sparse_indexer == "learned" else 0
             ),
         }
@@ -1072,7 +1124,9 @@ class MLA(nn.Module):
         scores), both over the causal/padding-visible keys. The teacher
         score terms are detached; gradients flow to the indexer and, as in
         joint training, through the latent projections to the model — to
-        train the indexer alone, optimize ``self.indexer.parameters()``.
+        train the indexer alone, optimize
+        ``self._effective_indexer().parameters()`` (with IndexShare the
+        group's layers all distill into the same shared indexer).
 
         Prefill-only: pass a batch WITHOUT a KV cache. With an fp8 cache
         config the served index keys are E4M3-rounded while this loss sees
@@ -1109,7 +1163,7 @@ class MLA(nn.Module):
                                 c_kv.transpose(-2, -1))
                    + torch.matmul(q_rope.mean(dim=1, keepdim=True),
                                   k_rope.transpose(-2, -1))).detach()
-        student = self.indexer(hidden_states, c_kv)
+        student = self._effective_indexer()(hidden_states, c_kv)
         neg = ~attn_mask
         teacher = teacher.masked_fill(neg, float("-inf"))
         student = student.masked_fill(neg, float("-inf"))
