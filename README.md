@@ -24,7 +24,7 @@ A from-scratch PyTorch reference implementation of a modern LLM stack: MLA atten
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![PyTorch](https://img.shields.io/badge/framework-PyTorch%20(pure)-ee4c2c)
 
-![Demo](docs/demo.gif)
+![Demo](https://raw.githubusercontent.com/tonythetiger168/helioslm/main/docs/demo.gif)
 
 ## Who is this for?
 
@@ -177,8 +177,10 @@ Canonical-Benchmark Comparison** — Chien-Hsin Lin, working draft 2026-10-03.
 
 **[📄 Read the PDF](docs/paper_draft_2026-10-03.pdf)** (7pp, figures included) ·
 [LaTeX source](docs/paper_draft_2026-10-03.tex) (arXiv-ready) ·
-[markdown](helioslm_v5/docs/paper_draft_2026-10-03.md) ·
+[markdown](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/docs/paper_draft_2026-10-03.md) ·
 [HF copy](https://huggingface.co/chienhsinlin/helioslm/tree/main/docs).
+(Looking for `paper.pdf`? The PDF ships under a dated filename —
+`docs/paper_draft_2026-10-03.pdf`; no file is literally named `paper.pdf`.)
 Headline numbers: overconfidence on wrong answers grows with scale
 (0.94 -> 0.9999 -> ~1.0 at 8.5M/360M/Qwen3-0.6B); deterministic grounding
 cures a 360M model's copy-shaped agentic failure (0/12 -> 9/12 + 3
@@ -329,13 +331,13 @@ print(out)
 
 ## Benchmarks
 
-![KV cache](docs/benchmarks_kv_cache.png)
+![KV cache](https://raw.githubusercontent.com/tonythetiger168/helioslm/main/docs/benchmarks_kv_cache.png)
 
 The full config holds **99.2% less KV-cache memory than MHA** at 128k context
 (2.0 GB vs 257.7 GB): 36 of 48 layers are Gated-Delta linear attention with a
 fixed ~1 MB recurrent state, and the 12 MLA layers store only the compressed
 latent (512 + 64 values/token). Full numbers and methodology:
-[docs/BENCHMARKS.md](docs/BENCHMARKS.md) — reproducible on CPU via
+[docs/BENCHMARKS.md](https://github.com/tonythetiger168/helioslm/blob/main/docs/BENCHMARKS.md) — reproducible on CPU via
 `python benchmarks/bench_cpu.py`.
 
 **Sparse × MTP acceptance sweep** (`benchmarks/bench_sparse_mtp.py`):
@@ -350,7 +352,7 @@ bit-exact).
 **v5.28 serving Pareto** (`benchmarks/disagg_pareto_2026-09-25.json`, regenerate via
 `python examples/disagg_pareto.py`): latency-cost curves for cache-heavy / cold / mixed
 workloads — the cost-axis alignment artifact, see
-[docs/benchmark_alignment.md](helioslm_v5/docs/benchmark_alignment.md).
+[docs/benchmark_alignment.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/docs/benchmark_alignment.md).
 
 ## Repository layout
 
@@ -377,7 +379,7 @@ See the [GitHub Project board](https://github.com/tonythetiger168/helioslm/proje
 
 ## Contributing
 
-Contributions are very welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Issues labeled [`good first issue`](https://github.com/tonythetiger168/helioslm/labels/good%20first%20issue) are the best entry points.
+Contributions are very welcome — see [CONTRIBUTING.md](https://github.com/tonythetiger168/helioslm/blob/main/CONTRIBUTING.md). Issues labeled [`good first issue`](https://github.com/tonythetiger168/helioslm/labels/good%20first%20issue) are the best entry points.
 
 ## Known Limitations
 
@@ -387,7 +389,7 @@ are static-checked) — tracked as a community issue.
 
 ## Version history
 
-Headlines (full details in [CHANGELOG.md](helioslm_v5/CHANGELOG.md)):
+Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
 - **2026-10 review fix wave** — full-repo review follow-through: PrefixPool fingerprint hash-collision, agent bare imports, GitHubPlugin `import json` (caught by the new CI syntax gate), duplicate-plugin merges, metadata drift; new CI (`.github/workflows/ci.yml`): flake8 syntax gate (E9/F63/F7/F82) + py3.11/3.12 test matrix + release build; harness web UI v2 (stdlib-only rewrite, T75 contract tests)
 - **v5.22-L** (local line) — NVFP4-format QAT fake-quant target (E2M1×16 + E4M3 block scales) + NoPE option for MLA (Kimi-K3 direction; default off, bit-identical)
@@ -420,4 +422,4 @@ Headlines (full details in [CHANGELOG.md](helioslm_v5/CHANGELOG.md)):
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE).
+Apache License 2.0 — see [LICENSE](https://github.com/tonythetiger168/helioslm/blob/main/LICENSE).
