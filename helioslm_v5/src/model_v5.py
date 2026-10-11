@@ -88,11 +88,12 @@ class HeliosLMv5Layer(nn.Module):
     always None (mutually exclusive with attention residuals).
     """
 
-    def __init__(self, config, layer_idx):
+    def __init__(self, config, layer_idx, shared_indexer=None):
         super().__init__()
         self.layer_idx = layer_idx  # kept for external cache plumbing/debugging
         self.pre_attn_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.attention = (MLA(config) if _is_full_attention_layer(config, layer_idx)
+        self.attention = (MLA(config, shared_indexer=shared_indexer)
+                          if _is_full_attention_layer(config, layer_idx)
                           else GatedDeltaAttention(config))
         self.pre_moe_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.moe = DeviceLimitedMoE(config)
@@ -228,10 +229,30 @@ class HeliosLMv5(nn.Module):
         # Embeddings
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size)
 
-        # Transformer layers
-        self.layers = nn.ModuleList([
-            HeliosLMv5Layer(config, i) for i in range(config.num_hidden_layers)
-        ])
+        # Transformer layers. IndexShare (B1-1): when
+        # config.attention.indexer_share_every > 1, MLA layers (counted in
+        # model order, hybrid interleaving included) form groups of
+        # ``indexer_share_every``; the group leader builds and REGISTERS
+        # the learned indexer, followers score with the leader's indexer
+        # via an unregistered reference (MLA._effective_indexer), so
+        # parameters and state-dict keys are not duplicated. The default
+        # 1 keeps one indexer per MLA layer (bit-identical to before).
+        share = int(getattr(config.attention, "indexer_share_every", 1))
+        layers = []
+        mla_ordinal = 0
+        group_leader_indexer = None
+        for i in range(config.num_hidden_layers):
+            shared = None
+            if _is_full_attention_layer(config, i):
+                if share > 1 and mla_ordinal % share != 0:
+                    shared = group_leader_indexer
+                mla_ordinal += 1
+            layer = HeliosLMv5Layer(config, i, shared_indexer=shared)
+            if (_is_full_attention_layer(config, i) and share > 1
+                    and (mla_ordinal - 1) % share == 0):
+                group_leader_indexer = layer.attention.indexer
+            layers.append(layer)
+        self.layers = nn.ModuleList(layers)
 
         self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
