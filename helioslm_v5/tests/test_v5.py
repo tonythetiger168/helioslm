@@ -27,7 +27,7 @@ all tests pass; failures print a FAIL line plus the full traceback and the
 final exit code is 1.
 
 
-Split layout (2026-10-11): the 83 test functions live in the
+Split layout (2026-10-11): the 88 test functions live in the
 ``helioslm_v5/tests/case_*.py`` modules (small, individually
 reviewable/uploadable files) and share the helpers in
 ``case_common.py``; this runner imports them and executes the suite
@@ -56,6 +56,7 @@ from helioslm_v5.tests import (  # noqa: E402
     case_quant,
     case_quant_fused,
     case_rope_cache,
+    case_security,
     case_serving,
     case_sparse_attention,
     case_stability,
@@ -149,6 +150,11 @@ TESTS = [
     case_serving.test_prefix_pool_high_token_ids,
     case_dualpipe.test_multi_process_dualpipe_attention_residuals,
     case_trainers.test_fp8_trainer_cross_entropy,
+    case_security.test_model_fingerprint,
+    case_security.test_membership_inference_signal,
+    case_security.test_distillation_leak_budget,
+    case_security.test_prefix_pool_tenant_isolation,
+    case_security.test_score_stream_leak_budget,
 ]
 
 
