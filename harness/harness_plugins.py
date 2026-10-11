@@ -464,7 +464,7 @@ class FilesystemPlugin:
                 with open(full, "w", encoding="utf-8") as f:
                     f.write(content)
                 ctx.effect("fs_write", {"path": path[:60]},
-                               replay_fn=lambda p: True)
+                           replay_fn=lambda p: True)
                 return {"ok": True, "bytes": len(content)}
             except Exception as e:
                 return {"error": str(e)[:200]}
@@ -897,7 +897,7 @@ class PptxPlugin:
                 from pptx import Presentation
                 prs = Presentation()
                 for slide_content in slides:
-                    prs.slides.add_slide(
+                    slide = prs.slides.add_slide(
                         prs.slide_layouts[1])
                     slide.shapes.title.text = str(slide_content.get("title", ""))
                     body = slide.placeholders[1].text_frame
