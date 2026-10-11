@@ -27,12 +27,14 @@ all tests pass; failures print a FAIL line plus the full traceback and the
 final exit code is 1.
 
 
-Split layout (2026-10-11): the 88 test functions live in the
+Split layout (2026-10-11): the 90 test functions live in the
 ``helioslm_v5/tests/case_*.py`` modules (small, individually
 reviewable/uploadable files) and share the helpers in
 ``case_common.py``; this runner imports them and executes the suite
 in the historical order. Behavior and exit-code semantics are
-unchanged.
+unchanged. The 2026-10-12 merge with main's v5.48 limitations round
+added case_harness_repair.py (harness plugin repair locks +
+whole-tree import smoke) on top of the original 88.
 """
 
 import sys
@@ -47,6 +49,7 @@ from helioslm_v5.tests import (  # noqa: E402
     case_dualpipe,
     case_engine,
     case_export_eval,
+    case_harness_repair,
     case_hybrid,
     case_indexer,
     case_mla,
@@ -155,6 +158,10 @@ TESTS = [
     case_security.test_distillation_leak_budget,
     case_security.test_prefix_pool_tenant_isolation,
     case_security.test_score_stream_leak_budget,
+    # v5.48 merge (from main's 2026-10-10 limitations round): harness
+    # plugin repair locks + whole-tree import smoke
+    case_harness_repair.test_harness_memory_sqlite_fs_repair,
+    case_harness_repair.test_import_smoke,
 ]
 
 

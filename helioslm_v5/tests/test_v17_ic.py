@@ -8,8 +8,10 @@ from harness.harness_plugins import (ICPlugin, ICWorkflowPlugin,
 
 
 def _fake_model(prompt, seed, step):
-    # UVM first: the gen_uvm prompt embeds the RTL (which contains
-    # "module"), so checking "module" first misroutes UVM requests to RTL
+    # v5.48: check "UVM" FIRST. gen_uvm's prompt embeds the generated
+    # RTL, which contains "module" — the old order matched the RTL
+    # branch for UVM requests, so the workflow test could never see a
+    # uvm_test class.
     if "UVM" in prompt:
         return """class adder_test extends uvm_test;
   function void build_phase(uvm_phase phase);

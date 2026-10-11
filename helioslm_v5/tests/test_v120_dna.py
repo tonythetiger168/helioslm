@@ -44,9 +44,12 @@ def test_dna_pcr_and_restriction():
     p = ctx.dna.pcr_primers(SEQ)
     assert "forward" in p and "reverse" in p
     r = ctx.dna.restriction_sites("AAA" + "GAATTC" + "BBB" + "GAATTC", "EcoRI")
-    # 0-based positions: GAATTC starts at index 3 and 12 (the old
-    # expectation [3, 13] mixed 0-based and 1-based conventions)
-    assert r["positions"] == [3, 12]
+    # v5.48: hand-verified 0-based find() semantics —
+    # "AAAGAATTCBBBGAATTC": motifs at index 3 and index 12. The old
+    # expectation [3, 13] was off-by-one on the second site and can
+    # never hold for ANY single consistent indexing (1-based would be
+    # [4, 14]).
+    assert r["positions"] == [3, 12], r["positions"]
     print("PASS test_dna_pcr_and_restriction")
 
 
