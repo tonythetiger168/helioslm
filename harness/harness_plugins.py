@@ -195,16 +195,8 @@ class QwenModelPlugin:
         if not os.path.exists(self.model_dir):
             ctx.register("model.qwen", None)
             return
-        # v5.48: the qwen/ dir can exist without transformers installed
-        # (e.g. the CPU regression env). Without this guard apply()
-        # raised ModuleNotFoundError out of ctx.use() and the T46 skip
-        # contract ("model.qwen is None -> SKIP") was unreachable.
-        try:
-            import torch
-            from transformers import AutoModelForCausalLM, AutoTokenizer
-        except ImportError:
-            ctx.register("model.qwen", None)
-            return
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
         tok = AutoTokenizer.from_pretrained(self.model_dir)
         model = AutoModelForCausalLM.from_pretrained(
             self.model_dir, torch_dtype=torch.bfloat16).eval()
@@ -307,7 +299,7 @@ class ICPlugin:
             return rtl
 
         def lint_rtl(rtl_text):
-            import re as _re
+            import re
             errors = []
             if "module" not in rtl_text:
                 errors.append("no module declaration")
@@ -315,12 +307,11 @@ class ICPlugin:
                 errors.append("no endmodule")
             if rtl_text.count("(") != rtl_text.count(")"):
                 errors.append("unbalanced parentheses")
-            # v5.48: raw str.count("end") also matches the "end" inside
-            # "endmodule", so any module with no begin/end blocks at all
-            # (e.g. pure assign statements) falsely failed lint. Word-
-            # boundary counting excludes endmodule/endcase/etc.
-            if len(_re.findall(r"\bbegin\b", rtl_text)) != \
-               len(_re.findall(r"\bend\b", rtl_text)):
+            # Word-boundary counts: plain str.count("end") matches the
+            # "end" inside endmodule/endfunction/endclass, so every
+            # valid module linted as "unbalanced begin/end"
+            if (len(re.findall(r"\bbegin\b", rtl_text))
+                    != len(re.findall(r"\bend\b", rtl_text))):
                 errors.append("unbalanced begin/end")
             return {"ok": len(errors) == 0, "errors": errors}
 
@@ -370,12 +361,10 @@ class MemoryPlugin:
             store = ExperienceStore()
         except ImportError:
             store = None
-        # v5.48 fix: `if store:` is ALWAYS False for a freshly built
-        # ExperienceStore — it defines __len__ (think.py), so an empty
-        # store is falsy (the T25 trap think.py itself documents).
-        # remember/recall silently no-op'd forever. Explicit None check,
-        # same discipline as ThinkSession.__init__.
         def remember(key, thought, outcome):
+            # NOTE: `if store:` would call ExperienceStore.__len__ (a
+            # fresh store has 0 entries -> falsy -> remember() silently
+            # dropped everything). Identity check is the intent.
             if store is not None:
                 store.remember(key, thought, outcome)
             ctx.effect("memory_remember", {"key": key[:40]},
@@ -448,12 +437,9 @@ class FilesystemPlugin:
         root = os.path.realpath(self.root)
 
         def _resolve(path):
-            # v5.48: normalize BEFORE the prefix check. A raw join lets
-            # "../escape.txt" pass the startswith filter (the string
-            # "<root>/../escape" still starts with <root>), so the escape
-            # was never blocked on Windows. realpath collapses ".." first;
-            # the trailing-sep check also rejects sibling dirs that merely
-            # share the root's name prefix (e.g. "/root2/x").
+            # realpath collapses ../ before the containment check — the
+            # old `join().startswith(root)` string check let "../x"
+            # escape (join keeps the dots, so the prefix always matched)
             full = os.path.realpath(os.path.join(root, path))
             if full != root and not full.startswith(root + os.sep):
                 return None
@@ -498,6 +484,117 @@ class TimePlugin:
             return datetime.datetime.utcnow().isoformat() + "Z"
         ctx.register("time.now", now)
         ctx.register("time.utc", utc)
+
+class SlackPlugin:
+    """Slack message posting (needs bot token)."""
+
+    def __init__(self, token=None, channel=None):
+        self.token, self.channel = token, channel
+
+    def apply(self, ctx):
+        import json as _json, os, urllib.request
+        token = self.token or os.environ.get("SLACK_TOKEN")
+        def post(text, channel=None):
+            ch = channel or self.channel
+            if not token or not ch:
+                return {"error": "no SLACK_TOKEN or channel"}
+            req = urllib.request.Request(
+                "https://slack.com/api/chat.postMessage",
+                data=_json.dumps({"channel": ch, "text": text}).encode(),
+                headers={"Authorization": f"Bearer {token}",
+                         "Content-Type": "application/json"})
+            try:
+                r = urllib.request.urlopen(req, timeout=15)
+                ctx.effect("slack", {"ch": ch[:20]},
+                           replay_fn=lambda p: True)
+                return _json.loads(r.read())
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        ctx.register("slack.post", post)
+
+
+class SearchPlugin:
+    """Search: local corpus scoring (offline, deterministic) + a
+    DuckDuckGo web scrape (no API key) under the same plugin.
+
+    NOTE: this class used to be defined TWICE in this file (a local-only
+    version later shadowed the web-capable one), which broke
+    ``ctx.search.web`` — merged so both APIs coexist."""
+
+    def apply(self, ctx):
+        def query(query_text, corpus, top_k=5):
+            scored = [(sum(1 for w in query_text.lower().split()
+                           if w in doc.lower()), doc)
+                      for doc in corpus]
+            scored.sort(key=lambda x: -x[0])
+            results = [d for s, d in scored[:top_k] if s > 0]
+            ctx.effect("search", {"q": query_text[:40], "hits": len(results)},
+                       replay_fn=lambda p: True)
+            return {"results": results, "n": len(results)}
+
+        def web(query_text, n=5):
+            try:
+                import urllib.request, urllib.parse, re
+                url = ("https://html.duckduckgo.com/html/?q=" +
+                       urllib.parse.quote(query_text))
+                req = urllib.request.Request(url, headers={
+                    "User-Agent": "Mozilla/5.0"})
+                html = urllib.request.urlopen(req, timeout=15).read().decode()
+                titles = re.findall(r'<a[^>]*class="result__a"[^>]*>(.*?)</a>',
+                                    html)[:n]
+                ctx.effect("search_web", {"q": query_text[:40]},
+                           replay_fn=lambda p: True)
+                return {"results": [re.sub(r"<[^>]+>", "", t)
+                                    for t in titles]}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+
+        ctx.register("search.query", query)
+        ctx.register("search.web", web)
+
+
+class WebSearchPlugin:
+    """Web search interface. Requires an API key (Tavily/Exa/Serp).
+    Records the key-name (not value) for audit."""
+
+    def __init__(self, provider="tavily", api_key_env=None):
+        self.provider, self.api_key_env = provider, api_key_env
+
+    def apply(self, ctx):
+        import os
+        def web_search(query, max_results=5):
+            key = os.environ.get(self.api_key_env) if self.api_key_env else None
+            if not key:
+                return {"error": f"no API key for {self.provider} "
+                        f"(set ${self.api_key_env})"}
+            # provider-specific call would go here; recorded for audit
+            ctx.effect("web_search", {"q": query[:40],
+                                      "provider": self.provider},
+                       replay_fn=lambda p: True)
+            return {"stub": True, "provider": self.provider,
+                    "note": "provider call not implemented -- "
+                            "interface ready"}
+        ctx.register("web.search", web_search)
+
+
+class PDFPlugin:
+    """PDF text extraction. Uses pypdf if installed, else stub."""
+
+    def apply(self, ctx):
+        def extract_text(path):
+            try:
+                from pypdf import PdfReader
+                r = PdfReader(path)
+                text = "\n".join(p.extract_text() or "" for p in r.pages[:20])
+                ctx.effect("pdf_extract", {"path": path[:50]},
+                           replay_fn=lambda p: True)
+                return {"text": text[:5000], "pages": len(r.pages)}
+            except ImportError:
+                return {"error": "pypdf not installed (pip install pypdf)"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+        ctx.register("pdf.extract", extract_text)
+
 
 class SQLitePlugin:
     """SQLite read/write, constrained to a db path (stdlib sqlite3).
@@ -559,235 +656,6 @@ class SQLitePlugin:
         ctx.register("sqlite.execute", execute)
 
 
-class GitHubPlugin:
-    """GitHub ops via REST API (like our hf_upload pattern)."""
-
-    def __init__(self, token=None):
-        self.token = token
-
-    def apply(self, ctx):
-        import json as _json, os, urllib.request
-        token = self.token or os.environ.get("GITHUB_TOKEN")
-        def api_call(method, path, body=None):
-            if not token:
-                return {"error": "no GITHUB_TOKEN"}
-            req = urllib.request.Request(
-                "https://api.github.com" + path,
-                method=method,
-                data=_json.dumps(body).encode() if body else None,
-                headers={"Authorization": f"token {token}",
-                         "Accept": "application/vnd.github+json",
-                         "Content-Type": "application/json"})
-            try:
-                r = urllib.request.urlopen(req, timeout=30)
-                ctx.effect("github", {"path": path[:60]},
-                           replay_fn=lambda p: True)
-                return _json.loads(r.read())
-            except Exception as e:
-                return {"error": str(e)[:200]}
-        def get_repo(owner, repo):
-            return api_call("GET", f"/repos/{owner}/{repo}")
-        def create_issue(owner, repo, title, body=""):
-            return api_call("POST", f"/repos/{owner}/{repo}/issues",
-                            {"title": title, "body": body})
-        ctx.register("github.get_repo", get_repo)
-        ctx.register("github.create_issue", create_issue)
-
-
-class SlackPlugin:
-    """Slack message posting (needs bot token)."""
-
-    def __init__(self, token=None, channel=None):
-        self.token, self.channel = token, channel
-
-    def apply(self, ctx):
-        import json as _json, os, urllib.request
-        token = self.token or os.environ.get("SLACK_TOKEN")
-        def post(text, channel=None):
-            ch = channel or self.channel
-            if not token or not ch:
-                return {"error": "no SLACK_TOKEN or channel"}
-            req = urllib.request.Request(
-                "https://slack.com/api/chat.postMessage",
-                data=_json.dumps({"channel": ch, "text": text}).encode(),
-                headers={"Authorization": f"Bearer {token}",
-                         "Content-Type": "application/json"})
-            try:
-                r = urllib.request.urlopen(req, timeout=15)
-                ctx.effect("slack", {"ch": ch[:20]},
-                           replay_fn=lambda p: True)
-                return _json.loads(r.read())
-            except Exception as e:
-                return {"error": str(e)[:200]}
-        ctx.register("slack.post", post)
-
-
-class ExcelPlugin:
-    """Excel read/write via openpyxl (if installed) or CSV fallback.
-
-    v5.48: two duplicate definitions once coexisted (remote v1.9 batches
-    0451ef3 and c28c601); the later one shadowed this one and used a
-    different call convention. Merged into this single class supporting
-    BOTH conventions:
-      - write(path, rows) / read(path)  (explicit path)
-      - write(rows) / read()            (default path from ExcelPlugin(path=...))
-    Values are returned as-is (no str coercion) so numeric cells
-    round-trip exactly. .csv paths always go through the csv module
-    (openpyxl cannot read them); xlsx goes through openpyxl.
-    """
-
-    def __init__(self, path=None):
-        self.path = path
-
-    def apply(self, ctx):
-        def read(*args):
-            p = args[0] if args else self.path
-            if not p:
-                return {"error": "no path given (pass path or ExcelPlugin(path=...))"}
-            if str(p).lower().endswith(".csv"):
-                import csv
-                with open(p, newline="", encoding="utf-8") as f:
-                    rows = list(csv.reader(f))
-                ctx.effect("excel_read", {"path": str(p)[:40]},
-                           replay_fn=lambda p2: True)
-                return {"rows": rows[:100]}
-            try:
-                import openpyxl
-                wb = openpyxl.load_workbook(p)
-                ws = wb.active
-                rows = [[c.value for c in row] for row in ws.iter_rows()]
-                ctx.effect("excel_read", {"path": str(p)[:40]},
-                           replay_fn=lambda p2: True)
-                return {"rows": rows[:100]}
-            except ImportError:
-                import csv
-                with open(p, newline="", encoding="utf-8") as f:
-                    return {"rows": list(csv.reader(f))[:100]}
-            except Exception as e:
-                return {"error": str(e)[:200]}
-        def write(*args):
-            if len(args) == 2:
-                p, rows = args
-            elif len(args) == 1:
-                p, rows = self.path, args[0]
-            else:
-                raise ValueError(
-                    "excel.write expects (path, rows) or (rows)")
-            if not p:
-                return {"error": "no path given (pass path or ExcelPlugin(path=...))"}
-            if str(p).lower().endswith(".csv"):
-                import csv
-                with open(p, "w", newline="", encoding="utf-8") as f:
-                    csv.writer(f).writerows(rows)
-                ctx.effect("excel_write", {"path": str(p)[:40]},
-                           replay_fn=lambda p2: True)
-                return {"ok": True, "rows": len(rows)}
-            try:
-                import openpyxl
-                wb = openpyxl.Workbook()
-                ws = wb.active
-                for r in rows:
-                    ws.append(r)
-                wb.save(p)
-            except ImportError:
-                import csv
-                with open(p, "w", newline="", encoding="utf-8") as f:
-                    csv.writer(f).writerows(rows)
-            ctx.effect("excel_write", {"path": str(p)[:40]},
-                       replay_fn=lambda p2: True)
-            return {"ok": True, "rows": len(rows)}
-        ctx.register("excel.read", read)
-        ctx.register("excel.write", write)
-
-class SearchPlugin:
-    """Unified search plugin registering BOTH services:
-    - search.query: local corpus keyword search (no external API).
-      For HF-integration later, this wraps Tavily/Exa behind the same
-      interface.
-    - search.web: live web search via a simple DuckDuckGo scrape (no API
-      key). Returns {"error": ...} when offline instead of raising.
-
-    v5.48 note: two SearchPlugin classes once coexisted in this file
-    (remote v1.9 batches 0451ef3 and c28c601 each added one; the second
-    shadowed the first). They are now merged into this single class so
-    both test suites (test_v19_common, test_v19_extended) pass.
-    """
-
-    def apply(self, ctx):
-        import urllib.request, urllib.parse, re
-        def search(query, corpus, top_k=5):
-            scored = [(sum(1 for w in query.lower().split() if w in doc.lower()),
-                       doc) for doc in corpus]
-            scored.sort(key=lambda x: -x[0])
-            results = [d for s, d in scored[:top_k] if s > 0]
-            ctx.effect("search", {"q": query[:40], "hits": len(results)},
-                       replay_fn=lambda p: True)
-            return {"results": results, "n": len(results)}
-        def web_search(query, n=5):
-            try:
-                url = ("https://html.duckduckgo.com/html/?q="
-                       + urllib.parse.quote(query))
-                req = urllib.request.Request(url, headers={
-                    "User-Agent": "Mozilla/5.0"})
-                html = urllib.request.urlopen(req, timeout=15).read().decode()
-                titles = re.findall(r'<a[^>]*class="result__a"[^>]*>(.*?)</a>',
-                                    html)[:n]
-                ctx.effect("search", {"q": query[:40]},
-                           replay_fn=lambda p: True)
-                return {"results": [re.sub(r"<[^>]+>", "", t) for t in titles]}
-            except Exception as e:
-                return {"error": str(e)[:200]}
-        ctx.register("search.query", search)
-        ctx.register("search.web", web_search)
-
-
-class WebSearchPlugin:
-    """Web search interface. Requires an API key (Tavily/Exa/Serp).
-    Records the key-name (not value) for audit."""
-
-    def __init__(self, provider="tavily", api_key_env=None):
-        self.provider, self.api_key_env = provider, api_key_env
-
-    def apply(self, ctx):
-        import os
-        def web_search(query, max_results=5):
-            key = os.environ.get(self.api_key_env) if self.api_key_env else None
-            if not key:
-                return {"error": f"no API key for {self.provider} "
-                        f"(set ${self.api_key_env})"}
-            # provider-specific call would go here; recorded for audit
-            ctx.effect("web_search", {"q": query[:40],
-                                      "provider": self.provider},
-                       replay_fn=lambda p: True)
-            return {"stub": True, "provider": self.provider,
-                    "note": "provider call not implemented -- "
-                            "interface ready"}
-        ctx.register("web.search", web_search)
-
-
-class PDFPlugin:
-    """PDF text extraction. Uses pypdf if installed, else stub."""
-
-    def apply(self, ctx):
-        def extract_text(path):
-            try:
-                from pypdf import PdfReader
-                r = PdfReader(path)
-                text = "\n".join(p.extract_text() or "" for p in r.pages[:20])
-                ctx.effect("pdf_extract", {"path": path[:50]},
-                           replay_fn=lambda p: True)
-                return {"text": text[:5000], "pages": len(r.pages)}
-            except ImportError:
-                return {"error": "pypdf not installed (pip install pypdf)"}
-            except Exception as e:
-                return {"error": str(e)[:200]}
-        ctx.register("pdf.extract", extract_text)
-
-
-# (v5.48) the second, shadowing SQLitePlugin definition that lived here
-# was REMOVED — its behavior is merged into the single definition above.
-
-
 class TemplatePlugin:
     """Plugin scaffolding -- the 'new-plugin-template' analog."""
 
@@ -811,15 +679,21 @@ class TemplatePlugin:
         ctx.register("plugin.scaffold", scaffold)
 
 class GitHubPlugin:
-    """GitHub repo operations. Requires GITHUB_TOKEN env. Read-only by
-    default; write ops (create issue) are gated by TrustGate."""
+    """GitHub repo operations. Token from constructor or GITHUB_TOKEN
+    env. Read-only by default; write ops (create issue) are gated by
+    TrustGate. (Used to be defined twice in this file; this merged
+    version keeps the TrustGate-gated superset API.)"""
+
+    def __init__(self, token=None):
+        self.token = token
 
     def apply(self, ctx):
         import os
         def _api(path, method="GET", body=None):
-            token = os.environ.get("GITHUB_TOKEN")
+            token = self.token or os.environ.get("GITHUB_TOKEN")
             if not token:
                 return {"error": "GITHUB_TOKEN not set"}
+            import json
             import urllib.request
             req = urllib.request.Request(
                 "https://api.github.com" + path,
@@ -902,11 +776,82 @@ class PostgresPlugin:
                 conn.close()
         ctx.register("postgres.query", query)
 
+class ExcelPlugin:
+    """Excel read/write via openpyxl, with a CSV fallback when openpyxl
+    is not installed. Accepts both call conventions that evolved in this
+    file (it used to be defined twice): ``write(path, rows)`` and
+    ``write(rows)`` with a constructor-bound path; same for ``read``."""
 
-# (v5.48) REMOVED: a duplicate `ExcelPlugin` lived here (remote v1.9 batch
-# c28c601). It shadowed the merged definition above and used an
-# incompatible write(path, rows) convention. Behavior is merged into the
-# single definition near the top of this file.
+    def __init__(self, path=None):
+        self.path = path
+
+    def apply(self, ctx):
+        import os
+
+        def _split(a, b, path_kw):
+            # (path, rows) if the first arg looks like a filesystem
+            # path, else (rows) — the two historical signatures
+            if isinstance(a, (str, os.PathLike)) and b is not None:
+                return str(a), b
+            return (path_kw or self.path), a
+
+        def write(a, b=None, path=None):
+            p, rows = _split(a, b, path)
+            if not p:
+                return {"error": "no path (pass one or construct with path=)"}
+            # engine by extension: .csv stays CSV even when openpyxl is
+            # installed (load_workbook refuses .csv on the way back)
+            if str(p).lower().endswith(".csv"):
+                import csv
+                with open(p, "w", newline="", encoding="utf-8") as f:
+                    csv.writer(f).writerows(rows)
+            else:
+                try:
+                    from openpyxl import Workbook
+                    wb = Workbook()
+                    ws = wb.active
+                    for row in rows:
+                        ws.append(row)
+                    wb.save(p)
+                except ImportError:
+                    import csv
+                    with open(p, "w", newline="", encoding="utf-8") as f:
+                        csv.writer(f).writerows(rows)
+                except Exception as e:
+                    return {"error": str(e)[:200]}
+            ctx.effect("excel_write", {"path": str(p)[:50]},
+                       replay_fn=lambda p2: True)
+            return {"ok": True, "rows": len(rows)}
+
+        def read(path=None):
+            p = path or self.path
+            if not p:
+                return {"error": "no path (pass one or construct with path=)"}
+            if str(p).lower().endswith(".csv"):
+                import csv
+                try:
+                    with open(p, newline="", encoding="utf-8") as f:
+                        rows = list(csv.reader(f))
+                except Exception as e:
+                    return {"error": str(e)[:200]}
+            else:
+                try:
+                    from openpyxl import load_workbook
+                    wb = load_workbook(p)
+                    ws = wb.active
+                    rows = [[c.value for c in row] for row in ws.iter_rows()]
+                except ImportError:
+                    import csv
+                    with open(p, newline="", encoding="utf-8") as f:
+                        rows = list(csv.reader(f))
+                except Exception as e:
+                    return {"error": str(e)[:200]}
+            ctx.effect("excel_read", {"path": str(p)[:50]},
+                       replay_fn=lambda p2: True)
+            return {"rows": rows[:100]}
+
+        ctx.register("excel.write", write)
+        ctx.register("excel.read", read)
 
 
 class DocxPlugin:
@@ -1038,10 +983,8 @@ class TmuxPlugin:
             except FileNotFoundError:
                 return {"error": "tmux not installed"}
         ctx.register("tmux.new", new_session)
-        ctx.register("tmux.list", list_sessions)
-        # v5.48: test_v112 calls ctx.tmux.list_sessions(); the v1.12
-        # batch registered only "tmux.list". Alias, same function.
         ctx.register("tmux.list_sessions", list_sessions)
+        ctx.register("tmux.list", list_sessions)  # legacy alias
         ctx.register("tmux.send", send_keys)
 
 
@@ -1270,9 +1213,16 @@ class BenchmarkPlugin:
                               ("alignbench_jev_zero_shot_auroc.json", "jev")]:
                 d = _load(name)
                 if d:
-                    vals = [v["auroc"] for v in d.values()
-                            if isinstance(v, dict) and "auroc" in v]                            if isinstance(d, dict) and any(
-                               isinstance(v, dict) for v in d.values())                            else list(d.values())
+                    # (fixed: the original line jammed the conditional
+                    # expression onto the comprehension's closing line —
+                    # a syntax error that made the whole module
+                    # unimportable on main)
+                    if isinstance(d, dict) and any(
+                            isinstance(v, dict) for v in d.values()):
+                        vals = [v["auroc"] for v in d.values()
+                                if isinstance(v, dict) and "auroc" in v]
+                    else:
+                        vals = list(d.values())
                     vals = [v for v in vals if isinstance(v, (int, float))]
                     if vals:
                         vals.sort()
@@ -2118,10 +2068,9 @@ class MathV2Plugin:
             return {"n": n, "mean": round(mean, 3), "var": round(var, 3),
                     "min": min(nums), "max": max(nums)}
         def fft_magnitudes(samples):
-            # DFT (toy, no numpy) — FULL spectrum: n input samples -> n
-            # magnitude bins (k = 0..n-1). v5.48: the old range(n // 2)
-            # one-sided cutoff returned 8 bins for a 16-sample signal;
-            # test_math_v2 (and any caller counting bins) expects n.
+            # Full DFT magnitude spectrum (toy, no numpy): n bins out
+            # for n samples in — the name says FFT, not rfft, so callers
+            # get the complete (symmetric) spectrum
             n = len(samples)
             mags = []
             for k in range(n):
@@ -2135,4 +2084,3 @@ class MathV2Plugin:
         ctx.register("linalg.matmul", matmul)
         ctx.register("stats.summary", stats)
         ctx.register("signal.fft_magnitudes", fft_magnitudes)
-
