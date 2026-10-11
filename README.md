@@ -30,7 +30,7 @@ A from-scratch PyTorch reference implementation of a modern LLM stack: MLA atten
 
 | You are... | What HeliosLM gives you |
 |---|---|
-| **A learner** who wants to understand MLA, MoE routing, DualPipe, speculative decoding | Annotated, review-hardened PyTorch with 115+ tests (T11-T28) that act as executable documentation |
+| **A learner** who wants to understand MLA, MoE routing, DualPipe, speculative decoding | Annotated, review-hardened PyTorch with 120+ tests (T11-T75) that act as executable documentation |
 | **A researcher** who wants a stack to modify, ablate, and extend quickly | Single-process, CPU-iterable training + serving code — change one file, run one test |
 | **A practitioner** evaluating serving/quantization techniques | vLLM-style paged engine, GPTQ/AWQ/FP8/MXFP4 quantization, MTP speculative decoding — all inspectable |
 
@@ -228,7 +228,7 @@ All plugins register as `ctx.<name>.<op>` with per-call audit effects.
 | Crypto | Hash/XOR/HMAC/Fernet | v1.22 |
 | Cloud | AWS S3, GCP Storage, Azure Blob | v1.22 |
 | Benchmark | AlignBench summary, Report gen, Trend | v1.15, v1.22 |
-| Voice/UI | VoiceDialog, TerminalUI, AutoDrive | v1.19 |
+| Voice/UI | VoiceDialog, TerminalUI, AutoDrive, WebUI (v2: stdlib-only rewrite) | v1.19, v1.36/v2 |
 | IC | RTL gen, UVM scaffold, Coverage | v1.7 |
 
 **Usage:**
@@ -259,7 +259,7 @@ in `__post_init__` (no silent truncation).
 
 ```bash
 pip install torch
-python -m helioslm_v5.tests.test_v5     # 84 unit tests
+python -m helioslm_v5.tests.test_v5     # 83 unit tests (3 checkpoint-dependent tests self-skip without checkpoints/toy_v5.13.pt)
 python integration_test_v51.py          # 9 end-to-end integration tests
 python -m helioslm_v5.tests.test_agent  # 9 agent-layer oracles (v5.23)
 python -m helioslm_v5.tests.test_v5_stage_a   # T15 real-model oracles (v5.26)
@@ -273,6 +273,8 @@ python helioslm_v5/tests/test_think.py           # T25 think + experience reuse 
 python helioslm_v5/tests/test_async_grpo.py      # T26 async GRPO sync-parity (v5.31)
 python helioslm_v5/tests/test_decision.py        # T27 typed decision primitives (v5.32)
 python helioslm_v5/tests/test_decision_head.py   # T28 DecisionHead calibration (v5.32)
+python helioslm_v5/tests/test_v110_github_pg.py    # T52 GitHub/PostgreSQL plugin oracles (offline, mocked HTTP)
+python helioslm_v5/tests/test_web_ui_v2.py         # T75 harness web UI v2 contract (stdlib-only UI)
 ```
 
 ```python
@@ -387,6 +389,7 @@ are static-checked) — tracked as a community issue.
 
 Headlines (full details in [CHANGELOG.md](helioslm_v5/CHANGELOG.md)):
 
+- **2026-10 review fix wave** — full-repo review follow-through: PrefixPool fingerprint hash-collision, agent bare imports, GitHubPlugin `import json` (caught by the new CI syntax gate), duplicate-plugin merges, metadata drift; new CI (`.github/workflows/ci.yml`): flake8 syntax gate (E9/F63/F7/F82) + py3.11/3.12 test matrix + release build; harness web UI v2 (stdlib-only rewrite, T75 contract tests)
 - **v5.22-L** (local line) — NVFP4-format QAT fake-quant target (E2M1×16 + E4M3 block scales) + NoPE option for MLA (Kimi-K3 direction; default off, bit-identical)
 - **v5.21** (local line) — KDA-style per-channel decay gate: linear-attention state rows forget at independent rates (Kimi Linear / GLM-5.3-Flash direction), bit-identical default, rollback-safe
 - **v5.29** — Three-mode benchmark on the real checkpoint (direct/routed/oracle): tau-routing curve strictly monotone (v5.22 gate PASS on real confidence); headline finding = systematic overconfidence on wrong answers (conf 0.944) — the exact failure class the v5.22 audit toolkit measures
