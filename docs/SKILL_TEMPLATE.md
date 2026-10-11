@@ -65,7 +65,7 @@ gate (which guards *numerical* confidence, not *authorization*).
    - *Implementation Notes* — experience in
      `references/implementation-notes.md`; steps carry only a one-line
      `see [[implementation-notes]]` reference
-7. `## Cross-domain` — where other skills reference this skill, with
+7. `## Cross-domain` — compound tasks that reference this skill, with
    `[[skill-name]]` links.
 8. `## Pitfalls` — required, **at least 3** concrete entries.
 
