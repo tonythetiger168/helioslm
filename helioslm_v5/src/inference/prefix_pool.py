@@ -2,11 +2,14 @@
 
 Cross-session prefix reuse: many requests sharing a system prompt pay
 prefill once. Token ids are chunked into fixed-size blocks; each block's
-KV is keyed by a content hash of the token ids **plus a config
-fingerprint** (model version, quant/tiering scheme — the same metadata
-discipline proposed to colibri in P2), so a stale or differently-quantized
-entry can never be served. Values are deep-copied cache snapshots; the
-pool is model-level (per-session engine COW forks remain the hot path).
+KV is keyed by a **hash chain** over (config fingerprint → parent block
+key → this block's token ids), vLLM-style: a key commits to the entire
+prefix before the block, so two prompts sharing only a middle block can
+never collide. The fingerprint seed (model version, quant/tiering
+scheme — the same metadata discipline proposed to colibri in P2) keeps a
+stale or differently-quantized entry from ever being served. Values are
+deep-copied cache snapshots; the pool is model-level (per-session engine
+COW forks remain the hot path).
 
 Correctness contract (oracle-tested): greedy generation seeded from a
 pooled prefix is bitwise-identical to from-scratch generation, for full
@@ -41,6 +44,9 @@ class PrefixPool:
         self.block_size = int(block_size)
         self.max_blocks = int(max_blocks)
         self.fingerprint = fingerprint
+        # Hash-chain seed: the first block's "parent" is the fingerprint,
+        # so fingerprint mismatch still guarantees a miss.
+        self._seed = fingerprint.encode("utf-8")
         self._pool = OrderedDict()   # key -> (n_tokens, past_key_values)
         self.hits = 0
         self.misses = 0
@@ -48,9 +54,19 @@ class PrefixPool:
         self.evictions = 0
 
     # ------------------------------------------------------------------
-    def _key(self, block_ids):
+    def _key(self, block_ids, parent_key):
+        """Content key for a block, chained to its parent (vLLM-style).
+
+        The key commits to the ENTIRE prefix before the block, not just
+        the block's own token ids. Without chaining, two prompts that
+        merely share a middle block (e.g. a common system-prompt section
+        after different headers) hash that block to the same key: the
+        second store() silently overwrites the first prompt's entry, and
+        a later lookup serves KV computed under the WRONG prefix —
+        breaking the "pooled == from-scratch, bitwise" contract.
+        """
         h = hashlib.blake2b(digest_size=16)
-        h.update(self.fingerprint.encode("utf-8"))
+        h.update(parent_key)
         # Fixed-width 4-byte ids: bytes(int(t)) raises ValueError for any
         # token id >= 256 (vocab ids are unbounded — the lite config alone
         # uses vocab_size 1024), which crashed lookup/store on ordinary
@@ -79,14 +95,16 @@ class PrefixPool:
         """
         matched = 0
         best = None
+        parent = self._seed
         for block in self._blocks(ids):
-            key = self._key(block)
+            key = self._key(block, parent)
             if key not in self._pool:
                 break
             n_tok, past, logits = self._pool[key]
             matched = n_tok
             best = (past, logits)
             self._pool.move_to_end(key)
+            parent = key.encode("ascii")
         if best is None:
             return None
         past, logits = best
@@ -98,6 +116,7 @@ class PrefixPool:
         logits = None
         past = None
         n = 0
+        parent = self._seed
         for block in self._blocks(ids):
             x = torch.tensor([block], dtype=torch.long)
             if past is None:
@@ -107,9 +126,10 @@ class PrefixPool:
                                          use_cache=True)
             logits = lg[0, -1].clone()
             n += len(block)
-            key = self._key(block)
+            key = self._key(block, parent)
             self._pool[key] = (n, self._clone_past(past), logits.clone())
             self._pool.move_to_end(key)
+            parent = key.encode("ascii")
             while len(self._pool) > self.max_blocks:
                 self._pool.popitem(last=False)
                 self.evictions += 1

@@ -22,7 +22,12 @@ the K-questions-for-the-price-of-one property Jev demos.
 import torch
 import torch.nn as nn
 
-from decision import NOUL_NO, NOUL_UNKNOWN, NOUL_YES
+try:
+    # Package import: helioslm_v5.agent.decision_head
+    from .decision import NOUL_NO, NOUL_UNKNOWN, NOUL_YES
+except ImportError:
+    # Direct sys.path import (tests insert the agent/ dir itself)
+    from decision import NOUL_NO, NOUL_UNKNOWN, NOUL_YES
 
 _KIND_DIMS = {"choice": None, "noul": 3, "score": 1}
 # v5.36: noul is CONTINUOUS -- the head emits one logit, sigmoid -> P(yes).
