@@ -33,6 +33,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install CPU torch
+        run: pip install torch numpy pytest --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
         run: pip install torch pytest --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
       - name: Unit + regression suite (test_v5.py)
         run: python helioslm_v5/tests/test_v5.py
