@@ -464,7 +464,7 @@ class FilesystemPlugin:
                 with open(full, "w", encoding="utf-8") as f:
                     f.write(content)
                 ctx.effect("fs_write", {"path": path[:60]},
-                           replay_fn=lambda p: True)
+                               replay_fn=lambda p: True)
                 return {"ok": True, "bytes": len(content)}
             except Exception as e:
                 return {"error": str(e)[:200]}
@@ -597,52 +597,61 @@ class PDFPlugin:
 
 
 class SQLitePlugin:
-    """SQLite read/write on one persistent connection (stdlib sqlite3).
+    """SQLite read/write, constrained to a db path (stdlib sqlite3).
 
-    Two entry points: ``sqlite.query`` (SELECT -> {"columns", "rows"} as
-    plain tuples; other statements commit and return {"affected"}) and
-    ``sqlite.execute`` (write-and-commit -> {"ok": True}).
-
-    NOTE: a persistent connection is required — a per-call connect makes
-    the default ":memory:" database vanish between statements. This
-    class also used to be defined twice in this file (a dict-rows
-    version was shadowed by a tuple-rows version); merged so both entry
-    points exist, keeping the tuple-rows format for ``query``."""
+    v5.48 dedup: two SQLitePlugin classes coexisted here (remote v1.9
+    batches 0451ef3 and c28c601 each added one; the later shadow dropped
+    `sqlite.execute`, so T51's sqlite test AttributeError'd on main).
+    This is the SINGLE surviving definition — c28c601's unified `query`
+    (per-call connection, tuple rows, read/write by statement kind)
+    plus an `execute` convenience for write statements so both v1.9
+    test modules can drive it."""
 
     def __init__(self, db_path=":memory:"):
         self.db_path = db_path
 
     def apply(self, ctx):
         import sqlite3
-        conn = sqlite3.connect(self.db_path)
-
+        # Connection policy (v5.48): ":memory:" needs ONE persistent
+        # connection — a per-call connect() hands every statement a FRESH
+        # empty database (T51's create-then-insert landed on two different
+        # connections and died with "no such table"). File-backed dbs
+        # survive per-call connects, and a lingering connection holds a
+        # Windows file lock that makes the caller's tempfile cleanup blow
+        # up with WinError 32 — so files get short-lived connections.
+        if self.db_path == ":memory:":
+            mem_conn = sqlite3.connect(self.db_path)
+        else:
+            mem_conn = None
         def query(sql, params=None):
+            conn = mem_conn or sqlite3.connect(self.db_path)
             try:
                 cur = conn.execute(sql, params or [])
                 if sql.strip().upper().startswith("SELECT"):
                     rows = cur.fetchall()
-                    cols = ([d[0] for d in cur.description]
-                            if cur.description else [])
+                    cols = [d[0] for d in cur.description] if cur.description else []
                     ctx.effect("sqlite_read", {"sql": sql[:60]},
                                replay_fn=lambda p: True)
                     return {"columns": cols, "rows": rows[:100]}
-                conn.commit()
-                ctx.effect("sqlite_write", {"sql": sql[:60]},
-                           replay_fn=lambda p: True)
-                return {"affected": cur.rowcount}
+                else:
+                    conn.commit()
+                    ctx.effect("sqlite_write", {"sql": sql[:60]},
+                               replay_fn=lambda p: True)
+                    return {"affected": cur.rowcount}
             except Exception as e:
                 return {"error": str(e)[:200]}
-
+            finally:
+                if mem_conn is None:
+                    conn.close()
         def execute(sql, params=None):
-            try:
-                conn.execute(sql, params or [])
-                conn.commit()
-                ctx.effect("sqlite_execute", {"sql": sql[:60]},
-                           replay_fn=lambda p: True)
-                return {"ok": True}
-            except Exception as e:
-                return {"error": str(e)[:200]}
-
+            """Write-statement convenience over query() (v5.48): the
+            0451ef3 batch exposed this name; keeping it costs one alias
+            and un-breaks T51. Loud: SELECT via execute() returns an
+            error dict instead of silently running."""
+            if sql.strip().upper().startswith("SELECT"):
+                return {"error": "execute() is for write statements — "
+                                 "use query() for SELECT"}
+            return query(sql, params)
         ctx.register("sqlite.query", query)
         ctx.register("sqlite.execute", execute)
 
@@ -888,7 +897,7 @@ class PptxPlugin:
                 from pptx import Presentation
                 prs = Presentation()
                 for slide_content in slides:
-                    slide = prs.slides.add_slide(
+                    prs.slides.add_slide(
                         prs.slide_layouts[1])
                     slide.shapes.title.text = str(slide_content.get("title", ""))
                     body = slide.placeholders[1].text_frame
