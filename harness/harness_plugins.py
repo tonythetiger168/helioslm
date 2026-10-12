@@ -398,8 +398,7 @@ class TerminalPlugin:
             try:
                 r = subprocess.run(cmd, shell=True, capture_output=True,
                                    text=True, timeout=timeout)
-                ctx.effect(
-                    "terminal", {"cmd": cmd[:60]},
+                ctx.effect("terminal", {"cmd": cmd[:60]},
                            replay_fn=lambda p: True)
                 return {"stdout": r.stdout[:2000], "stderr": r.stderr[:500],
                         "rc": r.returncode}
@@ -1390,7 +1389,7 @@ class AgentSwarmPlugin:
             items = [(w, t, f) for w, t, f in delegations]
             for w, t, _f in items:
                 ctx.state["swarm"]["workers"][w] = {"status": "busy",
-                                                     "task": t}
+                                                    "task": t}
             ctx.effect("swarm_delegate_all",
                        {"workers": [w for w, _, _ in items],
                         "n": len(items)},
@@ -1572,7 +1571,7 @@ class SLAMPlugin:
                     y = int(py + s / 2 * __import__("math").sin(a))
                     if 0 <= x < sim_map["w"] and 0 <= y < sim_map["h"]:
                         grid[y][x] = max(0.0, grid[y][x] - 0.1)
-            ex, ey = int(px + r * __import__("math").cos(a)), \
+                ex, ey = int(px + r * __import__("math").cos(a)), \
                          int(py + r * __import__("math").sin(a))
                 if 0 <= ex < sim_map["w"] and 0 <= ey < sim_map["h"]:
                     grid[ey][ex] = min(1.0, grid[ey][ex] + 0.3)
