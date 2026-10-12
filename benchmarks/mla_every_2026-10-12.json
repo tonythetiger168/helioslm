@@ -1,0 +1,330 @@
+{
+  "experiment": "B1-5 mla-every sweep",
+  "scoring": "toy-char-lm-val-loss + HarnessEvolver-style bitwise gate",
+  "probe_version": 1,
+  "results": {
+    "config": {
+      "layers": 8,
+      "width": "lite",
+      "steps": 120,
+      "batch": 4,
+      "seq": 64,
+      "lr": 0.003,
+      "seed": 5,
+      "cache_seq": 2048,
+      "mla_every": [
+        2,
+        4,
+        8
+      ],
+      "mtp": "built but excluded from loss and decoding"
+    },
+    "arms": [
+      {
+        "label": "dense_mla",
+        "full_attention_every": null,
+        "layers": 8,
+        "layer_map_is_mla": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "n_mla_layers": 8,
+        "n_gda_layers": 0,
+        "params": 30434112,
+        "cache_bytes": {
+          "mla_layers": 8,
+          "gda_layers": 0,
+          "helioslm_bytes": 2359296,
+          "mha_reference_bytes": 8388608,
+          "savings_vs_mha": 0.71875
+        },
+        "bitwise_gate": {
+          "pass": true,
+          "outputs_sha256": "310ee8381956029139b7f431a042b57fe136262386c49c283474f0c8da4ac060",
+          "prompts": 4,
+          "decode_tokens": 16
+        },
+        "training": {
+          "steps": 120,
+          "final_train_loss10": 3.1709914207458496,
+          "val_loss": 3.087409496307373,
+          "probe_ids": [
+            95,
+            40,
+            115,
+            101,
+            108,
+            102,
+            44,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32
+          ],
+          "probe_sha256": "3da8592524204324cd66c354995f56943e607accc376618a94fb0122ad8e2181"
+        }
+      },
+      {
+        "label": "mla_every=2",
+        "full_attention_every": 2,
+        "layers": 8,
+        "layer_map_is_mla": [
+          true,
+          true,
+          false,
+          true,
+          false,
+          true,
+          false,
+          true
+        ],
+        "n_mla_layers": 5,
+        "n_gda_layers": 3,
+        "params": 30485772,
+        "cache_bytes": {
+          "mla_layers": 5,
+          "gda_layers": 3,
+          "helioslm_bytes": 1499136,
+          "mha_reference_bytes": 8388608,
+          "savings_vs_mha": 0.8212890625
+        },
+        "bitwise_gate": {
+          "pass": true,
+          "outputs_sha256": "7e6df0bfb295e2933bd3274e0b5bd62673e596d4aa89754bc72fb7c55a3794a2",
+          "prompts": 4,
+          "decode_tokens": 16
+        },
+        "training": {
+          "steps": 120,
+          "final_train_loss10": 3.1841526508331297,
+          "val_loss": 3.108956813812256,
+          "probe_ids": [
+            95,
+            40,
+            115,
+            101,
+            108,
+            102,
+            44,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32
+          ],
+          "probe_sha256": "3da8592524204324cd66c354995f56943e607accc376618a94fb0122ad8e2181"
+        }
+      },
+      {
+        "label": "mla_every=4",
+        "full_attention_every": 4,
+        "layers": 8,
+        "layer_map_is_mla": [
+          true,
+          false,
+          false,
+          true,
+          false,
+          false,
+          false,
+          true
+        ],
+        "n_mla_layers": 3,
+        "n_gda_layers": 5,
+        "params": 30520212,
+        "cache_bytes": {
+          "mla_layers": 3,
+          "gda_layers": 5,
+          "helioslm_bytes": 925696,
+          "mha_reference_bytes": 8388608,
+          "savings_vs_mha": 0.8896484375
+        },
+        "bitwise_gate": {
+          "pass": true,
+          "outputs_sha256": "e33436b0a5b1fa5494a164ac7d0eda590911f07484ea30d46ecda6f2f611a697",
+          "prompts": 4,
+          "decode_tokens": 16
+        },
+        "training": {
+          "steps": 120,
+          "final_train_loss10": 3.152594256401062,
+          "val_loss": 3.0688283443450928,
+          "probe_ids": [
+            95,
+            40,
+            115,
+            101,
+            108,
+            102,
+            44,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32
+          ],
+          "probe_sha256": "3da8592524204324cd66c354995f56943e607accc376618a94fb0122ad8e2181"
+        }
+      },
+      {
+        "label": "mla_every=8",
+        "full_attention_every": 8,
+        "layers": 8,
+        "layer_map_is_mla": [
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          true
+        ],
+        "n_mla_layers": 2,
+        "n_gda_layers": 6,
+        "params": 30537432,
+        "cache_bytes": {
+          "mla_layers": 2,
+          "gda_layers": 6,
+          "helioslm_bytes": 638976,
+          "mha_reference_bytes": 8388608,
+          "savings_vs_mha": 0.923828125
+        },
+        "bitwise_gate": {
+          "pass": true,
+          "outputs_sha256": "cc5231e0e7c57b7b6dccf41a24421c420dac7cb1f4fd8a7578415dad10bf62b4",
+          "prompts": 4,
+          "decode_tokens": 16
+        },
+        "training": {
+          "steps": 120,
+          "final_train_loss10": 3.2208688259124756,
+          "val_loss": 3.167487859725952,
+          "probe_ids": [
+            95,
+            40,
+            115,
+            101,
+            108,
+            102,
+            44,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32,
+            32
+          ],
+          "probe_sha256": "3da8592524204324cd66c354995f56943e607accc376618a94fb0122ad8e2181"
+        }
+      }
+    ],
+    "recommendation": {
+      "criterion": "min val_loss among bitwise-gate-passing arms",
+      "winner": "mla_every=4",
+      "val_loss": 3.0688283443450928,
+      "note": "quality-only pick; the cache-byte tradeoff per arm is reported in cache_bytes and is the reader's call"
+    }
+  },
+  "telemetry": {
+    "dense_mla": {
+      "wall_s": 70.68
+    },
+    "mla_every=2": {
+      "wall_s": 89.9
+    },
+    "mla_every=4": {
+      "wall_s": 110.32
+    },
+    "mla_every=8": {
+      "wall_s": 119.19
+    }
+  },
+  "results_sha256": "d172924d62294a2ce0675b4ecdad7100b48a9d33c91252e5bb414464f342f5a6"
+}
