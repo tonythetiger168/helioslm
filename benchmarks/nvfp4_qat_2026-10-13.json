@@ -1,0 +1,188 @@
+{
+  "experiment": "B1-3 NVFP4 QAT end-to-end smoke",
+  "scoring": "toy-char-lm val loss: NVFP4 QAT-from-scratch vs fp32 vs RTN-PTQ",
+  "probe_version": 2,
+  "results": {
+    "config": {
+      "model": "lite from scratch",
+      "quant": {
+        "method": "nvfp4",
+        "block_width": 16,
+        "value_grid": "E2M1",
+        "block_scale": "E4M3",
+        "top_scale": "fp32 per-row"
+      },
+      "steps": 240,
+      "batch": 8,
+      "seq": 64,
+      "lr": 0.003,
+      "mtp_weight": 0.3,
+      "seed": 13,
+      "prompt": "HeliosLM",
+      "probe_tokens": 24,
+      "corpus_tokens": 2061902
+    },
+    "arms": [
+      {
+        "label": "fp32_scratch",
+        "val_loss": 2.5415685176849365,
+        "first_train_loss10": 4.359900665283203,
+        "final_train_loss10": 2.670926809310913,
+        "probe_ids": [
+          72,
+          101,
+          108,
+          105,
+          111,
+          115,
+          76,
+          77,
+          32,
+          116,
+          101,
+          110,
+          116,
+          32,
+          116,
+          101,
+          110,
+          116,
+          32,
+          116,
+          32,
+          116,
+          101,
+          32,
+          116,
+          32,
+          116,
+          101,
+          110,
+          116,
+          32,
+          115
+        ],
+        "probe_sha256": "ca06aec36360ae0a97dc9036706aaea191aa0070ce9723c9cb248d8c5a7a5f73"
+      },
+      {
+        "label": "ptq_rtn_nvfp4",
+        "quantized_linears": 55,
+        "val_loss": 2.536146402359009,
+        "delta_vs_fp32": -0.005422115325927734,
+        "probe_ids": [
+          72,
+          101,
+          108,
+          105,
+          111,
+          115,
+          76,
+          77,
+          32,
+          116,
+          104,
+          101,
+          114,
+          32,
+          116,
+          101,
+          110,
+          116,
+          32,
+          116,
+          101,
+          110,
+          116,
+          32,
+          116,
+          32,
+          116,
+          104,
+          101,
+          32,
+          116,
+          32
+        ],
+        "probe_sha256": "c4dd593e95c594f9e7b96af10b0bb56e0534f56b7d44162cde274e9c2bb025a1"
+      },
+      {
+        "label": "qat_nvfp4",
+        "steps": 240,
+        "wrapped_linears": 55,
+        "first_train_loss10": 4.339644575119019,
+        "final_train_loss10": 2.7296552658081055,
+        "val_loss_ste_forward": 2.5995123386383057,
+        "val_loss_baked": 2.5995123386383057,
+        "deploy_parity_exact": true,
+        "delta_vs_fp32": 0.05794382095336914,
+        "delta_vs_ptq": 0.06336593627929688,
+        "probe_ids": [
+          72,
+          101,
+          108,
+          105,
+          111,
+          115,
+          76,
+          77,
+          34,
+          41,
+          10,
+          32,
+          32,
+          32,
+          32,
+          32,
+          32,
+          32,
+          32,
+          32,
+          32,
+          32,
+          32,
+          32,
+          32,
+          32,
+          32,
+          32,
+          32,
+          32
+        ],
+        "probe_sha256": "41bd8f75ebe8bd3194ad796ed1f3672bc9434e2d6858515c2804e1f1875c9aa8"
+      }
+    ],
+    "bitwise_gate": {
+      "pass": true,
+      "val_loss_identical": true,
+      "probe_identical": true,
+      "rerun_val_loss_baked": 2.5995123386383057,
+      "rerun_probe_sha256": "41bd8f75ebe8bd3194ad796ed1f3672bc9434e2d6858515c2804e1f1875c9aa8"
+    },
+    "verdict": {
+      "pass": true,
+      "deploy_parity_exact": true,
+      "qat_within_fp32_tol": true,
+      "qat_train_loss_descends": true,
+      "qat_tol": 0.1,
+      "ptq_delta_vs_fp32": -0.005422115325927734,
+      "qat_delta_vs_fp32": 0.05794382095336914,
+      "qat_delta_vs_ptq": 0.06336593627929688,
+      "criterion": "bitwise gate PASS + deploy parity EXACT + QAT deploy val within --qat-tol of fp32 arm + QAT train loss descends; PTQ-vs-QAT delta recorded but not gated (NVFP4 RTN is nearly free at toy scale)"
+    }
+  },
+  "telemetry": {
+    "fp32_scratch": {
+      "wall_s": 310.72
+    },
+    "ptq_rtn_nvfp4": {
+      "wall_s": 2.99
+    },
+    "qat_nvfp4": {
+      "wall_s": 647.55
+    },
+    "qat_nvfp4_gate_rerun": {
+      "wall_s": 225.86
+    }
+  },
+  "results_sha256": "02329ef5b2605d74c29dfd7325450c90739f9be20d111a6c93790502dfc6b3c7"
+}
