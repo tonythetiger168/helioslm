@@ -1,4 +1,5 @@
 """helios-harness plugins - snap existing modules into the Context."""
+import concurrent.futures
 import os
 import sys
 
@@ -1316,7 +1317,30 @@ class RobotControlPlugin:
 class AgentSwarmPlugin:
     """v1.17: multi-agent swarm. Leader decomposes a task, delegates to
     workers, aggregates results. Blackboard for shared state. Each
-    worker runs through the same harness (effects audited per agent)."""
+    worker runs through the same harness (effects audited per agent).
+
+    B1-6 (2026-10-12): ``swarm.delegate_all`` runs workers TRULY
+    concurrently (ThreadPoolExecutor — CPU inference spends the bulk of
+    its time inside torch native code, which releases the GIL, so
+    threads do parallelize). Replay discipline ("every step of N
+    parallel agents is replayable"): each worker runs in a child
+    Context with its OWN state dict (isolating ``ctx.state["workflow"]``,
+    which is per-run and would otherwise clobber across threads) and its
+    OWN effect buffer; after all workers join, child logs merge into the
+    parent effect log in worker-NAME order with kinds prefixed
+    ``f"{worker}:{kind}"`` — the merged log is byte-identical on every
+    run regardless of thread scheduling. Tool/model services are shared
+    read-only; stateful custom tools must shard their own state.
+    ``swarm.aggregate`` gains join semantics: mode=all (the v1.17
+    behaviour) / any / quorum. The completion order observed under
+    thread scheduling is recorded in ``state["swarm"]["completion_order"]``
+    and the swarm_join effect payload (audit; any/quorum consume it —
+    timing-dependent selection is recorded, not hidden).
+
+    RAM note: each worker driving real weights holds its own model
+    instance — mid 360M bf16 ≈ 720MB per worker; size max_workers to
+    the machine.
+    """
 
     def __init__(self, n_workers=3):
         self.n_workers = n_workers
@@ -1328,7 +1352,8 @@ class AgentSwarmPlugin:
                 "task": task_text,
                 "blackboard": {},
                 "workers": {},
-                "results": []}
+                "results": [],
+                "completion_order": []}
             n = min(self.n_workers, len(model_fns))
             workers = dict(list(model_fns.items())[:n])
             for name, fn in workers.items():
@@ -1350,13 +1375,99 @@ class AgentSwarmPlugin:
             ctx.state["swarm"]["results"].append(
                 {"worker": worker_name, "result": result})
             ctx.state["swarm"]["blackboard"][worker_name] = result
+            ctx.state["swarm"]["completion_order"].append(worker_name)
             ctx.effect("swarm_done",
                        {"worker": worker_name, "ok": result is not None},
                        replay_fn=lambda p: True)
             return result
 
-        def aggregate():
+        def delegate_all(delegations, max_workers=None):
+            """B1-6: true parallel delegation. ``delegations`` is a list of
+            ``(worker_name, sub_task, model_fn)`` triples. Returns
+            ``{worker_name: result}``. See the class docstring for the
+            replay/RAM discipline."""
+            items = [(w, t, f) for w, t, f in delegations]
+            for w, t, _f in items:
+                ctx.state["swarm"]["workers"][w] = {"status": "busy",
+                                                    "task": t}
+            ctx.effect("swarm_delegate_all",
+                       {"workers": [w for w, _, _ in items],
+                        "n": len(items)},
+                       replay_fn=lambda p: True)
+
+            def _run(worker_name, sub_task, model_fn):
+                # type(ctx)() instead of an import: this module is
+                # importable both as harness.harness_plugins (repo root
+                # on sys.path) and bare (harness/ on sys.path) — a
+                # top-level "from harness.harness_core import Context"
+                # would break the bare path.
+                #
+                # Fresh plugins, NOT dict(ctx._services): plugin apply()
+                # closures bind the parent ctx (AgentWorkflowPlugin.run
+                # writes ctx.state["workflow"] and ctx.effect("step_*")
+                # through that closure), so copying services would leak
+                # unprefixed step effects into the parent and clobber
+                # the shared workflow key. Fresh StatePlugin also gives
+                # each worker an isolated state dict, and fresh
+                # ToolPlugin avoids sharing mutable tool impls across
+                # threads.
+                child = type(ctx)()
+                child.use(StatePlugin())
+                child.use(ToolPlugin())
+                child.use(AgentWorkflowPlugin())
+                wf = child.agent.run(sub_task, model_fn, max_steps=6)
+                return worker_name, wf["final"], list(child.effects)
+
+            results, child_logs = {}, {}
+            with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=max_workers or len(items)) as ex:
+                futs = [ex.submit(_run, w, t, f) for w, t, f in items]
+                for fut in concurrent.futures.as_completed(futs):
+                    name, result, log = fut.result()
+                    results[name] = result
+                    child_logs[name] = log
+                    ctx.state["swarm"]["completion_order"].append(name)
+            # deterministic merge: worker-name order, worker_id prefix —
+            # the parent effect log is byte-identical on every re-run.
+            for name in sorted(child_logs):
+                for eff in child_logs[name]:
+                    ctx.effect(f"{name}:{eff.kind}", eff.payload,
+                               replay_fn=eff.replay_fn)
+            for name in sorted(results):
+                ctx.state["swarm"]["workers"][name] = {
+                    "status": "done", "result": results[name]}
+                ctx.state["swarm"]["results"].append(
+                    {"worker": name, "result": results[name]})
+                ctx.state["swarm"]["blackboard"][name] = results[name]
+            ctx.effect("swarm_join",
+                       {"completion_order": list(
+                           ctx.state["swarm"]["completion_order"])},
+                       replay_fn=lambda p: True)
+            return dict(results)
+
+        def aggregate(mode="all", quorum_k=None):
+            """Join semantics (B1-6). ``all``: majority-or-list over all
+            results (v1.17 behaviour). ``any``: first completed non-None
+            result by recorded completion order. ``quorum``:
+            majority-or-list over the first ``quorum_k`` (default
+            floor(n/2)+1) completions."""
             results = ctx.state["swarm"]["results"]
+            order = ctx.state["swarm"].get(
+                "completion_order", [r["worker"] for r in results])
+            by_worker = {r["worker"]: r["result"] for r in results}
+            if mode == "any":
+                for name in order:
+                    if by_worker.get(name) is not None:
+                        return by_worker[name]
+                return None
+            if mode == "quorum":
+                n = max(len(results), 1)
+                k = quorum_k or (n // 2 + 1)
+                picked = [by_worker[w] for w in order[:k]
+                          if by_worker.get(w) is not None]
+                if not picked:
+                    return None
+                return picked[0] if len(set(picked)) == 1 else picked
             # simple majority/concat aggregation
             finals = [r["result"] for r in results if r["result"]]
             if not finals:
@@ -1370,6 +1481,7 @@ class AgentSwarmPlugin:
 
         ctx.register("swarm.spawn", spawn_swarm)
         ctx.register("swarm.delegate", delegate)
+        ctx.register("swarm.delegate_all", delegate_all)
         ctx.register("swarm.aggregate", aggregate)
         ctx.register("swarm.blackboard", blackboard)
 
