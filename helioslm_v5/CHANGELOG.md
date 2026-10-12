@@ -1824,7 +1824,7 @@ falsy so `store or ExperienceStore()` silently swapped instances;
   model whose linear layers run the per-channel gate
 - Motivation: 2026-09-21 landscape — K3 (KDA at 3:1 interleave) and
   GLM-5.3-Flash (34 KDA + 11 sparse MLA) both ship per-channel fine-grained
-  decay in their hybrid layers; HeliosLM's hybrid stack now exposes the
+  decay in their linear layers; HeliosLM's hybrid stack now exposes the
   same knob behind an oracle-gated config flag
 - 62/62 tests + 9/9 integration
 
@@ -2417,7 +2417,7 @@ new: `test_packed_positions`, `test_navit_input_validation`,
 - `quantize_model` on a bare `nn.Linear` (a module cannot replace itself
   in place) now emits a warning that the layer is left unquantized instead
   of skipping silently.
-- bits != 4 raises `ValueError` on both `AWQLinear.from_linear` and
+- `bits != 4` raises `ValueError` on both `AWQLinear.from_linear` and
   `GPTQLinear.from_linear` (bare `assert` removed — asserts vanish under
   `python -O`).
 - GPTQ packing verified exact for odd `in_features`/`out_features`
