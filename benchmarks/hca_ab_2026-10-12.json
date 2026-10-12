@@ -1,0 +1,87 @@
+{
+  "tag": "hca-ab-passkey",
+  "scoring": "constructive-oracle-passkey-readout",
+  "probe_version": 1,
+  "date": "2026-10-12",
+  "config": {
+    "dim": 64,
+    "heads": 2,
+    "window": 8,
+    "pairs": 8,
+    "amp": 24.0,
+    "boost": 1.6,
+    "trials": 200,
+    "seed": 0,
+    "chunks": [
+      8,
+      32,
+      128
+    ],
+    "rescue_topk": 4,
+    "seq_lens": [
+      512,
+      1024
+    ]
+  },
+  "torch": "2.8.0+cu128",
+  "results": [
+    {
+      "seq_len": 512,
+      "accuracy": {
+        "dense": 0.91,
+        "hca-8x": 0.13,
+        "hca-8x+r4": 0.935,
+        "hca-32x": 0.13,
+        "hca-32x+r4": 0.895,
+        "hca-128x": 0.13,
+        "hca-128x+r4": 0.765
+      }
+    },
+    {
+      "seq_len": 1024,
+      "accuracy": {
+        "dense": 0.875,
+        "hca-8x": 0.11,
+        "hca-8x+r4": 0.905,
+        "hca-32x": 0.11,
+        "hca-32x+r4": 0.865,
+        "hca-128x": 0.11,
+        "hca-128x+r4": 0.805
+      }
+    }
+  ],
+  "cache_accounting": {
+    "hca-8x": {
+      "seq_len": 1024,
+      "chunk": 8,
+      "rescue_topk": 0,
+      "dense_values_per_token": 128,
+      "slot_values_per_token": 16.0,
+      "rescue_values_per_query": 0,
+      "compression_vs_dense": 8.0
+    },
+    "hca-32x": {
+      "seq_len": 1024,
+      "chunk": 32,
+      "rescue_topk": 0,
+      "dense_values_per_token": 128,
+      "slot_values_per_token": 4.0,
+      "rescue_values_per_query": 0,
+      "compression_vs_dense": 32.0
+    },
+    "hca-128x": {
+      "seq_len": 1024,
+      "chunk": 128,
+      "rescue_topk": 0,
+      "dense_values_per_token": 128,
+      "slot_values_per_token": 1.0,
+      "rescue_values_per_query": 0,
+      "compression_vs_dense": 128.0
+    }
+  },
+  "notes": [
+    "dense arm = MLA-quality reference (absorbed cache is lossless up to fp reassociation, verified by the repo suite)",
+    "identity-wired constructive oracle: no training, no dataset; NOT an RLCDAlignBench result (gated dataset not in repo)"
+  ],
+  "results_sha256": "0d78533df63ab89cf7844fbf583e54088a4392061488eb51b84f0a36ddd1465d"
+}
