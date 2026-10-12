@@ -1,5 +1,38 @@
 # HeliosLM v5 Changelog
 
+## v5.49 (2026-10-13) - B1-5 mla-every sweep + B1-6 swarm true parallelism
+- examples/mla_every_sweep.py (B1-5, PR #13): sweep full_attention_every
+  at lite width + 8 layers; HarnessEvolver-style bitwise gate (same
+  config+seed built+decoded twice must be token-identical) ported from
+  serving knobs to architecture knobs; auto-search = min val_loss among
+  gate-passing arms; results_sha256 over canonical JSON (telemetry
+  excluded). Toy-scale: every=4 wins (3.0688 vs dense 3.0874) at
+  -60.6% KV cache -> v5.5 default validated empirically
+- helioslm_v5/tests/test_mla_every.py (T79 4/4): layer-map rule,
+  every=1 rejection, bitwise gate + vacuity guard, CLI smoke. Smoke
+  winner assertion relaxed to "a gate-passing arm" — steps=1 winner is
+  init-noise that flips across torch builds (sandbox 2.8 vs CI)
+- benchmarks/mla_every_2026-10-12.{json,md}: full 4-arm record
+- harness AgentSwarmPlugin.delegate_all (B1-6): ThreadPoolExecutor true
+  parallelism (torch native code releases the GIL). Each worker runs in
+  a child Context with FRESH StatePlugin/ToolPlugin/AgentWorkflowPlugin
+  — copying parent services would share apply() closures bound to the
+  parent ctx (unprefixed step_* leaks + shared state["workflow"]
+  clobber). Child effect logs merge into the parent in worker-NAME
+  order, kinds prefixed "<worker>:<kind>" -> byte-identical replay log
+  regardless of thread scheduling; swarm_delegate_all/swarm_join
+  effects bracket each batch, join payload records completion_order
+- aggregate(mode="all"|"any"|"quorum", quorum_k): any = first non-None
+  by recorded completion_order; quorum = majority over first k
+  completions (default n//2+1); all = v1.17 behavior. Docstring notes
+  per-worker RAM (mid 360M bf16 ~ 720MB/worker)
+- tests: test_swarm_parallel.py (T80 4/4) — 2x0.6s sleep wall<0.95s,
+  deterministic prefixed replay log (verify_all_effects 0 fail),
+  all/any/quorum join semantics, sync delegate() compat. Local gate:
+  258 pytest + test_v5 90/90 + integration 9/9 + flake8 clean
+
+
+
 ## v1.39 (2026-10-10) - Blender open movies as video sources
 - web_ui: _search_video routes story/sci-fi/long -> Sintel (720p/480p
   mkv), else Big Buck Bunny (320x180 mp4 / 640x360 m4v). Blender
@@ -1791,7 +1824,7 @@ falsy so `store or ExperienceStore()` silently swapped instances;
   model whose linear layers run the per-channel gate
 - Motivation: 2026-09-21 landscape — K3 (KDA at 3:1 interleave) and
   GLM-5.3-Flash (34 KDA + 11 sparse MLA) both ship per-channel fine-grained
-  decay in their linear layers; HeliosLM's hybrid stack now exposes the
+  decay in their hybrid layers; HeliosLM's hybrid stack now exposes the
   same knob behind an oracle-gated config flag
 - 62/62 tests + 9/9 integration
 
@@ -2384,7 +2417,7 @@ new: `test_packed_positions`, `test_navit_input_validation`,
 - `quantize_model` on a bare `nn.Linear` (a module cannot replace itself
   in place) now emits a warning that the layer is left unquantized instead
   of skipping silently.
-- `bits != 4` raises `ValueError` on both `AWQLinear.from_linear` and
+- bits != 4 raises `ValueError` on both `AWQLinear.from_linear` and
   `GPTQLinear.from_linear` (bare `assert` removed — asserts vanish under
   `python -O`).
 - GPTQ packing verified exact for odd `in_features`/`out_features`
