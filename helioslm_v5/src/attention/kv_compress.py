@@ -170,3 +170,196 @@ class IndexedSparseAttention(nn.Module):
             outs.append(torch.stack(ob))                     # (L, H, dh)
         o = torch.stack(outs).reshape(B, L, D)
         return self.out(o)
+
+
+class HighCompressionAttention(nn.Module):
+    """HCA at production compression ratio (B1-2): chunk-pooled
+    memory slots at `chunk`x KV compression + trailing local window +
+    sparse top-k RESCUE of exact tokens from the compressed region.
+
+    Motivation: CompressedGlobalAttention above is the HCA mechanism at
+    toy ratio (one slot per `window`=8 tokens). DeepSeek-V4's HCA runs
+    ~128x compression, where mean-pooled slots destroy exact per-token
+    information (a 4-digit code, a name). V4's answer is that HCA layers
+    are INTERLEAVED with CSA layers whose indexer keeps exact top-k
+    access; this module instead attaches the rescue directly to the HCA
+    layer — one slot budget, one rescue budget, one ablation knob — so
+    the quality breakpoint of high compression can be measured with and
+    without rescue in a single module.
+
+    Attention set for query i in chunk c = i // chunk:
+      - LOCAL:  positions max(0, i - window + 1) .. i  (exact, causal);
+      - SLOTS:  one mean-pooled K/V slot per chunk < c  (exclusive —
+                queries in chunk c never see slot c, same contract as
+                CompressedGlobalAttention);
+      - RESCUE: top-`rescue_topk` exact tokens from positions
+                j <= i - window AND j < c * chunk (i.e. strictly inside
+                the compressed region, outside the local window — no
+                double-counting), selected by a cheap indexer.
+
+    The rescue indexer is a CSA-style linear scorer: idx = W_idx x,
+    score(i, j) = mean_h (idx_i . k_j) / sqrt(dh), with the selection
+    SHARED across heads (head-mean — the documented simplification, in
+    the same spirit as IndexedSparseAttention's head-0-shared selection
+    and MLA's "head_mean" free indexer). `rescue_topk=0` removes the
+    rescue path entirely (pure HCA at `chunk`x compression).
+
+    CAUSAL EXACT, same non-negotiable as the v5.31 modules: every term a
+    query i consumes (the local band, slots of chunks < c, rescue picks
+    with j <= i - window < i) depends only on positions <= i, and the
+    rescue SELECTION scores only positions inside strictly-past chunks,
+    so perturbing position p cannot change outputs at positions < p.
+
+    Deviations from DeepSeek-V4 (recorded, not hidden): mean-pooling
+    instead of learned compressors; an fp32 linear indexer instead of an
+    FP4 lightning indexer; rescue attached to the HCA layer instead of
+    living in separate interleaved CSA layers. The structural properties
+    — 128x-class compression, top-k exact rescue, causality — are the
+    reference contribution.
+    """
+
+    def __init__(self, dim: int, n_heads: int = 2, window: int = 8,
+                 chunk: int = 128, rescue_topk: int = 0):
+        super().__init__()
+        assert dim % n_heads == 0
+        if chunk < 1:
+            raise ValueError(f"chunk must be >= 1, got {chunk}")
+        if window < 1:
+            raise ValueError(f"window must be >= 1, got {window}")
+        if not isinstance(rescue_topk, int) or rescue_topk < 0:
+            raise ValueError(
+                f"rescue_topk must be a non-negative integer, got "
+                f"{rescue_topk!r}")
+        self.n_heads, self.window = n_heads, window
+        self.chunk, self.rescue_topk = chunk, rescue_topk
+        self.dh = dim // n_heads
+        self.qkv = nn.Linear(dim, 3 * dim)
+        self.out = nn.Linear(dim, dim)
+        if rescue_topk > 0:
+            self.rescue_indexer = nn.Linear(dim, dim)
+
+    def forward(self, x, attention_mask=None):
+        """x: (B, L, D). attention_mask: (B, L) with 1 = real, 0 = pad
+        (padding is excluded from pooling, from the local band, and from
+        rescue eligibility; padded query rows return finite zeros via
+        the nan_to_num guard, same convention as the MLA absorbed path).
+        Returns (B, L, D)."""
+        B, L, D = x.shape
+        H, dh, W, S, R = self.n_heads, self.dh, self.window, \
+            self.chunk, self.rescue_topk
+        C = (L + S - 1) // S                     # number of chunks
+        pad = C * S - L
+        if pad:
+            x = torch.cat([x, x.new_zeros(B, pad, D)], dim=1)
+            if attention_mask is not None:
+                attention_mask = torch.cat(
+                    [attention_mask,
+                     x.new_zeros(B, pad, dtype=attention_mask.dtype)],
+                    dim=1)
+        Lp = C * S
+        qkv = self.qkv(x).view(B, Lp, 3, H, dh)
+        q, k, v = qkv.unbind(dim=2)              # (B, Lp, H, dh)
+        if attention_mask is None:
+            attention_mask = torch.ones(B, Lp, dtype=torch.long,
+                                        device=x.device)
+        key_ok = attention_mask.bool()           # (B, Lp)
+
+        # --- memory slots: exclusive cumsum mean-pool per chunk -------
+        m = attention_mask.view(B, C, S, 1, 1).to(q.dtype)
+        kc = (k.view(B, C, S, H, dh) * m).sum(2) / m.sum(2).clamp(min=1.0)
+        vc = (v.view(B, C, S, H, dh) * m).sum(2) / m.sum(2).clamp(min=1.0)
+        k_slots = torch.cumsum(kc, dim=1) - kc   # (B, C, H, dh), exclusive
+        v_slots = torch.cumsum(vc, dim=1) - vc
+        cnt = torch.arange(C, device=x.device).view(1, C, 1, 1)
+        k_slots = (k_slots / cnt.clamp(min=1)).transpose(1, 2)  # (B,H,C,dh)
+        v_slots = (v_slots / cnt.clamp(min=1)).transpose(1, 2)
+
+        qh = q.transpose(1, 2)                   # (B, H, Lp, dh)
+        kh = k.transpose(1, 2)
+        vh = v.transpose(1, 2)
+        scale = 1.0 / math.sqrt(dh)
+        pos = torch.arange(Lp, device=x.device)
+        q_chunk = pos // S                       # (Lp,)
+        i_j = pos.view(Lp, 1) - pos.view(1, Lp)  # (Lp, Lp) distance i-j
+
+        # --- slot scores: (B, H, Lp, C) --------------------------------
+        s_mem = torch.matmul(qh, k_slots.transpose(-2, -1)) * scale
+        # slot s pools chunks < s (exclusive cumsum), so a query in chunk
+        # c may attend slots 1 <= s <= c (slot 0 is the empty pool).
+        s_idx = torch.arange(C, device=x.device)
+        valid_slot = (s_idx.view(1, C) >= 1) & \
+            (s_idx.view(1, C) <= q_chunk.view(Lp, 1))            # (Lp, C)
+        s_mem = s_mem.masked_fill(~valid_slot.view(1, 1, Lp, C),
+                                  float("-inf"))
+
+        # --- exact-token scores over the local band: (B, H, Lp, Lp) ---
+        s_tok = torch.matmul(qh, kh.transpose(-2, -1)) * scale
+        local_band = (i_j >= 0) & (i_j < W)      # j in [i-W+1, i]
+        keep_loc = local_band.view(1, 1, Lp, Lp) & key_ok.view(B, 1, 1, Lp)
+        s_loc = s_tok.masked_fill(~keep_loc, float("-inf"))
+
+        terms = [s_mem, s_loc]
+
+        # --- rescue: top-R exact tokens from the compressed region ----
+        if R > 0:
+            idx = self.rescue_indexer(x).view(B, Lp, H, dh)
+            s_idx_q = torch.matmul(idx.transpose(1, 2),
+                                   kh.transpose(-2, -1)) * scale
+            s_idx_q = s_idx_q.mean(1)            # (B, Lp, Lp) head-mean
+            eligible = (i_j >= W) & \
+                (pos.view(1, Lp) < (q_chunk * S).view(Lp, 1))
+            eligible = eligible.view(1, Lp, Lp) & key_ok.view(B, 1, Lp)
+            s_res_all = s_idx_q.masked_fill(~eligible, float("-inf"))
+            r_eff = min(R, Lp)
+            top = torch.topk(s_res_all, r_eff, dim=-1)   # (B, Lp, r_eff)
+            r_idx = top.indices                          # deterministic
+            s_res = top.values.view(B, 1, Lp, r_eff) \
+                .expand(B, H, Lp, r_eff)
+            # ineligible picks carry -inf scores -> exactly 0 weight
+            gidx = r_idx.view(B, 1, Lp, r_eff, 1) \
+                .expand(B, H, Lp, r_eff, dh)
+            v_res = torch.gather(
+                vh.unsqueeze(2).expand(B, H, Lp, Lp, dh), 3, gidx)
+            terms.append(s_res)
+
+        s = torch.cat(terms, dim=-1)              # (B,H,Lp,C+Lp[+R])
+        p = torch.nan_to_num(torch.softmax(s, dim=-1))
+        p_mem = p[..., :C]
+        p_loc = p[..., C:C + Lp]
+        o = torch.matmul(p_mem, v_slots) + torch.matmul(p_loc, vh)
+        if R > 0:
+            p_res = p[..., C + Lp:]
+            o = o + (p_res.unsqueeze(-1) * v_res).sum(3)
+        o = o.transpose(1, 2).reshape(B, Lp, D)
+        o = self.out(o)
+        if pad:
+            o = o[:, :L]
+        return o
+
+    def get_compression_stats(self, seq_len: int) -> dict:
+        """Truthful per-token state accounting (values, not bytes — same
+        convention as MLA.get_kv_cache_size; no unmeasured speed claims).
+
+        At sequence length L, per-token STORED state:
+          dense reference: 2 * H * dh values per token (full K and V);
+          this module: 2 * H * dh / chunk amortized slot values per
+          token for the compressed region, plus rescue_topk * 2 * H * dh
+          values per QUERY for the rescued exact tokens (a selection
+          budget, not a cache — reported separately).
+        """
+        if not isinstance(seq_len, int) or seq_len <= 0:
+            raise ValueError(
+                f"seq_len must be a positive integer, got {seq_len!r}")
+        H, dh = self.n_heads, self.dh
+        dense_per_token = 2 * H * dh
+        slot_per_token = 2 * H * dh / self.chunk
+        rescue_per_query = self.rescue_topk * 2 * H * dh
+        return {
+            "seq_len": seq_len,
+            "chunk": self.chunk,
+            "rescue_topk": self.rescue_topk,
+            "dense_values_per_token": dense_per_token,
+            "slot_values_per_token": slot_per_token,
+            "rescue_values_per_query": rescue_per_query,
+            "compression_vs_dense": dense_per_token / slot_per_token,
+        }
