@@ -132,6 +132,8 @@ TESTS = [
     case_sparse_attention.test_sparse_top_k_attention,
     case_indexer.test_learned_lightning_indexer,
     case_indexer.test_sparse_prefill_indexer,
+    # limitations round 2026-10-13
+    case_indexer.test_indexer_share_group_stress,
     case_muon.test_per_head_muon,
     case_quant.test_gptq_act_order,
     case_sparse_attention.test_attention_logit_soft_cap,

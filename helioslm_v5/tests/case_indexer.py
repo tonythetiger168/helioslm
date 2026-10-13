@@ -355,3 +355,142 @@ def test_sparse_prefill_indexer():
           f"early-row match {d_early:.1e} (< 5e-7 reassoc bound), "
           f"selection active {d_late:.1e}, k>=L exact, stats closed-form "
           f"21/36, model-level deterministic")
+
+
+# ----------------------------------------------------------------------
+# limitations round 2026-10-13: IndexShare cross-layer-group ROUTING
+# stress (daily-report candidate 2026-10-12 #1). The PR #11 module tests
+# (test_indexer_share.py, 6/6) cover the happy path: share=2 over 4
+# layers, short decode, distill routing, checkpoint roundtrip. This test
+# stresses the boundaries they do not:
+#   1. Group-layout edges: share=2 over 5 layers (trailing singleton
+#      group), share=3 over 4, share=8 over 4 (share > layers — the
+#      config validator only demands a positive int, so the degenerate
+#      single-group layout must still wire correctly).
+#   2. Routing-correctness oracle: a share=4 model must be BITWISE equal
+#      to a share=1 model whose follower indexers are overwritten with
+#      the leader's weights (sharing = per-layer with duplicated weights;
+#      anything else is a wiring bug).
+#   3. Long-sequence shared decode: 24-token prompt + 40 greedy steps
+#      (kv_len 25..64 = 8x top_k) — finite logits every step and bitwise
+#      determinism across two runs.
+#   4. The kv_len == top_k -> top_k+1 transition (dense step to first
+#      sparse step) crossed cleanly.
+#   5. Scorer invariants under input stress: h x 1e3 magnitude and exact
+#      zeros keep scores finite and deterministic (no NaN propagation
+#      into top-k selection).
+# ----------------------------------------------------------------------
+def test_indexer_share_group_stress():
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+
+    def _build(share, layers=4, top_k=8, seed=101):
+        torch.manual_seed(seed)
+        cfg = HeliosLMv5Config(size="lite")
+        cfg.num_hidden_layers = layers
+        cfg.attention.sparse_top_k = top_k
+        cfg.attention.sparse_indexer = "learned"
+        cfg.attention.indexer_share_every = share
+        return HeliosLMv5(cfg).eval(), cfg
+
+    # --- 1. group-layout edges -------------------------------------------
+    for share, layers in ((2, 5), (3, 4), (8, 4)):
+        model, _ = _build(share, layers)
+        attns = [layer.attention for layer in model.layers]
+        leaders = [m for m in range(layers) if m % share == 0]
+        for m, attn in enumerate(attns):
+            leader = m - (m % share)
+            assert attn._effective_indexer() is attns[leader].indexer, (
+                f"share={share} layers={layers}: layer {m} routed to "
+                f"{attn._effective_indexer()}, expected leader {leader}'s")
+            if m in leaders:
+                assert attn.indexer is not None
+            else:
+                assert attn.indexer is None, (
+                    f"follower layer {m} must not register an indexer")
+        keys = model.state_dict().keys()
+        n_registered = len({
+            int(k.split(".")[1]) for k in keys
+            if ".attention.indexer." in k})
+        assert n_registered == len(leaders), (
+            f"share={share} layers={layers}: {n_registered} registered "
+            f"indexers, expected {len(leaders)}")
+        single = sum(p.numel() for p in attns[0].indexer.parameters())
+        total_ix = sum(p.numel() for a in attns if a.indexer is not None
+                       for p in a.indexer.parameters())
+        assert total_ix == len(leaders) * single
+
+    # --- 2. routing oracle: shared == duplicated weights, bitwise -------
+    shared, cfg = _build(share=4, layers=4)
+    dup, _ = _build(share=1, layers=4)
+    missing, unexpected = dup.load_state_dict(shared.state_dict(),
+                                              strict=False)
+    assert not unexpected, f"unexpected keys: {unexpected[:5]}"
+    # The only missing keys must be the follower indexer params (kept at
+    # their seeded init until overwritten below).
+    assert missing and all(".attention.indexer." in k for k in missing), (
+        f"unexpected missing keys: {missing[:5]}")
+    leader_sd = shared.layers[0].attention.indexer.state_dict()
+    for i in range(1, 4):
+        dup.layers[i].attention.indexer.load_state_dict(leader_sd)
+    ids = torch.randint(3, cfg.vocab_size, (1, 7))
+    with torch.no_grad():
+        lg_s, _, _ = shared(ids)
+        lg_d, _, _ = dup(ids)
+    assert torch.equal(lg_s, lg_d), (
+        "share=4 must equal per-layer-with-duplicated-weights bitwise; "
+        f"max diff {(lg_s - lg_d).abs().max().item()}")
+    del dup
+    # 1M-position-table leftovers from other tests make memory tight on
+    # this box; drop the big models deterministically.
+
+    # --- 3+4. long shared decode; kv_len == top_k transition ------------
+    model, cfg = _build(share=2, layers=4, top_k=8)
+
+    def _greedy(ids, steps):
+        with torch.no_grad():
+            logits, _, past = model(ids, use_cache=True)
+            out = []
+            for _ in range(steps):
+                assert torch.isfinite(logits).all(), \
+                    "non-finite logits during shared decode"
+                nxt = logits[0, -1].argmax().view(1, 1)
+                out.append(nxt.item())
+                logits, _, past = model(nxt, past_key_values=past,
+                                        use_cache=True)
+        return out, past
+
+    ids = torch.randint(3, cfg.vocab_size, (1, 24))
+    r1, past1 = _greedy(ids, 40)   # kv_len 25..64 = 8x top_k
+    r2, _ = _greedy(ids, 40)
+    assert r1 == r2, "long shared decode not deterministic"
+    assert past1[0][0].shape[2] == 24 + 40
+
+    # kv_len == top_k boundary: 7-token prompt -> decode steps see
+    # kv_len 8 (== top_k: still dense), 9 (first sparse step), 10.
+    ids_b = torch.randint(3, cfg.vocab_size, (1, 7))
+    b1, _ = _greedy(ids_b, 3)
+    b2, _ = _greedy(ids_b, 3)
+    assert b1 == b2, "dense->sparse transition not deterministic"
+
+    # --- 5. scorer invariants under input stress -------------------------
+    leader_ix = model.layers[0].attention._effective_indexer()
+    follower = model.layers[1].attention
+    assert follower._effective_indexer() is leader_ix
+    c_kv = past1[1][0]  # follower layer cache: [B, 1, kv, d_c]
+    h = torch.randn(1, 1, cfg.hidden_size)
+    with torch.no_grad():
+        s_base = leader_ix(h, c_kv)
+        s_big = leader_ix(h * 1e3, c_kv)
+        s_zero = leader_ix(torch.zeros_like(h), c_kv)
+        s_base2 = leader_ix(h, c_kv)
+    assert torch.isfinite(s_base).all(), "index scores not finite"
+    assert torch.isfinite(s_big).all(), "x1e3 hidden blew up the scorer"
+    assert torch.isfinite(s_zero).all(), "zero hidden blew up the scorer"
+    assert torch.equal(s_base, s_base2), "scorer not deterministic"
+    assert s_base.shape[-1] == 64, (
+        f"scorer must cover the full 64-token cache, got "
+        f"{s_base.shape[-1]}")
+    _pass("test_indexer_share_group_stress",
+          "layouts (2,5)/(3,4)/(8,4) route to leaders exactly, shared=="
+          "duplicated bitwise, 40-step decode deterministic to kv=64, "
+          "k==kv_len transition clean, scorer finite under x1e3/zero")
