@@ -1,5 +1,70 @@
 # HeliosLM v5 Changelog
 
+## v5.51 (2026-10-13) - Verification-discipline wave: self-grading guard + artifact tiers + probe refresh
+
+Three milestones (M1/M2/M5) from the 2026-10-13 landscape review
+(openai/math's day-one retractions, Muse Wonder's behavior three-state,
+GPT-6/Claude-5.5 repricing). Theme: turn standing discipline into
+tested mechanism.
+
+- M1 self-grading invariant:
+  - `agent/tools.py`: REAL sandbox-escape fix — the containment check
+    was `str.startswith`, so with root=/tmp/helioslm_agent the path
+    `../helioslm_agent_oracle/key.json` PASSED (a prefix-sibling shares
+    the root's string prefix). Any sibling directory whose name shares
+    the prefix was readable/writable — exactly where a harness would
+    park an answer-key directory. Now `Path.relative_to`. (The harness
+    FilesystemPlugin got this fix class in v5.48; the agent tier was
+    missed. No test relied on the old behavior.)
+  - `agent/oracle_guard.py`: `OracleGuard` wraps the file impls and
+    makes a declared protected set (answer keys, graders, scoring
+    configs) unreachable — read AND write — via realpath +
+    relative_to resolution; every blocked attempt is appended to
+    `guard.audit` with raw + resolved paths (the attempt itself
+    becomes reviewable evidence). Allowed ops are not logged.
+    Empty protected set is a loud ValueError — a guard that protects
+    nothing is theatre.
+  - T82 `test_oracle_guard.py` (5/5): grader-write blocked with bytes
+    unchanged; answer-key read blocked where the UNguarded impls leak
+    it (the guard is the active ingredient, not the sandbox);
+    prefix-sibling escape blocked; end-to-end AgentLoop attacker
+    policy gets TOOL_ERROR, oracle integrity intact, trajectory
+    replays bit-exact through the guarded impls; vacuity +
+    loud-construction guards.
+- M2 artifact verification tiers:
+  - `eval/artifact_tiers.py` + `benchmarks/verification_tiers.json`:
+    every `benchmarks/*.json` now carries a tier (formalized /
+    oracle-tested / measured / unverified) in ONE registry —
+    historical artifacts NOT edited in place (several are hash-chained
+    into results_sha256 records). The tier is a claim about PROCESS
+    (how the artifact was produced), not a correctness guarantee.
+    `level2_plan.json` is honestly "unverified" (a plan whose
+    experiment failed at ~0.50 AUROC).
+  - T83 `test_artifact_tiers.py` (3/3): validator loud on unknown
+    tier / missing basis / tampered keys / phantom entries; REAL
+    coverage gate — adding a `benchmarks/*.json` without a registry
+    entry now fails CI; vacuity guard (one deletion fails by name).
+- M5 API probe refresh to the 2026-10 generation:
+  - `examples/probe_api.py`: named presets (astra / sol / opus-5.5 /
+    sonnet-5.5 / argon via OpenRouter; legacy luna kept), `--list-models`
+    to confirm live model IDs before a paid run, token-usage cost
+    accounting (response `usage` -> cost_usd + cost_per_correct_usd —
+    OpenAI's own "price per completed task" framing; price=None when
+    unknown, never estimated), output carries
+    `verification_tier: "measured"`. Meta Muse Wonder recorded as NOT
+    probe-able (full model locked in the Muse Code subscription, no
+    API). Duplicate ANTI_SHORTCUT block removed. Prices as of
+    2026-10-13, flagged unverified in the output. The paid run itself
+    needs tony's keys — scripts ship, runs stay local (established
+    pattern).
+  - T84 `test_probe_api.py` (5/5): mock OpenAI-compatible endpoint on
+    localhost (no network/key/cost): degradation ladder exercised
+    (mock 400s `max_tokens`), logprobs -> conf, logprob-less ->
+    honest None, scripted calc->finish episode through run_episode,
+    full CLI summary schema + preset price math, --list-models.
+- Local gate: test_v5 92/92 + pytest (263 + 13 new) + integration 9/9
+  + flake8 clean
+
 ## v5.50 (2026-10-13) - B1-3 NVFP4 QAT end-to-end smoke + deploy-parity fix
 - src/quantization/qat.py: FakeQuantLinear.ste_weight() — on-grid values
   with STE gradients for callers that read .weight DIRECTLY instead of
@@ -1683,6 +1748,7 @@ falsy so `store or ExperienceStore()` silently swapped instances;
   monotonicity, overconfidence presence
 
 
+
 ## v5.28 (2026-09-25) - Cost-Axis Alignment: Disagg Pareto Sweep
 - `examples/disagg_pareto.py`: three-axis (makespan / workers / worker-seconds)
   Pareto sweep of the v5.25 disagg module across cache_heavy / cold / mixed
@@ -1696,6 +1762,7 @@ falsy so `store or ExperienceStore()` silently swapped instances;
   cache_heavy workloads
 - This is the v5.28 cost-axis alignment artifact for spec-level comparison
   against production serving cards (see docs/benchmark_alignment.md)
+
 
 
 ## v5.27 (2026-09-25) - Tool-Tuned Checkpoint + Real-Model Hardening (Stage B)
@@ -1719,6 +1786,7 @@ falsy so `store or ExperienceStore()` silently swapped instances;
   windows (loss 0.48 -> 0.25). T17 re-measured: parse 0.67 (12/18),
   finish 4/6 -- 4.4x protocol gain confirms the bottleneck is data/steps,
   not the wire format; correct stays 0 (content copying = skeleton limit)
+
 
 
 ## v5.26 (2026-09-24) - Stage A: Real-Model Integration Oracles (T15)
