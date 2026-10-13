@@ -1748,7 +1748,6 @@ falsy so `store or ExperienceStore()` silently swapped instances;
   monotonicity, overconfidence presence
 
 
-
 ## v5.28 (2026-09-25) - Cost-Axis Alignment: Disagg Pareto Sweep
 - `examples/disagg_pareto.py`: three-axis (makespan / workers / worker-seconds)
   Pareto sweep of the v5.25 disagg module across cache_heavy / cold / mixed
@@ -1762,7 +1761,6 @@ falsy so `store or ExperienceStore()` silently swapped instances;
   cache_heavy workloads
 - This is the v5.28 cost-axis alignment artifact for spec-level comparison
   against production serving cards (see docs/benchmark_alignment.md)
-
 
 
 ## v5.27 (2026-09-25) - Tool-Tuned Checkpoint + Real-Model Hardening (Stage B)
@@ -1786,7 +1784,6 @@ falsy so `store or ExperienceStore()` silently swapped instances;
   windows (loss 0.48 -> 0.25). T17 re-measured: parse 0.67 (12/18),
   finish 4/6 -- 4.4x protocol gain confirms the bottleneck is data/steps,
   not the wire format; correct stays 0 (content copying = skeleton limit)
-
 
 
 ## v5.26 (2026-09-24) - Stage A: Real-Model Integration Oracles (T15)
