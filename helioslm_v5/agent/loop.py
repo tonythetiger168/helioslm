@@ -22,10 +22,15 @@ def render_tool_docs(registry: ToolRegistry) -> str:
 
 class AgentLoop:
     def __init__(self, model_fn, registry: ToolRegistry, impls: dict,
-                 gate, max_steps: int = 8, confidence_fn=None):
+                 gate, max_steps: int = 8, confidence_fn=None,
+                 defer_validation: bool = False):
         self.model_fn, self.registry, self.impls = model_fn, registry, impls
         self.gate, self.max_steps, self.confidence_fn = \
             gate, max_steps, confidence_fn
+        # v5.53: opt-in for clarify-aware gates. Default keeps the historical
+        # parser contract (missing args are PARSE_ERROR); deferred mode parses
+        # syntax only so the gate can distinguish CLARIFY from EXECUTE.
+        self.defer_validation = bool(defer_validation)
 
     def build_prompt(self, task_text: str, traj: Trajectory) -> str:
         parts = [SYSTEM.replace("%%TOOLS%%", render_tool_docs(self.registry)),
@@ -39,7 +44,8 @@ class AgentLoop:
             prompt = self.build_prompt(task_text, traj)
             gen_text = self.model_fn(prompt, seed, i)
             try:
-                call, perr = parse_tool_call(gen_text, self.registry)[0], None
+                reg = None if self.defer_validation else self.registry
+                call, perr = parse_tool_call(gen_text, reg)[0], None
             except ToolCallError as e:
                 call, perr = None, str(e)
             if call is None:
@@ -52,6 +58,8 @@ class AgentLoop:
                 route_s = route.value
                 if route == Route.ESCALATE:
                     obs = self.gate.escalate(call, ctx)
+                elif route == Route.CLARIFY:
+                    obs = self.gate.clarify(call, ctx)
                 else:
                     try:
                         obs = execute(call, self.registry, self.impls)
@@ -60,6 +68,9 @@ class AgentLoop:
             traj.steps.append(Step(i, text_to_ids(prompt),
                                    text_to_ids(gen_text), call, perr,
                                    route_s, obs))
+            if call is not None and route == Route.CLARIFY:
+                # Ambiguity is terminal for this turn: ask, do not guess.
+                break
             if call is not None and call.name == "finish":
                 traj.final_answer = (
                     call.args["answer"] if route_s == "DIRECT"

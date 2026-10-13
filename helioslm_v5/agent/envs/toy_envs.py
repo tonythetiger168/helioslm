@@ -72,5 +72,48 @@ class ComposeEnv:
         return answer.strip() == task.answer
 
 
+class MissingParamEnv:
+    """M3 toy family: under-specified tasks whose oracle is CLARIFY.
+
+    Each scenario names the required tool argument omitted from the user's
+    request. The expected answer is a machine-checkable marker,
+    ``CLARIFY:<param>`` — never a guessed tool result. The default
+    ``make_envs()`` deliberately does NOT include this family so existing
+    completion benchmarks remain completion-only.
+    """
+
+    SCENARIOS = (
+        {"family": "repeat_omits_n", "tool": "str_op",
+         "text": "Apply repeat to the string: \"ab\"",
+         "args": {"s": "ab", "op": "repeat"}, "missing": ("n",)},
+        {"family": "repeat_omits_n", "tool": "str_op",
+         "text": "Repeat the token \"xy\" as requested.",
+         "args": {"s": "xy", "op": "repeat"}, "missing": ("n",)},
+        {"family": "write_omits_content", "tool": "file_write",
+         "text": "Write the result to \"note.txt\".",
+         "args": {"path": "note.txt"}, "missing": ("content",)},
+        {"family": "write_omits_content", "tool": "file_write",
+         "text": "Save the answer under \"out/result.txt\".",
+         "args": {"path": "out/result.txt"}, "missing": ("content",)},
+        {"family": "read_omits_path", "tool": "file_read",
+         "text": "Read the file I mentioned and summarize it.",
+         "args": {}, "missing": ("path",)},
+        {"family": "calc_omits_expr", "tool": "calc",
+         "text": "Compute the expression from earlier.",
+         "args": {}, "missing": ("expr",)},
+    )
+
+    def scenario(self, index: int) -> dict:
+        return dict(self.SCENARIOS[index % len(self.SCENARIOS)])
+
+    def sample(self, rng: random.Random) -> Task:
+        spec = self.scenario(rng.randrange(len(self.SCENARIOS)))
+        return Task("missing_param", spec["text"],
+                    "CLARIFY:" + ",".join(spec["missing"]), 1)
+
+    def verify(self, task: Task, answer: str) -> bool:
+        return answer.strip() == task.answer
+
+
 def make_envs() -> list:
     return [CalcEnv(), StrEnv(), ComposeEnv()]

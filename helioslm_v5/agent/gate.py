@@ -8,6 +8,7 @@ except ImportError:
 
 class Route(Enum):
     DIRECT = "DIRECT"
+    CLARIFY = "CLARIFY"
     ESCALATE = "ESCALATE"
 
 
@@ -20,6 +21,14 @@ class Gate:
         raise NotImplementedError
 
     def escalate(self, call, context: dict) -> str:
+        raise NotImplementedError
+
+    def clarify(self, call, context: dict) -> str:
+        """Return the user-facing clarification question for Route.CLARIFY.
+
+        Gates that cannot produce a concrete question must fail loudly here;
+        falling through to execution would turn ambiguity into a guess.
+        """
         raise NotImplementedError
 
     # --- v5.32 typed decision interface (System One / Jev direction) ------
