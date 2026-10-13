@@ -127,6 +127,8 @@ TESTS = [
     case_rope_cache.test_hyper_connections,
     case_quant_fused.test_qat,
     case_rope_cache.test_yarn_rope_scaling,
+    # v5.49: YaRN factor-512 (2048 -> 2^20) position-encoding stress
+    case_rope_cache.test_yarn_longctx_position_stress,
     case_sparse_attention.test_sparse_top_k_attention,
     case_indexer.test_learned_lightning_indexer,
     case_indexer.test_sparse_prefill_indexer,

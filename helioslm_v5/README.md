@@ -1,4 +1,4 @@
-# HeliosLM v5.48 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.49 - DeepSeek/K3-Style Architecture
 
 Reference LLM implementation with DeepSeek-V3-style efficiency techniques.
 All modules below are implemented and exercised by a CPU test suite with
@@ -18,6 +18,30 @@ misbehaving (see CHANGELOG). v5.5 is a feature release aligned with
 Kimi-K3-class architecture mechanisms: hybrid linear attention, LatentMoE,
 quantile balancing, cross-layer attention residuals, and SiTU-GLU (see
 CHANGELOG; unit suite now 44 tests).
+
+## v5.49 (2026-10-12): 1M-Context Position-Encoding Stress + Qwen Guard Re-land
+Maintenance round on the merged remote line (IndexShare PR #11, case-module
+test split, leak-budget suite), each oracle-tested in `tests/test_v5.py`:
+- **YaRN factor-512 position-encoding stress**
+  (`tests/case_rope_cache.py::test_yarn_longctx_position_stress`): 2048 ->
+  2^20 (= 1,048,576, the Kimi K3 / GPT-6 Astra context class). A real 1M
+  forward is CPU-infeasible, so this stresses what breaks first — the
+  position encoding: (1) inv_freq matches an independent fp64
+  re-derivation of the NTK-by-parts law; (2) the lazy fp32 table is
+  finite and mscale-bounded at 2^20-1; (3) measured fp32 table error
+  7.6e-3 vs an fp64 reference (the honest fp32 angle-quantization floor,
+  threshold 1e-2 with the measured number reported); (4) fp64 rotation
+  composition R(p)∘R(q) == R(p+q) at 1M indices (5.6e-17); (5) 24-token
+  prompt at position indices [2^20-24, 2^20) yields finite, bitwise-
+  deterministic logits end-to-end. Provenance note: a first draft of
+  this test was written 2026-10-11 but lost uncommitted during a
+  baseline re-sync; this is a verified rewrite.
+- **QwenModelPlugin ImportError guard re-land** (`harness/harness_plugins.py`):
+  commit 874dd51's "pre-land PR #8 conflict resolution" silently dropped
+  the v5.48 guard, so `ctx.use(QwenModelPlugin())` raised
+  ModuleNotFoundError (transformers absent in the CPU env) instead of
+  following the T46 SKIP contract — test_v14 red on main. Guard
+  restored with a loud provenance comment.
 
 ## v5.48 (2026-10-10): Harness Plugin Repair Round — Falsy Memory Store, SQLite Conn Policy, FS Escape, Dedup
 Maintenance round on the merged remote line (remote v1.9 batches had

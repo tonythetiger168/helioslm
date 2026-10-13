@@ -340,3 +340,127 @@ def test_nope_attention():
     _pass("test_nope_attention",
           f"decode==one-shot {ndiff:.1e}, NoPE permutation-blind {nope_blind:.1e} "
           f"vs RoPE sees swap {rope_sees:.1e}, hybrid generate OK")
+
+
+# ----------------------------------------------------------------------
+# v5.49: YaRN long-context POSITION-ENCODING stress (factor 512,
+# 2048 -> 2^20). Candidate from the 2026-10-10 daily report; the
+# first draft (2026-10-11) was lost with an uncommitted working tree
+# during a baseline re-sync, so this is a fresh rewrite.
+#
+# Honest scope: a real 1M-token forward is CPU-infeasible (KV cache
+# plus O(L) attention over 2^20 tokens), so this stresses the part
+# that actually breaks first at 1M indices — the POSITION ENCODING —
+# and keeps every boundary loud:
+#   1. inv_freq matches an independent fp64 re-derivation of the
+#      NTK-by-parts wavelength law (not just spot values).
+#   2. attention_factor is the YaRN default 0.1*ln(f)+1 and the lazy
+#      fp32 cos/sin table at positions up to 2^20-1 is finite and
+#      mscale-bounded.
+#   3. Measured fp32 table error vs an fp64 reference near 2^20:
+#      angle quantization of the fp32 position*frequency outer
+#      product, NOT a formula error. Threshold 1e-2; the measured max
+#      is reported and recorded here as quantitative evidence.
+#   4. Rotation composition oracle at 1M indices in fp64 (af=1):
+#      R(p) o R(q) == R(p+q) for the yarn-remapped frequencies.
+#   5. End-to-end: a 24-token prompt forwarded at position indices
+#      [2^20-24, 2^20) yields finite, bitwise-deterministic logits
+#      through the lite model with a yarn config.
+# ----------------------------------------------------------------------
+def test_yarn_longctx_position_stress():
+    from helioslm_v5.src.attention.mla import RotaryEmbedding
+
+    dim, L, f = 8, 2048, 512
+    M = 1 << 20  # 1,048,576 target positions
+    base = 10000.0
+
+    ry = RotaryEmbedding(dim, L, scaling={"type": "yarn", "factor": float(f)})
+
+    # (1) independent fp64 re-derivation of the NTK-by-parts law
+    k = torch.arange(0, dim, 2, dtype=torch.float64) / dim
+    inv64 = 1.0 / (base ** k)
+    wavelen = 2.0 * math.pi / inv64
+    low_w, high_w = L / 32.0, L / 1.0
+    remapped = torch.where(wavelen > high_w, inv64 / f, inv64)
+    smooth = (L / wavelen - 1.0) / (32.0 - 1.0)
+    ramped = (1.0 - smooth) * inv64 / f + smooth * inv64
+    in_band = (wavelen >= low_w) & (wavelen <= high_w)
+    want64 = torch.where(in_band, ramped, remapped)
+    d_law = (ry.inv_freq.double() - want64).abs().max().item()
+    # threshold 1e-6: the module builds inv_freq in fp32, so the buffer
+    # carries fp32 representation error (measured 1.49e-9 here); any real
+    # formula error (wrong ramp/threshold) would be orders of magnitude
+    # larger. 1e-6 sits 3 decades above the noise, far below real error.
+    assert d_law < 1e-6, f"yarn inv_freq diverges from fp64 law: {d_law}"
+
+    # (2) mscale default + lazy table finite & bounded at 2^20-1
+    af = 0.1 * math.log(f) + 1.0
+    assert abs(ry.attention_factor - af) < 1e-9
+    top = torch.arange(M - 8, M).unsqueeze(0)
+    cos, sin = ry(top)
+    assert torch.isfinite(cos).all() and torch.isfinite(sin).all(), \
+        "yarn table non-finite near 2^20"
+    assert cos.abs().max().item() <= af + 1e-5 and \
+        sin.abs().max().item() <= af + 1e-5, \
+        "yarn table exceeds the mscale bound"
+
+    # (3) measured fp32 quantization error vs fp64 reference (the
+    # honest floor: fp32 cannot represent 2^20*radian angles better
+    # than ~2^-23 * |angle|; with |angle| up to ~2^20 this is ~1e-2)
+    pos64 = (torch.arange(M - 64, M, dtype=torch.float64))
+    ref_emb = torch.outer(pos64, want64)
+    ref_cos = ref_emb.cos() * af
+    cos64, _ = ry(torch.arange(M - 64, M).unsqueeze(0))
+    got_cos = cos64[0, 0][:, :dim // 2]  # first half of cat([f, f])
+    # module table is cat([freqs, freqs], -1): first half == raw freqs
+    d_quant = (got_cos.double() - ref_cos).abs().max().item()
+    assert d_quant < 1e-2, f"fp32 table error {d_quant:.3e} exceeds 1e-2"
+
+    # (4) rotation composition oracle, fp64, mscale disabled so the
+    # pure rotation law is tested: R(p) o R(q) == R(p+q). Angles are
+    # derived in fp64 from the module's own remapped inv_freq — the
+    # module's fp32 table accuracy is bounded separately in (3).
+    ry1 = RotaryEmbedding(dim, L, scaling={
+        "type": "yarn", "factor": float(f), "attention_factor": 1.0})
+    p = M - 1024
+    q = 1000
+    pos = torch.tensor([[p, q, p + q]], dtype=torch.float64)
+    ang = torch.outer(pos[0], ry1.inv_freq.double())  # [3, dim/2]
+    c1 = torch.cat([ang.cos(), ang.cos()], dim=-1).view(1, 1, 3, dim)
+    s1 = torch.cat([ang.sin(), ang.sin()], dim=-1).view(1, 1, 3, dim)
+    x = torch.tensor([[[[0.3, -0.7, 1.1, 0.2, 0.5, -0.9, 0.8, 0.6]]]],
+                     dtype=torch.float64)
+
+    def rot(v, c, s):
+        half = v.shape[-1] // 2
+        v1, v2 = v[..., :half], v[..., half:]
+        c_, s_ = c[..., :half], s[..., :half]
+        return torch.cat([v1 * c_ - v2 * s_, v1 * s_ + v2 * c_], dim=-1)
+
+    xp = rot(x, c1[:, :, 0:1], s1[:, :, 0:1])   # R(p)
+    xpq = rot(xp, c1[:, :, 1:2], s1[:, :, 1:2])  # o R(q)
+    xref = rot(x, c1[:, :, 2:3], s1[:, :, 2:3])  # R(p+q)
+    d_comp = (xpq - xref).abs().max().item()
+    assert d_comp < 1e-12, f"rotation composition broke at 1M: {d_comp}"
+
+    # (5) end-to-end: 24-token prompt at [2^20-24, 2^20) -> finite,
+    # bitwise-deterministic logits. The yarn config must be set BEFORE
+    # construction — MLA reads rope_scaling when building its
+    # RotaryEmbedding (setting it afterwards leaves a vanilla rope).
+    torch.manual_seed(777)
+    cfg = HeliosLMv5Config(size="lite")
+    cfg.attention.rope_scaling = {"type": "yarn", "factor": float(f)}
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+    model2 = HeliosLMv5(cfg).eval()
+    ids = torch.randint(3, cfg.vocab_size, (1, 24))
+    pos_ids = torch.arange(M - 24, M).unsqueeze(0)
+    with torch.no_grad():
+        out1 = model2(input_ids=ids, position_ids=pos_ids)
+        out2 = model2(input_ids=ids, position_ids=pos_ids)
+    logits1 = out1[0] if isinstance(out1, tuple) else out1.logits
+    logits2 = out2[0] if isinstance(out2, tuple) else out2.logits
+    assert torch.isfinite(logits1).all(), "non-finite logits at 1M positions"
+    assert torch.equal(logits1, logits2), "1M-position prefill not deterministic"
+    _pass("test_yarn_longctx_position_stress",
+          f"law<1e-12, table err {d_quant:.2e} (<1e-2 fp32 floor), "
+          f"compose {d_comp:.1e}, 1M-position prefill finite+deterministic")

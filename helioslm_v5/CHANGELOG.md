@@ -32,6 +32,17 @@
   258 pytest + test_v5 90/90 + integration 9/9 + flake8 clean
 
 
+## v5.49 (2026-10-12, daily maintenance) - 1M-context position-encoding stress + qwen guard
+- tests: case_rope_cache.test_yarn_longctx_position_stress (registered in
+  test_v5.py TESTS) — YaRN factor 512 (2048 -> 2^20) stress: fp64 law
+  re-derivation, mscale-bounded finite table, measured fp32 table err
+  7.6e-3 (< 1e-2 threshold, quantization floor), fp64 rotation
+  composition 5.6e-17, 1M-position prefill finite + bitwise-deterministic
+- harness: QwenModelPlugin transformers-ImportError guard re-landed
+  (874dd51 conflict resolution had silently dropped the v5.48 guard;
+  test_v14_qwen red on main) — restores the T46 SKIP contract
+- provenance: 2026-10-11 draft of the yarn stress test was lost
+  uncommitted during a baseline re-sync; rewritten and verified today
 
 ## v1.39 (2026-10-10) - Blender open movies as video sources
 - web_ui: _search_video routes story/sci-fi/long -> Sintel (720p/480p

@@ -196,8 +196,18 @@ class QwenModelPlugin:
         if not os.path.exists(self.model_dir):
             ctx.register("model.qwen", None)
             return
-        import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
+        # v5.49: commit 874dd51's "pre-land conflict resolution" silently
+        # dropped the v5.48 ImportError guard here. qwen/ exists in this
+        # tree without transformers installed, so apply() raised
+        # ModuleNotFoundError out of ctx.use() and the T46 skip contract
+        # ("model.qwen is None -> SKIP") was unreachable — test_v14 red
+        # on main. Guard restored.
+        try:
+            import torch
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+        except ImportError:
+            ctx.register("model.qwen", None)
+            return
         tok = AutoTokenizer.from_pretrained(self.model_dir)
         model = AutoModelForCausalLM.from_pretrained(
             self.model_dir, torch_dtype=torch.bfloat16).eval()

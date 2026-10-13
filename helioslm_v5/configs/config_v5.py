@@ -306,7 +306,7 @@ class GRPOConfig:
 
 @dataclass
 class HeliosLMv5Config:
-    model_name: str = "HeliosLM-v5.48"
+    model_name: str = "HeliosLM-v5.49"
     size: str = "full"  # "full" (production defaults) or "lite" (CPU smoke tests)
     # Size-dependent architecture dims: None = "follow the size" (filled
     # from _SIZE_PRESETS in __post_init__; the values below are the "full"
