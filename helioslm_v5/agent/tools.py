@@ -7,6 +7,24 @@ try:
 except ImportError:
     from schema import ToolCall, ToolCallError, ToolRegistry, ToolSpec
 
+
+def _check_contained(p: Path, root: Path, op: str) -> None:
+    """Strict sandbox containment (v5.51 fix).
+
+    The pre-v5.51 check was `str(p).startswith(str(root))`, which a
+    PREFIX-SIBLING escapes: with root=/tmp/helioslm_agent the path
+    `../helioslm_agent_oracle/key.json` resolves to
+    /tmp/helioslm_agent_oracle/key.json — a string that does start with
+    "/tmp/helioslm_agent". An agent could therefore read/write ANY
+    sibling directory whose name shares the root's prefix — including
+    an oracle/answer-key directory placed next to the sandbox (the
+    self-grading attack, T82). `relative_to` is the exact test.
+    """
+    try:
+        p.relative_to(root)
+    except ValueError:
+        raise ToolCallError(f"{op}: path escapes sandbox")
+
 _BINOPS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
            ast.Div: operator.truediv, ast.FloorDiv: operator.floordiv,
            ast.Mod: operator.mod, ast.Pow: operator.pow}
@@ -73,16 +91,14 @@ def build_default_registry(root="/tmp/helioslm_agent"):
 
     def file_read(path: str) -> str:
         p = (root / path).resolve()
-        if not str(p).startswith(str(root)):
-            raise ToolCallError("file_read: path escapes sandbox")
+        _check_contained(p, root, "file_read")
         if not p.is_file():
             raise ToolCallError(f"file_read: no such file: {path}")
         return p.read_text(encoding="utf-8")
 
     def file_write(path: str, content: str) -> str:
         p = (root / path).resolve()
-        if not str(p).startswith(str(root)):
-            raise ToolCallError("file_write: path escapes sandbox")
+        _check_contained(p, root, "file_write")
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")
         return f"WROTE {len(content)} chars -> {path}"
