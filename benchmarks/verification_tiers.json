@@ -19,6 +19,7 @@
     "api_probe_luna_2026-10-04.json": {"tier": "measured", "basis": "live API probe of GPT-5.6 Luna; unstable-hallucination failure mode recorded"},
     "api_probe_summary_2026-10-04.json": {"tier": "measured", "basis": "cross-model summary of the 2026-10-04 probes"},
     "cost_comparison_agentark.json": {"tier": "measured", "basis": "cost-arithmetic comparison vs AgentArk claim; component numbers from measured artifacts"},
+    "cost_per_completed_task_2026-10-13.json": {"tier": "measured", "basis": "M6 composition of measured mid_agent_eval_v5 completion evidence with the oracle-tested disagg cost model and score_stream audit; USD is a $1/worker-hour normalization"},
     "direction12_analysis.json": {"tier": "measured", "basis": "sycophancy decomposition + ceiling-effect audit on recorded probe data"},
     "disagg_pareto_2026-09-25.json": {"tier": "oracle-tested", "basis": "three-axis Pareto sweep under the monotonicity gate; T18 asserts the gate and the cache_aware anti-monotonicity finding"},
     "gated_hybrid_results.json": {"tier": "measured", "basis": "gated hybrid readout sweep; cross-validated weights"},

@@ -1,0 +1,166 @@
+{
+  "experiment": "M6 cost per completed task baseline",
+  "schema": "cost-per-completed-task/1",
+  "verification_tier": "measured",
+  "created": "2026-10-13",
+  "scope": "toy-scale local baseline; USD is a unit-price normalization, not a market quote",
+  "inputs": {
+    "completion_evidence": {
+      "path": "benchmarks/mid_agent_eval_v5.json",
+      "sha256": "c78ee9a1b5f5aea74219cbf3f10de0ec22693802eecb33fe8790deec614cb137",
+      "verification_tier": "measured"
+    },
+    "disagg_pareto_reference": {
+      "path": "benchmarks/disagg_pareto_2026-09-25.json",
+      "sha256": "ceda70582b02312c7ff90e655f7c6d989021634b9acad65049a9112df9b51610",
+      "verification_tier": "oracle-tested"
+    },
+    "score_checkpoint": {
+      "path": "checkpoints/toy_v5.13.pt",
+      "sha256": "88a21456cbad856aabcb908464ea281b689a264c5db3b7ea4be50c82d49bda25",
+      "vocab_size": 1024
+    }
+  },
+  "assumptions": {
+    "worker_hour_usd": 1.0,
+    "usd_is_unit_price_normalization": true,
+    "token_accounting": "char-level toy checkpoint: one character is one token for these ASCII records",
+    "completed_task": "source eval correct=true AND final == expected, re-checked here",
+    "score_stream_role": "quality audit only; NLL never decides task completion"
+  },
+  "results": {
+    "completion": {
+      "n_records": 12,
+      "n_completed": 12,
+      "completion_rate": 1.0
+    },
+    "cost_front": [
+      {
+        "cfg": "1P+1D",
+        "workers": 2,
+        "makespan": 0.5664,
+        "worker_seconds_total": 0.8444,
+        "worker_seconds_per_completed": 0.070366667,
+        "usd_per_completed_task": 1.9546296e-05
+      },
+      {
+        "cfg": "2P+1D",
+        "workers": 3,
+        "makespan": 0.4284,
+        "worker_seconds_total": 0.8444,
+        "worker_seconds_per_completed": 0.070366667,
+        "usd_per_completed_task": 1.9546296e-05
+      },
+      {
+        "cfg": "2P+2D",
+        "workers": 4,
+        "makespan": 0.3824,
+        "worker_seconds_total": 0.8444,
+        "worker_seconds_per_completed": 0.070366667,
+        "usd_per_completed_task": 1.9546296e-05
+      },
+      {
+        "cfg": "2P+3D",
+        "workers": 5,
+        "makespan": 0.3594,
+        "worker_seconds_total": 0.8444,
+        "worker_seconds_per_completed": 0.070366667,
+        "usd_per_completed_task": 1.9546296e-05
+      }
+    ],
+    "quality_audit": {
+      "scoring": "score_stream loglikelihood under the toy checkpoint",
+      "role": "quality audit only; completion is decided by final == expected",
+      "n_scored": 12,
+      "mean_nll_per_token": 5.008725,
+      "max_nll_per_token": 7.2977,
+      "rows": [
+        {
+          "id": "task-000",
+          "family": "Task",
+          "n_tokens": 2,
+          "nll_per_token": 3.6629,
+          "ppl": 38.98
+        },
+        {
+          "id": "task-001",
+          "family": "Task",
+          "n_tokens": 2,
+          "nll_per_token": 1.7607,
+          "ppl": 5.82
+        },
+        {
+          "id": "task-002",
+          "family": "Task",
+          "n_tokens": 5,
+          "nll_per_token": 2.8265,
+          "ppl": 16.89
+        },
+        {
+          "id": "task-003",
+          "family": "Task",
+          "n_tokens": 9,
+          "nll_per_token": 4.5772,
+          "ppl": 97.24
+        },
+        {
+          "id": "task-004",
+          "family": "Task",
+          "n_tokens": 12,
+          "nll_per_token": 6.8139,
+          "ppl": 910.42
+        },
+        {
+          "id": "task-005",
+          "family": "Task",
+          "n_tokens": 12,
+          "nll_per_token": 6.6879,
+          "ppl": 802.6
+        },
+        {
+          "id": "task-006",
+          "family": "Task",
+          "n_tokens": 3,
+          "nll_per_token": 5.0686,
+          "ppl": 158.95
+        },
+        {
+          "id": "task-007",
+          "family": "Task",
+          "n_tokens": 3,
+          "nll_per_token": 4.648,
+          "ppl": 104.38
+        },
+        {
+          "id": "task-008",
+          "family": "Task",
+          "n_tokens": 4,
+          "nll_per_token": 5.4704,
+          "ppl": 237.57
+        },
+        {
+          "id": "task-009",
+          "family": "write_read",
+          "n_tokens": 3,
+          "nll_per_token": 5.2731,
+          "ppl": 195.02
+        },
+        {
+          "id": "task-010",
+          "family": "write_read",
+          "n_tokens": 3,
+          "nll_per_token": 7.2977,
+          "ppl": 1476.93
+        },
+        {
+          "id": "task-011",
+          "family": "write_read",
+          "n_tokens": 3,
+          "nll_per_token": 6.0178,
+          "ppl": 410.69
+        }
+      ]
+    }
+  },
+  "results_sha256": "e171689fabc8b3fef0d2c82bea03ade126ccb1319e6ed3ca0912fb942892c41f"
+}
