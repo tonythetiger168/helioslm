@@ -164,8 +164,8 @@ TESTS = [
     case_harness_repair.test_import_smoke,
 ]
 
-# CI PROBE: first half only (bisect py3.11 failure)
-TESTS = TESTS[:45]
+# CI PROBE: second half only (bisect py3.11 failure)
+TESTS = TESTS[45:]
 
 
 def main():
