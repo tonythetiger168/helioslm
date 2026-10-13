@@ -164,8 +164,9 @@ TESTS = [
     case_harness_repair.test_import_smoke,
 ]
 
-# CI PROBE: second half only (bisect py3.11 failure)
-TESTS = TESTS[45:]
+# CI PROBE 4: full suite, pinned torch threads
+import torch as _torch
+_torch.set_num_threads(2)
 
 
 def main():
