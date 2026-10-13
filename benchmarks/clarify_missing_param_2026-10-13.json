@@ -1,0 +1,143 @@
+{
+  "experiment": "M3 TrustGate CLARIFY three-state missing-parameter oracle",
+  "schema": "trust-gate-clarify/1",
+  "verification_tier": "oracle-tested",
+  "created": "2026-10-13",
+  "scope": "constructive toy-env oracle: missing required parameters must ask a concrete clarification and never execute",
+  "assumptions": {
+    "three_states": [
+      "DIRECT",
+      "CLARIFY",
+      "ESCALATE"
+    ],
+    "missing_param_policy": "CLARIFY before trust scoring or execution",
+    "invalid_schema_policy": "ESCALATE; extras/wrong types are not clarifications",
+    "loop_mode": "AgentLoop(defer_validation=True) parses syntax and defers arg validation to the gate"
+  },
+  "results": {
+    "summary": {
+      "missing_tasks": 6,
+      "clarified": 6,
+      "clarify_no_final_answer": 6,
+      "complete_controls": 6,
+      "direct_after_completion": 6,
+      "low_trust_controls": 1,
+      "escalated_low_trust": 1,
+      "invalid_schema_controls": 1,
+      "escalated_invalid_schema": 1
+    },
+    "missing_rows": [
+      {
+        "id": "missing-00",
+        "family": "repeat_omits_n",
+        "tool": "str_op",
+        "missing": [
+          "n"
+        ],
+        "route": "CLARIFY",
+        "observation": "CLARIFY: str_op is missing required parameter(s) n: int. Please provide n.",
+        "final_answer": null
+      },
+      {
+        "id": "missing-01",
+        "family": "repeat_omits_n",
+        "tool": "str_op",
+        "missing": [
+          "n"
+        ],
+        "route": "CLARIFY",
+        "observation": "CLARIFY: str_op is missing required parameter(s) n: int. Please provide n.",
+        "final_answer": null
+      },
+      {
+        "id": "missing-02",
+        "family": "write_omits_content",
+        "tool": "file_write",
+        "missing": [
+          "content"
+        ],
+        "route": "CLARIFY",
+        "observation": "CLARIFY: file_write is missing required parameter(s) content: str. Please provide content.",
+        "final_answer": null
+      },
+      {
+        "id": "missing-03",
+        "family": "write_omits_content",
+        "tool": "file_write",
+        "missing": [
+          "content"
+        ],
+        "route": "CLARIFY",
+        "observation": "CLARIFY: file_write is missing required parameter(s) content: str. Please provide content.",
+        "final_answer": null
+      },
+      {
+        "id": "missing-04",
+        "family": "read_omits_path",
+        "tool": "file_read",
+        "missing": [
+          "path"
+        ],
+        "route": "CLARIFY",
+        "observation": "CLARIFY: file_read is missing required parameter(s) path: str. Please provide path.",
+        "final_answer": null
+      },
+      {
+        "id": "missing-05",
+        "family": "calc_omits_expr",
+        "tool": "calc",
+        "missing": [
+          "expr"
+        ],
+        "route": "CLARIFY",
+        "observation": "CLARIFY: calc is missing required parameter(s) expr: str. Please provide expr.",
+        "final_answer": null
+      }
+    ],
+    "complete_control_rows": [
+      {
+        "id": "control-00",
+        "family": "repeat_omits_n",
+        "tool": "str_op",
+        "route": "DIRECT",
+        "observation": "abab"
+      },
+      {
+        "id": "control-01",
+        "family": "repeat_omits_n",
+        "tool": "str_op",
+        "route": "DIRECT",
+        "observation": "xyxy"
+      },
+      {
+        "id": "control-02",
+        "family": "write_omits_content",
+        "tool": "file_write",
+        "route": "DIRECT",
+        "observation": "WROTE 10 chars -> note.txt"
+      },
+      {
+        "id": "control-03",
+        "family": "write_omits_content",
+        "tool": "file_write",
+        "route": "DIRECT",
+        "observation": "WROTE 10 chars -> out/result.txt"
+      },
+      {
+        "id": "control-04",
+        "family": "read_omits_path",
+        "tool": "file_read",
+        "route": "DIRECT",
+        "observation": "alpha beta"
+      },
+      {
+        "id": "control-05",
+        "family": "calc_omits_expr",
+        "tool": "calc",
+        "route": "DIRECT",
+        "observation": "2"
+      }
+    ]
+  },
+  "results_sha256": "0d884448986dedbbfb4cbbd205970a2d186dba79874e7c9a4315705938763440"
+}

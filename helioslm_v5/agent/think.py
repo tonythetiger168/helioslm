@@ -169,7 +169,8 @@ class ThinkSession(ChatSession):
             prompt = self.build_prompt()
             gen_text = self.model_fn(prompt, seed, i)
             try:
-                kind, payload = parse_tri_mode(gen_text, self.registry)
+                reg = None if self.defer_validation else self.registry
+                kind, payload = parse_tri_mode(gen_text, reg)
                 perr = None
             except ToolCallError as e:
                 kind, payload, perr = "parse_error", None, str(e)
@@ -197,6 +198,8 @@ class ThinkSession(ChatSession):
                 route_s = route.value
                 if route == Route.ESCALATE:
                     obs = self.gate.escalate(call, ctx)
+                elif route == Route.CLARIFY:
+                    obs = self.gate.clarify(call, ctx)
                 else:
                     try:
                         obs = execute(call, self.registry, self.impls)
@@ -207,6 +210,8 @@ class ThinkSession(ChatSession):
             self.steps.append(ChatStep(
                 i, text_to_ids(prompt), text_to_ids(gen_text), kind,
                 call, perr, route_s, obs))
+            if call is not None and route == Route.CLARIFY:
+                return obs
             if call is not None and call.name == "finish":
                 final = (call.args["answer"] if route_s == "DIRECT"
                          else obs.removeprefix("FINISH: "))
