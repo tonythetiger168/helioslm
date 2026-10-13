@@ -558,8 +558,18 @@ class MLA(nn.Module):
             W_UK: [H, no_rope_head_dim, kv_latent_dim]
             W_UV: [H, v_head_dim,       kv_latent_dim]
         Views are cheap; recomputed per call so training updates are seen.
+
+        QAT note (B1-3): when kv_b_proj is a FakeQuantLinear, ``.weight``
+        is the fp32 MASTER — reading it directly would bypass the
+        quantization grid on this path while the module-call path
+        (prefill, line ~635) sees grid values, and the two would diverge
+        at bake/deploy time. ``ste_weight()`` returns the same on-grid
+        values with straight-through gradients; plain nn.Linear has no
+        such attribute and falls back to ``.weight`` (bitwise unchanged).
         """
-        w = self.kv_b_proj.weight.view(
+        proj = self.kv_b_proj
+        w = (proj.ste_weight() if hasattr(proj, "ste_weight")
+             else proj.weight).view(
             self.num_heads, self.no_rope_head_dim + self.v_head_dim,
             self.kv_latent_dim,
         )

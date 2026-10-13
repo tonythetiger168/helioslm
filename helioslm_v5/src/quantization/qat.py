@@ -175,10 +175,23 @@ class FakeQuantLinear(nn.Module):
         with torch.no_grad():
             return _QDQ[self.method](self.weight.detach(), self.group_size)
 
-    def forward(self, x):
+    def ste_weight(self) -> torch.Tensor:
+        """Grid values with straight-through gradients.
+
+        For callers that read ``.weight`` DIRECTLY instead of calling the
+        module (MLA's absorbed W_UK/W_UV path slices kv_b_proj.weight):
+        ``.weight`` on a FakeQuantLinear is the fp32 MASTER, so a direct
+        read would silently bypass quantization and break train/deploy
+        parity at bake time. ``ste_weight()`` returns the same on-grid
+        values as ``fake_quant_weight()`` with gradients flowing to the
+        master as if the qdq were the identity.
+        """
         w_dq = _QDQ[self.method](self.weight.detach(), self.group_size)
         # STE: values are on the grid, gradients flow as if w_dq == w.
-        w_st = _StraightThrough.apply(self.weight, w_dq)
+        return _StraightThrough.apply(self.weight, w_dq)
+
+    def forward(self, x):
+        w_st = self.ste_weight()
         return F.linear(x, w_st.to(x.dtype),
                         self.bias.to(x.dtype) if self.bias is not None else None)
 

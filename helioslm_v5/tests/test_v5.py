@@ -164,6 +164,10 @@ TESTS = [
     case_harness_repair.test_import_smoke,
 ]
 
+# CI PROBE 4: full suite, pinned torch threads
+import torch as _torch
+_torch.set_num_threads(2)
+
 
 def main():
     print("HeliosLM v5.22 Test Suite (lite config, CPU)")
