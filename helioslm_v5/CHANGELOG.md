@@ -1,5 +1,36 @@
 # HeliosLM v5 Changelog
 
+## v5.50 (2026-10-13) - B1-3 NVFP4 QAT end-to-end smoke + deploy-parity fix
+- src/quantization/qat.py: FakeQuantLinear.ste_weight() — on-grid values
+  with STE gradients for callers that read .weight DIRECTLY instead of
+  calling the module; forward() refactored onto it (behavior unchanged)
+- src/attention/mla.py: _w_uk_w_uv() (absorbed W_UK/W_UV decode path)
+  reads kv_b_proj via ste_weight() when wrapped (hasattr fallback —
+  plain nn.Linear bitwise unchanged). Bug found by the smoke's parity
+  oracle: the absorbed path silently bypassed the fake-quant grid (fp32
+  master), diverging from the module-call path at bake time (measured
+  logits max diff 0.158 before the fix, bitwise EXACT after)
+- examples/nvfp4_qat_smoke.py (B1-3): three-arm from-scratch smoke —
+  fp32 reference / RTN-PTQ / QAT-with-grid-from-step-0 -> bake ->
+  deploy. Oracles: deploy parity EXACT (STE forward == baked model,
+  bitwise), HarnessEvolver-style bitwise gate (QAT arm replayed: val +
+  train loss + probe identical), convergence gate (QAT deploy within
+  --qat-tol 0.10 of the fp32 arm + train loss descends). PTQ-vs-QAT
+  delta recorded, not gated: NVFP4 RTN is nearly free on smooth toy
+  weights (-0.005 nats) — nothing to recover at this scale; the QAT
+  insurance matters at production scale. stable_corpus() double-read
+  guards transient filesystem read skips in build_corpus
+- benchmarks/nvfp4_qat_2026-10-13.{json,md}: 240-step arms — fp32
+  2.5416 / PTQ 2.5361 / QAT 2.5995 (+0.058, within tol), 55 Linears
+  wrapped, gate PASS, verdict PASS, results_sha256 02329ef5...
+- helioslm_v5/tests/test_nvfp4_qat_e2e.py (T81 5/5): RTN grid
+  fixed-point, bake parity (toy MLP + full MLA forward + MTP re-bind),
+  bitwise gate + vacuity guard, CLI smoke. Checkpoint fine-tune variant
+  explored and rejected (fresh-optimizer restart degrades fp32 and QAT
+  alike; converged-weight RTN only +0.002 nats — recorded in the .md).
+  Local gate: test_v5 90/90 + pytest 263 + integration 9/9 + flake8
+  clean
+
 ## v5.49 (2026-10-13) - B1-5 mla-every sweep + B1-6 swarm true parallelism
 - examples/mla_every_sweep.py (B1-5, PR #13): sweep full_attention_every
   at lite width + 8 layers; HarnessEvolver-style bitwise gate (same

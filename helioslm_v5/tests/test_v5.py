@@ -37,6 +37,7 @@ added case_harness_repair.py (harness plugin repair locks +
 whole-tree import smoke) on top of the original 88.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -167,6 +168,14 @@ TESTS = [
     case_harness_repair.test_harness_memory_sqlite_fs_repair,
     case_harness_repair.test_import_smoke,
 ]
+
+# CI resource guard (2026-10-13): on GitHub's 4-vCPU ubuntu runners the
+# full suite died mid-run under torch's default thread count (bisected in
+# PR #16: each half of the suite passes alone; the full suite passes with
+# threads pinned to 2). Pin on CI only; local runs keep machine defaults.
+if os.environ.get("GITHUB_ACTIONS") == "true":
+    import torch as _torch
+    _torch.set_num_threads(2)
 
 
 def main():
