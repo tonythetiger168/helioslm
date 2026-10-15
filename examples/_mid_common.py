@@ -43,7 +43,8 @@ def load_model_tok(device=None, ckpt_dir=None):
     print("loaded paired tokenizer from checkpoint", flush=True)
     model = HeliosLMv5(HeliosLMv5Config(size="mid")).to(device)
     model.load_state_dict(torch.load(ck / "mid_sft_v5.33.pt",
-                                     map_location=device))
+                                     map_location=device,
+                                     weights_only=True))
     model.eval()
     return model, tok, device
 

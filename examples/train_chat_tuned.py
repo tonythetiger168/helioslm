@@ -116,7 +116,8 @@ def main():
     if not init.exists():
         sys.exit(f"hot-start checkpoint missing: {init} — "
                  "run examples/train_tool_tuned.py first")
-    model.load_state_dict(torch.load(init, map_location="cpu"))
+    model.load_state_dict(torch.load(init, map_location="cpu",
+                                     weights_only=True))
     print(f"hot-start from {init}", flush=True)
     # v5.30.2 resume: if a saved ckpt + .step exist, continue from there.
     # Shuffles are seeded per epoch, so skipping the first `start_step`
@@ -125,7 +126,8 @@ def main():
     start_step = int(step_file.read_text()) if (ckpt.exists()
                                                 and step_file.exists()) else 0
     if start_step:
-        model.load_state_dict(torch.load(ckpt, map_location="cpu"))
+        model.load_state_dict(torch.load(ckpt, map_location="cpu",
+                                         weights_only=True))
         print(f"RESUME from step {start_step} ({ckpt})", flush=True)
     opt = torch.optim.AdamW(model.parameters(), lr=LR)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(

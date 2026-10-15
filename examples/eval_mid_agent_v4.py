@@ -41,7 +41,8 @@ def main():
     bos = tok.vocab[BOS]
     model = HeliosLMv5(HeliosLMv5Config(size="mid")).to(device)
     model.load_state_dict(torch.load(ck / "mid_sft_v5.33.pt",
-                                     map_location=device))
+                                     map_location=device,
+                                     weights_only=True))
     model.eval()
     print("mid checkpoint loaded (v4, full capture)", flush=True)
 

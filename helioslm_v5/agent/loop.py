@@ -71,7 +71,8 @@ class AgentLoop:
             if call is not None and route == Route.CLARIFY:
                 # Ambiguity is terminal for this turn: ask, do not guess.
                 break
-            if call is not None and call.name == "finish":
+            if (call is not None and call.name == "finish"
+                    and not obs.startswith("TOOL_ERROR")):
                 traj.final_answer = (
                     call.args["answer"] if route_s == "DIRECT"
                     else obs.removeprefix("FINISH: "))

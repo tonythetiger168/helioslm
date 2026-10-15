@@ -243,6 +243,16 @@ ctx.use(RobotControlPlugin(mode="mock"))
 ctx.robot.move_base(1.0, 0.0, 0.0)   # TrustGate-gated, effect-audited
 ```
 
+**Gating policy.** Side-effecting ops (`terminal.run`, `github.create_issue`,
+`robot.*`) fail **closed**: with no `decision.trust` registered they return a
+`refused` error instead of running, and they execute only when the gate
+returns `Route.DIRECT` — `CLARIFY` and `ESCALATE` both block. The `full`
+preset wires a TrustGate; with a bare `Context`, register one yourself
+(`ctx.register("decision.trust", gate)`), or pass `terminal.run(cmd,
+gated=False)` to opt out explicitly. The web UI (`helioslm_v5/harness/web_ui_v2.py`)
+binds to 127.0.0.1 and rejects requests with a non-loopback `Host`
+(DNS rebinding) or, on POST/PATCH/DELETE, a non-loopback `Origin`.
+
 ## Deployment tiers
 
 Three rungs, each with one recorded reason to exist (no spectrum theater):
@@ -261,7 +271,7 @@ in `__post_init__` (no silent truncation).
 
 ```bash
 pip install torch
-python -m helioslm_v5.tests.test_v5     # 83 unit tests (3 checkpoint-dependent tests self-skip without checkpoints/toy_v5.13.pt)
+python -m helioslm_v5.tests.test_v5     # 92 unit tests (3 checkpoint-dependent tests self-skip without checkpoints/toy_v5.13.pt)
 python integration_test_v51.py          # 9 end-to-end integration tests
 python -m helioslm_v5.tests.test_agent  # 9 agent-layer oracles (v5.23)
 python -m helioslm_v5.tests.test_v5_stage_a   # T15 real-model oracles (v5.26)
@@ -276,7 +286,15 @@ python helioslm_v5/tests/test_async_grpo.py      # T26 async GRPO sync-parity (v
 python helioslm_v5/tests/test_decision.py        # T27 typed decision primitives (v5.32)
 python helioslm_v5/tests/test_decision_head.py   # T28 DecisionHead calibration (v5.32)
 python helioslm_v5/tests/test_v110_github_pg.py    # T52 GitHub/PostgreSQL plugin oracles (offline, mocked HTTP)
-python helioslm_v5/tests/test_web_ui_v2.py         # T75 harness web UI v2 contract (stdlib-only UI)
+python helioslm_v5/tests/test_web_ui_v2.py         # T75 harness web UI v2 contract (stdlib-only UI, Host/Origin checks)
+python helioslm_v5/tests/test_trust_gate_clarify.py # T86 TrustGate CLARIFY three-state routing (v5.53)
+python helioslm_v5/tests/test_review_fixes.py       # T87 review fixes: deferred validation, fail-closed gates, calc faults
+python helioslm_v5/tests/test_calibration_board.py  # T88 calibration leaderboard: metric oracles + byte-exact board rebuild
+python helioslm_v5/tests/test_std_bench.py          # T89 GSM8K/HumanEval harness: provenance, sandbox, reference gates, mock API run
+python helioslm_v5/tests/test_term_bench.py         # T90 terminal sandbox tasks: references, trap rejection, sandbox limits, mock agent run
+python helioslm_v5/tests/test_k3_block.py           # T91 K3 block preset: Gated MLA bitwise oracle, K3 layer order, decode == full
+python helioslm_v5/tests/test_csa.py                # T92 CSA compress-then-select: dense reduction, slow-reference equality, V4 stack preset
+python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite (318 tests)
 ```
 
 ```python
@@ -391,6 +409,12 @@ are static-checked) — tracked as a community issue.
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.58** — DeepSeek-V4-order CSA (`CompressedSparseAttention`: compress, then top-k select) and `v4_attention_stack` CSA/HCA preset with IndexShare; passkey A/B shows mean-pooled CSA at chance although its indexer finds the right chunk 86–100% of the time — the compressor is the bottleneck — T92
+- **v5.57** — Kimi-K3-style block preset `k3_block_config()`: KDA/KDA/KDA/MLA order (`hybrid_attention.first_layer_full=False`), Gated MLA (`attention.output_gate`), per-channel decay, attention residuals, LatentMoE; defaults bit-identical — T91
+- **v5.56** — 10 terminal-style sandbox tasks (`examples/std_bench_run.py --bench terminal`): one bash command per turn, final-state verifiers that reject the naive solutions, verbalized confidence for the calibration board — T90
+- **v5.55** — GSM8K / HumanEval harness (`examples/std_bench_run.py`) on pinned upstream subsets with a sandboxed HumanEval executor and oracle-tested reference gates; any model behind an OpenAI-compatible API can be run and its output goes straight onto the calibration board; fixes `probe_api` retrying every HTTP 400 with 30 s of sleeps — T89
+- **v5.54** — roadmap Phase A calibration leaderboard (`examples/calibration_board.py`): AUROC/Brier/ECE/overconfident-wrong over committed probe artifacts; finding: every wrong answer from the local mid model came at conf ≥ 0.9; milestone tracker `docs/MILESTONES.md`; 2026 Q4 roadmap `docs/ROADMAP_2026Q4.md` — T88
+- **2026-10-15 review fixes (post v5.53)** — `execute()` validates args, so `defer_validation=True` with a non-clarify gate yields `TOOL_ERROR` instead of crashing (and a malformed `finish` no longer ends the run); missing+malformed calls ESCALATE rather than CLARIFY; `calc` overflow / `0**-1` are tool errors; harness terminal/GitHub/robot ops fail closed without a TrustGate and run only on `DIRECT`; web UI Host/Origin checks; `torch.load(weights_only=True)` for runtime checkpoint loads — T87
 - **2026-10 review fix wave** — full-repo review follow-through: PrefixPool fingerprint hash-collision, agent bare imports, GitHubPlugin `import json` (caught by the new CI syntax gate), duplicate-plugin merges, metadata drift; new CI (`.github/workflows/ci.yml`): flake8 syntax gate (E9/F63/F7/F82) + py3.11/3.12 test matrix + release build; harness web UI v2 (stdlib-only rewrite, T75 contract tests)
 - **v5.22-L** (local line) — NVFP4-format QAT fake-quant target (E2M1×16 + E4M3 block scales) + NoPE option for MLA (Kimi-K3 direction; default off, bit-identical)
 - **v5.21** (local line) — KDA-style per-channel decay gate: linear-attention state rows forget at independent rates (Kimi Linear / GLM-5.3-Flash direction), bit-identical default, rollback-safe

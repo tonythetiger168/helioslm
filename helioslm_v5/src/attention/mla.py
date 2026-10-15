@@ -323,6 +323,13 @@ class MLA(nn.Module):
 
         # Output projection consumes per-head values of width v_head_dim
         self.o_proj = nn.Linear(self.num_heads * self.v_head_dim, self.hidden_size, bias=False)
+        # Gated MLA (v5.57): elementwise sigmoid gate on the per-head values
+        # before o_proj, computed from the layer input. Absent (None) when
+        # off, so ungated models keep their exact parameter set.
+        self.o_gate_proj = (nn.Linear(self.hidden_size,
+                                 self.num_heads * self.v_head_dim, bias=False)
+                       if bool(getattr(config.attention, "output_gate", False))
+                       else None)
 
         self.rope = RotaryEmbedding(
             self.rope_head_dim, config.max_position_embeddings,
@@ -690,7 +697,9 @@ class MLA(nn.Module):
                 probs = F.dropout(probs, p=self.attention_dropout)
             attn_out = torch.matmul(probs, v)
 
-        output = self.o_proj(attn_out.transpose(1, 2).contiguous().view(B, seq, -1))
+        output = self._project_out(
+            attn_out.transpose(1, 2).contiguous().view(B, seq, -1),
+            hidden_states)
         return output, present_key_value
 
     def _forward_absorbed(self, hidden_states, attention_mask, past_key_value,
@@ -912,8 +921,19 @@ class MLA(nn.Module):
         else:
             out_latent = torch.matmul(probs, c_kv)  # [B, H, seq, d_c]
         out = torch.einsum("bhqc,hvc->bqhv", out_latent, w_uv)
-        output = self.o_proj(out.reshape(B, seq, self.num_heads * self.v_head_dim))
+        output = self._project_out(
+            out.reshape(B, seq, self.num_heads * self.v_head_dim),
+            hidden_states)
         return output, present_key_value
+
+    def _project_out(self, values, hidden_states):
+        """o_proj over the flattened per-head values [B, seq, H*d_v],
+        through the Gated-MLA output gate when enabled (v5.57). Shared by
+        both paths so expanded/absorbed equivalence covers the gate."""
+        if self.o_gate_proj is not None:
+            values = values * torch.sigmoid(
+                self.o_gate_proj(hidden_states)).to(values.dtype)
+        return self.o_proj(values)
 
     def _build_attn_mask(self, position_ids, kv_len, attention_mask, past_len, seq, B, custom_positions):
         """Bottom-right-aligned causal mask, merged with the padding mask.

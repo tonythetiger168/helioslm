@@ -19,6 +19,26 @@ if not os.path.isdir(_AGENT):
 if _AGENT not in sys.path:
     sys.path.insert(0, _AGENT)
 
+
+def _trust_check(ctx, tool, args, task, label):
+    """Shared TrustGate check for side-effecting plugin ops.
+
+    Returns None when the op may run, else an error dict. Two rules:
+    - fail CLOSED: no `decision.trust` wired means the op is refused,
+      not silently run ungated;
+    - only Route.DIRECT executes. ESCALATE and CLARIFY (v5.53) both
+      stop here — an ambiguous call must not fall through to execution.
+    """
+    decision = ctx._services.get("decision.trust")
+    if decision is None:
+        return {"error": f"{label} refused: no TrustGate wired "
+                         "(register decision.trust)"}
+    from schema import ToolCall
+    route = decision.decide(ToolCall(tool, args), {"task": task})
+    if route.value != "DIRECT":
+        return {"error": f"{label} blocked by TrustGate ({route.value})"}
+    return None
+
 class ModelPlugin:
     def __init__(self, name, model_fn):
         self.name, self.model_fn = name, model_fn
@@ -161,7 +181,8 @@ class MidModelPlugin:
         tok = HeliosBPE.load(os.path.join(ck, "mid_sft_v5.33.tok.json"))
         model = HeliosLMv5(HeliosLMv5Config(size="mid"))
         model.load_state_dict(torch.load(
-            os.path.join(ck, "mid_sft_v5.33.pt"), map_location="cpu"))
+            os.path.join(ck, "mid_sft_v5.33.pt"), map_location="cpu",
+            weights_only=True))
         model.eval()
         bos = tok.vocab[BOS]
 
@@ -390,21 +411,17 @@ class MemoryPlugin:
 
 class TerminalPlugin:
     """DeepSeek-harness style: local command execution. DANGEROUS ops
-    are gated by TrustGate (if wired)."""
+    are gated by TrustGate; with no gate wired, gated calls are refused
+    (pass gated=False to opt out explicitly)."""
 
     def apply(self, ctx):
         import subprocess
         def run(cmd, timeout=30, gated=True):
             if gated:
-                from gate import Route
-                from schema import ToolCall
-                # simulate TrustGate decision (if wired)
-                decision = ctx._services.get("decision.trust")
-                if decision:
-                    route = decision.decide(ToolCall("terminal", {"cmd": cmd}),
-                                            {"task": cmd})
-                    if route.value == "ESCALATE":
-                        return {"error": "blocked by TrustGate", "cmd": cmd}
+                err = _trust_check(ctx, "terminal", {"cmd": cmd}, cmd,
+                                   "terminal.run")
+                if err:
+                    return {**err, "cmd": cmd}
             try:
                 r = subprocess.run(cmd, shell=True, capture_output=True,
                                    text=True, timeout=timeout)
@@ -492,7 +509,8 @@ class TimePlugin:
             ctx.effect("time_now", {}, replay_fn=lambda p: True)
             return datetime.datetime.now().isoformat()
         def utc():
-            return datetime.datetime.utcnow().isoformat() + "Z"
+            return datetime.datetime.now(datetime.timezone.utc) \
+                .replace(tzinfo=None).isoformat() + "Z"
         ctx.register("time.now", now)
         ctx.register("time.utc", utc)
 
@@ -729,15 +747,10 @@ class GitHubPlugin:
                         for i in r if "pull_request" not in i]
             return r
         def create_issue(owner, repo, title, body=""):
-            decision = ctx._services.get("decision.trust")
-            if decision:
-                from schema import ToolCall
-                from gate import Route
-                route = decision.decide(
-                    ToolCall("github", {"op": "create_issue"}),
-                    {"task": title})
-                if route.value == "ESCALATE":
-                    return {"error": "blocked by TrustGate"}
+            err = _trust_check(ctx, "github", {"op": "create_issue"},
+                               title, "github.create_issue")
+            if err:
+                return err
             return _api(f"/repos/{owner}/{repo}/issues", "POST",
                         {"title": title, "body": body})
         ctx.register("github.get_repo", get_repo)
@@ -1111,17 +1124,22 @@ class NanoVideoPlugin:
     The 'nano-pdf' analog for video -- minimal local generation."""
 
     def apply(self, ctx):
-        import subprocess, os
+        import subprocess, os, tempfile
         def from_images(image_paths, audio_path=None, out_path="out.mp4",
                         duration_per_image=2):
+            list_file = None
             try:
                 if not image_paths:
                     return {"error": "no images"}
-                # ffmpeg concat demuxer
-                list_file = "/tmp/ffmpeg_list.txt"
-                with open(list_file, "w") as f:
+                # ffmpeg concat demuxer; a per-call list file so concurrent
+                # calls don't overwrite each other's image lists
+                fd, list_file = tempfile.mkstemp(prefix="ffmpeg_list_",
+                                                 suffix=".txt")
+                with os.fdopen(fd, "w") as f:
                     for img in image_paths:
-                        f.write(f"file '{img}'\n")
+                        # concat syntax: close the quote, escaped ', reopen
+                        quoted = str(img).replace("'", "'\\''")
+                        f.write(f"file '{quoted}'\n")
                         f.write(f"duration {duration_per_image}\n")
                 cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
                        "-i", list_file, "-vsync", "vfr", "-pix_fmt", "yuv420p"]
@@ -1140,6 +1158,12 @@ class NanoVideoPlugin:
                 return {"error": "ffmpeg not installed"}
             except Exception as e:
                 return {"error": str(e)[:200]}
+            finally:
+                if list_file:
+                    try:
+                        os.remove(list_file)
+                    except OSError:
+                        pass
         ctx.register("nanovideo.from_images", from_images)
 
 class BlenderPlugin:
@@ -1279,15 +1303,8 @@ class RobotControlPlugin:
         state = {"x": 0.0, "y": 0.0, "theta": 0.0,
                  "joints": [0.0] * 6, "gripper": 0.0}
         def _gate(op, params):
-            decision = ctx._services.get("decision.trust")
-            if decision:
-                from schema import ToolCall
-                route = decision.decide(
-                    ToolCall("robot", {"op": op, **params}),
-                    {"task": f"robot.{op}"})
-                if route.value == "ESCALATE":
-                    return {"error": f"robot.{op} blocked by TrustGate"}
-            return None
+            return _trust_check(ctx, "robot", {"op": op, **params},
+                                f"robot.{op}", f"robot.{op}")
         def move_base(vx, vy, omega, duration_s=1.0):
             g = _gate("move_base", {"vx": vx, "vy": vy})
             if g:

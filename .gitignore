@@ -50,3 +50,6 @@ deepseek_full.json
 luna_full.json
 prompt_zero_scores.json
 smoke*.json
+
+# Standard-benchmark full downloads (re-fetch: scripts/fetch_std_bench.py)
+data/std_bench/full/

@@ -32,7 +32,8 @@ def inspect_call(call, registry: ToolRegistry) -> dict:
 
     Returns a deterministic record with status:
     - "complete": exact arg keys and exact builtin types match the ToolSpec;
-    - "missing": one or more required params are absent (CLARIFY candidate);
+    - "missing": one or more required params are absent and the present
+      ones are exact (CLARIFY candidate);
     - "invalid": unknown tool, non-object args, extras, or wrong types.
 
     The distinction matters: missing information is a user question; invalid
@@ -62,12 +63,17 @@ def inspect_call(call, registry: ToolRegistry) -> dict:
                 "expected": expected.__name__,
                 "got": type(value).__name__,
             })
-    if missing:
+    # Invalid structure wins over missing: a call that is both incomplete
+    # AND has extras/wrong types is malformed, not merely underspecified —
+    # asking for the missing field would still leave a broken call.
+    if missing and not (extra or wrong_types):
         status = "missing"
         detail = "missing required parameter(s): " + ", ".join(missing)
     elif extra or wrong_types:
         status = "invalid"
         bits = []
+        if missing:
+            bits.append("missing parameter(s): " + ", ".join(missing))
         if extra:
             bits.append("extra parameter(s): " + ", ".join(extra))
         if wrong_types:

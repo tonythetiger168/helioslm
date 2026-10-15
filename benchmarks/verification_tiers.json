@@ -20,6 +20,8 @@
     "api_probe_summary_2026-10-04.json": {"tier": "measured", "basis": "cross-model summary of the 2026-10-04 probes"},
     "cost_comparison_agentark.json": {"tier": "measured", "basis": "cost-arithmetic comparison vs AgentArk claim; component numbers from measured artifacts"},
     "cost_per_completed_task_2026-10-13.json": {"tier": "measured", "basis": "M6 composition of measured mid_agent_eval_v5 completion evidence with the oracle-tested disagg cost model and score_stream audit; USD is a $1/worker-hour normalization"},
+    "calibration_board_2026-10-15.json": {"tier": "measured", "basis": "Phase A calibration board: deterministic AUROC/Brier/ECE recompute over eight committed measured probe artifacts (hashes recorded); T88 rebuilds it byte-for-byte; n=12 per row, directional only"},
+    "csa_ab_2026-10-15.json": {"tier": "measured", "basis": "Phase B v4_csa constructive passkey A/B on the hca_ab probe (identity-wired, seed 0, dense row reproduces hca_ab exactly); no oracle gate blocks the artifact; T92 recomputes a slice"},
     "clarify_missing_param_2026-10-13.json": {"tier": "oracle-tested", "basis": "M3 constructive missing-parameter suite; T86 asserts 6/6 CLARIFY without execution, 6/6 completed controls DIRECT, and low-trust/schema-invalid ESCALATE"},
     "direction12_analysis.json": {"tier": "measured", "basis": "sycophancy decomposition + ceiling-effect audit on recorded probe data"},
     "disagg_pareto_2026-09-25.json": {"tier": "oracle-tested", "basis": "three-axis Pareto sweep under the monotonicity gate; T18 asserts the gate and the cache_aware anti-monotonicity finding"},
@@ -41,6 +43,7 @@
     "results_2026-09-23.json": {"tier": "measured", "basis": "bench_cpu wall-clock + analytic KV accounting"},
     "results_2026-10-06.json": {"tier": "measured", "basis": "bench_cpu wall-clock + analytic KV accounting"},
     "rlcd_head_summary.json": {"tier": "measured", "basis": "RLCD head on 24 real outcome records; n=24 small-sample caveat recorded in CHANGELOG"},
+    "std_bench_reference_2026-10-15.json": {"tier": "oracle-tested", "basis": "GSM8K/HumanEval/terminal harness validation (pinned upstream subsets + the in-code terminal tasks): gold, canonical and scripted reference generators must score 100% and empty/perturbed/no-op/prose ones 0%, 11 gates enforced by examples/std_bench_run.py (a failing gate writes nothing); T89 rebuilds it byte-for-byte"},
     "three_modes_2026-09-25.json": {"tier": "oracle-tested", "basis": "tau-routing monotonicity gate PASS on the real checkpoint; T19 asserts the overconfidence finding"}
   }
 }

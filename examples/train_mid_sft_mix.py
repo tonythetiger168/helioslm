@@ -99,7 +99,8 @@ def main():
     # hot start from existing mid
     init = out_dir / "mid_sft_v5.33.pt"
     if init.exists():
-        model.load_state_dict(torch.load(init, map_location="cpu"))
+        model.load_state_dict(torch.load(init, map_location="cpu",
+                                         weights_only=True))
         print("hot-start from mid_sft_v5.33.pt", flush=True)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = model.to(device)

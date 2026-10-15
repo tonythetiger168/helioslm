@@ -51,11 +51,13 @@ from helioslm_v5.src.audio.streaming_encoder import StreamingAudioEncoder
 
 def _is_full_attention_layer(config, layer_idx):
     """Hybrid interleave rule (v5.5): MLA iff layer 0 or
-    ``idx % every == every - 1``; GatedDeltaAttention otherwise."""
+    ``idx % every == every - 1``; GatedDeltaAttention otherwise. With
+    ``first_layer_full=False`` (v5.57, K3 block order) the layer-0
+    exception is dropped."""
     hcfg = getattr(config, "hybrid_attention", None)
     if hcfg is None or not getattr(hcfg, "enabled", False):
         return True
-    if layer_idx == 0:
+    if layer_idx == 0 and getattr(hcfg, "first_layer_full", True):
         return True
     every = hcfg.full_attention_every
     return layer_idx % every == every - 1
@@ -314,8 +316,9 @@ class HeliosLMv5(nn.Module):
                 )
             # Hybrid models (v5.5): recurrent-state tensors have no sequence
             # axis — take the length from the first dim-2-sequence (MLA)
-            # cache tensor via the shared helper (m11; layer 0 is always
-            # MLA under the interleave rule).
+            # cache tensor via the shared helper (m11). It scans every
+            # layer, so a non-MLA layer 0 (first_layer_full=False, v5.57)
+            # is fine; config validation guarantees an MLA layer exists.
             past_len = past_seq_len(past_key_values)
 
         hidden_states = self.embed_tokens(input_ids)

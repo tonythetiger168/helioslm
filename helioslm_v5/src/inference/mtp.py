@@ -380,8 +380,10 @@ class MTPDecoder:
         """Sequence length covered by a per-layer cache (0 for None).
 
         Recurrent-state tensors are skipped (fixed shape, no sequence
-        axis). Under the hybrid interleave rule layer 0 is always MLA, so
-        a sequence-length tensor always exists in a hybrid cache.
+        axis). Every layer is scanned, and config validation guarantees
+        at least one MLA layer (even with ``first_layer_full=False``,
+        v5.57), so a sequence-length tensor always exists in a hybrid
+        cache.
         """
         if past is None:
             return 0

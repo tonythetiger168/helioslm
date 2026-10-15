@@ -1,0 +1,65 @@
+{
+  "experiment": "Phase B v4_csa: dense vs CSA compress-then-select",
+  "scoring": "constructive-oracle-passkey-readout",
+  "verification_tier": "measured",
+  "date": "2026-10-15",
+  "torch": "2.14.1+cu130",
+  "params": {
+    "seq_lens": [
+      512,
+      1024
+    ],
+    "ratios": [
+      4,
+      16
+    ],
+    "topks": [
+      8,
+      32
+    ],
+    "trials": 200,
+    "pairs": 8,
+    "dim": 64,
+    "heads": 2,
+    "amp": 24.0,
+    "boost": 1.6,
+    "seed": 0
+  },
+  "chance": 0.125,
+  "note": "identity-wired constructive oracle (no training, no dataset); same probe and dense arm as hca_ab_2026-10-12",
+  "results": [
+    {
+      "seq_len": 512,
+      "accuracy": {
+        "dense": 0.91,
+        "csa-4x@k8": 0.13,
+        "csa-4x@k32": 0.13,
+        "csa-16x@k8": 0.15,
+        "csa-16x@k32": 0.15
+      },
+      "selection_hit_rate": {
+        "csa-4x@k8": 1.0,
+        "csa-4x@k32": 1.0,
+        "csa-16x@k8": 0.925,
+        "csa-16x@k32": 0.98
+      }
+    },
+    {
+      "seq_len": 1024,
+      "accuracy": {
+        "dense": 0.875,
+        "csa-4x@k8": 0.105,
+        "csa-4x@k32": 0.105,
+        "csa-16x@k8": 0.125,
+        "csa-16x@k32": 0.125
+      },
+      "selection_hit_rate": {
+        "csa-4x@k8": 0.995,
+        "csa-4x@k32": 1.0,
+        "csa-16x@k8": 0.855,
+        "csa-16x@k32": 0.965
+      }
+    }
+  ],
+  "results_sha256": "6ff9641f7940e792ac911595cf050a5db193109a315633f44371254b143a51bf"
+}

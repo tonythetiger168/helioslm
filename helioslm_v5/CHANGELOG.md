@@ -1,5 +1,210 @@
 # HeliosLM v5 Changelog
 
+## v5.58 (2026-10-15) - Roadmap Phase B: v4_csa (CSA in DeepSeek-V4 order)
+
+- `attention/kv_compress.py` `CompressedSparseAttention`: compress, then
+  select — one mean-pooled K/V entry per completed chunk of `ratio`
+  tokens, a head-mean lightning-style indexer picks the top-`topk`
+  entries of strictly-past chunks, and attention runs over those picks
+  plus the exact tokens of the query's own chunk. Causal by
+  construction; `shared_indexer` for IndexShare; `return_selection`
+  exposes the picks. Reduces to dense causal attention at `ratio=1`.
+  Deviations from V4 recorded in the docstring: mean-pooling instead of
+  a learned compressor, fp32 linear indexer instead of FP4, head-shared
+  selection, standalone module rather than an MLA-latent integration.
+- `v4_attention_stack(dim, n_layers, pattern="CH", ...)`: CSA / HCA
+  interleave preset (HCA without rescue — V4 keeps exact recall in CSA),
+  with every `share_indexer_every` CSA layers sharing one indexer. The
+  pattern is a parameter, not a claim about V4's layer ratio.
+- `examples/csa_ab_passkey.py` -> `benchmarks/csa_ab_2026-10-15.{json,md}`
+  on the B1-2 constructive passkey probe (same probe and dense arm as
+  `hca_ab_2026-10-12`, whose dense row it reproduces exactly). Finding:
+  mean-pooled CSA stays at chance (0.105–0.150) at 4× and 16× although
+  the indexer selects the right chunk in 86–100% of trials — pooling
+  divides the planted token's 1.13× score lead by the ratio, so the
+  compressor, not the selection, is the bottleneck. Next `v4_csa` step:
+  a learned compressor, measured on the same probe.
+- T92 (`tests/test_csa.py`, 7 tests): ratio-1 == dense SDPA (8.9e-8),
+  vectorized == slow per-query reference with padding (1.2e-7),
+  causality and selection bounds, padding exclusion, no gradient through
+  top-k, the stack preset (pattern, IndexShare grouping, one indexer of
+  parameters saved, shared == copied weights, validation), and a
+  recomputed slice of the committed A/B artifact.
+
+## v5.57 (2026-10-15) - Roadmap Phase B: Kimi-K3-style block preset
+
+First Phase B item. The stack already had most of the K3 recipe (KDA
+per-channel decay v5.21, attention residuals v5.5, LatentMoE v5.5,
+hybrid interleave v5.5); this adds the two missing pieces and a preset.
+
+- `attention.output_gate` (Gated MLA): elementwise sigmoid gate from the
+  layer input on the per-head values before `o_proj`
+  (`MLA.o_gate_proj`), applied through one shared `_project_out` in both
+  the expanded and absorbed paths. Off by default: no extra parameter,
+  and default-config logits are bit-identical to v5.56 (checked for both
+  the pure-MLA and hybrid layouts).
+- `hybrid_attention.first_layer_full`: False drops the "layer 0 is MLA"
+  exception, giving the K3 block order KDA, KDA, KDA, MLA. Past length
+  was already derived by scanning every layer, so validation only has to
+  require at least one MLA layer (it now refuses layouts with none).
+- `configs.config_v5.k3_block_config(size)`: 3:1 interleave in K3 order,
+  per-channel decay, Gated MLA, attention residuals, LatentMoE
+  (`hidden_size // 2` below full size; lite is raised to 4 layers so one
+  full block exists). Not reproduced: K3's "Stable" LatentMoE variant,
+  FP4 training, scale.
+- T91 (`tests/test_k3_block.py`, 6 tests): defaults untouched, K3 order
+  and validation, gate math bitwise against the ungated twin in both
+  paths, expanded == absorbed with the gate on (1.5e-7), the preset's
+  cached decode == full forward (1.6e-6) with gradients reaching the
+  output and residual gates, and an ungated checkpoint failing to load
+  strictly into a gated model.
+
+## v5.56 (2026-10-15) - Roadmap Phase A: terminal-style sandbox tasks
+
+Third and last code item of Phase A: Terminal-Bench-style agent tasks.
+
+- `eval/term_bench.py`: ten original tasks (log filtering, renaming,
+  e-mail extraction, fixing an off-by-one in a script, directory layout,
+  CSV aggregation, largest file, in-place config edits, JSON filtering,
+  archiving). Each seeds a fresh sandbox; the model runs one bash
+  command per turn and finishes with `DONE confidence=<p>`; a Python
+  verifier checks the final directory state. Verifiers never enter the
+  sandbox (M1). Several tasks carry a deliberate trap (a WARN line that
+  mentions ERRORS, a `northwest` region, an archive of `.` instead of
+  `docs/`, a hard-coded `calc.py`), and the verifiers reject those naive
+  solutions.
+- The stated confidence is recorded as `conf_type: "verbalized"`, so
+  terminal runs go onto the calibration board.
+- Commands run as `bash -c` with the sandbox as cwd and HOME, a minimal
+  env, a 10 s timeout and CPU / 1 GiB address-space / 16 MiB file-size
+  limits. Nothing stops a command from touching paths outside the
+  sandbox; run untrusted models in a container.
+- `examples/std_bench_run.py --bench terminal`: shares the reference
+  gates and API mode with GSM8K / HumanEval. The reference artifact now
+  enforces 11 gates (scripted solutions 10/10; immediate DONE and
+  prose-only replies 0/10).
+- T90 (`tests/test_term_bench.py`, 5 tests): every task starts unsolved
+  and its reference solves it, naive solutions are rejected, reply
+  parsing, sandbox limits, and a multi-turn API run against a mock
+  server whose output scores on the calibration board.
+
+## v5.55 (2026-10-15) - Roadmap Phase A: GSM8K / HumanEval harness
+
+Second Phase A item: two public benchmarks, so HeliosLM numbers can be
+compared with anyone's instead of only our 12-task probe suite.
+
+- `data/std_bench/`: first 50 GSM8K test and first 20 HumanEval records,
+  unmodified, from pinned upstream commits (MIT; notices in
+  `LICENSES.md`; commits + sha256 in `MANIFEST.json`).
+  `scripts/fetch_std_bench.py` fetches the full splits into the
+  gitignored `full/` directory and `--verify` re-checks the subsets.
+- `eval/std_bench.py`: model-agnostic runner (`generate_fn(prompt, i)`
+  -> text or `(text, conf)`). GSM8K: `#### n` marker else last number,
+  Decimal-normalized exact match, majority vote with self-consistency
+  conf over n samples. HumanEval: body or fenced-function completions,
+  upstream tests executed in a `python -I` subprocess with a temp cwd,
+  empty env, wall-clock timeout and CPU / 1 GiB address-space limits
+  (stops runaway code, not a hostile program — use a container for
+  untrusted models). Output is in the shared probe schema, so every
+  run can go straight onto the calibration board.
+- `examples/std_bench_run.py`: `--reference` writes
+  `benchmarks/std_bench_reference_2026-10-15.json` (tier oracle-tested)
+  after enforcing eight gates — gold / canonical generators must score
+  100%, empty / perturbed ones 0%; a failing gate writes nothing.
+  `--preset` / `--base --model` runs a model over an OpenAI-compatible
+  API (reusing probe_api's presets and request ladder); any API error
+  aborts the run instead of writing a partial result.
+- **Bug fix (`probe_api.chat_once`):** `HTTPError` subclasses `URLError`,
+  so every 400 the parameter-degradation ladder relies on was retried 4x
+  with 30 s of backoff sleeps before the ladder moved on. Only 429/5xx
+  are retried now. T84 pins it (the max_tokens request is sent exactly
+  once — 4x on the old code) and runs in 2.7 s instead of 33 s.
+- T89 (`tests/test_std_bench.py`, 5 tests): data provenance, extraction
+  oracles, sandbox (pass / assertion failure / timeout / MemoryError),
+  byte-exact reference rebuild, and the API path end-to-end against a
+  mock OpenAI-compatible server (no network, no key).
+
+## v5.54 (2026-10-15) - Roadmap Phase A: calibration leaderboard
+
+First Phase A item of `docs/ROADMAP_2026Q4.md`. Public leaderboards
+rank how often a model is right; this board ranks whether it KNOWS
+when it is wrong.
+
+- `eval/calibration_board.py`: scores any artifact in the shared probe
+  schema (`results[*].correct` + `conf`) on AUROC (correct-vs-wrong
+  detection; null when a run is single-class, never a fake 0.5/1.0),
+  Brier (ranking key — a proper scoring rule defined on every run),
+  10-bin ECE (reuses `quant_calib.ece`) and overconfident-wrong count
+  (wrong at conf >= 0.9). Null-conf rows count toward accuracy only and
+  the board reports how many rows each metric covers. Loud
+  `BoardSchemaError` on non-bool `correct` or out-of-range `conf`.
+- `examples/calibration_board.py`: builds the board from eight committed
+  probe artifacts (two API probes, six local mid-model evals;
+  `mid_agent_eval_v4_copycurr.json` is excluded as a byte-identical copy
+  of `mid_agent_eval_v4.json`); `--check` verifies the committed board
+  is current.
+- `benchmarks/calibration_board_2026-10-15.{json,md}`: tier `measured`,
+  input sha256s recorded. Finding: every wrong answer from the local
+  mid model across all six runs was given at conf >= 0.9,
+  while gpt-5.6-luna's self-consistency conf separates its right and
+  wrong answers (AUROC 0.84, 0/7 overconfident-wrong). n=12 per row:
+  directional, not significant.
+- T88 (`tests/test_calibration_board.py`, 4 tests): hand-computed
+  AUROC/Brier oracles incl. ties and the undefined case, loud input
+  validation, null-conf accounting, deterministic Brier ranking, and a
+  byte-for-byte rebuild of the committed board (confirmed to fail when
+  the committed .md is edited).
+- `docs/MILESTONES.md`: status of milestones M1-M3, M5, M6 in one
+  place (M4 dropped from the plan).
+
+## 2026-10-15 - Review fixes (post v5.53)
+
+- `execute()` validates args against the ToolSpec, so
+  `defer_validation=True` with a non-clarify gate yields `TOOL_ERROR`
+  instead of a `TypeError` crash; a malformed `finish` no longer ends
+  the run. Missing + malformed calls route to ESCALATE, not CLARIFY.
+- Harness `terminal.run` / `github.create_issue` / `robot.*` share
+  `_trust_check`: fail closed without a TrustGate, execute only on
+  `Route.DIRECT` (CLARIFY no longer falls through). `gated=False`
+  remains the explicit opt-out.
+- Web UI v2 rejects non-loopback `Host` (DNS rebinding) and, on
+  state-changing requests, non-loopback `Origin`.
+- `torch.load(weights_only=True)` for state_dict loads (web UI,
+  MidModelPlugin, examples); `calc` overflow / `0**-1` are tool errors;
+  NanoVideoPlugin uses a per-call temp list file and escapes quotes;
+  duplicate sweep JSONLs removed; release zip no longer lists a missing
+  root CHANGELOG; DecisionHead.evaluate detaches before `float()`.
+- T87 (`tests/test_review_fixes.py`) + `test_origin_and_host_checks`.
+
+## v5.53 (2026-10-14) - M3 TrustGate CLARIFY three-state routing
+
+Entry reconstructed from the merge commit (#19); the original PR did
+not add one.
+
+- `agent/trust_gate_clarify.py`: a terminal CLARIFY route for
+  syntactically valid calls with missing required parameters
+  (`inspect_call` classifies complete / missing / invalid).
+- Parser validation stays the default; deferred validation
+  (`defer_validation=True`) is explicit opt-in.
+- `eval/clarify_missing_param.py` + `examples/eval_clarify_missing_param.py`
+  -> `benchmarks/clarify_missing_param_2026-10-13.json`
+  (byte-verified artifact).
+- T86 (`tests/test_trust_gate_clarify.py`).
+
+## v5.52 (2026-10-13) - M6 cost-per-completed-task baseline
+
+Entry reconstructed from the merge commit (#18); the original PR did
+not add one.
+
+- `eval/cost_per_task.py`: combines oracle-checked completion evidence
+  (`mid_agent_eval_v5.json`, re-checking `final == expected`), the
+  disagg simulator's worker-seconds / Pareto front, and a score_stream
+  quality audit. USD is a $1/worker-hour normalization, not a market
+  price.
+- `examples/cost_per_completed_task.py` ->
+  `benchmarks/cost_per_completed_task_2026-10-13.json`.
+- T85 (`tests/test_cost_per_task.py`).
+
 ## v5.51 (2026-10-13) - Verification-discipline wave: self-grading guard + artifact tiers + probe refresh
 
 Three milestones (M1/M2/M5) from the 2026-10-13 landscape review

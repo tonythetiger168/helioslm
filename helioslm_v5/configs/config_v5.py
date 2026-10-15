@@ -97,6 +97,14 @@ class AttentionConfig:
     # rope_scaling is ignored (loud warning-free by design: the config
     # simply has no rotary to scale).
     nope: bool = False
+    # Gated MLA (v5.57, Kimi-K3 direction): an elementwise sigmoid output
+    # gate computed from the layer input, applied to the per-head values
+    # right before o_proj:  o = o_proj(attn_out * sigmoid(o_gate_proj(x))).
+    # Same placement in the expanded and absorbed paths, so the two stay
+    # equivalent. False (default) = no o_gate_proj, bit-identical to v5.56.
+    # Checkpoint caveat: a gated model has an extra o_gate_proj weight per
+    # MLA layer, so loading an ungated checkpoint strictly fails loudly.
+    output_gate: bool = False
     # KV-cache storage dtype (v5.7): "auto" keeps the compute dtype;
     # "fp8" stores the absorbed mode's c_kv cache in float8_e4m3fn
     # (saturating cast, scale-free — post-RMSNorm latents are O(1), and the
@@ -222,9 +230,14 @@ class HybridAttentionConfig:
     When enabled, layer i uses MLA iff
     ``i == 0 or i % full_attention_every == full_attention_every - 1``
     and a GatedDeltaAttention (linear attention with a fixed-size recurrent
-    state cache) otherwise. Layer 0 is ALWAYS MLA, so
-    ``past_key_values[0]`` keeps the dim-2-sequence layout that
-    ``HeliosLMv5.forward`` uses to derive past length.
+    state cache) otherwise.
+
+    ``first_layer_full`` (v5.57): True (default) keeps layer 0 MLA as in
+    v5.5. False drops the ``i == 0`` exception, giving the Kimi-K3 block
+    order (linear, linear, linear, MLA for ``full_attention_every=4``).
+    Past length is derived by scanning EVERY layer for a sequence cache
+    (``linear_attention.past_seq_len``), so only "at least one MLA layer"
+    is required; validation enforces it.
     """
     # None -> follow size (full: True, lite: False, i.e. v5.4 behaviour).
     enabled: Optional[bool] = None
@@ -240,6 +253,8 @@ class HybridAttentionConfig:
     # an existing scalar-gate checkpoint fails loudly on the wider
     # g_proj/decay_bias shapes (by design; retrain or remap the gate).
     per_channel_decay: bool = False
+    # v5.57: see the class docstring. True = v5.5 rule (bit-identical).
+    first_layer_full: bool = True
 
 
 @dataclass
@@ -544,8 +559,25 @@ class HeliosLMv5Config:
         if h.full_attention_every < 2:
             raise ValueError(
                 f"hybrid_attention.full_attention_every must be >= 2 "
-                f"(layer 0 is always MLA), got {h.full_attention_every}"
+                f"(a value of 1 would make every layer MLA), got "
+                f"{h.full_attention_every}"
             )
+        if not isinstance(h.first_layer_full, bool):
+            raise ValueError(
+                f"hybrid_attention.first_layer_full must be a bool, got "
+                f"{h.first_layer_full!r}")
+        if (h.enabled and not h.first_layer_full
+                and self.num_hidden_layers < h.full_attention_every):
+            raise ValueError(
+                f"hybrid_attention.first_layer_full=False with "
+                f"num_hidden_layers={self.num_hidden_layers} < "
+                f"full_attention_every={h.full_attention_every} leaves no "
+                f"MLA layer: the cache would carry no sequence axis to "
+                f"derive the past length from")
+        if not isinstance(self.attention.output_gate, bool):
+            raise ValueError(
+                f"attention.output_gate must be a bool, got "
+                f"{self.attention.output_gate!r}")
         if h.linear_num_heads <= 0 or h.linear_head_dim <= 0:
             raise ValueError(
                 f"hybrid_attention.linear_num_heads/linear_head_dim must be "
@@ -725,3 +757,41 @@ class HeliosLMv5Config:
                     f"final_logit_soft_cap must be a positive number or "
                     f"None, got {self.final_logit_soft_cap!r}"
                 )
+
+
+def k3_block_config(size="lite", num_hidden_layers=None):
+    """Kimi-K3-style block preset (v5.57, roadmap Phase B).
+
+    Sets the four K3 ingredients this stack implements (Kimi K3
+    technical report, arXiv 2607.24653):
+
+    - 3:1 linear/global interleave in K3 order: KDA, KDA, KDA, MLA
+      (``full_attention_every=4``, ``first_layer_full=False``);
+    - KDA = GatedDeltaAttention with the per-channel decay gate
+      (``per_channel_decay=True``);
+    - Gated MLA (``attention.output_gate=True``, ``MLA.o_gate_proj``);
+    - Attention Residuals (``use_attention_residuals=True``) and
+      LatentMoE (``moe.latent_dim``; the full size keeps its 1024
+      default, smaller sizes use ``hidden_size // 2``).
+
+    Not reproduced: K3's "Stable" LatentMoE variant and its exact
+    hyper-parameters, FP4 training, and scale. ``num_hidden_layers``
+    defaults to the size preset, except "lite" (2 layers) is raised to 4
+    so one full K3 block exists. Everything else follows ``size``;
+    mutate the returned config and call ``_validate()`` to adjust.
+    """
+    if size == "lite" and num_hidden_layers is None:
+        num_hidden_layers = 4
+    cfg = HeliosLMv5Config(
+        size=size,
+        num_hidden_layers=num_hidden_layers,
+        use_attention_residuals=True,
+        attention=AttentionConfig(output_gate=True),
+        hybrid_attention=HybridAttentionConfig(
+            enabled=True, full_attention_every=4, first_layer_full=False,
+            per_channel_decay=True),
+    )
+    if cfg.moe.latent_dim is None:
+        cfg.moe.latent_dim = cfg.hidden_size // 2
+        cfg._validate()
+    return cfg

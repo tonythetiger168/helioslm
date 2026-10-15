@@ -68,7 +68,8 @@ def main():
     ckpt = Path(__file__).resolve().parent.parent / "checkpoints" / \
         "tool_tuned_v5.27.pt"
     model = HeliosLMv5(HeliosLMv5Config(size="lite")).eval()
-    model.load_state_dict(torch.load(ckpt, map_location="cpu"))
+    model.load_state_dict(torch.load(ckpt, map_location="cpu",
+                                     weights_only=True))
 
     envs = make_envs()
     records = []
