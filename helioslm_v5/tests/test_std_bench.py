@@ -8,7 +8,7 @@ Pins:
 3. HumanEval program assembly (body / fenced function) and the sandbox:
    canonical solutions pass, a stub fails, an infinite loop times out,
    and a memory bomb is stopped by the address-space limit;
-4. the committed reference artifact rebuilds byte-for-byte, all eight
+4. the committed reference artifact rebuilds byte-for-byte, all eleven
    gates hold, and it is registered as oracle-tested;
 5. the API path end-to-end against a MOCK OpenAI-compatible server
    (no network, no key): the output is in the probe schema and scores
@@ -99,7 +99,7 @@ def test_humaneval_sandbox():
 
 def test_reference_artifact():
     report = json.loads(_ARTIFACT.read_text(encoding="utf-8"))
-    assert len(report["gates"]) == 8
+    assert len(report["gates"]) == 11   # 4 gsm8k + 4 humaneval + 3 terminal
     for name, g in report["gates"].items():
         assert g["accuracy"] == g["required"], name
     reg = load_registry(_REPO / "benchmarks" / "verification_tiers.json")
@@ -156,7 +156,7 @@ def test_api_path_with_mock():
     try:
         port = server.server_address[1]
         with tempfile.TemporaryDirectory() as td:
-            r = _run_cli(port, td)
+            r = _run_cli(port, td, "--bench", "gsm8k", "humaneval")
             assert r.returncode == 0, r.stdout + r.stderr
             g = json.loads((Path(td) / "std_bench_gsm8k_model-x_2026-10-15.json")
                            .read_text())

@@ -42,7 +42,7 @@
     "results_2026-09-23.json": {"tier": "measured", "basis": "bench_cpu wall-clock + analytic KV accounting"},
     "results_2026-10-06.json": {"tier": "measured", "basis": "bench_cpu wall-clock + analytic KV accounting"},
     "rlcd_head_summary.json": {"tier": "measured", "basis": "RLCD head on 24 real outcome records; n=24 small-sample caveat recorded in CHANGELOG"},
-    "std_bench_reference_2026-10-15.json": {"tier": "oracle-tested", "basis": "GSM8K/HumanEval harness validation on pinned upstream subsets: gold/canonical generators must score 100% and empty/perturbed ones 0%, enforced by examples/std_bench_run.py (a failing gate writes nothing); T89 rebuilds it byte-for-byte"},
+    "std_bench_reference_2026-10-15.json": {"tier": "oracle-tested", "basis": "GSM8K/HumanEval/terminal harness validation (pinned upstream subsets + the in-code terminal tasks): gold, canonical and scripted reference generators must score 100% and empty/perturbed/no-op/prose ones 0%, 11 gates enforced by examples/std_bench_run.py (a failing gate writes nothing); T89 rebuilds it byte-for-byte"},
     "three_modes_2026-09-25.json": {"tier": "oracle-tested", "basis": "tau-routing monotonicity gate PASS on the real checkpoint; T19 asserts the overconfidence finding"}
   }
 }

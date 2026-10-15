@@ -2,10 +2,11 @@
   "schema": "std-bench/1",
   "created": "2026-10-15",
   "verification_tier": "oracle-tested",
-  "purpose": "harness validation: answer extraction and the HumanEval sandbox, scored against known-right and known-wrong generators",
+  "purpose": "harness validation: answer extraction, the HumanEval sandbox and the terminal task verifiers, scored against known-right and known-wrong generators",
   "inputs": {
     "data/std_bench/gsm8k_test_first50.jsonl": "4718cc77e7d7b11c3fc2a049d7a0dbda483fc4bd37e5432488c9f9d0f2cf181a",
-    "data/std_bench/humaneval_first20.jsonl": "2ca75f00255d1c111a04769c0acf634983c8f3dbdb62aadf7b33941a46a4e91c"
+    "data/std_bench/humaneval_first20.jsonl": "2ca75f00255d1c111a04769c0acf634983c8f3dbdb62aadf7b33941a46a4e91c",
+    "helioslm_v5/eval/term_bench.py": "ee2eb062ab5711b5cc32e337b68fa61a77de67215ed93f5ab2b855156f369762"
   },
   "gates": {
     "gsm8k/gold_marker": {
@@ -39,7 +40,19 @@
     "humaneval/pass_body": {
       "required": 0.0,
       "accuracy": 0.0
+    },
+    "terminal/reference_solution": {
+      "required": 1.0,
+      "accuracy": 1.0
+    },
+    "terminal/done_immediately": {
+      "required": 0.0,
+      "accuracy": 0.0
+    },
+    "terminal/prose_no_command": {
+      "required": 0.0,
+      "accuracy": 0.0
     }
   },
-  "results_sha256": "ae9778dface12bb77851497f6f9d3dcd3c911f87a000e713c49915a6d0fffe17"
+  "results_sha256": "73ef7b7af1a05f1f105b5980d21da5cd2dba86daa5ba19b58cc5f7ede86c26b6"
 }

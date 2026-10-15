@@ -251,6 +251,6 @@ def summarize(results):
         raise BenchSchemaError("summarize: no results")
     c = sum(1 for r in results if r["correct"])
     out = {"n": n, "correct": f"{c}/{n}", "accuracy": round(c / n, 4)}
-    if results[0].get("family") == "humaneval":
+    if "pass_at_1" in results[0]:
         out["pass_at_1"] = round(sum(r["pass_at_1"] for r in results) / n, 4)
     return out

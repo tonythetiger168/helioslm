@@ -1,5 +1,34 @@
 # HeliosLM v5 Changelog
 
+## v5.56 (2026-10-15) - Roadmap Phase A: terminal-style sandbox tasks
+
+Third and last code item of Phase A: Terminal-Bench-style agent tasks.
+
+- `eval/term_bench.py`: ten original tasks (log filtering, renaming,
+  e-mail extraction, fixing an off-by-one in a script, directory layout,
+  CSV aggregation, largest file, in-place config edits, JSON filtering,
+  archiving). Each seeds a fresh sandbox; the model runs one bash
+  command per turn and finishes with `DONE confidence=<p>`; a Python
+  verifier checks the final directory state. Verifiers never enter the
+  sandbox (M1). Several tasks carry a deliberate trap (a WARN line that
+  mentions ERRORS, a `northwest` region, an archive of `.` instead of
+  `docs/`, a hard-coded `calc.py`), and the verifiers reject those naive
+  solutions.
+- The stated confidence is recorded as `conf_type: "verbalized"`, so
+  terminal runs go onto the calibration board.
+- Commands run as `bash -c` with the sandbox as cwd and HOME, a minimal
+  env, a 10 s timeout and CPU / 1 GiB address-space / 16 MiB file-size
+  limits. Nothing stops a command from touching paths outside the
+  sandbox; run untrusted models in a container.
+- `examples/std_bench_run.py --bench terminal`: shares the reference
+  gates and API mode with GSM8K / HumanEval. The reference artifact now
+  enforces 11 gates (scripted solutions 10/10; immediate DONE and
+  prose-only replies 0/10).
+- T90 (`tests/test_term_bench.py`, 5 tests): every task starts unsolved
+  and its reference solves it, naive solutions are rejected, reply
+  parsing, sandbox limits, and a multi-turn API run against a mock
+  server whose output scores on the calibration board.
+
 ## v5.55 (2026-10-15) - Roadmap Phase A: GSM8K / HumanEval harness
 
 Second Phase A item: two public benchmarks, so HeliosLM numbers can be

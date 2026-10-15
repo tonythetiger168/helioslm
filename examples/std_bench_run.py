@@ -1,12 +1,14 @@
-"""std_bench_run.py — roadmap Phase A: GSM8K / HumanEval runs.
+"""std_bench_run.py — roadmap Phase A: GSM8K / HumanEval / terminal runs.
 
 Two modes:
 
 1. Harness validation (no model, no network) — the committed artifact:
        python examples/std_bench_run.py --reference
-   Scores four synthetic generators on the committed subsets and
-   enforces the gates: gold answers / canonical solutions must score
-   100%, empty / perturbed answers must score 0%. A failing gate exits
+   Scores synthetic generators on the committed subsets and the
+   terminal tasks, and enforces 11 gates: gold answers / canonical
+   solutions / scripted reference solutions must score 100%; empty,
+   perturbed, do-nothing and prose-only replies must score 0%. A failing
+   gate exits
    non-zero and writes nothing, so the artifact is "oracle-tested".
    Add --check to verify the committed artifact instead of writing it.
 
@@ -24,6 +26,7 @@ Default data is the committed CI subset; --full uses data/std_bench/full/
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -35,6 +38,7 @@ from helioslm_v5.eval.calibration_board import (  # noqa: E402
 from helioslm_v5.eval.std_bench import (  # noqa: E402
     SCHEMA_ID, gsm8k_prompt, humaneval_prompt, load_gsm8k, load_humaneval,
     run_gsm8k, run_humaneval, summarize)
+from helioslm_v5.eval.term_bench import load_tasks, run_term_bench  # noqa: E402
 
 DATE = "2026-10-15"
 DATA = {
@@ -43,6 +47,11 @@ DATA = {
     "humaneval": ("data/std_bench/humaneval_first20.jsonl",
                   "data/std_bench/full/HumanEval.jsonl", load_humaneval,
                   run_humaneval),
+    # the terminal tasks are defined in code; their "data file" is the
+    # module itself, hashed like any other input
+    "terminal": ("helioslm_v5/eval/term_bench.py",
+                 "helioslm_v5/eval/term_bench.py",
+                 lambda _path: load_tasks(), run_term_bench),
 }
 REFERENCE_OUT = "benchmarks/std_bench_reference_2026-10-15.json"
 
@@ -59,6 +68,19 @@ def reference_generators(bench, tasks):
             ("empty", lambda p, i: "", 0.0),
             ("off_by_one", lambda p, i: f"#### {bumped[p]}", 0.0),
         ]
+    if bench == "terminal":
+        solutions = {t["id"]: t["solution"] for t in tasks}
+
+        def scripted(prompt, i):
+            m = re.search(r"\[(term/[^,]+), step (\d+) of", prompt)
+            steps, k = solutions[m.group(1)], int(m.group(2)) - 1
+            return (f"```bash\n{steps[k]}\n```" if k < len(steps)
+                    else "DONE confidence=0.9")
+        return [
+            ("reference_solution", scripted, 1.0),
+            ("done_immediately", lambda p, i: "DONE confidence=0.5", 0.0),
+            ("prose_no_command", lambda p, i: "This looks easy.", 0.0),
+        ]
     canon = {humaneval_prompt(t): t for t in tasks}
     return [
         ("canonical_body", lambda p, i: canon[p]["canonical_solution"], 1.0),
@@ -73,9 +95,10 @@ def reference_generators(bench, tasks):
 def build_reference():
     report = {"schema": SCHEMA_ID, "created": DATE,
               "verification_tier": "oracle-tested",
-              "purpose": "harness validation: answer extraction and the "
-                         "HumanEval sandbox, scored against known-right "
-                         "and known-wrong generators",
+              "purpose": "harness validation: answer extraction, the "
+                         "HumanEval sandbox and the terminal task "
+                         "verifiers, scored against known-right and "
+                         "known-wrong generators",
               "inputs": {}, "gates": {}}
     failures = []
     for bench, (subset, _, load, run) in DATA.items():
