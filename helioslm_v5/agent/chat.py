@@ -138,7 +138,8 @@ class ChatSession:
             if call is not None and route == Route.CLARIFY:
                 # In chat, CLARIFY is the assistant's turn-ending question.
                 return obs
-            if call is not None and call.name == "finish":
+            if (call is not None and call.name == "finish"
+                    and not obs.startswith("TOOL_ERROR")):
                 final = (call.args["answer"] if route_s == "DIRECT"
                          else obs.removeprefix("FINISH: "))
                 break

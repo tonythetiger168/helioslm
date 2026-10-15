@@ -212,7 +212,8 @@ class ThinkSession(ChatSession):
                 call, perr, route_s, obs))
             if call is not None and route == Route.CLARIFY:
                 return obs
-            if call is not None and call.name == "finish":
+            if (call is not None and call.name == "finish"
+                    and not obs.startswith("TOOL_ERROR")):
                 final = (call.args["answer"] if route_s == "DIRECT"
                          else obs.removeprefix("FINISH: "))
                 if last_thought is not None:

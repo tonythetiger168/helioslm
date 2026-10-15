@@ -62,7 +62,12 @@ def calc(expr: str) -> str:
         tree = ast.parse(expr, mode="eval")
     except SyntaxError as e:
         raise ToolCallError(f"calc: syntax error: {e}") from e
-    return repr(_eval_node(tree))
+    try:
+        return repr(_eval_node(tree))
+    except (OverflowError, ZeroDivisionError) as e:
+        # e.g. 1e300**2 or 0**-1: arithmetic faults are tool errors, not
+        # loop crashes
+        raise ToolCallError(f"calc: {e}") from e
 
 
 def str_op(s: str, op: str, n: int = 0) -> str:
@@ -118,5 +123,9 @@ def build_default_registry(root="/tmp/helioslm_agent"):
 
 
 def execute(call, registry: ToolRegistry, impls: dict) -> str:
-    registry.spec(call.name)
+    # Validate here, not only in the parser: with defer_validation=True
+    # (v5.53) the parser skips arg checks, and a gate other than
+    # TrustGateClarify would otherwise hand an incomplete or wrong-typed
+    # call straight to the impl (TypeError crash / silent wrong-type exec).
+    registry.spec(call.name).validate_args(call.args)
     return str(impls[call.name](**call.args))
