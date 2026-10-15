@@ -1,5 +1,26 @@
 # HeliosLM v5 Changelog
 
+## v5.61 (2026-10-15) - Compressor round 3, README retitle, roadmap Phase B2
+
+- Learned compressor round 3 (4× only, hidden 64, 9600 steps) ->
+  `benchmarks/csa_learned_r3_2026-10-15.{json,md}`: 4× passkey recall
+  0.725/0.645 -> 0.825/0.800 (oracle ceiling 0.900/0.870, dense
+  0.910/0.875), about 92% of the ceiling at both lengths; the L=1024
+  shortfall of v5.60 is gone.
+- Chosen on the validation stream at L=128 and L=512. Two negative
+  results recorded there: squared ReLU is worse at 4× (0.633/0.533 vs
+  0.667/0.693), and 9600 steps does not help 16× (0.313/0.387 vs
+  0.387/0.380), so 16× stays at its v5.60 result.
+- `CompressedSparseAttention(compressor_act="relu2")` option and
+  `--act` in the compressor script (default gelu; `--check` falls back
+  to gelu for older artifacts).
+- README retitled "HeliosLM（羲和）— Verifiable DeepSeek-V3/V4 and
+  Kimi-K3-Style LLM Architectures in Pure PyTorch" with a positioning
+  lead; Chinese name 羲和 and tagline 知止.
+- Roadmap Phase B2 (GLM-5.3 / MiMo comparison, B2-1..B2-6) in
+  `docs/ROADMAP_2026Q4.md` and `docs/MILESTONES.md`.
+- T95 (`tests/test_csa_learned_r3.py`, 2 tests).
+
 ## v5.60 (2026-10-15) - Roadmap Phase B: learned compressor round 2 + oracle ceiling
 
 - Diagnosis of v5.59's 4× gap: in failing trials the compressor put
