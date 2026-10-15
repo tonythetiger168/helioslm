@@ -66,8 +66,8 @@ when it is wrong.
   validation, null-conf accounting, deterministic Brier ranking, and a
   byte-for-byte rebuild of the committed board (confirmed to fail when
   the committed .md is edited).
-- `docs/MILESTONES.md`: M1-M6 status in one place; M4 recorded as
-  undefined (its source review is not in the repo) instead of guessed.
+- `docs/MILESTONES.md`: status of milestones M1-M3, M5, M6 in one
+  place (M4 dropped from the plan).
 
 ## 2026-10-15 - Review fixes (post v5.53)
 

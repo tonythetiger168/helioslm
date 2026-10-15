@@ -45,7 +45,7 @@
 | 評測 | agent 評測只有 12 個合成任務（12/12），沒有標準 benchmark harness，結果無法與他人比較 |
 | 生態系 | 真正的 tokenizer（#5）、Hugging Face Hub（#4）、fused 量化 benchmark（#2）都還沒做 |
 | 決策引擎 | Level 1 達 0.796 AUROC；Level 2 失敗（約 0.50）；多環境 GRPO 尚未開始 |
-| 維護 | `helioslm_v5/CHANGELOG.md` 缺 v5.52／v5.53 條目；M4 未定義 |
+| 維護 | `helioslm_v5/CHANGELOG.md` 缺 v5.52／v5.53 條目 |
 
 ## 3. 定位
 
@@ -61,7 +61,7 @@ HeliosLM 不應追排行榜，它的優勢在別處：
 - **維護：**
   - 合併 PR #21；
   - 補上 v5.52／v5.53 的 CHANGELOG 條目；
-  - 在 repo 內建立 milestone 文件並定義 M4。
+  - 在 repo 內建立 milestone 文件。
 - **標準評測 harness**，每個結果都標上驗證層級：
   - GSM8K、HumanEval 的小型子集；
   - 以現有工具層建構的終端型沙盒任務（迷你版 Terminal-Bench）。

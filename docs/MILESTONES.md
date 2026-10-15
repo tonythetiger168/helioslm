@@ -15,12 +15,11 @@ file in the same PR that lands or changes a milestone.
 | M1 | Self-grading invariant: OracleGuard keeps graders / answer keys out of tool reach | ✅ Done | v5.51 (#17) | T82 |
 | M2 | Artifact verification tiers: every benchmark JSON carries a registered tier, enforced in CI | ✅ Done | v5.51 (#17) | T83 |
 | M3 | TrustGate CLARIFY three-state routing for calls with missing parameters | ✅ Done | v5.53 (#19), hardened in the 2026-10-15 review fixes | T86, T87 |
-| M4 | **Undefined** — the source review is not in the repo and no commit names M4 | ❓ Needs definition | — | — |
 | M5 | API probe refreshed to the 2026-10 model generation, with cost accounting | ✅ Done | v5.51 (#17) | T84 |
 | M6 | Cost-per-completed-task baseline | ✅ Done | v5.52 (#18) | T85 |
 
-M4 is left undefined on purpose rather than guessed. Whoever has the
-2026-10-13 review should fill in this row.
+M4 was dropped from the plan; the remaining IDs are kept as-is, not
+renumbered.
 
 ## Roadmap 2026 Q4 phases
 
