@@ -363,3 +363,183 @@ class HighCompressionAttention(nn.Module):
             "rescue_values_per_query": rescue_per_query,
             "compression_vs_dense": dense_per_token / slot_per_token,
         }
+
+
+class CompressedSparseAttention(nn.Module):
+    """CSA in DeepSeek-V4 order (v5.58, roadmap Phase B): COMPRESS, then
+    SPARSE-SELECT over the compressed entries.
+
+    The sequence is cut into chunks of ``ratio`` tokens. Every completed
+    chunk is mean-pooled into ONE K/V entry (``ratio``x KV compression —
+    unlike CompressedGlobalAttention's running prefix averages, each
+    entry covers exactly one chunk). A lightning-indexer-style scorer
+    then picks the top-``topk`` entries for each query, and attention
+    runs over:
+
+      - SELECTED: the top-``topk`` compressed entries of chunks < c
+        (c = the query's chunk); a query never sees its own chunk's
+        entry, so selection is causal by construction;
+      - LOCAL:    the exact tokens of chunk c at positions <= i.
+
+    Indexer: score(i, s) = mean_h (idx_i . kc_s) / sqrt(dh) with
+    idx = indexer(x) — selection SHARED across heads (head-mean, the
+    same simplification as HighCompressionAttention's rescue and MLA's
+    "head_mean" indexer). Top-k is discrete, so no gradient reaches the
+    indexer through the selection; train it by distillation as the
+    learned MLA indexer does (examples/train_indexer_distill.py).
+
+    IndexShare: pass ``shared_indexer`` (an ``nn.Linear(dim, dim)``) to
+    reuse one indexer across several CSA layers instead of owning one.
+
+    Reduces to dense causal attention when ``ratio=1`` and ``topk``
+    covers every past token (each entry is then one exact token and the
+    local set is the query itself) — T92 pins that equivalence.
+
+    Deviations from DeepSeek-V4 (recorded): mean-pooling instead of a
+    learned compressor, an fp32 linear indexer instead of an FP4
+    lightning indexer, head-shared selection, and a standalone reference
+    module instead of an MLA-latent integration.
+    """
+
+    def __init__(self, dim: int, n_heads: int = 2, ratio: int = 4,
+                 topk: int = 8, shared_indexer=None):
+        super().__init__()
+        assert dim % n_heads == 0
+        if not isinstance(ratio, int) or ratio < 1:
+            raise ValueError(f"ratio must be a positive integer, got {ratio!r}")
+        if not isinstance(topk, int) or topk < 1:
+            raise ValueError(f"topk must be a positive integer, got {topk!r}")
+        if shared_indexer is not None and (
+                not isinstance(shared_indexer, nn.Linear)
+                or shared_indexer.in_features != dim
+                or shared_indexer.out_features != dim):
+            raise ValueError("shared_indexer must be nn.Linear(dim, dim)")
+        self.n_heads, self.ratio, self.topk = n_heads, ratio, topk
+        self.dh = dim // n_heads
+        self.qkv = nn.Linear(dim, 3 * dim)
+        self.out = nn.Linear(dim, dim)
+        self.indexer = (shared_indexer if shared_indexer is not None
+                        else nn.Linear(dim, dim))
+
+    def forward(self, x, attention_mask=None, return_selection=False):
+        """x: (B, L, D); attention_mask: (B, L), 1 = real, 0 = pad
+        (pads are excluded from pooling, selection and the local set;
+        padded query rows return finite values via nan_to_num). With
+        ``return_selection`` also returns the selected entry indices
+        (B, L, k) with -1 for empty picks."""
+        B, L, D = x.shape
+        H, dh, m = self.n_heads, self.dh, self.ratio
+        C = (L + m - 1) // m
+        pad = C * m - L
+        if attention_mask is None:
+            attention_mask = torch.ones(B, L, dtype=torch.long,
+                                        device=x.device)
+        if pad:
+            x = torch.cat([x, x.new_zeros(B, pad, D)], dim=1)
+            attention_mask = torch.cat(
+                [attention_mask,
+                 attention_mask.new_zeros(B, pad)], dim=1)
+        Lp = C * m
+        q, k, v = self.qkv(x).view(B, Lp, 3, H, dh).unbind(dim=2)
+        key_ok = attention_mask.bool()                       # (B, Lp)
+        scale = 1.0 / math.sqrt(dh)
+
+        # --- compress: one mean-pooled entry per chunk ------------------
+        mm = attention_mask.view(B, C, m, 1, 1).to(q.dtype)
+        cnt = mm.sum(2).clamp(min=1.0)
+        kc = (k.view(B, C, m, H, dh) * mm).sum(2) / cnt      # (B, C, H, dh)
+        vc = (v.view(B, C, m, H, dh) * mm).sum(2) / cnt
+        chunk_ok = key_ok.view(B, C, m).any(-1)              # (B, C)
+
+        # --- select: top-k entries of strictly-past chunks --------------
+        pos = torch.arange(Lp, device=x.device)
+        q_chunk = pos // m                                   # (Lp,)
+        idx = self.indexer(x).view(B, Lp, H, dh)
+        s_ix = torch.einsum("blhd,bshd->blhs", idx, kc).mean(2) * scale
+        eligible = (torch.arange(C, device=x.device).view(1, 1, C)
+                    < q_chunk.view(1, Lp, 1)) & chunk_ok.view(B, 1, C)
+        s_ix = s_ix.masked_fill(~eligible, float("-inf"))
+        kk = min(self.topk, C)
+        top = torch.topk(s_ix, kk, dim=-1)
+        sel, sel_ok = top.indices, torch.isfinite(top.values)  # (B, Lp, kk)
+
+        qh, kh, vh = (t.transpose(1, 2) for t in (q, k, v))  # (B, H, Lp, dh)
+        gidx = sel.view(B, 1, Lp, kk, 1).expand(B, H, Lp, kk, dh)
+        k_sel = torch.gather(
+            kc.transpose(1, 2).unsqueeze(2).expand(B, H, Lp, C, dh), 3, gidx)
+        v_sel = torch.gather(
+            vc.transpose(1, 2).unsqueeze(2).expand(B, H, Lp, C, dh), 3, gidx)
+        s_sel = (qh.unsqueeze(3) * k_sel).sum(-1) * scale    # (B, H, Lp, kk)
+        s_sel = s_sel.masked_fill(~sel_ok.view(B, 1, Lp, kk), float("-inf"))
+
+        # --- local: exact tokens of the query's own chunk, causal --------
+        same_chunk = q_chunk.view(Lp, 1) == q_chunk.view(1, Lp)
+        causal = pos.view(Lp, 1) >= pos.view(1, Lp)
+        local = (same_chunk & causal).view(1, 1, Lp, Lp) \
+            & key_ok.view(B, 1, 1, Lp)
+        s_loc = torch.matmul(qh, kh.transpose(-2, -1)) * scale
+        s_loc = s_loc.masked_fill(~local, float("-inf"))
+
+        p = torch.nan_to_num(torch.softmax(torch.cat([s_sel, s_loc], -1), -1))
+        p_sel, p_loc = p[..., :kk], p[..., kk:]
+        o = (p_sel.unsqueeze(-1) * v_sel).sum(3) + torch.matmul(p_loc, vh)
+        o = self.out(o.transpose(1, 2).reshape(B, Lp, D))
+        if pad:
+            o = o[:, :L]
+        if return_selection:
+            picks = sel.masked_fill(~sel_ok, -1)[:, :L]
+            return o, picks
+        return o
+
+    def get_compression_stats(self, seq_len: int) -> dict:
+        """Per-token stored values (values, not bytes; no speed claims):
+        dense keeps 2*H*dh per token; CSA keeps 2*H*dh/ratio amortized
+        entry values per token, attends at most ``topk`` entries plus
+        < ratio exact local tokens per query."""
+        if not isinstance(seq_len, int) or seq_len <= 0:
+            raise ValueError(
+                f"seq_len must be a positive integer, got {seq_len!r}")
+        dense = 2 * self.n_heads * self.dh
+        return {
+            "seq_len": seq_len, "ratio": self.ratio, "topk": self.topk,
+            "dense_values_per_token": dense,
+            "entry_values_per_token": dense / self.ratio,
+            "compression_vs_dense": float(self.ratio),
+            "max_attended_per_query": self.topk + self.ratio,
+        }
+
+
+def v4_attention_stack(dim: int, n_layers: int, n_heads: int = 2,
+                       pattern: str = "CH", csa_ratio: int = 4,
+                       csa_topk: int = 8, hca_chunk: int = 128,
+                       hca_window: int = 8, share_indexer_every: int = 1):
+    """DeepSeek-V4-style attention stack preset (v5.58): CSA and HCA
+    layers interleaved per ``pattern`` (repeated; "C" = CSA, "H" = HCA
+    at ``hca_chunk``x without rescue — V4 keeps exact recall in the CSA
+    layers, not in HCA). IndexShare: every ``share_indexer_every``
+    consecutive CSA layers share one indexer.
+
+    Returns an ``nn.ModuleList``. The V4 report does not fix the layer
+    ratio this reference needs, so the pattern is a parameter, not a
+    claim about V4.
+    """
+    if not pattern or set(pattern) - {"C", "H"}:
+        raise ValueError(f"pattern must be a non-empty string of 'C'/'H', "
+                         f"got {pattern!r}")
+    if not isinstance(share_indexer_every, int) or share_indexer_every < 1:
+        raise ValueError(f"share_indexer_every must be a positive integer, "
+                         f"got {share_indexer_every!r}")
+    layers, csa_seen, current = nn.ModuleList(), 0, None
+    for i in range(n_layers):
+        if pattern[i % len(pattern)] == "C":
+            if csa_seen % share_indexer_every == 0:
+                current = nn.Linear(dim, dim)
+            layers.append(CompressedSparseAttention(
+                dim, n_heads, ratio=csa_ratio, topk=csa_topk,
+                shared_indexer=current))
+            csa_seen += 1
+        else:
+            layers.append(HighCompressionAttention(
+                dim, n_heads, window=hca_window, chunk=hca_chunk,
+                rescue_topk=0))
+    return layers

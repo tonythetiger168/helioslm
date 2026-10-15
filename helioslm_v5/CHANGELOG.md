@@ -1,5 +1,36 @@
 # HeliosLM v5 Changelog
 
+## v5.58 (2026-10-15) - Roadmap Phase B: v4_csa (CSA in DeepSeek-V4 order)
+
+- `attention/kv_compress.py` `CompressedSparseAttention`: compress, then
+  select — one mean-pooled K/V entry per completed chunk of `ratio`
+  tokens, a head-mean lightning-style indexer picks the top-`topk`
+  entries of strictly-past chunks, and attention runs over those picks
+  plus the exact tokens of the query's own chunk. Causal by
+  construction; `shared_indexer` for IndexShare; `return_selection`
+  exposes the picks. Reduces to dense causal attention at `ratio=1`.
+  Deviations from V4 recorded in the docstring: mean-pooling instead of
+  a learned compressor, fp32 linear indexer instead of FP4, head-shared
+  selection, standalone module rather than an MLA-latent integration.
+- `v4_attention_stack(dim, n_layers, pattern="CH", ...)`: CSA / HCA
+  interleave preset (HCA without rescue — V4 keeps exact recall in CSA),
+  with every `share_indexer_every` CSA layers sharing one indexer. The
+  pattern is a parameter, not a claim about V4's layer ratio.
+- `examples/csa_ab_passkey.py` -> `benchmarks/csa_ab_2026-10-15.{json,md}`
+  on the B1-2 constructive passkey probe (same probe and dense arm as
+  `hca_ab_2026-10-12`, whose dense row it reproduces exactly). Finding:
+  mean-pooled CSA stays at chance (0.105–0.150) at 4× and 16× although
+  the indexer selects the right chunk in 86–100% of trials — pooling
+  divides the planted token's 1.13× score lead by the ratio, so the
+  compressor, not the selection, is the bottleneck. Next `v4_csa` step:
+  a learned compressor, measured on the same probe.
+- T92 (`tests/test_csa.py`, 7 tests): ratio-1 == dense SDPA (8.9e-8),
+  vectorized == slow per-query reference with padding (1.2e-7),
+  causality and selection bounds, padding exclusion, no gradient through
+  top-k, the stack preset (pattern, IndexShare grouping, one indexer of
+  parameters saved, shared == copied weights, validation), and a
+  recomputed slice of the committed A/B artifact.
+
 ## v5.57 (2026-10-15) - Roadmap Phase B: Kimi-K3-style block preset
 
 First Phase B item. The stack already had most of the K3 recipe (KDA

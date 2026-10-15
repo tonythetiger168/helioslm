@@ -64,7 +64,8 @@ renumbered.
 | A | Standard eval harness: first model rows (frontier APIs, local mid model) | ⏳ Needs an API key; the mid checkpoint is not in the repo |
 | A | Standard eval harness: terminal-style sandbox tasks (10 tasks, verbalized confidence) | ✅ Done (v5.56, T90) |
 | B | `k3_block` preset: K3 layer order, Gated MLA, per-channel decay, attention residuals, LatentMoE | ✅ Done (v5.57, T91) |
-| B | `v4_csa` preset: compress-then-sparse order with HCA + IndexShare | ⬜ Not started |
+| B | `v4_csa`: CSA in compress-then-select order + CSA/HCA stack preset with IndexShare, passkey A/B | ✅ Done (v5.58, T92) |
+| B | `v4_csa`: learned compressor (mean-pooled CSA stays at chance on the passkey probe) | ⬜ Not started |
 | B | Stable LatentMoE study | ⬜ Not started |
 | C | CUDA verification (#1), fused quant benchmark (#2), BPE tokenizer (#5), HF Hub (#4), ~1B GPU run | ⬜ Not started |
 | D | DecisionHead at 1B, multi-env GRPO training at real scale (tooling exists since Phase 2.1), TrustGate CLARIFY threshold calibration | ⬜ Not started |
