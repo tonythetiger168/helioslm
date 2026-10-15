@@ -1,5 +1,41 @@
 # HeliosLM v5 Changelog
 
+## v5.55 (2026-10-15) - Roadmap Phase A: GSM8K / HumanEval harness
+
+Second Phase A item: two public benchmarks, so HeliosLM numbers can be
+compared with anyone's instead of only our 12-task probe suite.
+
+- `data/std_bench/`: first 50 GSM8K test and first 20 HumanEval records,
+  unmodified, from pinned upstream commits (MIT; notices in
+  `LICENSES.md`; commits + sha256 in `MANIFEST.json`).
+  `scripts/fetch_std_bench.py` fetches the full splits into the
+  gitignored `full/` directory and `--verify` re-checks the subsets.
+- `eval/std_bench.py`: model-agnostic runner (`generate_fn(prompt, i)`
+  -> text or `(text, conf)`). GSM8K: `#### n` marker else last number,
+  Decimal-normalized exact match, majority vote with self-consistency
+  conf over n samples. HumanEval: body or fenced-function completions,
+  upstream tests executed in a `python -I` subprocess with a temp cwd,
+  empty env, wall-clock timeout and CPU / 1 GiB address-space limits
+  (stops runaway code, not a hostile program — use a container for
+  untrusted models). Output is in the shared probe schema, so every
+  run can go straight onto the calibration board.
+- `examples/std_bench_run.py`: `--reference` writes
+  `benchmarks/std_bench_reference_2026-10-15.json` (tier oracle-tested)
+  after enforcing eight gates — gold / canonical generators must score
+  100%, empty / perturbed ones 0%; a failing gate writes nothing.
+  `--preset` / `--base --model` runs a model over an OpenAI-compatible
+  API (reusing probe_api's presets and request ladder); any API error
+  aborts the run instead of writing a partial result.
+- **Bug fix (`probe_api.chat_once`):** `HTTPError` subclasses `URLError`,
+  so every 400 the parameter-degradation ladder relies on was retried 4x
+  with 30 s of backoff sleeps before the ladder moved on. Only 429/5xx
+  are retried now. T84 pins it (the max_tokens request is sent exactly
+  once — 4x on the old code) and runs in 2.7 s instead of 33 s.
+- T89 (`tests/test_std_bench.py`, 5 tests): data provenance, extraction
+  oracles, sandbox (pass / assertion failure / timeout / MemoryError),
+  byte-exact reference rebuild, and the API path end-to-end against a
+  mock OpenAI-compatible server (no network, no key).
+
 ## v5.54 (2026-10-15) - Roadmap Phase A: calibration leaderboard
 
 First Phase A item of `docs/ROADMAP_2026Q4.md`. Public leaderboards

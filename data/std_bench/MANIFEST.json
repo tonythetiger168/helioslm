@@ -1,0 +1,27 @@
+{
+  "schema": "std-bench-manifest/1",
+  "datasets": {
+    "gsm8k": {
+      "upstream": "https://github.com/openai/grade-school-math",
+      "commit": "3101c7d5072418e28b9008a6636bde82a006892c",
+      "path": "grade_school_math/data/test.jsonl",
+      "license": "MIT",
+      "full_sha256": "3730d312f6e3440559ace48831e51066acaca737f6eabec99bccb9e4b3c39d14",
+      "full_records": 1319,
+      "subset_file": "gsm8k_test_first50.jsonl",
+      "subset_rule": "first 50 records in upstream order",
+      "subset_sha256": "4718cc77e7d7b11c3fc2a049d7a0dbda483fc4bd37e5432488c9f9d0f2cf181a"
+    },
+    "humaneval": {
+      "upstream": "https://github.com/openai/human-eval",
+      "commit": "6d43fb980f9fee3c892a914eda09951f772ad10d",
+      "path": "data/HumanEval.jsonl.gz",
+      "license": "MIT",
+      "full_sha256": "1d49078ba3e2b196b9344535bef34a43021f038fad9561d6ee7c53450609a6a2",
+      "full_records": 164,
+      "subset_file": "humaneval_first20.jsonl",
+      "subset_rule": "first 20 records in upstream order",
+      "subset_sha256": "2ca75f00255d1c111a04769c0acf634983c8f3dbdb62aadf7b33941a46a4e91c"
+    }
+  }
+}

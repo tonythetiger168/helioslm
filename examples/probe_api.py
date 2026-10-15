@@ -131,6 +131,15 @@ def chat_once(base, key, model, prompt, max_tokens=200, temperature=0.0,
         for wait in (2, 4, 8, 16):
             try:
                 return json.loads(urllib.request.urlopen(req, timeout=60).read())
+            except urllib.error.HTTPError as e:
+                # HTTPError subclasses URLError: without this branch every
+                # 400 the degradation ladder relies on was retried 4x with
+                # 30 s of sleeps. Only rate limits / server errors are
+                # transient; anything else goes straight to the caller.
+                if e.code not in (429, 500, 502, 503, 504):
+                    raise
+                last_err = e
+                _time.sleep(wait)
             except (urllib.error.URLError, TimeoutError, OSError) as e:
                 last_err = e
                 _time.sleep(wait)

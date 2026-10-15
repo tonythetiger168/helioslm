@@ -30,7 +30,9 @@ M4 is left undefined on purpose rather than guessed. Whoever has the
 | A | Calibration leaderboard over committed probe artifacts | ✅ Done (v5.54, T88) |
 | A | Calibration leaderboard: new frontier API rows (opus-5.5, sonnet-5.5, astra, sol, argon) | ⏳ Needs an API key run of `examples/probe_api.py` |
 | A | Calibration leaderboard on RLCDAlignBench (7,193 items) | ⏳ Dataset (`all.jsonl`) is not in the repo |
-| A | Standard eval harness (GSM8K / HumanEval subsets, terminal-style sandbox tasks) | ⬜ Not started |
+| A | Standard eval harness: GSM8K / HumanEval (pinned subsets, sandboxed execution, reference gates) | ✅ Done (v5.55, T89) |
+| A | Standard eval harness: first model rows (frontier APIs, local mid model) | ⏳ Needs an API key; the mid checkpoint is not in the repo |
+| A | Standard eval harness: terminal-style sandbox tasks | ⬜ Not started |
 | B | `k3_block` / `v4_csa` presets, Stable LatentMoE study | ⬜ Not started |
 | C | CUDA verification (#1), fused quant benchmark (#2), BPE tokenizer (#5), HF Hub (#4), ~1B GPU run | ⬜ Not started |
 | D | DecisionHead at 1B, multi-env GRPO, TrustGate CLARIFY threshold calibration | ⬜ Not started |

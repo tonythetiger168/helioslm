@@ -128,8 +128,10 @@ def test_ladder_logprobs_and_meter():
                                          meter=meter)
         assert text == TOOL_FINISH_5
         assert abs(conf - 0.9) < 1e-9, f"conf {conf} != 0.9"
-        assert _MockHandler.ladder_attempts >= 1, \
-            "ladder not exercised: mock saw no max_tokens rejection"
+        # exactly one: a 400 is not transient, so it must step down the
+        # ladder at once instead of being retried with backoff sleeps
+        assert _MockHandler.ladder_attempts == 1, \
+            f"max_tokens request sent {_MockHandler.ladder_attempts}x (want 1)"
         assert meter == {"prompt_tokens": 100, "completion_tokens": 20,
                          "calls": 1}
     print("PASS test_ladder_logprobs_and_meter")

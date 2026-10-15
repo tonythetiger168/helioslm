@@ -1,0 +1,45 @@
+{
+  "schema": "std-bench/1",
+  "created": "2026-10-15",
+  "verification_tier": "oracle-tested",
+  "purpose": "harness validation: answer extraction and the HumanEval sandbox, scored against known-right and known-wrong generators",
+  "inputs": {
+    "data/std_bench/gsm8k_test_first50.jsonl": "4718cc77e7d7b11c3fc2a049d7a0dbda483fc4bd37e5432488c9f9d0f2cf181a",
+    "data/std_bench/humaneval_first20.jsonl": "2ca75f00255d1c111a04769c0acf634983c8f3dbdb62aadf7b33941a46a4e91c"
+  },
+  "gates": {
+    "gsm8k/gold_marker": {
+      "required": 1.0,
+      "accuracy": 1.0
+    },
+    "gsm8k/gold_last_number": {
+      "required": 1.0,
+      "accuracy": 1.0
+    },
+    "gsm8k/empty": {
+      "required": 0.0,
+      "accuracy": 0.0
+    },
+    "gsm8k/off_by_one": {
+      "required": 0.0,
+      "accuracy": 0.0
+    },
+    "humaneval/canonical_body": {
+      "required": 1.0,
+      "accuracy": 1.0
+    },
+    "humaneval/canonical_fenced_function": {
+      "required": 1.0,
+      "accuracy": 1.0
+    },
+    "humaneval/empty": {
+      "required": 0.0,
+      "accuracy": 0.0
+    },
+    "humaneval/pass_body": {
+      "required": 0.0,
+      "accuracy": 0.0
+    }
+  },
+  "results_sha256": "ae9778dface12bb77851497f6f9d3dcd3c911f87a000e713c49915a6d0fffe17"
+}
