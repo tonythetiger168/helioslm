@@ -201,7 +201,8 @@ def main():
         start_step = int(step_file.read_text()) if (ckpt.exists()
                                                     and step_file.exists()) else 0
     if start_step:
-        model.load_state_dict(torch.load(ckpt, map_location=device))
+        model.load_state_dict(torch.load(ckpt, map_location=device,
+                                         weights_only=True))
         print(f"RESUME from step {start_step}", flush=True)
     # foreach=False: the multi-tensor AdamW path (_foreach_sqrt) hit
     # "CUDA error: device not ready" repeatably on the user's RTX 4060

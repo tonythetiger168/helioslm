@@ -47,7 +47,8 @@ def main():
     bos = tok.vocab[BOS]
     model = HeliosLMv5(HeliosLMv5Config(size="mid")).to(device)
     ck = Path(os.environ.get("HELIOS_CKPT_DIR", "checkpoints"))
-    model.load_state_dict(torch.load(ck / "mid_sft_v5.33.pt", map_location=device))
+    model.load_state_dict(torch.load(ck / "mid_sft_v5.33.pt", map_location=device,
+                                     weights_only=True))
     model.eval()
     print("mid checkpoint loaded", flush=True)
 

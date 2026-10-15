@@ -51,7 +51,7 @@ jobs:
       - run: |
           zip -r helioslm-v5-release.zip \
             helioslm_v5/ harness/ agent/ benchmarks/ docs/ examples/ \
-            README.md CHANGELOG.md LICENSE \
+            README.md LICENSE \
             -x "*.zip" "*.pyc" "__pycache__/*" "*.pt"
       - uses: actions/upload-artifact@v4
         with:

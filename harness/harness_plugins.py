@@ -1124,17 +1124,22 @@ class NanoVideoPlugin:
     The 'nano-pdf' analog for video -- minimal local generation."""
 
     def apply(self, ctx):
-        import subprocess, os
+        import subprocess, os, tempfile
         def from_images(image_paths, audio_path=None, out_path="out.mp4",
                         duration_per_image=2):
+            list_file = None
             try:
                 if not image_paths:
                     return {"error": "no images"}
-                # ffmpeg concat demuxer
-                list_file = "/tmp/ffmpeg_list.txt"
-                with open(list_file, "w") as f:
+                # ffmpeg concat demuxer; a per-call list file so concurrent
+                # calls don't overwrite each other's image lists
+                fd, list_file = tempfile.mkstemp(prefix="ffmpeg_list_",
+                                                 suffix=".txt")
+                with os.fdopen(fd, "w") as f:
                     for img in image_paths:
-                        f.write(f"file '{img}'\n")
+                        # concat syntax: close the quote, escaped ', reopen
+                        quoted = str(img).replace("'", "'\\''")
+                        f.write(f"file '{quoted}'\n")
                         f.write(f"duration {duration_per_image}\n")
                 cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
                        "-i", list_file, "-vsync", "vfr", "-pix_fmt", "yuv420p"]
@@ -1153,6 +1158,12 @@ class NanoVideoPlugin:
                 return {"error": "ffmpeg not installed"}
             except Exception as e:
                 return {"error": str(e)[:200]}
+            finally:
+                if list_file:
+                    try:
+                        os.remove(list_file)
+                    except OSError:
+                        pass
         ctx.register("nanovideo.from_images", from_images)
 
 class BlenderPlugin:

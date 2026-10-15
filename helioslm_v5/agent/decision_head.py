@@ -200,7 +200,7 @@ class DecisionHead(nn.Module):
         acc, ece = {}, {}
         for n in self.qnames:
             kind, _ = self.qmeta[n]
-            logits = self.heads[n](zs)
+            logits = self.heads[n](zs).detach()
             if kind in ("score", "noul"):
                 pred = torch.sigmoid(logits)[:, 0]
                 if kind == "noul":
