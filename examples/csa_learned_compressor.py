@@ -47,7 +47,7 @@ V1_SELECTION = ("logit scaling 1/amp, lr and steps chosen on training loss "
                 "step counts. The evaluation stream was not used for any "
                 "choice.")
 EVAL_KEYS = ("dim", "heads", "hidden", "pairs", "amp", "boost", "trials",
-             "seq_lens", "topks", "eval_seed")
+             "seq_lens", "topks", "eval_seed", "act")
 
 
 def oracle_pool_weights(self, x, attention_mask, B, C, m):
@@ -77,7 +77,8 @@ COMPRESSOR_KEYS = ("compressor_mlp.", "compressor_pos")
 def make_csa(args, ratio, topk, state=None):
     m = _wire_csa(CompressedSparseAttention(
         args.dim, n_heads=args.heads, ratio=ratio, topk=topk,
-        compressor="learned", compressor_hidden=args.hidden), args.dim)
+        compressor="learned", compressor_hidden=args.hidden,
+        compressor_act=getattr(args, "act", "gelu")), args.dim)
     if state is not None:
         m.load_state_dict(state, strict=False)
     return m.eval()
@@ -163,6 +164,7 @@ def main():
     ap.add_argument("--amp", type=float, default=24.0)
     ap.add_argument("--boost", type=float, default=1.6)
     ap.add_argument("--hidden", type=int, default=16)
+    ap.add_argument("--act", choices=["gelu", "relu2"], default="gelu")
     ap.add_argument("--steps", type=int, default=2400)
     ap.add_argument("--batch", type=int, default=16)
     ap.add_argument("--lr", type=float, default=1e-2)
@@ -186,7 +188,9 @@ def main():
     if args.check:
         art = json.loads((_REPO / args.artifact).read_text())
         for key in EVAL_KEYS:          # evaluate with the artifact's own
-            setattr(args, key, art["params"][key])   # sizes, not the CLI's
+            # sizes, not the CLI's; artifacts before v5.61 have no "act"
+            setattr(args, key, art["params"].get(key, "gelu" if key == "act"
+                                                  else None))
         for r in art["results"]:
             got = evaluate(args, r["ratio"], _from_json(r["compressor_state"]))
             if got != r["eval"]:

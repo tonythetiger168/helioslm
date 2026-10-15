@@ -75,7 +75,9 @@ def test_check_needs_artifact_sizes():
         raise AssertionError("hidden-64 weights loaded into a hidden-16 "
                              "compressor without error")
     script.make_csa(_Args, 4, 8, state)      # artifact sizes load cleanly
-    assert set(script.EVAL_KEYS) <= set(_P)  # --check copies these over
+    # --check copies these over; "act" (v5.61) is absent from older
+    # artifacts and falls back to gelu, the activation they were trained with
+    assert set(script.EVAL_KEYS) - {"act"} <= set(_P)
     print("PASS test_check_needs_artifact_sizes")
 
 

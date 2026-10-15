@@ -365,6 +365,14 @@ class HighCompressionAttention(nn.Module):
         }
 
 
+class _ReLU2(nn.Module):
+    """Squared ReLU (Primer): lets a one-hidden-layer MLP represent
+    quadratic functions of its input, such as a token's magnitude."""
+
+    def forward(self, x):
+        return torch.relu(x) ** 2
+
+
 class CompressedSparseAttention(nn.Module):
     """CSA in DeepSeek-V4 order (v5.58, roadmap Phase B): COMPRESS, then
     SPARSE-SELECT over the compressed entries.
@@ -401,6 +409,8 @@ class CompressedSparseAttention(nn.Module):
     (the MLP's output layer and pos_bias start at zero, so a fresh
     learned compressor IS mean pooling up to rounding). Weights live
     inside one chunk, so causality is unchanged; pads get zero weight.
+    ``compressor_act`` (v5.61) picks the MLP activation: "gelu" (default)
+    or "relu2" (squared ReLU).
 
     Deviations from DeepSeek-V4 (recorded): the learned compressor is a
     small MLP softmax-pooler of our own design (not V4's compressor), an
@@ -411,7 +421,7 @@ class CompressedSparseAttention(nn.Module):
 
     def __init__(self, dim: int, n_heads: int = 2, ratio: int = 4,
                  topk: int = 8, shared_indexer=None, compressor: str = "mean",
-                 compressor_hidden=None):
+                 compressor_hidden=None, compressor_act: str = "gelu"):
         super().__init__()
         assert dim % n_heads == 0
         if not isinstance(ratio, int) or ratio < 1:
@@ -438,11 +448,15 @@ class CompressedSparseAttention(nn.Module):
             if not isinstance(hidden, int) or hidden < 1:
                 raise ValueError(f"compressor_hidden must be a positive "
                                  f"integer, got {compressor_hidden!r}")
+            if compressor_act not in ("gelu", "relu2"):
+                raise ValueError(f"compressor_act must be 'gelu' or 'relu2', "
+                                 f"got {compressor_act!r}")
             out = nn.Linear(hidden, n_heads)
             nn.init.zeros_(out.weight)
             nn.init.zeros_(out.bias)
+            act = nn.GELU() if compressor_act == "gelu" else _ReLU2()
             self.compressor_mlp = nn.Sequential(
-                nn.Linear(dim, hidden), nn.GELU(), out)
+                nn.Linear(dim, hidden), act, out)
             self.compressor_pos = nn.Parameter(torch.zeros(ratio, n_heads))
 
     def _pool_weights(self, x, attention_mask, B, C, m):
