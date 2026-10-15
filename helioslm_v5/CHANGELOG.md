@@ -1,5 +1,86 @@
 # HeliosLM v5 Changelog
 
+## v5.54 (2026-10-15) - Roadmap Phase A: calibration leaderboard
+
+First Phase A item of `docs/ROADMAP_2026Q4.md`. Public leaderboards
+rank how often a model is right; this board ranks whether it KNOWS
+when it is wrong.
+
+- `eval/calibration_board.py`: scores any artifact in the shared probe
+  schema (`results[*].correct` + `conf`) on AUROC (correct-vs-wrong
+  detection; null when a run is single-class, never a fake 0.5/1.0),
+  Brier (ranking key — a proper scoring rule defined on every run),
+  10-bin ECE (reuses `quant_calib.ece`) and overconfident-wrong count
+  (wrong at conf >= 0.9). Null-conf rows count toward accuracy only and
+  the board reports how many rows each metric covers. Loud
+  `BoardSchemaError` on non-bool `correct` or out-of-range `conf`.
+- `examples/calibration_board.py`: builds the board from eight committed
+  probe artifacts (two API probes, six local mid-model evals;
+  `mid_agent_eval_v4_copycurr.json` is excluded as a byte-identical copy
+  of `mid_agent_eval_v4.json`); `--check` verifies the committed board
+  is current.
+- `benchmarks/calibration_board_2026-10-15.{json,md}`: tier `measured`,
+  input sha256s recorded. Finding: every wrong answer from the local
+  mid model across all six runs was given at conf >= 0.9,
+  while gpt-5.6-luna's self-consistency conf separates its right and
+  wrong answers (AUROC 0.84, 0/7 overconfident-wrong). n=12 per row:
+  directional, not significant.
+- T88 (`tests/test_calibration_board.py`, 4 tests): hand-computed
+  AUROC/Brier oracles incl. ties and the undefined case, loud input
+  validation, null-conf accounting, deterministic Brier ranking, and a
+  byte-for-byte rebuild of the committed board (confirmed to fail when
+  the committed .md is edited).
+- `docs/MILESTONES.md`: M1-M6 status in one place; M4 recorded as
+  undefined (its source review is not in the repo) instead of guessed.
+
+## 2026-10-15 - Review fixes (post v5.53)
+
+- `execute()` validates args against the ToolSpec, so
+  `defer_validation=True` with a non-clarify gate yields `TOOL_ERROR`
+  instead of a `TypeError` crash; a malformed `finish` no longer ends
+  the run. Missing + malformed calls route to ESCALATE, not CLARIFY.
+- Harness `terminal.run` / `github.create_issue` / `robot.*` share
+  `_trust_check`: fail closed without a TrustGate, execute only on
+  `Route.DIRECT` (CLARIFY no longer falls through). `gated=False`
+  remains the explicit opt-out.
+- Web UI v2 rejects non-loopback `Host` (DNS rebinding) and, on
+  state-changing requests, non-loopback `Origin`.
+- `torch.load(weights_only=True)` for state_dict loads (web UI,
+  MidModelPlugin, examples); `calc` overflow / `0**-1` are tool errors;
+  NanoVideoPlugin uses a per-call temp list file and escapes quotes;
+  duplicate sweep JSONLs removed; release zip no longer lists a missing
+  root CHANGELOG; DecisionHead.evaluate detaches before `float()`.
+- T87 (`tests/test_review_fixes.py`) + `test_origin_and_host_checks`.
+
+## v5.53 (2026-10-14) - M3 TrustGate CLARIFY three-state routing
+
+Entry reconstructed from the merge commit (#19); the original PR did
+not add one.
+
+- `agent/trust_gate_clarify.py`: a terminal CLARIFY route for
+  syntactically valid calls with missing required parameters
+  (`inspect_call` classifies complete / missing / invalid).
+- Parser validation stays the default; deferred validation
+  (`defer_validation=True`) is explicit opt-in.
+- `eval/clarify_missing_param.py` + `examples/eval_clarify_missing_param.py`
+  -> `benchmarks/clarify_missing_param_2026-10-13.json`
+  (byte-verified artifact).
+- T86 (`tests/test_trust_gate_clarify.py`).
+
+## v5.52 (2026-10-13) - M6 cost-per-completed-task baseline
+
+Entry reconstructed from the merge commit (#18); the original PR did
+not add one.
+
+- `eval/cost_per_task.py`: combines oracle-checked completion evidence
+  (`mid_agent_eval_v5.json`, re-checking `final == expected`), the
+  disagg simulator's worker-seconds / Pareto front, and a score_stream
+  quality audit. USD is a $1/worker-hour normalization, not a market
+  price.
+- `examples/cost_per_completed_task.py` ->
+  `benchmarks/cost_per_completed_task_2026-10-13.json`.
+- T85 (`tests/test_cost_per_task.py`).
+
 ## v5.51 (2026-10-13) - Verification-discipline wave: self-grading guard + artifact tiers + probe refresh
 
 Three milestones (M1/M2/M5) from the 2026-10-13 landscape review
