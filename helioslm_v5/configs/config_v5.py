@@ -181,6 +181,19 @@ class AttentionConfig:
     # bit-identical to full attention.
     sliding_window: Optional[int] = None
     sliding_window_sink: int = 0
+    # Per-layer sliding/global interleave (v5.62, MiMo-V2-Flash style):
+    # when an int N together with ``sliding_window``, MLA layer i keeps
+    # FULL (global) attention iff ``i == 0 or i % N == N - 1`` and uses the
+    # window otherwise (N=6 gives MiMo's 5 sliding : 1 global with a
+    # global first layer). None (default) = the window applies to every
+    # MLA layer, exactly as in v5.9.
+    global_attention_every: Optional[int] = None
+    # Learnable attention sink (v5.62, MiMo-V2-Flash / gpt-oss style): one
+    # learnable logit per head joins every softmax as an extra "null" key
+    # with no value, so a head can put probability mass nowhere instead of
+    # being forced onto the few keys a small window leaves it. Off by
+    # default (no parameter, bit-identical); when on, it starts at 0.
+    learnable_sink: bool = False
 
     @property
     def head_dim(self) -> int:
@@ -574,6 +587,21 @@ class HeliosLMv5Config:
                 f"full_attention_every={h.full_attention_every} leaves no "
                 f"MLA layer: the cache would carry no sequence axis to "
                 f"derive the past length from")
+        ge = self.attention.global_attention_every
+        if ge is not None:
+            if not isinstance(ge, int) or isinstance(ge, bool) or ge < 2:
+                raise ValueError(
+                    f"attention.global_attention_every must be an int >= 2 "
+                    f"or None, got {ge!r}")
+            if self.attention.sliding_window is None:
+                raise ValueError(
+                    "attention.global_attention_every requires "
+                    "attention.sliding_window (it picks which layers keep "
+                    "full attention instead of the window)")
+        if not isinstance(self.attention.learnable_sink, bool):
+            raise ValueError(
+                f"attention.learnable_sink must be a bool, got "
+                f"{self.attention.learnable_sink!r}")
         if not isinstance(self.attention.output_gate, bool):
             raise ValueError(
                 f"attention.output_gate must be a bool, got "
@@ -795,3 +823,30 @@ def k3_block_config(size="lite", num_hidden_layers=None):
         cfg.moe.latent_dim = cfg.hidden_size // 2
         cfg._validate()
     return cfg
+
+
+def mimo_hybrid_config(size="lite", window=128, num_hidden_layers=None,
+                       learnable_sink=True):
+    """MiMo-V2-Flash-style hybrid attention preset (v5.62, roadmap B2).
+
+    - every MLA layer gets a ``window``-token sliding window except the
+      global ones: layer i is global iff ``i == 0 or i % 6 == 5`` (5
+      sliding : 1 global, global first layer; MiMo-V2-Flash uses W=128);
+    - learnable per-head attention sink logits (``learnable_sink``).
+
+    Not reproduced: MiMo's dense-FFN first block (roadmap B2-3), its MTP
+    head (B2-5), and scale. ``num_hidden_layers`` defaults to the size
+    preset, except "lite" (2 layers) is raised to 6 so one full
+    sliding/global pattern exists. The linear-attention hybrid stays
+    off: every layer is MLA, as in MiMo.
+    """
+    if size == "lite" and num_hidden_layers is None:
+        num_hidden_layers = 6
+    return HeliosLMv5Config(
+        size=size,
+        num_hidden_layers=num_hidden_layers,
+        attention=AttentionConfig(sliding_window=window,
+                                  global_attention_every=6,
+                                  learnable_sink=learnable_sink),
+        hybrid_attention=HybridAttentionConfig(enabled=False),
+    )

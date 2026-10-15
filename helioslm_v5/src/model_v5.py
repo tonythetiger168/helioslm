@@ -94,7 +94,8 @@ class HeliosLMv5Layer(nn.Module):
         super().__init__()
         self.layer_idx = layer_idx  # kept for external cache plumbing/debugging
         self.pre_attn_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.attention = (MLA(config, shared_indexer=shared_indexer)
+        self.attention = (MLA(config, shared_indexer=shared_indexer,
+                              layer_idx=layer_idx)
                           if _is_full_attention_layer(config, layer_idx)
                           else GatedDeltaAttention(config))
         self.pre_moe_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)

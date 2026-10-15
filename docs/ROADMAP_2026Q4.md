@@ -89,7 +89,7 @@ HeliosLM 不應追排行榜，它的優勢在別處：
 | ID | 項目 | 來源 | 完成標準 |
 |---|---|---|---|
 | **B2-1** | 逐層交錯的 sliding window／全域注意力（MiMo 式 5:1，窗口 128，第一層全域）＋ `mimo_hybrid_config()` preset | MiMo-V2-Flash | 預設輸出逐位元不變；用 passkey 長 context 探針比較 dense、純 sliding window、混合三者的回憶率，並記錄 KV cache 節省倍數 |
-| **B2-2** | 可學習的 attention sink bias（每個 head 一個 sink logit） | MiMo-V2-Flash | 初始值設定成與現在逐位元一致；在小窗口下量測有無 sink bias 的長 context 回憶率差異 |
+| **B2-2** | 可學習的 attention sink bias（每個 head 一個 sink logit） | MiMo-V2-Flash | 預設關閉、關閉時逐位元不變（開啟時 sink logit 初始化為 0，即多一個 exp(0) 的分母項，不是恆等）；在小窗口下量測有無 sink bias 的長 context 回憶率差異 |
 | B2-3 | 前 k 層用 dense FFN（`moe.first_k_dense`） | GLM-5.3（前 3 層）、MiMo（第一個 block） | 預設 0 時逐位元一致；檢查 checkpoint 相容與路由統計排除 dense 層 |
 | B2-4 | 真正的 mHC：Sinkhorn 投影成雙隨機矩陣的可學習混合矩陣 | GLM-5.3-Flash | 混合矩陣始終滿足雙隨機約束；單位矩陣初始化時逐位元一致 |
 | B2-5 | MiMo 式輕量 MTP head（sliding window ＋ dense FFN） | MiMo-V2-Flash | 用既有 MTP 損益兩平工具比較 acceptance length 與加速比 |

@@ -275,7 +275,7 @@ class MLA(nn.Module):
     reassociation (verified by the test suite at atol 1e-4).
     """
 
-    def __init__(self, config, shared_indexer=None):
+    def __init__(self, config, shared_indexer=None, layer_idx=None):
         super().__init__()
         self.hidden_size = config.hidden_size
         self.num_heads = config.attention.num_attention_heads
@@ -491,6 +491,20 @@ class MLA(nn.Module):
                 "sliding_window_sink > 0 requires sliding_window to be set "
                 "(attention sinks only have meaning inside a sliding window)"
             )
+        # v5.62: per-layer sliding/global interleave. A "global" layer drops
+        # the window (and its sink tokens) and attends the full context.
+        every = getattr(config.attention, "global_attention_every", None)
+        self.is_global_layer = (
+            every is not None and layer_idx is not None
+            and (layer_idx == 0 or layer_idx % every == every - 1))
+        if self.is_global_layer:
+            self.sliding_window = None
+            self.sliding_window_sink = 0
+        # v5.62: learnable attention sink — one logit per head, used as an
+        # extra value-less key in every softmax (see _softmax_with_sink).
+        self.attn_sink = (nn.Parameter(torch.zeros(self.num_heads))
+                          if getattr(config.attention, "learnable_sink", False)
+                          else None)
 
         self.norm_q = RMSNorm(self.q_lora_rank, eps=config.rms_norm_eps)
         self.norm_kv = RMSNorm(self.kv_latent_dim, eps=config.rms_norm_eps)
@@ -673,7 +687,7 @@ class MLA(nn.Module):
         attn_mask = self._build_attn_mask(
             position_ids, kv_len, attention_mask, past_len, seq, B, custom_positions
         )
-        if self.logit_soft_cap is None:
+        if self.logit_soft_cap is None and self.attn_sink is None:
             attn_out = F.scaled_dot_product_attention(
                 q_full, k_full, v,
                 dropout_p=self.attention_dropout if self.training else 0.0,
@@ -681,10 +695,10 @@ class MLA(nn.Module):
                 attn_mask=attn_mask,
             )
         else:
-            # v5.9: SDPA has no soft-capping hook, so the capped path runs
-            # the score/softmax/weighted-sum matmuls manually (same math as
-            # the absorbed path below, including the nan_to_num guard for
-            # fully-masked rows).
+            # v5.9: SDPA has no soft-capping hook (nor, v5.62, a sink
+            # logit), so this path runs the score/softmax/weighted-sum
+            # matmuls manually (same math as the absorbed path below,
+            # including the nan_to_num guard for fully-masked rows).
             scores = torch.matmul(q_full, k_full.transpose(-2, -1))
             scores = self._soft_cap(scores * self.softmax_scale)
             if attn_mask is None:
@@ -692,7 +706,7 @@ class MLA(nn.Module):
                                        device=scores.device).tril(
                     diagonal=kv_len - seq)
             scores = scores.masked_fill(~attn_mask, float("-inf"))
-            probs = torch.nan_to_num(F.softmax(scores, dim=-1))
+            probs = self._softmax_with_sink(scores)
             if self.training and self.attention_dropout > 0:
                 probs = F.dropout(probs, p=self.attention_dropout)
             attn_out = torch.matmul(probs, v)
@@ -904,7 +918,7 @@ class MLA(nn.Module):
         # residual stream and poison real tokens in later layers via
         # 0 * NaN. SDPA returns 0 for such rows, so zeroing the weights here
         # keeps the absorbed path equivalent to the expanded one (C1).
-        probs = torch.nan_to_num(F.softmax(scores, dim=-1))
+        probs = self._softmax_with_sink(scores)
         if self.training and self.attention_dropout > 0:
             probs = F.dropout(probs, p=self.attention_dropout)
 
@@ -925,6 +939,20 @@ class MLA(nn.Module):
             out.reshape(B, seq, self.num_heads * self.v_head_dim),
             hidden_states)
         return output, present_key_value
+
+    def _softmax_with_sink(self, scores):
+        """Softmax over the key axis; with a learnable sink (v5.62) the
+        per-head sink logit joins as one extra value-less key and its
+        column is dropped, so a row's weights sum to < 1. nan_to_num keeps
+        fully-masked rows at 0 (without a sink they would be NaN; with a
+        sink they put all mass on the sink, which also yields 0)."""
+        if self.attn_sink is None:
+            return torch.nan_to_num(F.softmax(scores, dim=-1))
+        sink = self.attn_sink.to(scores.dtype).view(
+            1, -1, *([1] * (scores.dim() - 2)))
+        sink = sink.expand(*scores.shape[:-1], 1)
+        probs = F.softmax(torch.cat([scores, sink], dim=-1), dim=-1)
+        return torch.nan_to_num(probs[..., :-1])
 
     def _project_out(self, values, hidden_states):
         """o_proj over the flattened per-head values [B, seq, H*d_v],
