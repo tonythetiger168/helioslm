@@ -52,6 +52,10 @@ def test_github_api_json_roundtrip():
     import urllib.request
     ctx = Context()
     ctx.use(GitHubPlugin(token="fake-token"))
+    # create_issue fails closed without a TrustGate; wire an always-DIRECT
+    # gate so this test keeps exercising the POST body path.
+    from gate import FixedGate, Route
+    ctx.register("decision.trust", FixedGate(Route.DIRECT))
     seen = {}
     real = urllib.request.urlopen
 

@@ -65,6 +65,39 @@ def _safe_media_path(root, name):
         return cand
     return None
 
+# ------------------------------------------------------- request origin --
+
+_LOCAL_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
+
+
+def _host_name(value):
+    """Hostname part of a Host header / origin authority, lowercased."""
+    v = (value or "").strip().lower()
+    if v.startswith("["):                      # [::1]:8990
+        end = v.find("]")
+        return v[:end + 1] if end != -1 else v
+    return v.rsplit(":", 1)[0] if ":" in v else v
+
+
+def _request_allowed(headers, state_changing):
+    """Reject DNS-rebinding and cross-site requests to the local UI.
+
+    Binding to 127.0.0.1 keeps remote hosts out, but any page open in the
+    user's browser can still reach it: a rebinding page arrives with a
+    foreign Host header, and a cross-site form/fetch POST carries a
+    foreign Origin. Host must be loopback on every request; Origin, when
+    present, must be loopback on state-changing ones.
+    """
+    if _host_name(headers.get("Host")) not in _LOCAL_HOSTS:
+        return False
+    origin = headers.get("Origin")
+    if state_changing and origin is not None:
+        scheme, _, authority = origin.partition("://")
+        if scheme not in ("http", "https") or \
+                _host_name(authority) not in _LOCAL_HOSTS:
+            return False
+    return True
+
 # ------------------------------------------------------------ session store
 
 class SessionStore:
@@ -272,7 +305,8 @@ class LocalHeliosBackend:
             from helioslm_v5.src.model_v5 import HeliosLMv5, HeliosLMv5Config  # type: ignore
             cfg = HeliosLMv5Config()
             model = HeliosLMv5(cfg)
-            state = torch.load(self.ckpt_path, map_location="cpu")
+            state = torch.load(self.ckpt_path, map_location="cpu",
+                               weights_only=True)
             model.load_state_dict(state.get("model", state), strict=False)
             model.eval()
             self._engine = model
@@ -463,6 +497,12 @@ class Handler(BaseHTTPRequestHandler):
     def _error(self, status, msg):
         self._send_json({"error": msg}, status)
 
+    def _forbid_origin(self):
+        # The request body (if any) is left unread, so drop the keep-alive
+        # connection rather than parse leftover bytes as the next request.
+        self.close_connection = True
+        self._error(403, "forbidden origin")
+
     def _read_body(self):
         try:
             n = int(self.headers.get("Content-Length", "0"))
@@ -480,6 +520,8 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- routing ------------------------------------------------------------
     def do_GET(self):
+        if not _request_allowed(self.headers, state_changing=False):
+            return self._forbid_origin()
         path = self.path.split("?", 1)[0]
         if path == "/":
             return self._send_html(_CHAT_HTML)
@@ -523,6 +565,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._error(404, "not found")
 
     def do_POST(self):
+        if not _request_allowed(self.headers, state_changing=True):
+            return self._forbid_origin()
         path = self.path.split("?", 1)[0]
         if path == "/api/sessions":
             body = self._read_body()
@@ -542,6 +586,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._error(404, "not found")
 
     def do_PATCH(self):
+        if not _request_allowed(self.headers, state_changing=True):
+            return self._forbid_origin()
         m = re.fullmatch(r"/api/sessions/([A-Za-z0-9_-]+)", self.path.split("?", 1)[0])
         if not m:
             return self._error(404, "not found")
@@ -552,6 +598,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._send_json({"session": s}) if s else self._error(404, "not found")
 
     def do_DELETE(self):
+        if not _request_allowed(self.headers, state_changing=True):
+            return self._forbid_origin()
         m = re.fullmatch(r"/api/sessions/([A-Za-z0-9_-]+)", self.path.split("?", 1)[0])
         if not m:
             return self._error(404, "not found")

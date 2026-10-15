@@ -148,8 +148,52 @@ def test_http_endpoints():
     print("PASS test_http_endpoints")
 
 
+def test_origin_and_host_checks():
+    allowed = web_ui_v2._request_allowed
+    ok_host = {"Host": "127.0.0.1:8990"}
+    assert allowed(ok_host, state_changing=True)
+    assert allowed({"Host": "localhost:8990",
+                    "Origin": "http://localhost:8990"}, state_changing=True)
+    assert allowed({"Host": "[::1]:8990"}, state_changing=False)
+    # DNS rebinding: loopback IP, foreign Host header
+    assert not allowed({"Host": "evil.example:8990"}, state_changing=False)
+    assert not allowed({}, state_changing=False)
+    # cross-site POST from a page open in the same browser
+    for origin in ("https://evil.example", "null",
+                   "http://127.0.0.1.evil.example"):
+        assert not allowed({**ok_host, "Origin": origin},
+                           state_changing=True), origin
+
+    server, port = _boot()
+    base = f"http://127.0.0.1:{port}"
+    try:
+        n_before = len(web_ui_v2.SESSIONS.list())
+        req = urllib.request.Request(
+            base + "/api/sessions", data=b"{}", method="POST",
+            headers={"Content-Type": "text/plain",
+                     "Origin": "https://evil.example"})
+        try:
+            urllib.request.urlopen(req, timeout=5)
+            raise AssertionError("cross-origin POST was accepted")
+        except urllib.error.HTTPError as e:
+            assert e.code == 403
+        assert len(web_ui_v2.SESSIONS.list()) == n_before  # nothing created
+        req = urllib.request.Request(base + "/api/sessions",
+                                     headers={"Host": "evil.example"})
+        try:
+            urllib.request.urlopen(req, timeout=5)
+            raise AssertionError("foreign Host header was accepted")
+        except urllib.error.HTTPError as e:
+            assert e.code == 403
+    finally:
+        server.shutdown()
+        server.server_close()
+    print("PASS test_origin_and_host_checks")
+
+
 if __name__ == "__main__":
     test_safe_media_path()
     test_session_store()
     test_http_endpoints()
-    print("\n3/3 web UI v2 tests passed")
+    test_origin_and_host_checks()
+    print("\n4/4 web UI v2 tests passed")
