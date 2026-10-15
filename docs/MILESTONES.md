@@ -66,7 +66,7 @@ renumbered.
 | B | `k3_block` preset: K3 layer order, Gated MLA, per-channel decay, attention residuals, LatentMoE | ✅ Done (v5.57, T91) |
 | B | `v4_csa`: CSA in compress-then-select order + CSA/HCA stack preset with IndexShare, passkey A/B | ✅ Done (v5.58, T92) |
 | B | `v4_csa`: learned compressor — 4× passkey recall 0.13 → 0.67; 16× does not learn | ✅ Done (v5.59, T93) |
-| B | `v4_csa`: train the indexer jointly with the compressor (selection is now the bottleneck at 4×) | ⬜ Not started |
+| B | `v4_csa`: close the remaining 4× gap (0.665 vs dense 0.910) in the compressed entry — selection is not the bottleneck (all-chunks selection gives the same 0.665) | ⬜ Not started |
 | B | Stable LatentMoE study | ⬜ Not started |
 | C | CUDA verification (#1), fused quant benchmark (#2), BPE tokenizer (#5), HF Hub (#4), ~1B GPU run | ⬜ Not started |
 | D | DecisionHead at 1B, multi-env GRPO training at real scale (tooling exists since Phase 2.1), TrustGate CLARIFY threshold calibration | ⬜ Not started |

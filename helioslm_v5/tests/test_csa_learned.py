@@ -10,7 +10,9 @@ Pins:
    still holds with non-trivial (randomised) compressor weights;
 4. gradients reach the compressor; bad arguments are refused;
 5. the committed artifact's stored weights re-evaluate to the recorded
-   numbers (one slice), and the artifact is registered.
+   numbers (one slice), selecting every chunk gives the same accuracy as
+   top-8 (selection is not the bottleneck), and the artifact is
+   registered.
 
 Run from repo root: python3 helioslm_v5/tests/test_csa_learned.py
 """
@@ -133,6 +135,12 @@ def test_committed_artifact_slice():
                          p["trials"], p["eval_seed"])
     assert acc == row["eval"]["L=512/k8"]["accuracy"], acc
     assert acc > 4 * art["chance"]          # the headline: well above chance
+    # selection is not the bottleneck: selecting EVERY chunk gives the
+    # same accuracy as top-8 (the report's reading 2 rests on this)
+    acc_all = probe_accuracy(lambda: script.make_csa(Args, 4, 10_000, state),
+                             512, p["pairs"], p["dim"], p["amp"], p["boost"],
+                             p["trials"], p["eval_seed"])
+    assert acc_all == acc, (acc_all, acc)
     reg = load_registry(_REPO / "benchmarks" / "verification_tiers.json")
     assert tier_of("csa_learned_2026-10-15.json", reg) == "measured"
     print(f"PASS test_committed_artifact_slice (acc={acc})")

@@ -18,6 +18,11 @@ seed-0 evaluation stream, same identity wiring.
 Top-8 and top-32 give the same accuracy in every row; hit-rate ranges
 span top-8 to top-32. Chance: 0.125. 200 trials per cell.
 
+**Selection check (4×, L=512, same stored weights):** selecting EVERY
+chunk (top-1000) also gives 0.665, identical to top-8 and top-32. With
+top-8, accuracy is 125/144 when the planted chunk is selected and 8/56
+when it is not. T93 pins the top-8 == all-chunks equality.
+
 ## What was trained, and how it was chosen
 
 - Only the compressor is trained: an MLP softmax-pooler (hidden 16,
@@ -37,11 +42,15 @@ span top-8 to top-32. Chance: 0.125. 200 trials per cell.
 1. **A learned compressor restores most of the exact recall at 4×**
    (0.13 → 0.67, about 73% of dense), and it holds at sequence lengths
    4–8× longer than it was trained on.
-2. **Selection becomes the next bottleneck.** The frozen identity
-   indexer was tuned (by construction) for mean-pooled entries; with the
-   new entries it finds the right chunk only 72.0–77.5% of the time, and
-   accuracy (0.65–0.67) sits just under that ceiling. Training the
-   indexer jointly is the obvious next step.
+2. **Selection is NOT the bottleneck.** The hit rate drops to
+   72.0–77.5%, but selecting every chunk leaves accuracy unchanged at
+   0.665: when the planted chunk is missed, its pooled entry also scores
+   too low to win in attention. With identity wiring the indexer's
+   scores ARE the attention scores, so the usual fix — distilling the
+   indexer toward attention — has nothing to learn here. The remaining
+   gap (0.665 vs dense 0.910) is in the compressed entry itself: the
+   compressor does not always make the planted token dominate its
+   chunk's entry.
 3. **16× does not learn** under the same budget (training loss stays at
    the 8-way chance level of ln 8 ≈ 2.08): one softmax-pooled entry per
    16 tokens could not be shaped into an exact-token carrier here.

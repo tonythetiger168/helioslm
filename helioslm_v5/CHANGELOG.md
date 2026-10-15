@@ -18,17 +18,18 @@ passkey probe although its indexer found the right chunk.
   on the csa_ab seed-0 stream at L=512/1024. The trained weights are
   stored in the artifact, so `--check` re-evaluates them.
 - Result: at 4× accuracy rises from 0.130/0.105 (mean) to 0.665/0.650
-  (about 73% of dense), holding at 4–8× the training length. The frozen
-  identity indexer now finds the right chunk only 72.0–77.5% of the
-  time, so selection is the next bottleneck. 16× does not learn under
-  the same budget (training loss stays at the 8-way chance level).
+  (about 73% of dense), holding at 4–8× the training length. The hit
+  rate drops to 72.0–77.5%, but selecting every chunk gives the same
+  0.665, so selection is NOT the bottleneck: the remaining gap is in the
+  compressed entry itself. 16× does not learn under the same budget
+  (training loss stays at the 8-way chance level).
 - Bug caught by the new tests: `compressor_hidden=0` was silently
   replaced by `dim` (`x or dim`); it is now refused.
 - T93 (`tests/test_csa_learned.py`, 5 tests): fresh learned == mean
   bitwise with padding, masked-softmax pooling weights, entries equal a
   manual weighted pool, causality with randomised compressor weights,
   gradients and validation, and a re-evaluated slice of the committed
-  weights.
+  weights, including top-8 == all-chunks selection accuracy.
 
 ## v5.58 (2026-10-15) - Roadmap Phase B: v4_csa (CSA in DeepSeek-V4 order)
 
