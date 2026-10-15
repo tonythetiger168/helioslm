@@ -11,7 +11,9 @@ tags:
 pipeline_tag: text-generation
 ---
 
-# HeliosLM — Verifiable DeepSeek-V3/V4 and Kimi-K3-Style LLM Architectures in Pure PyTorch
+# HeliosLM（羲和）— Verifiable DeepSeek-V3/V4 and Kimi-K3-Style LLM Architectures in Pure PyTorch
+
+> 中文名「羲和」：中國神話中駕日車的太陽神，對應希臘的 Helios。標語「知止」（《大學》「知止而后有定」）：可驗證的機制，加上知道自己何時可能出錯、該停下來的決策層。
 
 **Every mechanism ships with an oracle test.** HeliosLM is a hackable, CPU-runnable reference for frontier LLM designs — MLA, sigmoid-gated MoE, hybrid linear attention, compressed sparse attention — plus a calibrated decision layer that measures whether a model knows when it is wrong.
 
