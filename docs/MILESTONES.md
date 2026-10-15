@@ -69,5 +69,11 @@ renumbered.
 | B | `v4_csa`: compressor round 2 + oracle ceiling — 16× 0.13 → 0.39, 4× mixed; perfect pooling would reach 0.86–0.90 (dense 0.91) | ✅ Done (v5.60, T94) |
 | B | `v4_csa`: a compressor that detects salient tokens at any length (now 0.645–0.725 at 4×, 0.38–0.39 at 16×, vs a 0.85–0.90 ceiling) | ⬜ Not started |
 | B | Stable LatentMoE study | ⬜ Not started |
+| B2 | B2-1 per-layer sliding-window / global interleave + `mimo_hybrid_config()` (MiMo) | ⬜ Next |
+| B2 | B2-2 learnable attention sink bias (MiMo) | ⬜ Next |
+| B2 | B2-3 `moe.first_k_dense` (GLM-5.3, MiMo) | ⬜ Not started |
+| B2 | B2-4 learnable mHC with Sinkhorn projection (GLM-5.3-Flash) | ⬜ Not started |
+| B2 | B2-5 MiMo-style light MTP head | ⬜ Not started |
+| B2 | B2-6 on-policy distillation trainer (MiMo MOPD; confirm the definition first) | ⬜ Not started |
 | C | CUDA verification (#1), fused quant benchmark (#2), BPE tokenizer (#5), HF Hub (#4), ~1B GPU run | ⬜ Not started |
 | D | DecisionHead at 1B, multi-env GRPO training at real scale (tooling exists since Phase 2.1), TrustGate CLARIFY threshold calibration | ⬜ Not started |

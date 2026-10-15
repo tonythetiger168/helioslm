@@ -82,6 +82,24 @@ HeliosLM 不應追排行榜，它的優勢在別處：
 - **Stable LatentMoE：** 研究在潛在空間做 expert routing，附負載平衡測試。
 - **完成標準：** 每個 preset 都附有「修正前會刻意失敗」的測試，既有 1M context 壓力測試通過，並發佈 K3／V4 比較文件。
 
+### Phase B2：GLM-5.3 與 MiMo 對照（2026-10-15 新增）
+
+對照智譜 GLM-5.3 與小米 MiMo（V2-Flash／V2.6-Pro）的公開資料後，找出 HeliosLM 尚缺的設計。依「每個機制都附 oracle 測試」原則，每項都有可驗證的完成標準。
+
+| ID | 項目 | 來源 | 完成標準 |
+|---|---|---|---|
+| **B2-1** | 逐層交錯的 sliding window／全域注意力（MiMo 式 5:1，窗口 128，第一層全域）＋ `mimo_hybrid_config()` preset | MiMo-V2-Flash | 預設輸出逐位元不變；用 passkey 長 context 探針比較 dense、純 sliding window、混合三者的回憶率，並記錄 KV cache 節省倍數 |
+| **B2-2** | 可學習的 attention sink bias（每個 head 一個 sink logit） | MiMo-V2-Flash | 初始值設定成與現在逐位元一致；在小窗口下量測有無 sink bias 的長 context 回憶率差異 |
+| B2-3 | 前 k 層用 dense FFN（`moe.first_k_dense`） | GLM-5.3（前 3 層）、MiMo（第一個 block） | 預設 0 時逐位元一致；檢查 checkpoint 相容與路由統計排除 dense 層 |
+| B2-4 | 真正的 mHC：Sinkhorn 投影成雙隨機矩陣的可學習混合矩陣 | GLM-5.3-Flash | 混合矩陣始終滿足雙隨機約束；單位矩陣初始化時逐位元一致 |
+| B2-5 | MiMo 式輕量 MTP head（sliding window ＋ dense FFN） | MiMo-V2-Flash | 用既有 MTP 損益兩平工具比較 acceptance length 與加速比 |
+| B2-6 | On-policy 蒸餾訓練器（學生自生成、老師 reverse-KL） | MiMo（MOPD） | 動工前先讀原報告確認 MOPD 定義；接上既有 GRPO／環境框架 |
+
+- **已具備（不需再做）：** lightning indexer 稀疏注意力、IndexShare、3:1 KDA:MLA 交錯（v5.57 `k3_block`）。
+- **暫不做：IndexPool**（GLM-5.3-Flash）。公開資料只有名稱，照做等於猜測；等官方技術報告。
+- **執行順序：** B2-1 ＋ B2-2 先做（延續長 context 探針，直接檢驗 MiMo 的核心主張），接著 B2-3，再來 B2-4、B2-5、B2-6。
+- **資料可信度：** GLM-5.3-Flash 的「3:1 KDA:MLA」只見於第三方分析；MiMo-V2.6-Pro 的 MTP 細節各來源不一致。表中只採官方或技術報告可佐證的部分。
+
 ### Phase C：規模與生態系（2026 年 12 月 – 2027 年 2 月）
 
 - CUDA 端到端驗證（#1），接著在 GPU 上做 fused vs unfused 量化 benchmark（#2）。
@@ -123,3 +141,16 @@ HeliosLM 不應追排行榜，它的優勢在別處：
 - [LongCat Sparse Attention (arXiv 2608.01662)](https://arxiv.org/pdf/2608.01662)
 - [Morph: Best Open Source LLMs 2026](https://www.morphllm.com/best-open-source-llm)
 - [geotoolbox: Best Open-Source LLMs October 2026](https://geotoolbox.ai/blog/best-open-source-llms)
+
+Phase B2（GLM／MiMo 對照）：
+
+- [NVIDIA GLM-5.3 model card](https://build.nvidia.com/z-ai/glm-5-3/modelcard)
+- [Z.ai GLM-5.3-Flash 文件](https://docs.z.ai/guides/vlm/glm-5.3-flash)
+- [SGLang GLM-5.3](https://docs.sglang.io/cookbook/autoregressive/GLM/GLM-5.3)
+- [SemiAnalysis GLM-5.2/5.3](https://inferencex.semianalysis.com/model/glm-5-3)
+- [daily.dev GLM-5.3-Flash notes](https://daily.dev/posts/glm-5-3-flash-architecture-notes-4pnix3fdg)
+- [MiMo-V2-Flash Technical Report (arXiv 2601.02780)](https://arxiv.org/abs/2601.02780)
+- [MiMo-V2-Flash GitHub](https://github.com/xiaomimimo/MiMo-V2-Flash)
+- [MiMo-V2.6-Pro-MOPD (Hugging Face)](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Pro-MOPD)
+- [MiMo-V2.6-Pro-RL (Hugging Face)](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Pro-RL)
+- [MiMo-V2.5 inference optimization (arXiv 2607.13095)](https://arxiv.org/pdf/2607.13095)
