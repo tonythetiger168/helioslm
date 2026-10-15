@@ -295,7 +295,8 @@ python helioslm_v5/tests/test_term_bench.py         # T90 terminal sandbox tasks
 python helioslm_v5/tests/test_k3_block.py           # T91 K3 block preset: Gated MLA bitwise oracle, K3 layer order, decode == full
 python helioslm_v5/tests/test_csa.py                # T92 CSA compress-then-select: dense reduction, slow-reference equality, V4 stack preset
 python helioslm_v5/tests/test_csa_learned.py        # T93 CSA learned compressor: starts as mean pooling, masked softmax, stored-weight re-evaluation
-python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite (323 tests)
+python helioslm_v5/tests/test_csa_learned_h64.py    # T94 learned compressor round 2: 16x re-evaluation, oracle ceiling, artifact-sized --check
+python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite (326 tests)
 ```
 
 ```python
@@ -410,6 +411,7 @@ are static-checked) — tracked as a community issue.
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.60** — learned compressor round 2 (hidden 64): 16× passkey recall off chance (0.13 → 0.39), 4× mixed (0.725 at L=512, 0.645 at L=1024); an oracle-pooling ceiling shows CSA can reach 0.86–0.90 (dense 0.91), so the gap is compressor detection — T94
 - **v5.59** — CSA learned compressor (`compressor="learned"`): compressor-only training lifts passkey recall at 4× from 0.13 to 0.67 (dense 0.91), generalizing to 4–8× the training length; selecting every chunk gives the same accuracy, so the remaining gap is the compressed entry, not selection; 16× does not learn — T93
 - **v5.58** — DeepSeek-V4-order CSA (`CompressedSparseAttention`: compress, then top-k select) and `v4_attention_stack` CSA/HCA preset with IndexShare; passkey A/B shows mean-pooled CSA at chance although its indexer finds the right chunk 86–100% of the time — the compressor is the bottleneck — T92
 - **v5.57** — Kimi-K3-style block preset `k3_block_config()`: KDA/KDA/KDA/MLA order (`hybrid_attention.first_layer_full=False`), Gated MLA (`attention.output_gate`), per-channel decay, attention residuals, LatentMoE; defaults bit-identical — T91

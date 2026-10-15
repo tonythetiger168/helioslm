@@ -1,5 +1,28 @@
 # HeliosLM v5 Changelog
 
+## v5.60 (2026-10-15) - Roadmap Phase B: learned compressor round 2 + oracle ceiling
+
+- Diagnosis of v5.59's 4× gap: in failing trials the compressor put
+  0.21 weight on the planted token (uniform = 0.25) vs 0.88 in
+  successful ones — it failed to detect the token, not to carry it.
+- Oracle ceiling (`--oracle-ceiling`, a measuring stick that pools each
+  chunk onto its largest-norm token): CSA reaches 0.900/0.870 at 4× and
+  0.860/0.845 at 16×, within 0.01–0.05 of dense (0.910/0.875). The
+  whole remaining gap is compressor detection, not the design.
+- Round 2 (hidden 64, 4800 steps; chosen on the separate validation
+  stream — hidden 256 validated worse) ->
+  `benchmarks/csa_learned_h64_2026-10-15.{json,md}`: 16× moves off
+  chance (0.150/0.125 -> 0.375/0.390); 4× is mixed (L=512 0.665 ->
+  0.725, L=1024 0.650 -> 0.645).
+- `examples/csa_learned_compressor.py`: `--artifact`, `--oracle-ceiling`,
+  `--selection-note`; `--check` now evaluates with the artifact's own
+  sizes (it used the CLI's `--hidden`, which would have mis-checked any
+  artifact trained with a different size).
+- T94 (`tests/test_csa_learned_h64.py`, 3 tests): 16× slice re-evaluates
+  from the stored weights, the oracle ceiling recomputes, and hidden-64
+  weights refuse to load into a hidden-16 compressor (what the `--check`
+  fix prevents).
+
 ## v5.59 (2026-10-15) - Roadmap Phase B: CSA learned compressor
 
 Follow-up to v5.58, where mean-pooled CSA stayed at chance on the

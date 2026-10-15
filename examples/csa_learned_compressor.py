@@ -40,6 +40,37 @@ from helioslm_v5.src.attention.kv_compress import (  # noqa: E402
     CompressedSparseAttention)
 
 DEFAULT_OUT = "benchmarks/csa_learned_2026-10-15.json"
+V1_SELECTION = ("logit scaling 1/amp, lr and steps chosen on training loss "
+                "and a separate validation stream (seed 2000, L=128, 150 "
+                "trials, ratio 4): lr 3e-3/1200 steps 0.487, 1e-2/1200 "
+                "0.533, 1e-2/2400 0.567; ratio 16 stayed at 0.167 for both "
+                "step counts. The evaluation stream was not used for any "
+                "choice.")
+EVAL_KEYS = ("dim", "heads", "hidden", "pairs", "amp", "boost", "trials",
+             "seq_lens", "topks", "eval_seed")
+
+
+def oracle_pool_weights(self, x, attention_mask, B, C, m):
+    """MEASURING STICK, not a method: all weight on each chunk's
+    largest-norm real token. Gives the accuracy a perfect compressor
+    would reach on this probe (the planted tokens are the high-norm
+    ones by construction)."""
+    n = x.norm(dim=-1).masked_fill(attention_mask == 0, -1.0).view(B, C, m)
+    w = torch.nn.functional.one_hot(n.argmax(-1), m).to(x.dtype)
+    return w.view(B, C, m, 1, 1).expand(B, C, m, self.n_heads, 1)
+
+
+def oracle_ceiling(args, ratio):
+    def make():
+        m = _wire_csa(CompressedSparseAttention(
+            args.dim, n_heads=args.heads, ratio=ratio, topk=args.topks[0]),
+            args.dim)
+        m._pool_weights = oracle_pool_weights.__get__(m)
+        return m
+    return {f"L={L}": probe_accuracy(make, L, args.pairs, args.dim,
+                                     args.amp, args.boost, args.trials,
+                                     args.eval_seed)
+            for L in args.seq_lens}
 COMPRESSOR_KEYS = ("compressor_mlp.", "compressor_pos")
 
 
@@ -144,10 +175,18 @@ def main():
     ap.add_argument("--output", default=None)
     ap.add_argument("--check", action="store_true",
                     help="re-evaluate the committed weights and compare")
+    ap.add_argument("--artifact", default=DEFAULT_OUT,
+                    help="artifact that --check re-evaluates")
+    ap.add_argument("--oracle-ceiling", action="store_true",
+                    help="also record the oracle-pooling ceiling")
+    ap.add_argument("--selection-note", default=V1_SELECTION,
+                    help="how the training settings were chosen")
     args = ap.parse_args()
 
     if args.check:
-        art = json.loads((_REPO / DEFAULT_OUT).read_text())
+        art = json.loads((_REPO / args.artifact).read_text())
+        for key in EVAL_KEYS:          # evaluate with the artifact's own
+            setattr(args, key, art["params"][key])   # sizes, not the CLI's
         for r in art["results"]:
             got = evaluate(args, r["ratio"], _from_json(r["compressor_state"]))
             if got != r["eval"]:
@@ -172,7 +211,8 @@ def main():
                         "eval": ev,
                         "compressor_state": _to_json(state)})
     params = {k: v for k, v in vars(args).items()
-              if k not in ("output", "check")}
+              if k not in ("output", "check", "artifact", "oracle_ceiling",
+                           "selection_note")}
     blob = json.dumps([{k: r[k] for k in ("ratio", "eval")}
                        for r in results], sort_keys=True)
     payload = {
@@ -183,13 +223,7 @@ def main():
         "params": params,
         "chance": 1.0 / args.pairs,
         "baseline": "benchmarks/csa_ab_2026-10-15.json (mean-pooled CSA)",
-        "model_selection": "logit scaling 1/amp, lr and steps chosen on "
-                           "training loss and a separate validation stream "
-                           "(seed 2000, L=128, 150 trials, ratio 4): "
-                           "lr 3e-3/1200 steps 0.487, 1e-2/1200 0.533, "
-                           "1e-2/2400 0.567; ratio 16 stayed at 0.167 for "
-                           "both step counts. The evaluation stream was not "
-                           "used for any choice.",
+        "model_selection": args.selection_note,
         "note": "only the compressor is trained (end-to-end readout loss, "
                 "train seed stream and L=128); q/k/v/out/indexer stay "
                 "identity-wired and frozen; evaluated on the A/B seed-0 "
@@ -197,6 +231,11 @@ def main():
         "results": results,
         "results_sha256": hashlib.sha256(blob.encode()).hexdigest(),
     }
+    if args.oracle_ceiling:
+        payload["oracle_ceiling"] = {
+            "note": "measuring stick, not a method: each chunk pooled onto "
+                    "its largest-norm token",
+            **{f"ratio={r}": oracle_ceiling(args, r) for r in args.ratios}}
     if args.output:
         Path(args.output).write_text(json.dumps(payload, indent=1) + "\n",
                                      encoding="utf-8")
