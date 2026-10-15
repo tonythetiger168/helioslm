@@ -1,5 +1,35 @@
 # HeliosLM v5 Changelog
 
+## v5.59 (2026-10-15) - Roadmap Phase B: CSA learned compressor
+
+Follow-up to v5.58, where mean-pooled CSA stayed at chance on the
+passkey probe although its indexer found the right chunk.
+
+- `CompressedSparseAttention(compressor="learned")`: per-head softmax
+  pooling within each chunk, logits = MLP(x_j) + per-position bias. The
+  output layer and bias start at zero, so a fresh learned compressor is
+  bitwise mean pooling. Pads get zero weight; causality is unchanged.
+  The mean path is refactored onto the same weights code with identical
+  results (T92 and the csa_ab slice still match exactly).
+- `examples/csa_learned_compressor.py` ->
+  `benchmarks/csa_learned_2026-10-15.{json,md}`: trains ONLY the
+  compressor, end-to-end on the readout loss, on a separate seed stream
+  at L=128; settings chosen on a separate validation stream; evaluated
+  on the csa_ab seed-0 stream at L=512/1024. The trained weights are
+  stored in the artifact, so `--check` re-evaluates them.
+- Result: at 4× accuracy rises from 0.130/0.105 (mean) to 0.665/0.650
+  (about 73% of dense), holding at 4–8× the training length. The frozen
+  identity indexer now finds the right chunk only 72.0–77.5% of the
+  time, so selection is the next bottleneck. 16× does not learn under
+  the same budget (training loss stays at the 8-way chance level).
+- Bug caught by the new tests: `compressor_hidden=0` was silently
+  replaced by `dim` (`x or dim`); it is now refused.
+- T93 (`tests/test_csa_learned.py`, 5 tests): fresh learned == mean
+  bitwise with padding, masked-softmax pooling weights, entries equal a
+  manual weighted pool, causality with randomised compressor weights,
+  gradients and validation, and a re-evaluated slice of the committed
+  weights.
+
 ## v5.58 (2026-10-15) - Roadmap Phase B: v4_csa (CSA in DeepSeek-V4 order)
 
 - `attention/kv_compress.py` `CompressedSparseAttention`: compress, then

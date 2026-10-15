@@ -395,14 +395,23 @@ class CompressedSparseAttention(nn.Module):
     covers every past token (each entry is then one exact token and the
     local set is the query itself) — T92 pins that equivalence.
 
-    Deviations from DeepSeek-V4 (recorded): mean-pooling instead of a
-    learned compressor, an fp32 linear indexer instead of an FP4
-    lightning indexer, head-shared selection, and a standalone reference
-    module instead of an MLA-latent integration.
+    Compressor (v5.59): ``compressor="mean"`` (default) mean-pools each
+    chunk. ``compressor="learned"`` pools with per-head softmax weights
+    over the chunk's tokens: logit_j = MLP(x_j)[h] + pos_bias[j % ratio, h]
+    (the MLP's output layer and pos_bias start at zero, so a fresh
+    learned compressor IS mean pooling up to rounding). Weights live
+    inside one chunk, so causality is unchanged; pads get zero weight.
+
+    Deviations from DeepSeek-V4 (recorded): the learned compressor is a
+    small MLP softmax-pooler of our own design (not V4's compressor), an
+    fp32 linear indexer instead of an FP4 lightning indexer, head-shared
+    selection, and a standalone reference module instead of an
+    MLA-latent integration.
     """
 
     def __init__(self, dim: int, n_heads: int = 2, ratio: int = 4,
-                 topk: int = 8, shared_indexer=None):
+                 topk: int = 8, shared_indexer=None, compressor: str = "mean",
+                 compressor_hidden=None):
         super().__init__()
         assert dim % n_heads == 0
         if not isinstance(ratio, int) or ratio < 1:
@@ -420,6 +429,33 @@ class CompressedSparseAttention(nn.Module):
         self.out = nn.Linear(dim, dim)
         self.indexer = (shared_indexer if shared_indexer is not None
                         else nn.Linear(dim, dim))
+        if compressor not in ("mean", "learned"):
+            raise ValueError(f"compressor must be 'mean' or 'learned', got "
+                             f"{compressor!r}")
+        self.compressor = compressor
+        if compressor == "learned":
+            hidden = dim if compressor_hidden is None else compressor_hidden
+            if not isinstance(hidden, int) or hidden < 1:
+                raise ValueError(f"compressor_hidden must be a positive "
+                                 f"integer, got {compressor_hidden!r}")
+            out = nn.Linear(hidden, n_heads)
+            nn.init.zeros_(out.weight)
+            nn.init.zeros_(out.bias)
+            self.compressor_mlp = nn.Sequential(
+                nn.Linear(dim, hidden), nn.GELU(), out)
+            self.compressor_pos = nn.Parameter(torch.zeros(ratio, n_heads))
+
+    def _pool_weights(self, x, attention_mask, B, C, m):
+        """Per-chunk pooling weights (B, C, m, H, 1); pads weigh 0."""
+        H = self.n_heads
+        mm = attention_mask.view(B, C, m, 1, 1).to(x.dtype)
+        if self.compressor == "mean":
+            return mm.expand(B, C, m, H, 1) / mm.sum(2, keepdim=True).clamp(min=1.0)
+        logits = self.compressor_mlp(x).view(B, C, m, H) \
+            + self.compressor_pos.view(1, 1, m, H)
+        logits = logits.masked_fill(mm[..., 0] < 0.5, float("-inf"))
+        # an all-pad chunk softmaxes to NaN; chunk_ok already excludes it
+        return torch.nan_to_num(torch.softmax(logits, dim=2)).unsqueeze(-1)
 
     def forward(self, x, attention_mask=None, return_selection=False):
         """x: (B, L, D); attention_mask: (B, L), 1 = real, 0 = pad
@@ -444,11 +480,10 @@ class CompressedSparseAttention(nn.Module):
         key_ok = attention_mask.bool()                       # (B, Lp)
         scale = 1.0 / math.sqrt(dh)
 
-        # --- compress: one mean-pooled entry per chunk ------------------
-        mm = attention_mask.view(B, C, m, 1, 1).to(q.dtype)
-        cnt = mm.sum(2).clamp(min=1.0)
-        kc = (k.view(B, C, m, H, dh) * mm).sum(2) / cnt      # (B, C, H, dh)
-        vc = (v.view(B, C, m, H, dh) * mm).sum(2) / cnt
+        # --- compress: one pooled entry per chunk ------------------------
+        w = self._pool_weights(x, attention_mask, B, C, m)   # (B,C,m,H,1)
+        kc = (k.view(B, C, m, H, dh) * w).sum(2)             # (B, C, H, dh)
+        vc = (v.view(B, C, m, H, dh) * w).sum(2)
         chunk_ok = key_ok.view(B, C, m).any(-1)              # (B, C)
 
         # --- select: top-k entries of strictly-past chunks --------------

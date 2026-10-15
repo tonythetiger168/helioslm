@@ -294,7 +294,8 @@ python helioslm_v5/tests/test_std_bench.py          # T89 GSM8K/HumanEval harnes
 python helioslm_v5/tests/test_term_bench.py         # T90 terminal sandbox tasks: references, trap rejection, sandbox limits, mock agent run
 python helioslm_v5/tests/test_k3_block.py           # T91 K3 block preset: Gated MLA bitwise oracle, K3 layer order, decode == full
 python helioslm_v5/tests/test_csa.py                # T92 CSA compress-then-select: dense reduction, slow-reference equality, V4 stack preset
-python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite (318 tests)
+python helioslm_v5/tests/test_csa_learned.py        # T93 CSA learned compressor: starts as mean pooling, masked softmax, stored-weight re-evaluation
+python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite (323 tests)
 ```
 
 ```python
@@ -409,6 +410,7 @@ are static-checked) — tracked as a community issue.
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.59** — CSA learned compressor (`compressor="learned"`): compressor-only training lifts passkey recall at 4× from 0.13 to 0.67 (dense 0.91), generalizing to 4–8× the training length; 16× does not learn; the frozen indexer becomes the next bottleneck — T93
 - **v5.58** — DeepSeek-V4-order CSA (`CompressedSparseAttention`: compress, then top-k select) and `v4_attention_stack` CSA/HCA preset with IndexShare; passkey A/B shows mean-pooled CSA at chance although its indexer finds the right chunk 86–100% of the time — the compressor is the bottleneck — T92
 - **v5.57** — Kimi-K3-style block preset `k3_block_config()`: KDA/KDA/KDA/MLA order (`hybrid_attention.first_layer_full=False`), Gated MLA (`attention.output_gate`), per-channel decay, attention residuals, LatentMoE; defaults bit-identical — T91
 - **v5.56** — 10 terminal-style sandbox tasks (`examples/std_bench_run.py --bench terminal`): one bash command per turn, final-state verifiers that reject the naive solutions, verbalized confidence for the calibration board — T90
