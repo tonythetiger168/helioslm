@@ -243,6 +243,16 @@ ctx.use(RobotControlPlugin(mode="mock"))
 ctx.robot.move_base(1.0, 0.0, 0.0)   # TrustGate-gated, effect-audited
 ```
 
+**Gating policy.** Side-effecting ops (`terminal.run`, `github.create_issue`,
+`robot.*`) fail **closed**: with no `decision.trust` registered they return a
+`refused` error instead of running, and they execute only when the gate
+returns `Route.DIRECT` — `CLARIFY` and `ESCALATE` both block. The `full`
+preset wires a TrustGate; with a bare `Context`, register one yourself
+(`ctx.register("decision.trust", gate)`), or pass `terminal.run(cmd,
+gated=False)` to opt out explicitly. The web UI (`helioslm_v5/harness/web_ui_v2.py`)
+binds to 127.0.0.1 and rejects requests with a non-loopback `Host`
+(DNS rebinding) or, on POST/PATCH/DELETE, a non-loopback `Origin`.
+
 ## Deployment tiers
 
 Three rungs, each with one recorded reason to exist (no spectrum theater):
@@ -261,7 +271,7 @@ in `__post_init__` (no silent truncation).
 
 ```bash
 pip install torch
-python -m helioslm_v5.tests.test_v5     # 83 unit tests (3 checkpoint-dependent tests self-skip without checkpoints/toy_v5.13.pt)
+python -m helioslm_v5.tests.test_v5     # 92 unit tests (3 checkpoint-dependent tests self-skip without checkpoints/toy_v5.13.pt)
 python integration_test_v51.py          # 9 end-to-end integration tests
 python -m helioslm_v5.tests.test_agent  # 9 agent-layer oracles (v5.23)
 python -m helioslm_v5.tests.test_v5_stage_a   # T15 real-model oracles (v5.26)
@@ -276,7 +286,10 @@ python helioslm_v5/tests/test_async_grpo.py      # T26 async GRPO sync-parity (v
 python helioslm_v5/tests/test_decision.py        # T27 typed decision primitives (v5.32)
 python helioslm_v5/tests/test_decision_head.py   # T28 DecisionHead calibration (v5.32)
 python helioslm_v5/tests/test_v110_github_pg.py    # T52 GitHub/PostgreSQL plugin oracles (offline, mocked HTTP)
-python helioslm_v5/tests/test_web_ui_v2.py         # T75 harness web UI v2 contract (stdlib-only UI)
+python helioslm_v5/tests/test_web_ui_v2.py         # T75 harness web UI v2 contract (stdlib-only UI, Host/Origin checks)
+python helioslm_v5/tests/test_trust_gate_clarify.py # T86 TrustGate CLARIFY three-state routing (v5.53)
+python helioslm_v5/tests/test_review_fixes.py       # T87 review fixes: deferred validation, fail-closed gates, calc faults
+python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite (291 tests)
 ```
 
 ```python
@@ -391,6 +404,7 @@ are static-checked) — tracked as a community issue.
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **2026-10-15 review fixes (post v5.53)** — `execute()` validates args, so `defer_validation=True` with a non-clarify gate yields `TOOL_ERROR` instead of crashing (and a malformed `finish` no longer ends the run); missing+malformed calls ESCALATE rather than CLARIFY; `calc` overflow / `0**-1` are tool errors; harness terminal/GitHub/robot ops fail closed without a TrustGate and run only on `DIRECT`; web UI Host/Origin checks; `torch.load(weights_only=True)` for runtime checkpoint loads — T87
 - **2026-10 review fix wave** — full-repo review follow-through: PrefixPool fingerprint hash-collision, agent bare imports, GitHubPlugin `import json` (caught by the new CI syntax gate), duplicate-plugin merges, metadata drift; new CI (`.github/workflows/ci.yml`): flake8 syntax gate (E9/F63/F7/F82) + py3.11/3.12 test matrix + release build; harness web UI v2 (stdlib-only rewrite, T75 contract tests)
 - **v5.22-L** (local line) — NVFP4-format QAT fake-quant target (E2M1×16 + E4M3 block scales) + NoPE option for MLA (Kimi-K3 direction; default off, bit-identical)
 - **v5.21** (local line) — KDA-style per-channel decay gate: linear-attention state rows forget at independent rates (Kimi Linear / GLM-5.3-Flash direction), bit-identical default, rollback-safe
