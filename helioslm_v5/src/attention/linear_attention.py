@@ -94,9 +94,10 @@ def past_seq_len(past_key_values) -> int:
     Shared by ``HeliosLMv5.forward`` and ``MTPDecoder`` (m11: single source
     of truth). Recurrent-state tensors (fixed shape, no sequence axis) and
     non-tensor entries are skipped; a sequence cache tensor must have
-    ``dim() >= 3`` with the sequence axis at dim 2. Under the hybrid
-    interleave rule layer 0 is always MLA, so a sequence-length tensor
-    always exists in a hybrid cache.
+    ``dim() >= 3`` with the sequence axis at dim 2. Every layer is
+    scanned, and config validation guarantees at least one MLA layer
+    (even with ``first_layer_full=False``, v5.57), so a sequence-length
+    tensor always exists in a hybrid cache.
     """
     if past_key_values is None:
         return 0

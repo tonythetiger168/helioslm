@@ -292,7 +292,8 @@ python helioslm_v5/tests/test_review_fixes.py       # T87 review fixes: deferred
 python helioslm_v5/tests/test_calibration_board.py  # T88 calibration leaderboard: metric oracles + byte-exact board rebuild
 python helioslm_v5/tests/test_std_bench.py          # T89 GSM8K/HumanEval harness: provenance, sandbox, reference gates, mock API run
 python helioslm_v5/tests/test_term_bench.py         # T90 terminal sandbox tasks: references, trap rejection, sandbox limits, mock agent run
-python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite (305 tests)
+python helioslm_v5/tests/test_k3_block.py           # T91 K3 block preset: Gated MLA bitwise oracle, K3 layer order, decode == full
+python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite (311 tests)
 ```
 
 ```python
@@ -407,6 +408,7 @@ are static-checked) — tracked as a community issue.
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.57** — Kimi-K3-style block preset `k3_block_config()`: KDA/KDA/KDA/MLA order (`hybrid_attention.first_layer_full=False`), Gated MLA (`attention.output_gate`), per-channel decay, attention residuals, LatentMoE; defaults bit-identical — T91
 - **v5.56** — 10 terminal-style sandbox tasks (`examples/std_bench_run.py --bench terminal`): one bash command per turn, final-state verifiers that reject the naive solutions, verbalized confidence for the calibration board — T90
 - **v5.55** — GSM8K / HumanEval harness (`examples/std_bench_run.py`) on pinned upstream subsets with a sandboxed HumanEval executor and oracle-tested reference gates; any model behind an OpenAI-compatible API can be run and its output goes straight onto the calibration board; fixes `probe_api` retrying every HTTP 400 with 30 s of sleeps — T89
 - **v5.54** — roadmap Phase A calibration leaderboard (`examples/calibration_board.py`): AUROC/Brier/ECE/overconfident-wrong over committed probe artifacts; finding: every wrong answer from the local mid model came at conf ≥ 0.9; milestone tracker `docs/MILESTONES.md`; 2026 Q4 roadmap `docs/ROADMAP_2026Q4.md` — T88

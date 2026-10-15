@@ -1,5 +1,33 @@
 # HeliosLM v5 Changelog
 
+## v5.57 (2026-10-15) - Roadmap Phase B: Kimi-K3-style block preset
+
+First Phase B item. The stack already had most of the K3 recipe (KDA
+per-channel decay v5.21, attention residuals v5.5, LatentMoE v5.5,
+hybrid interleave v5.5); this adds the two missing pieces and a preset.
+
+- `attention.output_gate` (Gated MLA): elementwise sigmoid gate from the
+  layer input on the per-head values before `o_proj`
+  (`MLA.o_gate_proj`), applied through one shared `_project_out` in both
+  the expanded and absorbed paths. Off by default: no extra parameter,
+  and default-config logits are bit-identical to v5.56 (checked for both
+  the pure-MLA and hybrid layouts).
+- `hybrid_attention.first_layer_full`: False drops the "layer 0 is MLA"
+  exception, giving the K3 block order KDA, KDA, KDA, MLA. Past length
+  was already derived by scanning every layer, so validation only has to
+  require at least one MLA layer (it now refuses layouts with none).
+- `configs.config_v5.k3_block_config(size)`: 3:1 interleave in K3 order,
+  per-channel decay, Gated MLA, attention residuals, LatentMoE
+  (`hidden_size // 2` below full size; lite is raised to 4 layers so one
+  full block exists). Not reproduced: K3's "Stable" LatentMoE variant,
+  FP4 training, scale.
+- T91 (`tests/test_k3_block.py`, 6 tests): defaults untouched, K3 order
+  and validation, gate math bitwise against the ungated twin in both
+  paths, expanded == absorbed with the gate on (1.5e-7), the preset's
+  cached decode == full forward (1.6e-6) with gradients reaching the
+  output and residual gates, and an ungated checkpoint failing to load
+  strictly into a gated model.
+
 ## v5.56 (2026-10-15) - Roadmap Phase A: terminal-style sandbox tasks
 
 Third and last code item of Phase A: Terminal-Bench-style agent tasks.
