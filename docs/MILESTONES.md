@@ -70,8 +70,8 @@ renumbered.
 | B | `v4_csa`: compressor round 3 — 4× 0.825/0.800, about 92% of the ceiling | ✅ Done (v5.61, T95) |
 | B | `v4_csa`: 16× compressor (0.375/0.390 vs a 0.86/0.845 ceiling; more training does not help) | ⬜ Not started |
 | B | Stable LatentMoE study | ⬜ Not started |
-| B2 | B2-1 per-layer sliding-window / global interleave + `mimo_hybrid_config()` (MiMo) | ⬜ Next |
-| B2 | B2-2 learnable attention sink bias (MiMo) | ⬜ Next |
+| B2 | B2-1 per-layer sliding-window / global interleave + `mimo_hybrid_config()` (MiMo) — 5:1 hybrid 0.424 vs dense 0.428 at 39% of the keys | ✅ Done (v5.62, T96) |
+| B2 | B2-2 learnable attention sink bias (MiMo) — no effect at this scale (0.424 vs 0.424) | ✅ Done (v5.62, T96) |
 | B2 | B2-3 `moe.first_k_dense` (GLM-5.3, MiMo) | ⬜ Not started |
 | B2 | B2-4 learnable mHC with Sinkhorn projection (GLM-5.3-Flash) | ⬜ Not started |
 | B2 | B2-5 MiMo-style light MTP head | ⬜ Not started |
@@ -81,10 +81,10 @@ renumbered.
 | B3 | Q3 global-batch load-balancing loss (Qwen3 MoE) | ⬜ Not started |
 | B3 | Q4 `qwen_next_config()` preset | ⬜ Not started |
 | B3 | Q5 (optional) MTP speculative-decoding acceptance measurement | ⬜ Not started |
-| AC | AC1 mini SWE task set (~20 small repos, hidden tests, reference gates) | ⬜ Next after B2-1/B2-2 |
-| AC | AC2 agent RL loop (GRPO + sandbox, test-pass reward) | ⬜ Not started |
-| AC | AC3 tool-call format/parser hardening (fuzz-tested) | ⬜ Not started |
+| AC | AC1 mini SWE task set (20 small repos, hidden tests, trap gates) | ✅ Done (v5.62, T97) |
+| AC | AC2 agent RL loop (GRPO + sandbox, test-pass reward) | 🔄 In progress |
+| AC | AC3 tool-call recovery layer (7 named repairs, fuzz-tested) | ✅ Done (v5.62, T99) |
 | AC | AC4 repo-scale long-context probe (dense vs hybrid vs CSA) | ⬜ Not started |
-| AC | AC5 知止: calibrated "am I done" confidence on AC1 (AUROC/ECE) | ⬜ Not started |
+| AC | AC5 知止: stop-decision metrics (false DONE, tested-before-done) on terminal/SWE runs | ✅ Done (v5.62, T98) — frontier rows need an API key |
 | C | CUDA verification (#1), fused quant benchmark (#2), BPE tokenizer (#5), HF Hub (#4), ~1B GPU run | ⬜ Not started |
 | D | DecisionHead at 1B, multi-env GRPO training at real scale (tooling exists since Phase 2.1), TrustGate CLARIFY threshold calibration | ⬜ Not started |

@@ -13,7 +13,10 @@ Pins:
    sink-free output; the expanded and absorbed paths agree with the sink
    on; fully-masked rows stay finite;
 4. the mimo_hybrid preset: layout, cached decode == full forward, and
-   gradients reaching the sink logits.
+   gradients reaching the sink logits;
+5. the committed recall artifact: arm layouts and attendable-key counts
+   recomputed from the experiment's own configs, the results hash, and
+   the structural negative control (all-SWA at chance).
 
 Run from repo root: python3 helioslm_v5/tests/test_mimo_hybrid.py
 """
@@ -170,9 +173,35 @@ def test_mimo_preset():
     print(f"PASS test_mimo_preset (decode vs full max|diff|={diff:.1e})")
 
 
+def test_recall_artifact():
+    import hashlib
+    import json
+    sys.path.insert(0, str(_REPO / "examples"))
+    import mimo_hybrid_recall as exp
+    art = json.loads((_REPO / "benchmarks"
+                      / "mimo_hybrid_2026-10-15.json").read_text())
+    res = {r["arm"]: r for r in art["results"]}
+    assert list(res) == list(exp.ARMS)
+    assert art["results_sha256"] == hashlib.sha256(json.dumps(
+        art["results"], sort_keys=True).encode()).hexdigest()
+    for arm, r in res.items():
+        cfg = exp.arm_config(arm)
+        assert r["attendable_keys_last_query"] == exp.attendable_keys(cfg)
+        model = HeliosLMv5(cfg)
+        layout = "".join("G" if layer.attention.sliding_window is None
+                         else "S" for layer in model.layers)
+        assert r["layout"] == layout, (arm, layout)
+    chance = art["task"]["chance"]
+    assert abs(res["all_swa"]["query_acc"] - chance) < 0.02
+    assert res["hybrid_5to1"]["query_acc"] > 5 * chance
+    assert res["dense"]["query_acc"] > 5 * chance
+    print("PASS test_recall_artifact")
+
+
 if __name__ == "__main__":
     test_defaults_and_validation()
     test_interleave_rule_and_window_effect()
     test_sink_math()
     test_sink_paths_agree()
     test_mimo_preset()
+    test_recall_artifact()

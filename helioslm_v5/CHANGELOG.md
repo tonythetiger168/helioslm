@@ -1,5 +1,47 @@
 # HeliosLM v5 Changelog
 
+## v5.62 (2026-10-16) - Phase B2: MiMo hybrid + learnable sink; Phase AC: agentic coding
+
+- **B2-1** `attention.global_attention_every` (requires `sliding_window`):
+  layer i is global iff `i == 0 or i % N == N - 1`, the rest use the
+  sliding window; `mimo_hybrid_config()` preset (5:1, window 128, global
+  first layer). Off by default, bit-identical when off.
+- **B2-2** `attention.learnable_sink`: one sink logit per head appended to
+  every attention softmax and dropped afterwards (rows sum to < 1).
+  Off by default; when on it starts at 0, which is NOT an identity (an
+  extra exp(0) term) — the roadmap criterion now says so. The SDPA fast
+  path is skipped when the sink is on; absorbed and expanded paths agree.
+- Recall experiment `examples/mimo_hybrid_recall.py` ->
+  `benchmarks/mimo_hybrid_2026-10-15.{json,md}` (MQAR-style, window 8,
+  query distance >= 64): dense 0.428, 5:1 hybrid 0.424 with 39% of the
+  attendable keys, all-SWA 0.067 (chance, the structural negative
+  control), hybrid + sink 0.424 (no effect here; recorded as such).
+  Key counts are access counts — the KV cache is not trimmed yet.
+- **AC1** `helioslm_v5/eval/swe_bench.py`: 20 mini SWE tasks (small Python
+  repos, issue text, visible + hidden tests). The verifier restores the
+  visible tests and runs the hidden ones outside the sandbox; every task
+  has a trap patch that passes the visible tests but not the hidden
+  ones. Wired into `examples/std_bench_run.py` (`--bench swe`); the
+  reference artifact now has 15 gates (+ swe reference / done /
+  prose / trap).
+- **AC5 (知止)** `helioslm_v5/eval/stop_calibration.py`: stop-decision
+  metrics on terminal / SWE episodes — false DONE (and its confident
+  subset), ran out, tested-before-done share and the accuracy split by
+  it, AUROC / ECE / Brier over DONE episodes. API runs of the terminal
+  and SWE benches now carry a `stop` block; episode rows record the
+  commands run.
+- **AC3** `helioslm_v5/agent/tool_recovery.py`: `recover_tool_call` tries
+  7 named repairs (extract block from fences / prose, missing close
+  marker, inner whitespace, trailing commas, OpenAI `arguments`, JSON
+  string args, bare call list) and reports which it applied. The strict
+  parser is unchanged; unknown tools, wrong arg types, truncated JSON and
+  two blocks are never repaired.
+- Roadmap: Phase B3 (Qwen comparison, Q1–Q5) and Phase AC (agentic
+  coding, AC1–AC5).
+- Tests: T96 (`test_mimo_hybrid.py`), T97 (`test_swe_bench.py`),
+  T98 (`test_stop_calibration.py`), T99 (`test_tool_recovery.py`, seeded
+  fuzz: 3000 random corruptions, only ToolCallError ever escapes).
+
 ## v5.61 (2026-10-15) - Compressor round 3, README retitle, roadmap Phase B2
 
 - Learned compressor round 3 (4× only, hidden 64, 9600 steps) ->
