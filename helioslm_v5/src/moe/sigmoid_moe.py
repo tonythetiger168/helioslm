@@ -20,6 +20,10 @@ Key properties:
         fixed across the update and margins are pooled per expert without
         modelling token distribution shift; it is not the full K3
         quantile controller.
+    "smebu" (v5.72, Arcee Trinity): soft-clamped momentum update,
+        ``v = (mean - load) / mean``,
+        ``m <- beta m + (1 - beta) tanh(kappa v)``,
+        ``bias += bias_update_rate * m``.
 - Device-limited routing: experts are partitioned across
   ``config.moe.device_group_size`` devices; under torch.distributed each rank
   only routes to and computes its local experts.
@@ -151,10 +155,10 @@ class DeviceLimitedMoE(nn.Module):
         # configs built before the fields existed.
         self.latent_dim = config.moe.latent_dim
         self.balance_strategy = config.moe.balance_strategy
-        if self.balance_strategy not in ("heuristic", "quantile"):
+        if self.balance_strategy not in ("heuristic", "quantile", "smebu"):
             raise ValueError(
-                f"moe.balance_strategy must be 'heuristic' or 'quantile', "
-                f"got {self.balance_strategy!r}"
+                f"moe.balance_strategy must be 'heuristic', 'quantile' or "
+                f"'smebu', got {self.balance_strategy!r}"
             )
 
         # Device mapping: expert_id -> device_id (uses device_group_size).
@@ -187,6 +191,13 @@ class DeviceLimitedMoE(nn.Module):
                 torch.zeros(self.num_experts, self._MARGIN_BUF),
             )
             self.register_buffer("margin_count", torch.zeros((), dtype=torch.long))
+        if self.balance_strategy == "smebu":
+            # SMEBU momentum of the soft-clamped load violation (one per
+            # expert); only registered for "smebu", so other strategies'
+            # state dicts are unchanged.
+            self.smebu_beta = float(config.moe.smebu_beta)
+            self.smebu_kappa = float(config.moe.smebu_kappa)
+            self.register_buffer("bias_momentum", torch.zeros(self.num_experts))
         # v5.63 (roadmap Q3, Qwen3 MoE): optional load-balancing loss
         # records. None = off (no records, forward unchanged). When set,
         # every TRAINING forward appends (counts, sum of per-token
@@ -485,7 +496,16 @@ class DeviceLimitedMoE(nn.Module):
             torch.distributed.all_reduce(load, op=torch.distributed.ReduceOp.SUM)
         u = self.bias_update_rate if step is None else step
         mean = load.mean()
-        self.route_bias.add_(-u * torch.sign(load - mean))
+        if self.balance_strategy == "smebu":
+            # v5.72: magnitude-aware, soft-clamped, momentum-smoothed. No
+            # update when nothing was routed (mean 0 has no violation).
+            if mean > 0:
+                v = (mean - load) / mean
+                self.bias_momentum.mul_(self.smebu_beta).add_(
+                    (1.0 - self.smebu_beta) * torch.tanh(self.smebu_kappa * v))
+                self.route_bias.add_(u * self.bias_momentum)
+        else:
+            self.route_bias.add_(-u * torch.sign(load - mean))
         if expert_load is None:
             self.expert_load.zero_()
         return self.route_bias

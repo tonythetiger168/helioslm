@@ -257,8 +257,16 @@ class MoEConfig:
     #   "quantile":  bias tracks the (1 - target_frac) quantile of a sliding
     #                window of per-expert routing margins (simplified
     #                quantile estimator; see DeviceLimitedMoE).
+    #   "smebu":     v5.72 (roadmap U7, Arcee Trinity) soft-clamped momentum
+    #                expert bias update: v = (mean - load) / mean,
+    #                m <- beta * m + (1 - beta) * tanh(kappa * v),
+    #                bias <- bias + bias_update_rate * m (Trinity: rate 5e-4,
+    #                beta 0.5, kappa 2). Magnitude-aware, so steps shrink
+    #                near balance instead of oscillating by +-rate.
     # None -> size default (full: "quantile", lite: "heuristic", i.e. v5.4).
     balance_strategy: Optional[str] = None
+    smebu_beta: float = 0.5
+    smebu_kappa: float = 2.0
     # Expert MLP activation: "swiglu" (SiLU-gated GLU) or "situ"
     # (simplified K3-style SiTU-GLU: tanh soft-capped GLU with an RMSNorm
     # before the output projection).
@@ -606,6 +614,12 @@ class HeliosLMv5Config:
     # (gain = 1 + w, w init 0) for the layer / final / MLA / QK norms.
     # Bit-identical at init; lets norm weights take weight decay toward 1.
     zero_centered_norm: bool = False
+    # v5.72 (roadmap U7, Arcee Trinity): depth-scaled sandwich norm. Each
+    # attention / MoE sublayer output passes through its own RMSNorm whose
+    # gain starts at 1 / sqrt(num_hidden_layers):
+    #   h = h + post_norm(sublayer(pre_norm(h))).
+    # False (default) = no post norms, bit-identical.
+    sandwich_norm: bool = False
 
     # Size presets for the architecture fields declared Optional above. A
     # field still None at __post_init__ time ("follow the size") is filled
@@ -887,11 +901,23 @@ class HeliosLMv5Config:
         # normalizes a non-positive latent_dim to None (the documented
         # explicit full-width opt-out), so by validation time latent_dim is
         # either None or a positive int.
-        if m.balance_strategy not in ("heuristic", "quantile"):
+        if m.balance_strategy not in ("heuristic", "quantile", "smebu"):
             raise ValueError(
-                f"moe.balance_strategy must be 'heuristic' or 'quantile', "
-                f"got {m.balance_strategy!r}"
+                f"moe.balance_strategy must be 'heuristic', 'quantile' or "
+                f"'smebu', got {m.balance_strategy!r}"
             )
+        if isinstance(m.smebu_beta, bool) or not isinstance(
+                m.smebu_beta, (int, float)) or not 0.0 <= m.smebu_beta < 1.0:
+            raise ValueError(
+                f"moe.smebu_beta must be in [0, 1), got {m.smebu_beta!r}")
+        if isinstance(m.smebu_kappa, bool) or not isinstance(
+                m.smebu_kappa, (int, float)) or m.smebu_kappa <= 0:
+            raise ValueError(
+                f"moe.smebu_kappa must be a positive number, got "
+                f"{m.smebu_kappa!r}")
+        if not isinstance(self.sandwich_norm, bool):
+            raise ValueError(
+                f"sandwich_norm must be a bool, got {self.sandwich_norm!r}")
         if m.activation not in ("swiglu", "situ"):
             raise ValueError(
                 f"moe.activation must be 'swiglu' or 'situ', got "

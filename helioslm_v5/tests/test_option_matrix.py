@@ -68,6 +68,8 @@ FEATURES = {
     "zero_centered": {"top": dict(zero_centered_norm=True)},
     "final_soft_cap": {"top": dict(final_logit_soft_cap=30.0)},
     "mtp_light": {"mtp": dict(style="light")},
+    "sandwich_norm": {"top": dict(sandwich_norm=True)},
+    "smebu": {"moe": dict(balance_strategy="smebu")},
 }
 
 # Single configs that trigger the rules no feature pair reaches (a

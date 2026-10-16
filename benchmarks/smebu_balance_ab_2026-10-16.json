@@ -1,0 +1,70 @@
+{
+  "experiment": "U7 SMEBU vs sign-based aux-free bias update, skewed token stream, one MoE layer",
+  "setup": {
+    "experts": 32,
+    "top_k": 4,
+    "smebu_beta": 0.5,
+    "smebu_kappa": 2.0,
+    "lambdas": [
+      0.001,
+      0.003,
+      0.01
+    ],
+    "steps": 600,
+    "batch": 512,
+    "skew": 3.0,
+    "seed": 0
+  },
+  "results": [
+    {
+      "strategy": "heuristic",
+      "lambda": 0.001,
+      "maxvio_first50_mean": 0.8972,
+      "maxvio_tail_mean": 0.2646,
+      "maxvio_tail_var": 0.003599,
+      "bias_sign_flips_per_step": 14.541
+    },
+    {
+      "strategy": "smebu",
+      "lambda": 0.001,
+      "maxvio_first50_mean": 0.9875,
+      "maxvio_tail_mean": 0.2564,
+      "maxvio_tail_var": 0.003711,
+      "bias_sign_flips_per_step": 9.927
+    },
+    {
+      "strategy": "heuristic",
+      "lambda": 0.003,
+      "maxvio_first50_mean": 0.4938,
+      "maxvio_tail_mean": 0.2822,
+      "maxvio_tail_var": 0.004817,
+      "bias_sign_flips_per_step": 16.104
+    },
+    {
+      "strategy": "smebu",
+      "lambda": 0.003,
+      "maxvio_first50_mean": 0.5372,
+      "maxvio_tail_mean": 0.2586,
+      "maxvio_tail_var": 0.003744,
+      "bias_sign_flips_per_step": 10.658
+    },
+    {
+      "strategy": "heuristic",
+      "lambda": 0.01,
+      "maxvio_first50_mean": 0.4019,
+      "maxvio_tail_mean": 0.354,
+      "maxvio_tail_var": 0.00668,
+      "bias_sign_flips_per_step": 19.803
+    },
+    {
+      "strategy": "smebu",
+      "lambda": 0.01,
+      "maxvio_first50_mean": 0.365,
+      "maxvio_tail_mean": 0.2721,
+      "maxvio_tail_var": 0.004055,
+      "bias_sign_flips_per_step": 11.262
+    }
+  ],
+  "results_sha256": "007a4b4aab3b0dbb07e69b1efe05a01831abedc799af522e540231d85564ae8d",
+  "wall_seconds": 207.9
+}

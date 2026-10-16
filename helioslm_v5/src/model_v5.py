@@ -191,6 +191,21 @@ class HeliosLMv5Layer(nn.Module):
             self.moe = DenseFFN(config)
         else:
             self.moe = DeviceLimitedMoE(config)
+        # v5.72 (roadmap U7): depth-scaled sandwich norm — one RMSNorm on
+        # each sublayer output, gain initialized to 1/sqrt(num_layers)
+        # (the model-wide init only touches Linear / Embedding).
+        if config.sandwich_norm:
+            g = config.num_hidden_layers ** -0.5
+            zc = bool(config.zero_centered_norm)
+            self.post_attn_norm = RMSNorm(config.hidden_size,
+                                          eps=config.rms_norm_eps, zero_centered=zc)
+            self.post_moe_norm = RMSNorm(config.hidden_size,
+                                         eps=config.rms_norm_eps, zero_centered=zc)
+            with torch.no_grad():
+                for n in (self.post_attn_norm, self.post_moe_norm):
+                    n.weight.fill_(g - 1.0 if zc else g)
+        else:
+            self.post_attn_norm = self.post_moe_norm = None
         if bool(config.use_attention_residuals):
             self.attn_res_gate = nn.Parameter(torch.tensor(0.1))
         else:
@@ -267,7 +282,7 @@ class HeliosLMv5Layer(nn.Module):
 
     def _hc_step(self, streams, A, B, sublayer, norm, attention_mask,
                  past_key_value, use_cache, position_ids, returns_kv,
-                 shared_kv=None):
+                 shared_kv=None, post_norm=None):
         """One HC sublayer: read A, apply f(x) = x + sublayer(norm(x)) per
         branch, write back through B.
 
@@ -299,6 +314,8 @@ class HeliosLMv5Layer(nn.Module):
                 **_shared_kv_kw(shared_kv))
         else:
             sub_out, present_kv = sublayer(norm(xf)), None
+        if post_norm is not None:
+            sub_out = post_norm(sub_out)        # v5.72 sandwich norm
         f = (xf + sub_out).reshape(Bb, n, L, d).permute(0, 2, 1, 3)  # f(h̃)
         streams_new = x + torch.einsum("blmd,km->blkd", f, B)
         return streams_new, present_kv
@@ -317,7 +334,8 @@ class HeliosLMv5Layer(nn.Module):
         streams, present_kv = self._hc_step(
             streams, self.hc_read_matrix("attn"), self.hc_attn_B, self.attention,
             self.pre_attn_norm, attn_mask, past_key_value, use_cache,
-            position_ids, returns_kv=True, shared_kv=shared_kv)
+            position_ids, returns_kv=True, shared_kv=shared_kv,
+            post_norm=self.post_attn_norm)
         # MoE sublayer: no cache, so the stream step runs without KV args.
         moe_mask = attention_mask
         if moe_mask is not None and moe_mask.dim() == 2:
@@ -327,7 +345,7 @@ class HeliosLMv5Layer(nn.Module):
         streams, _ = self._hc_step(
             streams, self.hc_read_matrix("moe"), self.hc_moe_B, self.moe,
             self.pre_moe_norm, moe_mask, None, False, position_ids,
-            returns_kv=False)
+            returns_kv=False, post_norm=self.post_moe_norm)
         return streams, present_kv, None
 
     def forward(self, hidden_states, attention_mask=None, past_key_value=None,
@@ -350,6 +368,8 @@ class HeliosLMv5Layer(nn.Module):
             position_ids=position_ids,
             **_shared_kv_kw(shared_kv),
         )
+        if self.post_attn_norm is not None:
+            attn_out = self.post_attn_norm(attn_out)   # v5.72 sandwich norm
         # Explicit accumulator threading: the updated accumulator is a
         # return value (part of the autograd graph), not an attribute.
         if self.attn_res_gate is not None:
@@ -357,7 +377,10 @@ class HeliosLMv5Layer(nn.Module):
         else:
             attn_res_new = attn_res  # pass-through (normally None)
         hidden_states = hidden_states + attn_out
-        hidden_states = hidden_states + self.moe(self.pre_moe_norm(hidden_states))
+        moe_out = self.moe(self.pre_moe_norm(hidden_states))
+        if self.post_moe_norm is not None:
+            moe_out = self.post_moe_norm(moe_out)      # v5.72 sandwich norm
+        hidden_states = hidden_states + moe_out
         return hidden_states, present_kv, attn_res_new
 
 

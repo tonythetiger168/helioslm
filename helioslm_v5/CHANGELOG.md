@@ -1,5 +1,45 @@
 # HeliosLM v5 Changelog
 
+## v5.72 (2026-10-16) - Roadmap U7: Arcee Trinity SMEBU and depth-scaled sandwich norm
+
+- `moe.balance_strategy="smebu"`: soft-clamped momentum expert-bias
+  updates, a new aux-free load-balancing rule from the Trinity Large
+  report (arXiv 2602.17004). Each update computes
+  v = (mean - load) / mean, then m <- beta m + (1 - beta) tanh(kappa v),
+  then bias += bias_update_rate * m.
+  - Defaults are beta = `moe.smebu_beta` = 0.5 and kappa =
+    `moe.smebu_kappa` = 2, as in the report. Trinity uses rate 5e-4.
+  - The momentum buffer exists only for "smebu".
+  - Every step is at most `bias_update_rate`. Unlike the sign update,
+    the step shrinks as the load approaches balance.
+  - The exact momentum form is reconstructed from summaries of the
+    report, which was not reachable from this environment.
+- `sandwich_norm`: each attention and MoE sublayer output passes through
+  its own RMSNorm, so h = h + post_norm(sublayer(pre_norm(h))). The gain
+  starts at 1/sqrt(num_hidden_layers), as in Trinity's depth-scaled
+  sandwich norm. This works on both the plain path and the
+  hyper-connection path, and with zero-centered norms.
+  - Default False adds no modules and is bit-identical.
+- Load-balance A/B (`examples/smebu_balance_ab.py` ->
+  `benchmarks/smebu_balance_ab_2026-10-16.json`): one MoE layer with 32
+  experts and top-4 routing, a skewed token stream, 600 steps. The two
+  arms share the same weights, data and step size. MaxVio is
+  max_i (load_i - mean) / mean, averaged over the second half of the run:
+
+  | lambda | MaxVio var, sign / SMEBU | MaxVio mean, sign / SMEBU | bias sign flips per step, sign / SMEBU |
+  |---|---|---|---|
+  | 1e-3 | 0.0036 / 0.0037 | 0.265 / 0.256 | 14.5 / 9.9 |
+  | 3e-3 | 0.0048 / 0.0037 | 0.282 / 0.259 | 16.1 / 10.7 |
+  | 1e-2 | 0.0067 / 0.0041 | 0.354 / 0.272 | 19.8 / 11.3 |
+
+  SMEBU oscillates less at every step size. It lowers the steady-state
+  variance and the mean violation once the step is large enough that the
+  sign update overshoots. At 1e-3 the per-batch sampling noise dominates
+  and the variances are equal. SMEBU converges slightly slower in the
+  first 50 steps at the two smaller step sizes. Toy setting, single seed.
+- T111 (`test_smebu_sandwich.py`, 6 tests). T110's option matrix now
+  includes both options (28 features).
+
 ## Maintenance (2026-10-16) - tech-debt Phase 2: one option-compatibility table, one place for defaults
 
 - `config_v5.OPTION_RULES` collects all 14 cross-option constraints
@@ -20,7 +60,7 @@
     `balance_strategy` and `vision_max_grid`.
   - Modules that accept duck-typed configs (`mtp`, `vllm_engine`,
     `grpo`, `fp8_trainer`, `gguf`) keep `getattr`.
-- T110 (`test_option_matrix.py`, 3 tests) covers 26 feature options:
+- T110 (`test_option_matrix.py`, 3 tests) covers 26 feature options (28 since v5.72):
   - Every single option and every pair (351 configs) must either be
     rejected by a table rule, or build a model whose cached decode equals
     the full forward.
