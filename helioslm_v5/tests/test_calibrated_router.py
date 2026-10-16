@@ -32,7 +32,6 @@ QUESTIONS = {
 
 
 def _records(n=160, seed=7):
-    rng = random.Random(seed)
     recs = []
     for i in range(n):
         if i % 2 == 0:

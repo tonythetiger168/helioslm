@@ -10,10 +10,8 @@ This is Absolute Zero's minimal reproducible version, with our replay
 verification as the "independent verification" mechanism the survey
 demands.
 """
-import json
 import random
 
-import torch
 
 import sys as _sys
 _sys.path.insert(0, "/mnt/agents/output/hlwork/main/helioslm_v5/agent")

@@ -17,7 +17,7 @@ Honesty constraints:
     deviation is recorded in every report (weights on the E2M1x16 grid,
     block E4M3 scales — finer than spec in two documented ways).
 """
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 import torch
 

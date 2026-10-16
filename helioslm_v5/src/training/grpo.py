@@ -16,7 +16,6 @@ built-in byte-level fallback (UTF-8 bytes <-> ids) is used.
 """
 import re
 import torch
-import torch.nn as nn
 from typing import List, Optional, Tuple
 
 
@@ -254,8 +253,6 @@ class GRPOTrainer:
                     f"GRPOTrainer.train_step: question at index {i} is "
                     "empty or blank; prompts must contain at least one "
                     "non-whitespace character")
-        batch_size = len(questions)
-        n_samples = batch_size * self.group_size
         prev_training = self.model.training
         try:
             # 1. Sample G responses per question (old policy, eval mode,

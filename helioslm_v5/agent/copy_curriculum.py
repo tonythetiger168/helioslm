@@ -31,13 +31,13 @@ try:
     from .chat import CHAT_SYSTEM, scripted_chat_policy
     from .loop import render_tool_docs
     from .schema import parse_chat_turn
-    from .tools import build_default_registry, execute
+    from .tools import build_default_registry
 except ImportError:
     import task_grammar as _G
     from chat import CHAT_SYSTEM, scripted_chat_policy
     from loop import render_tool_docs
     from schema import parse_chat_turn
-    from tools import build_default_registry, execute
+    from tools import build_default_registry
 
 _ECHO_ALPHABET = string.ascii_letters + string.digits + " .,!?"
 

@@ -274,7 +274,7 @@ in `__post_init__` (no silent truncation).
 ## Quick Start
 
 ```bash
-pip install torch
+pip install -r requirements-ci.txt        # the exact CPU torch / numpy / pytest versions CI uses
 python -m helioslm_v5.tests.test_v5     # 92 unit tests (3 checkpoint-dependent tests self-skip without checkpoints/toy_v5.13.pt)
 python integration_test_v51.py          # 9 end-to-end integration tests
 python -m helioslm_v5.tests.test_agent  # 9 agent-layer oracles (v5.23)

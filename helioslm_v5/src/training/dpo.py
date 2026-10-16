@@ -27,7 +27,7 @@ tensor of shape (1, T, V). Pairs are dicts:
 Text is tokenized with the provided ``tokenizer`` (encode/decode) or a
 byte-level fallback, same convention as GRPOTrainer.
 """
-from typing import List, Optional
+from typing import List
 
 import torch
 

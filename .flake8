@@ -1,0 +1,8 @@
+# Lint gate (tech-debt Phase 1). Beyond hard breakage (E9 syntax, F63/F7
+# dead paths, F82 undefined names) it rejects unused imports (F401),
+# unused locals (F841), shadowed unused imports (F811) and f-strings
+# without placeholders (F541). Tests may keep unused imports.
+[flake8]
+select = E9,F63,F7,F82,F401,F811,F841,F541
+per-file-ignores =
+    helioslm_v5/tests/*:F401

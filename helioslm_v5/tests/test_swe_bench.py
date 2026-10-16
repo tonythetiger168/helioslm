@@ -83,7 +83,7 @@ def test_grading_guards():
 def test_episode_row():
     tid = "swe/17-flatten"
     fix = sb.patch_command(_RAW[tid]["fix"])
-    replies = iter([f"```bash\ncat nested.py\n```",
+    replies = iter(["```bash\ncat nested.py\n```",
                     f"```bash\n{fix}\n```",
                     "```bash\npython3 tests/test_nested.py\n```",
                     "DONE confidence=0.8"])

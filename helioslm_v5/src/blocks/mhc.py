@@ -60,7 +60,6 @@ class ManifoldConstrainedHyperConnection(nn.Module):
 
         Contract: h[0] is the static path, h[1:] the dynamic pool.
         """
-        t = self.t
         x_static = h[0]
         x_dynamic = h[1:].mean(dim=0)
         y = self.sublayer(x_dynamic)

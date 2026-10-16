@@ -53,3 +53,6 @@ smoke*.json
 
 # Standard-benchmark full downloads (re-fetch: scripts/fetch_std_bench.py)
 data/std_bench/full/
+
+# Editor/backup leftovers
+*.bak

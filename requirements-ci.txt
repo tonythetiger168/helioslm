@@ -1,0 +1,11 @@
+# Pinned CI dependencies (tech-debt Phase 1). These are the versions CI
+# resolved on 2026-10-16 (run 400), so pinning changes nothing today; it
+# stops a new torch/numpy release from changing CI results unannounced.
+# Bump deliberately, in its own PR, and re-run the full suite.
+--index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://pypi.org/simple
+torch==2.14.1
+# numpy 2.5 ships no CPython 3.11 wheels; 2.4.6 is what py3.11 resolved.
+numpy==2.5.4; python_version >= "3.12"
+numpy==2.4.6; python_version < "3.12"
+pytest==9.1.1

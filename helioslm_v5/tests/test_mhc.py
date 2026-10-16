@@ -15,7 +15,6 @@ from helioslm_v5.src.blocks.mhc import HCStack, ManifoldConstrainedHyperConnecti
 
 
 def _linear(dim, seed):
-    g = torch.Generator().manual_seed(seed)
     return torch.nn.Linear(dim, dim, bias=True).requires_grad_(True)
 
 

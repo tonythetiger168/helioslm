@@ -37,7 +37,7 @@ def _boot_context(preset="full"):
     env = make_envs()[0]
     for i in range(3):
         task = env.sample(rng)
-        wf = ctx.agent.run(task.text, fake, max_steps=2)
+        ctx.agent.run(task.text, fake, max_steps=2)
         ctx.effect(f"smoke_{i}", {"task": task.text[:40]},
                    replay_fn=lambda p: True)
     return ctx
@@ -578,8 +578,8 @@ def main(ctx=None, port=8990, preset="full"):
     print(f"chat backend: {name}")
     server = HTTPServer(("0.0.0.0", port), HarnessHandler)
     print(f"helios-harness UI on http://localhost:{port}")
-    print(f"  /       dashboard")
-    print(f"  /chat   calibrated chat")
+    print("  /       dashboard")
+    print("  /chat   calibrated chat")
     server.serve_forever()
 
 

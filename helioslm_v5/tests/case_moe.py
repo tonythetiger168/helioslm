@@ -131,7 +131,6 @@ def test_latent_moe():
 def test_quantile_balancing():
     from helioslm_v5.src.moe.sigmoid_moe import DeviceLimitedMoE
 
-    E = HeliosLMv5Config(size="lite").moe.num_experts
 
     def make(strategy, seed):
         config = HeliosLMv5Config(size="lite")
@@ -203,7 +202,7 @@ def test_quantile_margin_boundary():
     config.moe.balance_strategy = "quantile"
     torch.manual_seed(160)
     moe = DeviceLimitedMoE(config).train()
-    E, K = moe.num_experts, moe.top_k
+    E = moe.num_experts
 
     # Known selection: a huge bias on expert 3 forces it into every token's
     # top-k; the rest of the ranking is data-dependent.

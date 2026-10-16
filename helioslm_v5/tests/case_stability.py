@@ -162,7 +162,6 @@ def test_indexer_stability_min_gate():
 
     # Wiring: stability_min without stability_probe is a loud error, not
     # a silent no-op (a gate on a measurement never taken is theatre).
-    from helioslm_v5.configs.config_v5 import HeliosLMv5Config
     from helioslm_v5.src.model_v5 import HeliosLMv5
     cfg = HeliosLMv5Config(size="lite")
     cfg.attention.sparse_indexer = "learned"

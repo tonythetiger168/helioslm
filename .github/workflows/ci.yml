@@ -11,6 +11,7 @@ jobs:
     # Catches hard breakage cheaply: syntax errors (E9), undefined names
     # (F82), and dead exception paths (F63/F7). This gate would have
     # caught the test_v116_robot.py syntax error that reached main.
+    # Rules live in .flake8 (also unused imports/locals, F401/F841/F811/F541).
     name: Syntax Gate
     runs-on: ubuntu-latest
     steps:
@@ -18,8 +19,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install flake8
-      - run: flake8 helioslm_v5/ harness/ agent/ --select=E9,F63,F7,F82
+      - run: pip install flake8==7.4.1
+      - run: flake8 helioslm_v5/ harness/ agent/
 
   test-v5:
     name: Test v5 Suite (py${{ matrix.python }})
@@ -32,8 +33,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - name: Install CPU torch
-        run: pip install torch numpy pytest --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
+      - name: Install pinned CPU torch + test deps
+        run: pip install -r requirements-ci.txt
       - name: Unit + regression suite (test_v5.py)
         run: python helioslm_v5/tests/test_v5.py
       - name: Pytest suite (harness/agent/inference)

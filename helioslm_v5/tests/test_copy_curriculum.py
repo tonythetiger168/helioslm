@@ -77,8 +77,8 @@ def test_copy_dataset_builder():
         want = l["prompt"].split('Repeat back exactly: "', 1)[1].rstrip('"')
         assert l["response"] == want, "echo response is not an exact copy"
         assert "@@tool@@" not in l["response"]
-    print(f"PASS test_copy_dataset_builder (40 echo + 1 chat, "
-          f"responses copy-exact)")
+    print("PASS test_copy_dataset_builder (40 echo + 1 chat, "
+          "responses copy-exact)")
 
 
 def test_echo_episode_deterministic():

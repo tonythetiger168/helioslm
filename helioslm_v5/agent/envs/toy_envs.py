@@ -2,10 +2,8 @@ import random
 from dataclasses import dataclass
 
 try:
-    from .. import task_grammar as _G
     from ..tools import calc, str_op
 except ImportError:
-    import task_grammar as _G
     from tools import calc, str_op
 
 

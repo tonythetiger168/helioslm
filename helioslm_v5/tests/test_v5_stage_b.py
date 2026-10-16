@@ -123,7 +123,7 @@ def test_t17_tool_tuned_checkpoint_end_to_end():
             f"parse rate {dense['parse']:.2f} below floor {PARSE_FLOOR} " \
             f"(protocol not learned at all - regression vs v5.27 baseline 0.15)"
         assert dense["finish"] * (3 * TASKS_PER_ENV) >= FINISH_COUNT_MIN, \
-            f"no episode finished - regression vs v5.27 baseline (1/9)"
+            "no episode finished - regression vs v5.27 baseline (1/9)"
         assert dense["correct"] >= CORRECT_FLOOR
     if os.environ.get("T17_SPARSE") == "1":
         cfg_s = HeliosLMv5Config(size="lite")

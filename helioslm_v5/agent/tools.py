@@ -3,9 +3,9 @@ import operator
 from pathlib import Path
 
 try:
-    from .schema import ToolCall, ToolCallError, ToolRegistry, ToolSpec
+    from .schema import ToolCallError, ToolRegistry, ToolSpec
 except ImportError:
-    from schema import ToolCall, ToolCallError, ToolRegistry, ToolSpec
+    from schema import ToolCallError, ToolRegistry, ToolSpec
 
 
 def _check_contained(p: Path, root: Path, op: str) -> None:

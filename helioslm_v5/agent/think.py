@@ -24,12 +24,12 @@ auditable (transcript + replay).
 from dataclasses import dataclass, field
 
 try:
-    from .chat import (CHAT_SYSTEM, ChatSession, ChatTurn, ChatStep,
-                       ROLE_ASSISTANT, ROLE_TOOL, ROLE_USER)
+    from .chat import (ChatSession, ChatTurn, ChatStep,
+                       ROLE_ASSISTANT, ROLE_TOOL)
     from .schema import (ToolCallError, parse_chat_turn)
 except ImportError:
-    from chat import (CHAT_SYSTEM, ChatSession, ChatTurn, ChatStep,
-                      ROLE_ASSISTANT, ROLE_TOOL, ROLE_USER)
+    from chat import (ChatSession, ChatTurn, ChatStep,
+                      ROLE_ASSISTANT, ROLE_TOOL)
     from schema import (ToolCallError, parse_chat_turn)
 
 THINK_OPEN, THINK_CLOSE = "@@think@@", "@@end@@"
