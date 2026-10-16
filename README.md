@@ -307,7 +307,8 @@ python helioslm_v5/tests/test_stop_calibration.py   # T98 知止 stop metrics: f
 python helioslm_v5/tests/test_tool_recovery.py      # T99 tool-call recovery: 7 repairs, never-repaired classes, 3000-case fuzz
 python helioslm_v5/tests/test_swe_agent_rl.py       # T100 agent RL on the SWE sandbox: GRPO action_mask, env semantics, rollouts
 python helioslm_v5/tests/test_qwen_next.py          # T101 Qwen Q1-Q5: GDA short conv, zero-centered norm, global-batch balance, preset, MTP gate
-python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite (359 tests)
+python helioslm_v5/tests/test_grpo_u1.py           # T102 U1 GRPO options: defaults bit-identical, token-level loss, filtering, TIS, clip-higher
+python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite (366 tests)
 ```
 
 ```python
@@ -422,6 +423,7 @@ are static-checked) — tracked as a community issue.
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.64** — U1: DAPO / Olmo 3 options for GRPO (token-level loss, clip-higher, no-std advantages, zero-gradient group filtering, TIS), defaults bit-identical; on the agent task a KL anchor to the SFT model lets GRPO improve on SFT (0.367 → 0.733) — T102
 - **v5.63** — Qwen3-Next ingredients: GDA short conv, zero-centered RMSNorm with decay groups, global-batch load-balancing loss (equals the full-batch loss over micro-batches), `qwen_next_config`, MTP greedy-equivalence gate (toy acceptance 0.824); roadmap Phase B4 (US models) and TW (zh-TW data survey) — T101
 - **v5.62** — MiMo 5:1 sliding-window/global interleave (`mimo_hybrid_config`) keeps long-range recall at 39% of the attended keys (0.424 vs dense 0.428; all-SWA at chance); learnable attention sink (no effect at this scale); agentic coding: 20-task mini SWE set with hidden tests and trap gates, 知止 stop-decision metrics, fuzz-tested tool-call recovery; roadmap Phase B3 (Qwen) and AC — T96–T99
 - **v5.61** — learned compressor round 3: 4× passkey recall 0.825/0.800, about 92% of the oracle ceiling (squared ReLU and longer 16× training recorded as negative results); README retitle + Chinese name 羲和; roadmap Phase B2 (GLM-5.3 / MiMo) — T95
