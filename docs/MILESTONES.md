@@ -76,11 +76,11 @@ renumbered.
 | B2 | B2-4 learnable mHC with Sinkhorn projection (GLM-5.3-Flash) | ⬜ Not started |
 | B2 | B2-5 MiMo-style light MTP head | ⬜ Not started |
 | B2 | B2-6 on-policy distillation trainer (MiMo MOPD; confirm the definition first) | ⬜ Not started |
-| B3 | Q1 short conv in GDA linear-attention layers (Qwen3-Next) | ⬜ Not started |
-| B3 | Q2 zero-centered RMSNorm with weight decay (Qwen3-Next) | ⬜ Not started |
-| B3 | Q3 global-batch load-balancing loss (Qwen3 MoE) | ⬜ Not started |
-| B3 | Q4 `qwen_next_config()` preset | ⬜ Not started |
-| B3 | Q5 (optional) MTP speculative-decoding acceptance measurement | ⬜ Not started |
+| B3 | Q1 short conv in GDA linear-attention layers (Qwen3-Next) | ✅ Done (v5.63, T101); recall A/B running |
+| B3 | Q2 zero-centered RMSNorm + `decay_param_groups` (Qwen3-Next) | ✅ Done (v5.63, T101) |
+| B3 | Q3 global-batch load-balancing loss (Qwen3 MoE) — equals the full-batch loss over micro-batches | ✅ Done (v5.63, T101) |
+| B3 | Q4 `qwen_next_config()` preset | ✅ Done (v5.63, T101) |
+| B3 | Q5 MTP acceptance + greedy-equivalence gate (toy acceptance 0.824) | ✅ Done (v5.63, T101) |
 | B4 | U1 GRPO DAPO/OlmoRL options (token-level loss, clip-higher, zero-gradient filtering, TIS) | ⬜ Not started |
 | B4 | U2 thinking-budget control (Nemotron 3 / gpt-oss reasoning effort) | ⬜ Not started |
 | B4 | U3 NoPE-layer attention temperature scaling (Llama 4) | ⬜ Not started |

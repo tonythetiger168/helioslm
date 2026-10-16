@@ -1,5 +1,38 @@
 # HeliosLM v5 Changelog
 
+## v5.63 (2026-10-16) - Phase B3: Qwen Q1–Q5; roadmap B4 (US models) and TW (zh-TW data)
+
+- **Q1** `hybrid_attention.short_conv_kernel` (Qwen3-Next Gated DeltaNet):
+  causal depthwise conv + SiLU over the GDA q/k/v projections. 0 = off
+  (no parameter, `(state,)` cache, bit-identical). On: the cache becomes
+  `(state, conv_state)`, both StateTensors, so MTP rollback and engine
+  batching handle it unchanged; padding contributes zeros and taps never
+  cross packed-document boundaries.
+- **Q2** `zero_centered_norm`: RMSNorm gain `1 + w` with `w` init 0 on the
+  layer, final, MLA latent and QK norms. Bit-identical at init.
+  `model_v5.decay_param_groups(model, wd)` decays matrices and
+  zero-centered norm weights only (standard gains are never decayed
+  toward 0).
+- **Q3** `moe.balance_loss_scope` ("micro" | "global") and
+  `model_v5.balance_loss(model)`: E·Σ f_i·P_i. In global scope f_i and P_i
+  span every forward since the last call, so over micro-batches it equals
+  the full-batch loss and gradients (T101 oracle); micro scope does not.
+- **Q4** `qwen_next_config()`: 3:1 GDA:gated-attention in Qwen3-Next
+  order with the short conv, QK-norm, zero-centered norms, ultra-sparse
+  MoE (full: 512 experts, top-10, 1 shared) and global-batch balancing.
+- **Q5** `examples/mtp_acceptance.py` ->
+  `benchmarks/mtp_acceptance_2026-10-16.json`: greedy speculative decoding
+  is token-identical to plain greedy for the toy checkpoint and for the
+  untrained qwen_next model (GDA + conv-state rollback); toy MTP
+  acceptance 0.824, 2.78 tokens per verification round.
+- Roadmap Phase B4 (OpenAI gpt-oss, Gemma 3/4, Llama 4, Phi-4-mini-flash,
+  Nemotron, Olmo 3, Arcee Trinity; U1–U7) and Phase TW (zh-TW data,
+  TW1–TW4); `docs/TW_DATASETS_2026Q4.md` dataset and license survey.
+- AC2: reward now penalizes a false DONE (`--false-done-penalty`, default
+  1). Run 1 without it collapsed onto "apply any candidate, DONE" (1/3
+  for free).
+- T101 (`test_qwen_next.py`, 5 tests).
+
 ## v5.62 (2026-10-16) - Phase B2: MiMo hybrid + learnable sink; Phase AC: agentic coding
 
 - **B2-1** `attention.global_attention_every` (requires `sliding_window`):
