@@ -63,6 +63,24 @@ def _is_full_attention_layer(config, layer_idx):
     return layer_idx % every == every - 1
 
 
+class DenseFFN(nn.Module):
+    """Dense SwiGLU FFN for the ``moe.first_k_dense`` layers (B2-3, v5.65):
+    w2(silu(a) * b) with w13(x) = (a, b), width ``config.intermediate_size``.
+    ``is_dense`` lets tooling tell it from a routed MoE layer."""
+
+    is_dense = True
+
+    def __init__(self, config):
+        super().__init__()
+        h, i = config.hidden_size, config.intermediate_size
+        self.w13 = nn.Linear(h, 2 * i, bias=False)
+        self.w2 = nn.Linear(i, h, bias=False)
+
+    def forward(self, x):
+        a, b = self.w13(x).chunk(2, dim=-1)
+        return self.w2(F.silu(a) * b)
+
+
 def decay_param_groups(model, weight_decay):
     """AdamW param groups (v5.63, roadmap Q2).
 
@@ -159,7 +177,14 @@ class HeliosLMv5Layer(nn.Module):
                           else GatedDeltaAttention(config))
         self.pre_moe_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps,
             zero_centered=bool(getattr(config, "zero_centered_norm", False)))
-        self.moe = DeviceLimitedMoE(config)
+        # B2-3 (v5.65): the first ``moe.first_k_dense`` layers use a dense
+        # FFN. The attribute keeps the name ``moe`` so every forward path
+        # (plain, hyper-connections) is unchanged; routing statistics and
+        # balance losses only ever look at DeviceLimitedMoE instances.
+        if layer_idx < int(getattr(config.moe, "first_k_dense", 0) or 0):
+            self.moe = DenseFFN(config)
+        else:
+            self.moe = DeviceLimitedMoE(config)
         if bool(getattr(config, "use_attention_residuals", False)):
             self.attn_res_gate = nn.Parameter(torch.tensor(0.1))
         else:

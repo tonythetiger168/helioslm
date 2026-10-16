@@ -239,6 +239,11 @@ class MoEConfig:
     # (f_i over every forward since the last balance_loss() call, i.e. the
     # whole global batch). Read with model_v5.balance_loss(model).
     balance_loss_scope: Optional[str] = None
+    # v5.65 (roadmap B2-3, GLM-5.3 first 3 layers / MiMo first block):
+    # layers 0..first_k_dense-1 use a dense SwiGLU FFN of width
+    # ``intermediate_size`` instead of the routed MoE. 0 = off (every
+    # layer MoE, bit-identical construction and state dict).
+    first_k_dense: int = 0
 
 
 @dataclass
@@ -650,6 +655,14 @@ class HeliosLMv5Config:
             raise ValueError(
                 f"attention.learnable_sink must be a bool, got "
                 f"{self.attention.learnable_sink!r}")
+        k = self.moe.first_k_dense
+        if isinstance(k, bool) or not isinstance(k, int) or k < 0:
+            raise ValueError(
+                f"moe.first_k_dense must be an int >= 0, got {k!r}")
+        if k > self.num_hidden_layers:
+            raise ValueError(
+                f"moe.first_k_dense ({k}) exceeds num_hidden_layers "
+                f"({self.num_hidden_layers})")
         if self.moe.balance_loss_scope not in (None, "micro", "global"):
             raise ValueError(
                 f"moe.balance_loss_scope must be None, 'micro' or 'global', "
