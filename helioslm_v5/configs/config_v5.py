@@ -181,6 +181,19 @@ class AttentionConfig:
     # bit-identical to full attention.
     sliding_window: Optional[int] = None
     sliding_window_sink: int = 0
+    # Per-layer sliding/global interleave (v5.62, MiMo-V2-Flash style):
+    # when an int N together with ``sliding_window``, MLA layer i keeps
+    # FULL (global) attention iff ``i == 0 or i % N == N - 1`` and uses the
+    # window otherwise (N=6 gives MiMo's 5 sliding : 1 global with a
+    # global first layer). None (default) = the window applies to every
+    # MLA layer, exactly as in v5.9.
+    global_attention_every: Optional[int] = None
+    # Learnable attention sink (v5.62, MiMo-V2-Flash / gpt-oss style): one
+    # learnable logit per head joins every softmax as an extra "null" key
+    # with no value, so a head can put probability mass nowhere instead of
+    # being forced onto the few keys a small window leaves it. Off by
+    # default (no parameter, bit-identical); when on, it starts at 0.
+    learnable_sink: bool = False
 
     @property
     def head_dim(self) -> int:
@@ -221,6 +234,11 @@ class MoEConfig:
     # before the output projection).
     activation: str = "swiglu"
     situ_softcap: float = 10.0  # tanh soft-cap magnitude for "situ"
+    # v5.63 (roadmap Q3, Qwen3): optional load-balancing loss scope —
+    # None (off), "micro" (f_i per forward / micro-batch) or "global"
+    # (f_i over every forward since the last balance_loss() call, i.e. the
+    # whole global batch). Read with model_v5.balance_loss(model).
+    balance_loss_scope: Optional[str] = None
 
 
 @dataclass
@@ -255,6 +273,9 @@ class HybridAttentionConfig:
     per_channel_decay: bool = False
     # v5.57: see the class docstring. True = v5.5 rule (bit-identical).
     first_layer_full: bool = True
+    # v5.63 (roadmap Q1, Qwen3-Next): causal depthwise short conv (kernel
+    # size) + SiLU over the linear-attention q/k/v projections. 0 = off.
+    short_conv_kernel: int = 0
 
 
 @dataclass
@@ -369,6 +390,10 @@ class HeliosLMv5Config:
     # logits against rare activation spikes. None = uncapped (v5.8
     # behaviour, bit-identical).
     final_logit_soft_cap: Optional[float] = None
+    # v5.63 (roadmap Q2, Qwen3-Next): zero-centered RMSNorm gains
+    # (gain = 1 + w, w init 0) for the layer / final / MLA / QK norms.
+    # Bit-identical at init; lets norm weights take weight decay toward 1.
+    zero_centered_norm: bool = False
 
     # Size presets for the architecture fields declared Optional above. A
     # field still None at __post_init__ time ("follow the size") is filled
@@ -562,6 +587,11 @@ class HeliosLMv5Config:
                 f"(a value of 1 would make every layer MLA), got "
                 f"{h.full_attention_every}"
             )
+        k = h.short_conv_kernel
+        if isinstance(k, bool) or not isinstance(k, int) or k < 0 or k == 1:
+            raise ValueError(
+                f"hybrid_attention.short_conv_kernel must be 0 (off) or an "
+                f"int >= 2, got {k!r}")
         if not isinstance(h.first_layer_full, bool):
             raise ValueError(
                 f"hybrid_attention.first_layer_full must be a bool, got "
@@ -574,6 +604,29 @@ class HeliosLMv5Config:
                 f"full_attention_every={h.full_attention_every} leaves no "
                 f"MLA layer: the cache would carry no sequence axis to "
                 f"derive the past length from")
+        ge = self.attention.global_attention_every
+        if ge is not None:
+            if not isinstance(ge, int) or isinstance(ge, bool) or ge < 2:
+                raise ValueError(
+                    f"attention.global_attention_every must be an int >= 2 "
+                    f"or None, got {ge!r}")
+            if self.attention.sliding_window is None:
+                raise ValueError(
+                    "attention.global_attention_every requires "
+                    "attention.sliding_window (it picks which layers keep "
+                    "full attention instead of the window)")
+        if not isinstance(self.attention.learnable_sink, bool):
+            raise ValueError(
+                f"attention.learnable_sink must be a bool, got "
+                f"{self.attention.learnable_sink!r}")
+        if self.moe.balance_loss_scope not in (None, "micro", "global"):
+            raise ValueError(
+                f"moe.balance_loss_scope must be None, 'micro' or 'global', "
+                f"got {self.moe.balance_loss_scope!r}")
+        if not isinstance(self.zero_centered_norm, bool):
+            raise ValueError(
+                f"zero_centered_norm must be a bool, got "
+                f"{self.zero_centered_norm!r}")
         if not isinstance(self.attention.output_gate, bool):
             raise ValueError(
                 f"attention.output_gate must be a bool, got "
@@ -794,4 +847,74 @@ def k3_block_config(size="lite", num_hidden_layers=None):
     if cfg.moe.latent_dim is None:
         cfg.moe.latent_dim = cfg.hidden_size // 2
         cfg._validate()
+    return cfg
+
+
+def mimo_hybrid_config(size="lite", window=128, num_hidden_layers=None,
+                       learnable_sink=True):
+    """MiMo-V2-Flash-style hybrid attention preset (v5.62, roadmap B2).
+
+    - every MLA layer gets a ``window``-token sliding window except the
+      global ones: layer i is global iff ``i == 0 or i % 6 == 5`` (5
+      sliding : 1 global, global first layer; MiMo-V2-Flash uses W=128);
+    - learnable per-head attention sink logits (``learnable_sink``).
+
+    Not reproduced: MiMo's dense-FFN first block (roadmap B2-3), its MTP
+    head (B2-5), and scale. ``num_hidden_layers`` defaults to the size
+    preset, except "lite" (2 layers) is raised to 6 so one full
+    sliding/global pattern exists. The linear-attention hybrid stays
+    off: every layer is MLA, as in MiMo.
+    """
+    if size == "lite" and num_hidden_layers is None:
+        num_hidden_layers = 6
+    return HeliosLMv5Config(
+        size=size,
+        num_hidden_layers=num_hidden_layers,
+        attention=AttentionConfig(sliding_window=window,
+                                  global_attention_every=6,
+                                  learnable_sink=learnable_sink),
+        hybrid_attention=HybridAttentionConfig(enabled=False),
+    )
+
+
+def qwen_next_config(size="lite", num_hidden_layers=None):
+    """Qwen3-Next-style preset (v5.63, roadmap Q4).
+
+    - 3:1 linear/global interleave in Qwen3-Next order: GDA, GDA, GDA,
+      gated attention (``full_attention_every=4``, ``first_layer_full=
+      False``), with the causal short conv on the GDA q/k/v (Q1,
+      ``short_conv_kernel=4``);
+    - gated attention (``attention.output_gate=True``) with QK-norm;
+    - zero-centered RMSNorm gains (Q2, ``zero_centered_norm=True``);
+    - ultra-sparse MoE with one shared expert: "full" uses 512 routed
+      experts, top-10 (Qwen3-Next-80B-A3B's ratio, ~2% active), expert
+      width ``hidden_size // 4``; smaller sizes use 32 experts, top-2;
+    - global-batch load-balancing loss (Q3,
+      ``moe.balance_loss_scope="global"``) on top of the bias balancing;
+    - MTP stays on (the size default).
+
+    Not reproduced: Qwen3-Next's exact widths, its partial RoPE on the
+    attention layers (MLA already rotates only ``rope_head_dim`` of each
+    head), training recipe and scale. "lite" (2 layers) is raised to 4 so
+    one full block exists. Mutate the result and call ``_validate()`` to
+    adjust.
+    """
+    if size == "lite" and num_hidden_layers is None:
+        num_hidden_layers = 4
+    full = size == "full"
+    cfg = HeliosLMv5Config(
+        size=size,
+        num_hidden_layers=num_hidden_layers,
+        zero_centered_norm=True,
+        attention=AttentionConfig(output_gate=True, qk_norm=True),
+        hybrid_attention=HybridAttentionConfig(
+            enabled=True, full_attention_every=4, first_layer_full=False,
+            short_conv_kernel=4),
+        moe=MoEConfig(num_experts=512 if full else 32,
+                      num_activated_experts=10 if full else 2,
+                      num_shared_experts=1,
+                      balance_loss_scope="global"),
+    )
+    cfg.moe.expert_hidden_size = cfg.hidden_size // 4
+    cfg._validate()
     return cfg

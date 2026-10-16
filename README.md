@@ -301,7 +301,13 @@ python helioslm_v5/tests/test_csa.py                # T92 CSA compress-then-sele
 python helioslm_v5/tests/test_csa_learned.py        # T93 CSA learned compressor: starts as mean pooling, masked softmax, stored-weight re-evaluation
 python helioslm_v5/tests/test_csa_learned_h64.py    # T94 learned compressor round 2: 16x re-evaluation, oracle ceiling, artifact-sized --check
 python helioslm_v5/tests/test_csa_learned_r3.py     # T95 learned compressor round 3: 4x re-evaluation beats round 2, relu2 option
-python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite (328 tests)
+python helioslm_v5/tests/test_mimo_hybrid.py        # T96 MiMo 5:1 sliding/global interleave + learnable sink: defaults, sink math, decode == full, recall artifact
+python helioslm_v5/tests/test_swe_bench.py          # T97 mini SWE tasks: per-task fix/untouched/trap gates, grading guards, episode row
+python helioslm_v5/tests/test_stop_calibration.py   # T98 知止 stop metrics: false DONE, tested-before-done, trap = false DONE
+python helioslm_v5/tests/test_tool_recovery.py      # T99 tool-call recovery: 7 repairs, never-repaired classes, 3000-case fuzz
+python helioslm_v5/tests/test_swe_agent_rl.py       # T100 agent RL on the SWE sandbox: GRPO action_mask, env semantics, rollouts
+python helioslm_v5/tests/test_qwen_next.py          # T101 Qwen Q1-Q5: GDA short conv, zero-centered norm, global-batch balance, preset, MTP gate
+python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite (359 tests)
 ```
 
 ```python
@@ -416,6 +422,8 @@ are static-checked) — tracked as a community issue.
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.63** — Qwen3-Next ingredients: GDA short conv, zero-centered RMSNorm with decay groups, global-batch load-balancing loss (equals the full-batch loss over micro-batches), `qwen_next_config`, MTP greedy-equivalence gate (toy acceptance 0.824); roadmap Phase B4 (US models) and TW (zh-TW data survey) — T101
+- **v5.62** — MiMo 5:1 sliding-window/global interleave (`mimo_hybrid_config`) keeps long-range recall at 39% of the attended keys (0.424 vs dense 0.428; all-SWA at chance); learnable attention sink (no effect at this scale); agentic coding: 20-task mini SWE set with hidden tests and trap gates, 知止 stop-decision metrics, fuzz-tested tool-call recovery; roadmap Phase B3 (Qwen) and AC — T96–T99
 - **v5.61** — learned compressor round 3: 4× passkey recall 0.825/0.800, about 92% of the oracle ceiling (squared ReLU and longer 16× training recorded as negative results); README retitle + Chinese name 羲和; roadmap Phase B2 (GLM-5.3 / MiMo) — T95
 - **v5.60** — learned compressor round 2 (hidden 64): 16× passkey recall off chance (0.13 → 0.39), 4× mixed (0.725 at L=512, 0.645 at L=1024); an oracle-pooling ceiling shows CSA can reach 0.86–0.90 (dense 0.91), so the gap is compressor detection — T94
 - **v5.59** — CSA learned compressor (`compressor="learned"`): compressor-only training lifts passkey recall at 4× from 0.13 to 0.67 (dense 0.91), generalizing to 4–8× the training length; selecting every chunk gives the same accuracy, so the remaining gap is the compressed entry, not selection; 16× does not learn — T93

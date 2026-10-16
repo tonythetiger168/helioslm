@@ -1,13 +1,15 @@
-"""std_bench_run.py — roadmap Phase A: GSM8K / HumanEval / terminal runs.
+"""std_bench_run.py — roadmap Phase A: GSM8K / HumanEval / terminal runs,
+plus the Phase AC mini SWE tasks.
 
 Two modes:
 
 1. Harness validation (no model, no network) — the committed artifact:
        python examples/std_bench_run.py --reference
    Scores synthetic generators on the committed subsets and the
-   terminal tasks, and enforces 11 gates: gold answers / canonical
-   solutions / scripted reference solutions must score 100%; empty,
-   perturbed, do-nothing and prose-only replies must score 0%. A failing
+   terminal and SWE tasks, and enforces 15 gates: gold answers /
+   canonical solutions / scripted reference solutions must score 100%;
+   empty, perturbed, do-nothing, prose-only and trap-patch replies must
+   score 0%. A failing
    gate exits
    non-zero and writes nothing, so the artifact is "oracle-tested".
    Add --check to verify the committed artifact instead of writing it.
@@ -38,6 +40,8 @@ from helioslm_v5.eval.calibration_board import (  # noqa: E402
 from helioslm_v5.eval.std_bench import (  # noqa: E402
     SCHEMA_ID, gsm8k_prompt, humaneval_prompt, load_gsm8k, load_humaneval,
     run_gsm8k, run_humaneval, summarize)
+from helioslm_v5.eval import swe_bench  # noqa: E402
+from helioslm_v5.eval.stop_calibration import stop_report  # noqa: E402
 from helioslm_v5.eval.term_bench import load_tasks, run_term_bench  # noqa: E402
 
 DATE = "2026-10-15"
@@ -52,6 +56,8 @@ DATA = {
     "terminal": ("helioslm_v5/eval/term_bench.py",
                  "helioslm_v5/eval/term_bench.py",
                  lambda _path: load_tasks(), run_term_bench),
+    "swe": ("helioslm_v5/eval/swe_bench.py", "helioslm_v5/eval/swe_bench.py",
+            lambda _path: swe_bench.load_tasks(), swe_bench.run_swe_bench),
 }
 REFERENCE_OUT = "benchmarks/std_bench_reference_2026-10-15.json"
 
@@ -68,19 +74,25 @@ def reference_generators(bench, tasks):
             ("empty", lambda p, i: "", 0.0),
             ("off_by_one", lambda p, i: f"#### {bumped[p]}", 0.0),
         ]
-    if bench == "terminal":
-        solutions = {t["id"]: t["solution"] for t in tasks}
-
-        def scripted(prompt, i):
-            m = re.search(r"\[(term/[^,]+), step (\d+) of", prompt)
-            steps, k = solutions[m.group(1)], int(m.group(2)) - 1
-            return (f"```bash\n{steps[k]}\n```" if k < len(steps)
-                    else "DONE confidence=0.9")
-        return [
-            ("reference_solution", scripted, 1.0),
+    if bench in ("terminal", "swe"):
+        def scripted_from(solutions):
+            def scripted(prompt, i):
+                m = re.search(r"\[((?:term|swe)/[^,]+), step (\d+) of",
+                              prompt)
+                steps, k = solutions[m.group(1)], int(m.group(2)) - 1
+                return (f"```bash\n{steps[k]}\n```" if k < len(steps)
+                        else "DONE confidence=0.9")
+            return scripted
+        gens = [
+            ("reference_solution",
+             scripted_from({t["id"]: t["solution"] for t in tasks}), 1.0),
             ("done_immediately", lambda p, i: "DONE confidence=0.5", 0.0),
             ("prose_no_command", lambda p, i: "This looks easy.", 0.0),
         ]
+        if bench == "swe":
+            traps = {k: [v] for k, v in swe_bench.trap_commands().items()}
+            gens.append(("trap_patch", scripted_from(traps), 0.0))
+        return gens
     canon = {humaneval_prompt(t): t for t in tasks}
     return [
         ("canonical_body", lambda p, i: canon[p]["canonical_solution"], 1.0),
@@ -96,8 +108,8 @@ def build_reference():
     report = {"schema": SCHEMA_ID, "created": DATE,
               "verification_tier": "oracle-tested",
               "purpose": "harness validation: answer extraction, the "
-                         "HumanEval sandbox and the terminal task "
-                         "verifiers, scored against known-right and "
+                         "HumanEval sandbox and the terminal and SWE "
+                         "task verifiers, scored against known-right and "
                          "known-wrong generators",
               "inputs": {}, "gates": {}}
     failures = []
@@ -165,6 +177,8 @@ def api_run(args):
                                         if cost and n_correct else None),
                "prices_asof": PRICES_ASOF if price else None,
                "results": results}
+        if bench in ("terminal", "swe"):
+            out["stop"] = stop_report(results)   # AC5: was DONE justified?
         name = args.model.split("/")[-1]
         dest = Path(args.out_dir) / f"std_bench_{bench}_{name}_{DATE}.json"
         dest.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")

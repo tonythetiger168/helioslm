@@ -85,17 +85,26 @@ class GRPOTrainer:
     # Log-prob helpers
     # ------------------------------------------------------------------
     @staticmethod
-    def _sequence_logprob(model, full_ids: torch.Tensor, prompt_len: int) -> torch.Tensor:
+    def _sequence_logprob(model, full_ids: torch.Tensor, prompt_len: int,
+                          action_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """Summed log-prob of the response tokens of one sequence.
 
         ``full_ids`` is (1, T) = prompt + response; response tokens are
         positions ``prompt_len..T-1``, predicted by logits at positions
         ``prompt_len-1..T-2``. Gradients flow when called outside no_grad.
+
+        ``action_mask`` (v5.62, multi-turn agent RL): optional bool tensor
+        over the response positions (length T - prompt_len). Only True
+        positions — tokens the POLICY emitted — are summed; environment
+        observation tokens interleaved in the response are excluded. None
+        (the default) sums every response token, exactly as before.
         """
         logits, _, _ = model(full_ids)
         logp = torch.log_softmax(logits[:, prompt_len - 1:-1, :].float(), dim=-1)
         tgt = full_ids[:, prompt_len:]
         token_logp = logp.gather(-1, tgt.unsqueeze(-1)).squeeze(-1)
+        if action_mask is not None:
+            token_logp = token_logp[:, action_mask.to(token_logp.device)]
         return token_logp.sum()
 
     def compute_rewards(self, responses: List[str], answers: List[str]) -> torch.Tensor:
@@ -308,7 +317,8 @@ class GRPOTrainer:
         kl_total = 0.0
         for i, s in enumerate(samples):
             new_lp = self._sequence_logprob(
-                self.model, s["full_ids"], s["prompt_len"])
+                self.model, s["full_ids"], s["prompt_len"],
+                s.get("action_mask"))
 
             # Ratio against the OLD policy (the ref model only enters the
             # KL term). Sequence-level ratio — see module docstring for the
@@ -422,5 +432,6 @@ class GRPOTrainer:
         with torch.no_grad():
             for s in samples:
                 logprobs.append(self._sequence_logprob(
-                    self.ref_model, s["full_ids"], s["prompt_len"]))
+                    self.ref_model, s["full_ids"], s["prompt_len"],
+                    s.get("action_mask")))
         return torch.stack(logprobs).detach()

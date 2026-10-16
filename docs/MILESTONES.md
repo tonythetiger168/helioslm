@@ -70,11 +70,32 @@ renumbered.
 | B | `v4_csa`: compressor round 3 — 4× 0.825/0.800, about 92% of the ceiling | ✅ Done (v5.61, T95) |
 | B | `v4_csa`: 16× compressor (0.375/0.390 vs a 0.86/0.845 ceiling; more training does not help) | ⬜ Not started |
 | B | Stable LatentMoE study | ⬜ Not started |
-| B2 | B2-1 per-layer sliding-window / global interleave + `mimo_hybrid_config()` (MiMo) | ⬜ Next |
-| B2 | B2-2 learnable attention sink bias (MiMo) | ⬜ Next |
+| B2 | B2-1 per-layer sliding-window / global interleave + `mimo_hybrid_config()` (MiMo) — 5:1 hybrid 0.424 vs dense 0.428 at 39% of the keys | ✅ Done (v5.62, T96) |
+| B2 | B2-2 learnable attention sink bias (MiMo) — no effect at this scale (0.424 vs 0.424) | ✅ Done (v5.62, T96) |
 | B2 | B2-3 `moe.first_k_dense` (GLM-5.3, MiMo) | ⬜ Not started |
 | B2 | B2-4 learnable mHC with Sinkhorn projection (GLM-5.3-Flash) | ⬜ Not started |
 | B2 | B2-5 MiMo-style light MTP head | ⬜ Not started |
 | B2 | B2-6 on-policy distillation trainer (MiMo MOPD; confirm the definition first) | ⬜ Not started |
+| B3 | Q1 short conv in GDA linear-attention layers (Qwen3-Next) — no recall benefit at toy scale (0.420 vs 0.426) | ✅ Done (v5.63, T101) |
+| B3 | Q2 zero-centered RMSNorm + `decay_param_groups` (Qwen3-Next) | ✅ Done (v5.63, T101) |
+| B3 | Q3 global-batch load-balancing loss (Qwen3 MoE) — equals the full-batch loss over micro-batches | ✅ Done (v5.63, T101) |
+| B3 | Q4 `qwen_next_config()` preset | ✅ Done (v5.63, T101) |
+| B3 | Q5 MTP acceptance + greedy-equivalence gate (toy acceptance 0.824) | ✅ Done (v5.63, T101) |
+| B4 | U1 GRPO DAPO/OlmoRL options (token-level loss, clip-higher, zero-gradient filtering, TIS) | ⬜ Not started |
+| B4 | U2 thinking-budget control (Nemotron 3 / gpt-oss reasoning effort) | ⬜ Not started |
+| B4 | U3 NoPE-layer attention temperature scaling (Llama 4) | ⬜ Not started |
+| B4 | U4 p-RoPE + global-layer K=V (Gemma 4) | ⬜ Not started |
+| B4 | U5 clamped SwiGLU (gpt-oss) | ⬜ Not started |
+| B4 | U6 cross-layer KV sharing / Gated Memory Unit (Gemma 4, SambaY) | ⬜ Not started |
+| B4 | U7 SMEBU + depth-scaled sandwich norm (Arcee Trinity) | ⬜ Not started |
+| TW | TW1 dataset license audit (HF card license + gated status) | ⬜ Not started |
+| TW | TW2 zh-TW pretraining pipeline (Wikipedia s2twp + FineWeb-2 + data.gov.tw, ~100M tokens) | ⬜ Not started |
+| TW | TW3 Traditional-Chinese evals in the harness (TMMLU+, TMLU, TW-JusticeBench) | ⬜ Not started |
+| TW | TW4 zh-TW tokenizer coverage report | ⬜ Not started |
+| AC | AC1 mini SWE task set (20 small repos, hidden tests, trap gates) | ✅ Done (v5.62, T97) |
+| AC | AC2 agent RL on the SWE sandbox — SFT warm start + rejection-sampling fine-tuning with a verified-DONE reward: 0.367 → 1.0 on train and held-out (GRPO eroded the policy; see `benchmarks/swe_agent_rl_notes_2026-10-16.md`) | ✅ Done (v5.63, T100) |
+| AC | AC3 tool-call recovery layer (7 named repairs, fuzz-tested) | ✅ Done (v5.62, T99) |
+| AC | AC4 repo-scale long-context probe (dense vs hybrid vs CSA) | ⬜ Not started |
+| AC | AC5 知止: stop-decision metrics (false DONE, tested-before-done) on terminal/SWE runs | ✅ Done (v5.62, T98) — frontier rows need an API key |
 | C | CUDA verification (#1), fused quant benchmark (#2), BPE tokenizer (#5), HF Hub (#4), ~1B GPU run | ⬜ Not started |
 | D | DecisionHead at 1B, multi-env GRPO training at real scale (tooling exists since Phase 2.1), TrustGate CLARIFY threshold calibration | ⬜ Not started |

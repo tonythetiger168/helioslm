@@ -1,0 +1,181 @@
+{
+  "experiment": "Q5 MTP acceptance + greedy-equivalence gate",
+  "max_new": 32,
+  "prompts": [
+    "HeliosLM",
+    "The model",
+    "import torch",
+    "def forward",
+    "# v5.16",
+    "Attention(",
+    "KV cache",
+    "speculative"
+  ],
+  "results": [
+    {
+      "model": "toy_v5.13",
+      "mtp_modules": 1,
+      "gate_greedy_equal": true,
+      "acceptance_rate": 0.8242,
+      "accepted_per_round": 0.8152,
+      "tokens_per_round": 2.7826,
+      "per_prompt": [
+        {
+          "prompt": "HeliosLM",
+          "greedy_equal": true,
+          "drafted": 11,
+          "accepted": 11,
+          "rounds": 11,
+          "tok_s_plain": 89.1,
+          "tok_s_spec": 140.8
+        },
+        {
+          "prompt": "The model",
+          "greedy_equal": true,
+          "drafted": 12,
+          "accepted": 8,
+          "rounds": 12,
+          "tok_s_plain": 108.3,
+          "tok_s_spec": 127.0
+        },
+        {
+          "prompt": "import torch",
+          "greedy_equal": true,
+          "drafted": 11,
+          "accepted": 10,
+          "rounds": 11,
+          "tok_s_plain": 121.0,
+          "tok_s_spec": 138.7
+        },
+        {
+          "prompt": "def forward",
+          "greedy_equal": true,
+          "drafted": 12,
+          "accepted": 7,
+          "rounds": 13,
+          "tok_s_plain": 123.1,
+          "tok_s_spec": 109.9
+        },
+        {
+          "prompt": "# v5.16",
+          "greedy_equal": true,
+          "drafted": 11,
+          "accepted": 10,
+          "rounds": 11,
+          "tok_s_plain": 103.5,
+          "tok_s_spec": 158.8
+        },
+        {
+          "prompt": "Attention(",
+          "greedy_equal": true,
+          "drafted": 11,
+          "accepted": 11,
+          "rounds": 11,
+          "tok_s_plain": 119.8,
+          "tok_s_spec": 138.2
+        },
+        {
+          "prompt": "KV cache",
+          "greedy_equal": true,
+          "drafted": 11,
+          "accepted": 10,
+          "rounds": 11,
+          "tok_s_plain": 99.2,
+          "tok_s_spec": 122.1
+        },
+        {
+          "prompt": "speculative",
+          "greedy_equal": true,
+          "drafted": 12,
+          "accepted": 8,
+          "rounds": 12,
+          "tok_s_plain": 102.1,
+          "tok_s_spec": 95.7
+        }
+      ]
+    },
+    {
+      "model": "qwen_next_lite_untrained",
+      "mtp_modules": 1,
+      "gate_greedy_equal": true,
+      "acceptance_rate": 0.0079,
+      "accepted_per_round": 0.0078,
+      "tokens_per_round": 2.0,
+      "per_prompt": [
+        {
+          "prompt": "HeliosLM",
+          "greedy_equal": true,
+          "drafted": 16,
+          "accepted": 0,
+          "rounds": 16,
+          "tok_s_plain": 74.0,
+          "tok_s_spec": 46.4
+        },
+        {
+          "prompt": "The model",
+          "greedy_equal": true,
+          "drafted": 16,
+          "accepted": 0,
+          "rounds": 16,
+          "tok_s_plain": 90.7,
+          "tok_s_spec": 55.0
+        },
+        {
+          "prompt": "import torch",
+          "greedy_equal": true,
+          "drafted": 16,
+          "accepted": 0,
+          "rounds": 16,
+          "tok_s_plain": 82.9,
+          "tok_s_spec": 50.9
+        },
+        {
+          "prompt": "def forward",
+          "greedy_equal": true,
+          "drafted": 15,
+          "accepted": 1,
+          "rounds": 16,
+          "tok_s_plain": 78.7,
+          "tok_s_spec": 53.4
+        },
+        {
+          "prompt": "# v5.16",
+          "greedy_equal": true,
+          "drafted": 16,
+          "accepted": 0,
+          "rounds": 16,
+          "tok_s_plain": 84.3,
+          "tok_s_spec": 47.1
+        },
+        {
+          "prompt": "Attention(",
+          "greedy_equal": true,
+          "drafted": 16,
+          "accepted": 0,
+          "rounds": 16,
+          "tok_s_plain": 79.9,
+          "tok_s_spec": 54.8
+        },
+        {
+          "prompt": "KV cache",
+          "greedy_equal": true,
+          "drafted": 16,
+          "accepted": 0,
+          "rounds": 16,
+          "tok_s_plain": 90.3,
+          "tok_s_spec": 48.1
+        },
+        {
+          "prompt": "speculative",
+          "greedy_equal": true,
+          "drafted": 16,
+          "accepted": 0,
+          "rounds": 16,
+          "tok_s_plain": 87.1,
+          "tok_s_spec": 41.3
+        }
+      ]
+    }
+  ],
+  "results_sha256": "e41f761cafa1d8763c6408d55281319aeb4cfba6f012ab92c279f1b8984a7b15"
+}

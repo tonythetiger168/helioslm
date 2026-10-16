@@ -89,7 +89,7 @@ HeliosLM 不應追排行榜，它的優勢在別處：
 | ID | 項目 | 來源 | 完成標準 |
 |---|---|---|---|
 | **B2-1** | 逐層交錯的 sliding window／全域注意力（MiMo 式 5:1，窗口 128，第一層全域）＋ `mimo_hybrid_config()` preset | MiMo-V2-Flash | 預設輸出逐位元不變；用 passkey 長 context 探針比較 dense、純 sliding window、混合三者的回憶率，並記錄 KV cache 節省倍數 |
-| **B2-2** | 可學習的 attention sink bias（每個 head 一個 sink logit） | MiMo-V2-Flash | 初始值設定成與現在逐位元一致；在小窗口下量測有無 sink bias 的長 context 回憶率差異 |
+| **B2-2** | 可學習的 attention sink bias（每個 head 一個 sink logit） | MiMo-V2-Flash | 預設關閉、關閉時逐位元不變（開啟時 sink logit 初始化為 0，即多一個 exp(0) 的分母項，不是恆等）；在小窗口下量測有無 sink bias 的長 context 回憶率差異 |
 | B2-3 | 前 k 層用 dense FFN（`moe.first_k_dense`） | GLM-5.3（前 3 層）、MiMo（第一個 block） | 預設 0 時逐位元一致；檢查 checkpoint 相容與路由統計排除 dense 層 |
 | B2-4 | 真正的 mHC：Sinkhorn 投影成雙隨機矩陣的可學習混合矩陣 | GLM-5.3-Flash | 混合矩陣始終滿足雙隨機約束；單位矩陣初始化時逐位元一致 |
 | B2-5 | MiMo 式輕量 MTP head（sliding window ＋ dense FFN） | MiMo-V2-Flash | 用既有 MTP 損益兩平工具比較 acceptance length 與加速比 |
@@ -99,6 +99,65 @@ HeliosLM 不應追排行榜，它的優勢在別處：
 - **暫不做：IndexPool**（GLM-5.3-Flash）。公開資料只有名稱，照做等於猜測；等官方技術報告。
 - **執行順序：** B2-1 ＋ B2-2 先做（延續長 context 探針，直接檢驗 MiMo 的核心主張），接著 B2-3，再來 B2-4、B2-5、B2-6。
 - **資料可信度：** GLM-5.3-Flash 的「3:1 KDA:MLA」只見於第三方分析；MiMo-V2.6-Pro 的 MTP 細節各來源不一致。表中只採官方或技術報告可佐證的部分。
+
+### Phase B3：Qwen 對照（2026-10-15 新增）
+
+對照 Qwen3 / Qwen3-Next / Qwen3.5 的公開架構。Gated attention（`output_gate`）、線性與全注意力混合、QK-Norm、MTP、細粒度 MoE 加共享專家都已具備，以下只列缺口。
+
+| ID | 項目 | 來源 | 完成標準 |
+|---|---|---|---|
+| Q1 | 線性注意力層（GDA）的 q/k/v 加 causal depthwise short conv（kernel 4） | Qwen3-Next Gated DeltaNet | 預設逐位元不變；用 B2 的 recall 任務 A/B 比較混合架構 |
+| Q2 | Zero-centered RMSNorm（gain = 1 + w，w 從 0 初始化並參與 weight decay） | Qwen3-Next | 預設逐位元不變；toy 訓練比較 norm 權重最大值與 loss |
+| Q3 | Global-batch load-balancing loss | Qwen3 MoE | 與現有 bias-update 平衡法比較專家使用熵與 loss |
+| Q4 | `qwen_next_config()` preset（超稀疏 MoE 512 選 10 加 1 共享、3:1 混合、gated attention、MTP） | Qwen3-Next | 結構 preset 加 smoke test，比照 `k3_block_config` |
+| Q5（可選） | MTP 推測解碼接受率量測（接上 `bench_spec_breakeven`） | Qwen3-Next | 報告 acceptance length 與加速比 |
+
+- **不跟：** 規模與資料策略（例如 36T token 預訓練），與「可驗證、純 PyTorch」的定位無關。
+
+### Phase B4：美國模型對照（2026-10-16 新增）
+
+對照 OpenAI（gpt-oss）、Google（Gemma 3／4）、Meta（Llama 4）、Microsoft（Phi-4-mini-flash／SambaY）、NVIDIA（Nemotron-H／Nemotron 3）、AI2（Olmo 3）與 Arcee（Trinity）的官方報告、model card 與程式碼。已具備：attention sink（gpt-oss）、5:1 local:global 加 QK-norm（Gemma 3）、MXFP4 QAT、LatentMoE、MTP、多環境 GRPO。Anthropic 與 GPT-5 的架構未公開，只當概念參考。
+
+| ID | 項目 | 來源 | 完成標準 |
+|---|---|---|---|
+| **U1** | GRPO 改成 DAPO／OlmoRL 版本：token-level loss、clip-higher、零梯度組過濾與補樣、可關閉的 KL 與 std 正規化、truncated importance sampling | Olmo 3 | 全部旗標關閉時 loss 與梯度逐位元不變；oracle：全同分組貢獻 0、新舊 logprob 相同時 TIS 權重全為 1 |
+| **U2** | 思考預算控制（訓練時隨機截斷思考軌跡；推論到預算強制插入 `</think>`） | Nemotron 3 Nano；gpt-oss low/med/high | oracle：思考 token 數 ≤ B 且到 B 必插入結束標記；小型數學集上準確率對預算單調 |
+| U3 | NoPE 層的注意力溫度縮放 `log(floor(pos/8192)+1)*0.1+1` | Llama 4（vLLM 原始碼） | 關閉時逐位元不變；pos < 8192 時縮放恰為 1；4 倍訓練長度 passkey A/B |
+| U4 | p-RoPE（partial rotary 0.25）與 global 層 K=V | Gemma 4 | partial=1.0 時與現有 RoPE 逐位元一致；K=V 時 global 層 KV bytes 精確減半 |
+| U5 | Clamped SwiGLU（含 up+1） | gpt-oss | limit=∞ 且不加 1 時逐位元一致；輸出受 limit 限制 |
+| U6 | 跨層 KV 共享（末 N 層共用）或 SambaY 的 Gated Memory Unit | Gemma 4、Phi-4-mini-flash | KV cache 精確降為 (L−N)/L；小模型 ppl A/B |
+| U7 | SMEBU（軟截斷 momentum expert bias）加 depth-scaled sandwich norm | Arcee Trinity | 關閉時逐位元不變；專家負載最大違反量方差下降 |
+
+- **執行順序：** U1 → U2 → U5 → U3 → U4 → U6 → U7。U1 直接改善 AC2 的 agent RL（目前用的是序列級 ratio 加 k3 KL）。
+- **資料可信度：** 調查時沙箱連不到 arxiv／huggingface，主要來源以搜尋摘錄核對；Gemma 4 的 PLE 適用範圍、Llama 4 部分訓練細節為第三方說法。
+
+### Phase TW：台灣繁體中文資料（2026-10-16 新增）
+
+詳見 [`TW_DATASETS_2026Q4.md`](TW_DATASETS_2026Q4.md)。
+
+| ID | 項目 | 完成標準 |
+|---|---|---|
+| TW1 | 授權稽核工具：逐一讀取 HF 卡片的 `license:` 與 gated 狀態，輸出可商用／非商用／未知的清單 | 清單進 `benchmarks/`，每列附來源 hash |
+| TW2 | zh-TW 預訓練資料管線：zh Wikipedia（OpenCC `s2twp`）＋ FineWeb-2 中文子集繁體過濾＋ data.gov.tw，約 1 億 token | 去重與繁體比例統計可重現；每份資料保留授權與標示 |
+| TW3 | 繁中評測接入 harness：TMMLU+、TMLU（本地，不再散布）、TW-JusticeBench | 參考答案 gate 100%、空答案 0%，比照 Phase A |
+| TW4 | 繁中 tokenizer 覆蓋率量測（與現有 tokenizer 比較每字 token 數） | 報告可重現 |
+
+- **原則：** 用到 NC 資料時，權重與衍生資料標為非商用；不再散布任何非 CC BY／OGDL 的原始資料。
+
+### Phase AC：Agentic coding（2026-10-15 新增）
+
+排行榜的主戰場已轉向 agent 與程式能力（Terminal-Bench、SWE-bench Pro）。Qwen3-Coder 的公開做法是大規模 agent RL（多輪、以執行結果為獎勵）、「難解但容易驗證」的程式 RL、repo 級長 context 與穩定的 tool-call 格式。HeliosLM 已有 10 題終端沙盒（T90）、HumanEval 子集（T89）、GRPO 設定、`train_tool_tuned.py` 與 TrustGate。
+
+| ID | 項目 | 完成標準 |
+|---|---|---|
+| **AC1** | Mini SWE 任務集：約 20 個小 repo，各含 bug 與隱藏測試；agent 讀檔、產生 patch、跑測試 | 沙盒執行可重現；參考解答 gate（正解必過、空 patch 必敗）；結果標驗證層級 |
+| **AC2** | Agent RL 迴圈：GRPO 接上沙盒，多輪 rollout，以測試通過率為獎勵 | toy 模型在 AC1 簡單子集上通過率明顯高於訓練前；固定 seed 可重現 |
+| **AC3** | Tool-call 格式與解析器加固（JSON schema 驗證、截斷或錯格式恢復） | fuzz 測試：錯格式輸入不 crash，量測恢復率 |
+| **AC4** | Repo 級長 context 探針：在大量檔案中找到定義並正確引用 | 沿用 B2 的 SWA/global 與 CSA，比較 dense、混合、壓縮三種架構 |
+| **AC5** | 知止：校準「我修好了嗎／該提交了嗎」的信心 | 在 AC1 上報告自報完成與真實結果的 AUROC/ECE，連同每完成任務成本放上校準排行榜 |
+
+- **執行順序：** 先收尾 B2-1／B2-2，接著 AC1 → AC5 → AC3 → AC2 → AC4；Q1 可與 AC1 平行（它直接沿用 B2 的 recall 任務）。
+- **差異化：** AC5 是本 repo 的獨特賣點——排行榜不量「agent 知不知道自己真的做完了」，正好呼應「知止」。
 
 ### Phase C：規模與生態系（2026 年 12 月 – 2027 年 2 月）
 

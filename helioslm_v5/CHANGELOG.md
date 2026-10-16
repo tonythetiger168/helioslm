@@ -1,5 +1,98 @@
 # HeliosLM v5 Changelog
 
+## v5.63 (2026-10-16) - Phase B3: Qwen Q1–Q5; roadmap B4 (US models) and TW (zh-TW data)
+
+- **Q1** `hybrid_attention.short_conv_kernel` (Qwen3-Next Gated DeltaNet):
+  causal depthwise conv + SiLU over the GDA q/k/v projections. 0 = off
+  (no parameter, `(state,)` cache, bit-identical). On: the cache becomes
+  `(state, conv_state)`, both StateTensors, so MTP rollback and engine
+  batching handle it unchanged; padding contributes zeros and taps never
+  cross packed-document boundaries.
+  Recall A/B on the B2 task (`benchmarks/q1_short_conv_2026-10-16.{json,md}`):
+  no benefit at toy scale, 0.420 with vs 0.426 without (recorded as no
+  effect).
+- **Q2** `zero_centered_norm`: RMSNorm gain `1 + w` with `w` init 0 on the
+  layer, final, MLA latent and QK norms. Bit-identical at init.
+  `model_v5.decay_param_groups(model, wd)` decays matrices and
+  zero-centered norm weights only (standard gains are never decayed
+  toward 0).
+- **Q3** `moe.balance_loss_scope` ("micro" | "global") and
+  `model_v5.balance_loss(model)`: E·Σ f_i·P_i. In global scope f_i and P_i
+  span every forward since the last call, so over micro-batches it equals
+  the full-batch loss and gradients (T101 oracle); micro scope does not.
+- **Q4** `qwen_next_config()`: 3:1 GDA:gated-attention in Qwen3-Next
+  order with the short conv, QK-norm, zero-centered norms, ultra-sparse
+  MoE (full: 512 experts, top-10, 1 shared) and global-batch balancing.
+- **Q5** `examples/mtp_acceptance.py` ->
+  `benchmarks/mtp_acceptance_2026-10-16.json`: greedy speculative decoding
+  is token-identical to plain greedy for the toy checkpoint and for the
+  untrained qwen_next model (GDA + conv-state rollback); toy MTP
+  acceptance 0.824, 2.78 tokens per verification round.
+- Roadmap Phase B4 (OpenAI gpt-oss, Gemma 3/4, Llama 4, Phi-4-mini-flash,
+  Nemotron, Olmo 3, Arcee Trinity; U1–U7) and Phase TW (zh-TW data,
+  TW1–TW4); `docs/TW_DATASETS_2026Q4.md` dataset and license survey.
+- **AC2** multi-turn agent RL on the mini SWE sandbox
+  (`helioslm_v5/src/training/swe_agent_rl.py`,
+  `examples/swe_agent_rl_train.py`): macro actions (apply candidate /
+  revert / test / done), outcomes memoized per patch sequence in
+  first-application order and checked against real sandboxes. Light SFT
+  warm start (`--sft-demos/--sft-steps`, scripted careful demos on the
+  train tasks) then rejection-sampling fine-tuning (`--algo rft`) with a
+  verified-DONE reward (`--require-verified-done`): greedy pass rate
+  0.367 -> 1.0 on train and 10 held-out tasks
+  (`benchmarks/swe_agent_rl_2026-10-16.json`). Without SFT RFT also
+  reaches 1.0, more slowly. GRPO after SFT eroded the policy to 0.267
+  (negative-advantage samples dropped 0.48 nats vs +0.014 for positive);
+  every run and fix is in `benchmarks/swe_agent_rl_notes_2026-10-16.md`.
+  Fixes on the way: free 1/3 for "apply, DONE" (`--false-done-penalty`),
+  old log-probs over the action subset instead of the full vocabulary
+  (silenced every negative advantage under the clip). GRPO gains an
+  optional `action_mask` (None = bit-identical).
+- T100 (`test_swe_agent_rl.py`).
+- T101 (`test_qwen_next.py`, 5 tests).
+
+## v5.62 (2026-10-16) - Phase B2: MiMo hybrid + learnable sink; Phase AC: agentic coding
+
+- **B2-1** `attention.global_attention_every` (requires `sliding_window`):
+  layer i is global iff `i == 0 or i % N == N - 1`, the rest use the
+  sliding window; `mimo_hybrid_config()` preset (5:1, window 128, global
+  first layer). Off by default, bit-identical when off.
+- **B2-2** `attention.learnable_sink`: one sink logit per head appended to
+  every attention softmax and dropped afterwards (rows sum to < 1).
+  Off by default; when on it starts at 0, which is NOT an identity (an
+  extra exp(0) term) — the roadmap criterion now says so. The SDPA fast
+  path is skipped when the sink is on; absorbed and expanded paths agree.
+- Recall experiment `examples/mimo_hybrid_recall.py` ->
+  `benchmarks/mimo_hybrid_2026-10-15.{json,md}` (MQAR-style, window 8,
+  query distance >= 64): dense 0.428, 5:1 hybrid 0.424 with 39% of the
+  attendable keys, all-SWA 0.067 (chance, the structural negative
+  control), hybrid + sink 0.424 (no effect here; recorded as such).
+  Key counts are access counts — the KV cache is not trimmed yet.
+- **AC1** `helioslm_v5/eval/swe_bench.py`: 20 mini SWE tasks (small Python
+  repos, issue text, visible + hidden tests). The verifier restores the
+  visible tests and runs the hidden ones outside the sandbox; every task
+  has a trap patch that passes the visible tests but not the hidden
+  ones. Wired into `examples/std_bench_run.py` (`--bench swe`); the
+  reference artifact now has 15 gates (+ swe reference / done /
+  prose / trap).
+- **AC5 (知止)** `helioslm_v5/eval/stop_calibration.py`: stop-decision
+  metrics on terminal / SWE episodes — false DONE (and its confident
+  subset), ran out, tested-before-done share and the accuracy split by
+  it, AUROC / ECE / Brier over DONE episodes. API runs of the terminal
+  and SWE benches now carry a `stop` block; episode rows record the
+  commands run.
+- **AC3** `helioslm_v5/agent/tool_recovery.py`: `recover_tool_call` tries
+  7 named repairs (extract block from fences / prose, missing close
+  marker, inner whitespace, trailing commas, OpenAI `arguments`, JSON
+  string args, bare call list) and reports which it applied. The strict
+  parser is unchanged; unknown tools, wrong arg types, truncated JSON and
+  two blocks are never repaired.
+- Roadmap: Phase B3 (Qwen comparison, Q1–Q5) and Phase AC (agentic
+  coding, AC1–AC5).
+- Tests: T96 (`test_mimo_hybrid.py`), T97 (`test_swe_bench.py`),
+  T98 (`test_stop_calibration.py`), T99 (`test_tool_recovery.py`, seeded
+  fuzz: 3000 random corruptions, only ToolCallError ever escapes).
+
 ## v5.61 (2026-10-15) - Compressor round 3, README retitle, roadmap Phase B2
 
 - Learned compressor round 3 (4× only, hidden 64, 9600 steps) ->

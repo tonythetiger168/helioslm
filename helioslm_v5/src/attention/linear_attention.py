@@ -157,6 +157,20 @@ class GatedDeltaAttention(nn.Module):
         self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False)
         self.q_scale = 1.0 / math.sqrt(self.head_dim)
 
+        # v5.63 (roadmap Q1, Qwen3-Next Gated DeltaNet): causal depthwise
+        # short convolution over the q/k/v projections, followed by SiLU.
+        # 0 (default) = off: no parameters, cache stays (state,) and the
+        # forward is bit-identical. When on, the cache becomes
+        # (state, conv_state) where conv_state holds the last K-1 PRE-conv
+        # projections [B, K-1, 3*H*D]; it is a StateTensor too (no sequence
+        # axis), so MTP rollback and engine batching treat it like the state.
+        self.conv_kernel = int(getattr(hc, "short_conv_kernel", 0) or 0)
+        if self.conv_kernel:
+            ch = 3 * self.num_heads * self.head_dim
+            w = torch.zeros(ch, self.conv_kernel)
+            w[:, -1] = 1.0           # identity taps at init (then SiLU)
+            self.conv_weight = nn.Parameter(w)
+
     def decay_gate(self, hidden_states):
         """Per-token decay in the open interval (0, 1).
 
@@ -249,13 +263,18 @@ class GatedDeltaAttention(nn.Module):
                     # Defensive: a true restart always has pos[t] < pos[t-1] but
                     # segment starts may also begin at 0; both are resets.
 
+        conv_state = None
         if past_key_value is not None:
-            if len(past_key_value) != 1:
+            want = 2 if self.conv_kernel else 1
+            if len(past_key_value) != want:
                 raise ValueError(
-                    "GatedDeltaAttention expects a (state,) cache tuple of 1 "
-                    f"tensor, got {len(past_key_value)}"
+                    "GatedDeltaAttention expects a "
+                    f"{'(state, conv_state)' if self.conv_kernel else '(state,)'} "
+                    f"cache tuple of {want} tensor(s), got {len(past_key_value)}"
                 )
             state = past_key_value[0]
+            if self.conv_kernel:
+                conv_state = past_key_value[1].as_subclass(torch.Tensor)
             if state.shape != (B, self.num_heads, self.head_dim, self.head_dim):
                 raise ValueError(
                     f"recurrent state shape {tuple(state.shape)} != expected "
@@ -266,9 +285,16 @@ class GatedDeltaAttention(nn.Module):
                 B, self.num_heads, self.head_dim, self.head_dim
             )
 
-        q = self.q_proj(hidden_states).view(B, seq, self.num_heads, self.head_dim)
-        k = self.k_proj(hidden_states).view(B, seq, self.num_heads, self.head_dim)
-        v = self.v_proj(hidden_states).view(B, seq, self.num_heads, self.head_dim)
+        q = self.q_proj(hidden_states)
+        k = self.k_proj(hidden_states)
+        v = self.v_proj(hidden_states)
+        new_conv_state = None
+        if self.conv_kernel:
+            q, k, v, new_conv_state = self._short_conv(
+                q, k, v, conv_state, attention_mask, seg_start)
+        q = q.view(B, seq, self.num_heads, self.head_dim)
+        k = k.view(B, seq, self.num_heads, self.head_dim)
+        v = v.view(B, seq, self.num_heads, self.head_dim)
         # k is L2-normalized (delta rule); q is scaled like attention scores.
         k = F.normalize(k.transpose(1, 2), dim=-1)          # [B, H, seq, Dk]
         q = q.transpose(1, 2) * self.q_scale                # [B, H, seq, Dk]
@@ -322,4 +348,38 @@ class GatedDeltaAttention(nn.Module):
         present = None
         if use_cache:
             present = (state.as_subclass(StateTensor),)
+            if self.conv_kernel:
+                present = present + (new_conv_state.as_subclass(StateTensor),)
         return output, present
+
+    def _short_conv(self, q, k, v, conv_state, attention_mask, seg_start):
+        """Causal depthwise conv (kernel K) + SiLU over [q|k|v] channels.
+
+        Padding tokens (attention_mask 0) contribute zeros, and taps never
+        cross a packed-sequence document boundary, so the conv obeys the
+        same isolation rules as the recurrence. Returns the convolved
+        q, k, v and the new conv_state (last K-1 pre-conv inputs).
+        """
+        B, seq, d = q.shape
+        K = self.conv_kernel
+        x = torch.cat([q, k, v], dim=-1)                      # [B, seq, 3d]
+        if attention_mask is not None:
+            x = x * attention_mask[:, -seq:, None].to(x.dtype)
+        if conv_state is None:
+            conv_state = x.new_zeros(B, K - 1, x.shape[-1])
+        xp = torch.cat([conv_state.to(x.dtype), x], dim=1)    # [B, K-1+seq, 3d]
+        seg = None
+        if seg_start is not None:
+            seg = torch.cumsum(seg_start.long(), dim=1)       # [B, seq]
+        w = self.conv_weight.to(x.dtype)
+        y = torch.zeros_like(x)
+        for j in range(K):                                    # tap j = lag j
+            tap = xp[:, K - 1 - j:K - 1 - j + seq]            # x[t - j]
+            if seg is not None and j > 0:
+                same = torch.zeros_like(seg, dtype=torch.bool)
+                same[:, j:] = seg[:, j:] == seg[:, :-j]
+                tap = tap * same[..., None].to(x.dtype)
+            y = y + tap * w[:, K - 1 - j]
+        y = F.silu(y)
+        new_state = xp[:, -(K - 1):] if K > 1 else xp[:, :0]
+        return y[..., :d], y[..., d:2 * d], y[..., 2 * d:], new_state

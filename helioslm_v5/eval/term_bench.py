@@ -363,7 +363,8 @@ def run_episode(task, generate_fn, sample=0, max_steps=MAX_STEPS):
     return {"family": "terminal", "task": task["id"],
             "expected": "verifier passes", "final": detail,
             "correct": bool(ok), "steps": len(history), "ended": ended,
-            "invalid_replies": invalid, "conf": conf,
+            "invalid_replies": invalid,
+            "commands": [cmd for cmd, _, _ in history], "conf": conf,
             "conf_type": "verbalized" if conf is not None else None}
 
 

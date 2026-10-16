@@ -99,7 +99,7 @@ def test_humaneval_sandbox():
 
 def test_reference_artifact():
     report = json.loads(_ARTIFACT.read_text(encoding="utf-8"))
-    assert len(report["gates"]) == 11   # 4 gsm8k + 4 humaneval + 3 terminal
+    assert len(report["gates"]) == 15   # 4 gsm8k + 4 humaneval + 3 terminal + 4 swe
     for name, g in report["gates"].items():
         assert g["accuracy"] == g["required"], name
     reg = load_registry(_REPO / "benchmarks" / "verification_tiers.json")
