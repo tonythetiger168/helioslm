@@ -1,5 +1,30 @@
 # HeliosLM v5 Changelog
 
+## v5.66 (2026-10-16) - Roadmap B2-4: learnable mHC (Sinkhorn); HC branch-fold fix
+
+- `hyper_connection_sinkhorn` (requires `use_hyper_connections`): the HC
+  read matrices become learnable and doubly stochastic,
+  A = (1 - a) I + a Sinkhorn(exp(tanh L)), with `a` (init 0) and `L`
+  (init 0) learnable. At init A == I exactly and the output is
+  bit-identical to the static HC; the Birkhoff polytope is convex, so A
+  stays doubly stochastic. `HeliosLMv5Layer.sinkhorn`, `hc_read_matrix`.
+- Two details forced by T104: (1) Sinkhorn on unbounded logits left rows
+  up to 9% off after 20 iterations, so logits are squashed by tanh (20
+  iterations then reach float precision for any input); (2) a plain
+  clamp of `a` has zero gradient at its boundary in torch, which pinned
+  `a` at 0 forever, so the clamp is straight-through (value clamped,
+  gradient 1).
+- **Fix (since v5.7):** the HC sublayer step folded the [B, L, n, d]
+  branches into the batch dim with a plain reshape, which interleaved
+  sequence positions with branches. Every branch saw a scrambled
+  sequence, and as soon as the write matrix B was non-zero (any trained
+  HC model) cached decode differed from the full forward by ~0.5. The
+  stack stayed causal (no future-token leak), but representations were
+  wrong. Now the branch axis is moved next to the batch axis before the
+  fold and back after; decode == full to 7e-7. HC checkpoints trained
+  before v5.66 were trained on the scrambled layout.
+- T104 (`test_mhc_sinkhorn.py`, 6 tests, incl. the fold regression).
+
 ## v5.65 (2026-10-16) - Roadmap B2-3: dense first layers (`moe.first_k_dense`)
 
 - `moe.first_k_dense` (GLM-5.3 uses 3, MiMo its first block): layers

@@ -309,7 +309,8 @@ python helioslm_v5/tests/test_swe_agent_rl.py       # T100 agent RL on the SWE s
 python helioslm_v5/tests/test_qwen_next.py          # T101 Qwen Q1-Q5: GDA short conv, zero-centered norm, global-batch balance, preset, MTP gate
 python helioslm_v5/tests/test_grpo_u1.py           # T102 U1 GRPO options: defaults bit-identical, token-level loss, filtering, TIS, clip-higher
 python helioslm_v5/tests/test_first_k_dense.py      # T103 B2-3 dense first layers: default unchanged, layout, decode == full, routing stats exclude dense
-python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite (372 tests)
+python helioslm_v5/tests/test_mhc_sinkhorn.py       # T104 B2-4 learnable mHC: identity at init, doubly stochastic always, HC branch-fold regression
+python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite (378 tests)
 ```
 
 ```python
@@ -424,6 +425,7 @@ are static-checked) — tracked as a community issue.
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.66** — B2-4: learnable doubly stochastic mHC read matrices (Sinkhorn), identity at init; fixes the v5.7 HC branch fold that scrambled sequence positions across branches (decode != full once B != 0) — T104
 - **v5.65** — B2-3: `moe.first_k_dense` dense first layers (GLM-5.3 / MiMo), default unchanged, routing statistics exclude dense layers — T103
 - **v5.64** — U1: DAPO / Olmo 3 options for GRPO (token-level loss, clip-higher, no-std advantages, zero-gradient group filtering, TIS), defaults bit-identical; on the agent task a KL anchor to the SFT model lets GRPO improve on SFT (0.367 → 0.733) — T102
 - **v5.63** — Qwen3-Next ingredients: GDA short conv, zero-centered RMSNorm with decay groups, global-batch load-balancing loss (equals the full-batch loss over micro-batches), `qwen_next_config`, MTP greedy-equivalence gate (toy acceptance 0.824); roadmap Phase B4 (US models) and TW (zh-TW data survey) — T101

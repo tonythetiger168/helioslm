@@ -418,6 +418,15 @@ class HeliosLMv5Config:
     # vLLM-style engine do not support the widened stream and raise loudly).
     use_hyper_connections: Optional[bool] = None
     hyper_connection_branches: int = 4
+    # v5.66 (roadmap B2-4, GLM-5.3-Flash mHC): make the HC read matrix
+    # learnable and doubly stochastic: A = (1 - a) I + a Sinkhorn(exp(tanh L))
+    # with a in [0, 1] learnable (init 0), L learnable (init 0) and squashed
+    # by tanh before Sinkhorn (guarantees convergence in 20 steps). At init
+    # A == I exactly (bit-identical to the static HC); the Birkhoff
+    # polytope is convex, so A stays doubly stochastic (to the Sinkhorn
+    # tolerance). Requires use_hyper_connections.
+    hyper_connection_sinkhorn: bool = False
+    hyper_connection_sinkhorn_iters: int = 20
 
     # Final logit soft-capping (v5.9, Gemma-2 style): when a positive
     # float, the LM-head logits are soft-capped as
@@ -815,6 +824,16 @@ class HeliosLMv5Config:
                 f"hyper_connection_branches must be >= 2, got "
                 f"{self.hyper_connection_branches}"
             )
+        if not isinstance(self.hyper_connection_sinkhorn, bool):
+            raise ValueError("hyper_connection_sinkhorn must be a bool")
+        if self.hyper_connection_sinkhorn and not self.use_hyper_connections:
+            raise ValueError(
+                "hyper_connection_sinkhorn requires use_hyper_connections")
+        it = self.hyper_connection_sinkhorn_iters
+        if isinstance(it, bool) or not isinstance(it, int) or it < 1:
+            raise ValueError(
+                f"hyper_connection_sinkhorn_iters must be an int >= 1, "
+                f"got {it!r}")
         if self.use_hyper_connections and self.use_attention_residuals:
             raise ValueError(
                 "use_hyper_connections and use_attention_residuals are "

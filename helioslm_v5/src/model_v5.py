@@ -211,10 +211,54 @@ class HeliosLMv5Layer(nn.Module):
             self.hc_attn_B = nn.Parameter(torch.zeros(n, n))
             self.register_buffer("hc_moe_A", torch.eye(n))
             self.hc_moe_B = nn.Parameter(torch.zeros(n, n))
+            # mHC (v5.66, B2-4): learnable doubly stochastic read matrices.
+            self.hc_sinkhorn = bool(
+                getattr(config, "hyper_connection_sinkhorn", False))
+            if self.hc_sinkhorn:
+                self.hc_sinkhorn_iters = int(
+                    getattr(config, "hyper_connection_sinkhorn_iters", 20))
+                self.hc_attn_logits = nn.Parameter(torch.zeros(n, n))
+                self.hc_attn_alpha = nn.Parameter(torch.zeros(()))
+                self.hc_moe_logits = nn.Parameter(torch.zeros(n, n))
+                self.hc_moe_alpha = nn.Parameter(torch.zeros(()))
 
     # ------------------------------------------------------------------
     # Hyper-Connection stream step (v5.7)
     # ------------------------------------------------------------------
+    @staticmethod
+    def sinkhorn(logits, iters):
+        """Sinkhorn-Knopp in the log domain: alternate row and column
+        normalization of exp(tanh(logits)); ends on a column step, so
+        columns sum to 1 exactly and rows to the convergence tolerance.
+
+        The logits are squashed to [-1, 1] first: Sinkhorn's convergence
+        rate degrades with the spread of the entries, and unbounded logits
+        left rows up to 9% off after 20 iterations (T104), i.e. the
+        "doubly stochastic" claim would not hold. With entries in
+        [e^-1, e^1] 20 iterations reach float precision for any logits.
+        The identity end stays reachable through the alpha mix."""
+        log_p = torch.tanh(logits)
+        for _ in range(iters):
+            log_p = log_p - torch.logsumexp(log_p, dim=1, keepdim=True)
+            log_p = log_p - torch.logsumexp(log_p, dim=0, keepdim=True)
+        return log_p.exp()
+
+    def hc_read_matrix(self, which):
+        """The HC read matrix for ``which`` in {"attn", "moe"}: the static
+        identity buffer, or with mHC (1 - a) I + a Sinkhorn(exp(L))."""
+        A = getattr(self, f"hc_{which}_A")
+        if not getattr(self, "hc_sinkhorn", False):
+            return A
+        # Straight-through clamp: the VALUE is clamp(raw, 0, 1) (keeps A in
+        # the Birkhoff polytope; raw == 0 gives exactly 0, so A == I at
+        # init), the GRADIENT is 1. A plain clamp has zero gradient at the
+        # boundary in torch, which pinned alpha at its init 0 forever (T104).
+        raw = getattr(self, f"hc_{which}_alpha")
+        alpha = raw - (raw - raw.clamp(0.0, 1.0)).detach()
+        S = self.sinkhorn(getattr(self, f"hc_{which}_logits"),
+                          self.hc_sinkhorn_iters)
+        return (1.0 - alpha) * A + alpha * S
+
     def _hc_step(self, streams, A, B, sublayer, norm, attention_mask,
                  past_key_value, use_cache, position_ids, returns_kv):
         """One HC sublayer: read A, apply f(x) = x + sublayer(norm(x)) per
@@ -228,7 +272,13 @@ class HeliosLMv5Layer(nn.Module):
         """
         x = torch.einsum("blnd,mn->blmd", streams, A)  # read: h̃ = A S
         Bb, L, n, d = x.shape
-        xf = x.reshape(Bb * n, L, d)
+        # Fold branches into the batch dim as (batch, branch) rows. The
+        # branch axis must be moved next to the batch axis first: a plain
+        # reshape of [B, L, n, d] to [B*n, L, d] interleaves sequence
+        # positions with branches, so every branch saw a scrambled
+        # sequence (cached decode != full forward as soon as B != 0;
+        # fixed in v5.66, found by T104).
+        xf = x.permute(0, 2, 1, 3).reshape(Bb * n, L, d)
         mask = attention_mask
         if mask is not None:
             mask = mask.unsqueeze(1).expand(Bb, n, -1).reshape(Bb * n, -1)
@@ -241,7 +291,7 @@ class HeliosLMv5Layer(nn.Module):
                 use_cache=use_cache, position_ids=pos)
         else:
             sub_out, present_kv = sublayer(norm(xf)), None
-        f = (xf + sub_out).reshape(Bb, L, n, d)  # f(h̃) = h̃ + F(h̃)
+        f = (xf + sub_out).reshape(Bb, n, L, d).permute(0, 2, 1, 3)  # f(h̃)
         streams_new = x + torch.einsum("blmd,km->blkd", f, B)
         return streams_new, present_kv
 
@@ -257,7 +307,7 @@ class HeliosLMv5Layer(nn.Module):
             )
         attn_mask = attention_mask
         streams, present_kv = self._hc_step(
-            streams, self.hc_attn_A, self.hc_attn_B, self.attention,
+            streams, self.hc_read_matrix("attn"), self.hc_attn_B, self.attention,
             self.pre_attn_norm, attn_mask, past_key_value, use_cache,
             position_ids, returns_kv=True)
         # MoE sublayer: no cache, so the stream step runs without KV args.
@@ -267,7 +317,7 @@ class HeliosLMv5Layer(nn.Module):
             # reshape in _hc_step is skipped (keeps the call honest).
             moe_mask = None
         streams, _ = self._hc_step(
-            streams, self.hc_moe_A, self.hc_moe_B, self.moe,
+            streams, self.hc_read_matrix("moe"), self.hc_moe_B, self.moe,
             self.pre_moe_norm, moe_mask, None, False, position_ids,
             returns_kv=False)
         return streams, present_kv, None
