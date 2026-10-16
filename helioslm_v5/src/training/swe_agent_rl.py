@@ -137,7 +137,7 @@ class SweMacroEnv:
 
 
 def rollout(model, raw_task, rng, greedy=False, temperature=1.0,
-            false_done_penalty=0.0):
+            false_done_penalty=0.0, require_verified_done=False):
     """-> sample dict for GRPOTrainer plus episode stats."""
     ids = [BOS]
     mask = []
@@ -169,13 +169,19 @@ def rollout(model, raw_task, rng, greedy=False, temperature=1.0,
             ids.append(env.step(a))
             mask.append(False)
         passed = done and env.verify()
+    # 知止: a DONE counts as verified only when it directly follows a
+    # TEST that reported OBS_PASS (ids[-2] is that observation).
+    verified = done and len(ids) >= 3 and ids[-2] == OBS_PASS
+    success = passed and (verified or not require_verified_done)
     return {
         "full_ids": torch.tensor([ids]),
         "prompt_len": 1,
         "action_mask": torch.tensor(mask, dtype=torch.bool),
         "old_logprob": torch.tensor(old_lp),
-        "reward": 1.0 if passed else (-false_done_penalty if done else 0.0),
+        "reward": 1.0 if success else (-false_done_penalty if done else 0.0),
         "passed": passed,
+        "verified_done": verified,
+        "success": success,
         "done": done,
         "steps": sum(mask),
         "trace": [ACTION_NAMES.get(t, "?") for t in ids[1::2]],

@@ -62,6 +62,12 @@ def main():
                          "start (0 = no SFT, RL from scratch)")
     ap.add_argument("--sft-steps", type=int, default=0)
     ap.add_argument("--sft-lr", type=float, default=1e-3)
+    ap.add_argument("--algo", choices=("grpo", "rft"), default="grpo",
+                    help="grpo: GRPOTrainer update; rft: rejection-sampling "
+                         "fine-tuning (behaviour-clone the successful "
+                         "episodes of each batch)")
+    ap.add_argument("--require-verified-done", action="store_true",
+                    help="reward a DONE only right after a passing TEST")
     ap.add_argument("--output")
     args = ap.parse_args()
     torch.set_num_threads(args.threads)
@@ -103,6 +109,7 @@ def main():
         trainer.ref_model.load_state_dict(model.state_dict())
 
     rng = random.Random(1000 + args.seed)
+    rft_opt = torch.optim.AdamW(model.parameters(), lr=args.lr)
     curve = []
     for u in range(args.updates):
         tasks = rng.sample(train_tasks, args.tasks_per_update)
@@ -112,9 +119,22 @@ def main():
             for _ in range(args.group):
                 samples.append(ar.rollout(
                     model, t, rng,
-                    false_done_penalty=args.false_done_penalty))
+                    false_done_penalty=args.false_done_penalty,
+                    require_verified_done=args.require_verified_done))
         rewards = torch.tensor([s["reward"] for s in samples])
-        stats = trainer._learn_from_samples(samples, None, rewards=rewards)
+        if args.algo == "grpo":
+            stats = trainer._learn_from_samples(samples, None, rewards=rewards)
+        else:
+            keep = [s for s in samples if s["success"]]
+            stats = {"loss": 0.0}
+            if keep:
+                model.train()
+                loss = ar.sft_loss(model, keep)
+                rft_opt.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                rft_opt.step()
+                stats = {"loss": loss.item()}
         mean_steps = sum(s["steps"] for s in samples) / len(samples)
         pass_rate = sum(s["passed"] for s in samples) / len(samples)
         curve.append([u + 1, round(rewards.mean().item(), 4),
