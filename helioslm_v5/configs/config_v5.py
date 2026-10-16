@@ -103,6 +103,18 @@ class AttentionConfig:
     # (exactly 1.0 for p + 1 < floor_scale), sharpening attention at long
     # range where a position-free softmax flattens. Llama 4 uses 8192 / 0.1.
     # False (default) = no scaling.
+    # v5.70 (roadmap U4, Gemma 4), applied to GLOBAL MLA layers only (no
+    # sliding window; every MLA layer when no window is configured):
+    # global_rope_partial = p-RoPE fraction of RoPE frequency pairs kept
+    # (the highest frequencies); the rest get inv_freq 0, i.e. an exact
+    # identity rotation. 1.0 (default) = full RoPE, bit-identical. Gemma 4
+    # uses 0.25. Not combinable with rope_scaling.
+    global_rope_partial: float = 1.0
+    # global_k_eq_v: values reuse the keys (V = K_nope per head), so
+    # kv_b_proj only emits K_nope. Needs v_head_dim == no_rope_head_dim.
+    # Halves kv_b_proj and the expanded-mode K/V cache share; the absorbed
+    # cache stores the latent and does not shrink.
+    global_k_eq_v: bool = False
     nope_attn_temperature: bool = False
     nope_temp_floor_scale: int = 8192
     nope_temp_scale: float = 0.1
@@ -715,6 +727,21 @@ class HeliosLMv5Config:
                 f"zero_centered_norm must be a bool, got "
                 f"{self.zero_centered_norm!r}")
         a_ = self.attention
+        rp = a_.global_rope_partial
+        if isinstance(rp, bool) or not isinstance(rp, (int, float)) \
+                or not 0.0 <= rp <= 1.0:
+            raise ValueError(
+                f"attention.global_rope_partial must be in [0, 1], got {rp!r}")
+        if rp < 1.0 and a_.rope_scaling is not None:
+            raise ValueError(
+                "attention.global_rope_partial < 1 cannot be combined with "
+                "rope_scaling (YaRN's mscale would rescale the identity dims)")
+        if not isinstance(a_.global_k_eq_v, bool):
+            raise ValueError("attention.global_k_eq_v must be a bool")
+        if a_.global_k_eq_v and a_.v_head_dim != a_.no_rope_head_dim:
+            raise ValueError(
+                f"attention.global_k_eq_v needs v_head_dim == no_rope_head_dim, "
+                f"got {a_.v_head_dim} vs {a_.no_rope_head_dim}")
         if not isinstance(a_.nope_attn_temperature, bool):
             raise ValueError("attention.nope_attn_temperature must be a bool")
         if a_.nope_attn_temperature and not a_.nope:

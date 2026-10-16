@@ -1,5 +1,29 @@
 # HeliosLM v5 Changelog
 
+## v5.70 (2026-10-16) - Roadmap U4: Gemma 4 p-RoPE and global-layer K=V
+
+Both options apply only to global MLA layers (no sliding window; with
+`global_attention_every` that is the interleaved global layers, and with
+no window configured it is every MLA layer).
+
+- `attention.global_rope_partial` (default 1.0, Gemma 4 uses 0.25):
+  p-RoPE keeps the highest-frequency fraction p of the RoPE frequency
+  pairs and sets the rest to frequency 0, so those dims get cos 1, sin 0,
+  an exact identity at every position. 1.0 is bit-identical to before.
+  It cannot be combined with `rope_scaling`, because YaRN's mscale would
+  rescale the identity dims.
+- `attention.global_k_eq_v` (default False, needs
+  `v_head_dim == no_rope_head_dim`): values reuse the keys (V = K_nope
+  per head). `kv_b_proj` emits only K_nope, so it has exactly half the
+  parameters. In absorbed mode W_UK is W_UV. In expanded mode the cache's
+  V entry is the same tensor as K_nope, so cached values per token go
+  from H*(nope + v) + rope to H*nope + rope. This is not exactly half,
+  because the shared rope key stays. The absorbed cache stores the latent
+  and does not shrink.
+- No quality A/B was run. These are architecture options, pinned by
+  oracle tests.
+- T108 (`test_global_prope_kv.py`, 6 tests).
+
 ## v5.69 (2026-10-16) - Roadmap U3: Llama 4 NoPE attention temperature
 
 - `attention.nope_attn_temperature` (requires `nope`), with
