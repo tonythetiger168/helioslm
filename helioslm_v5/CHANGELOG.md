@@ -23,7 +23,7 @@
   wrong. Now the branch axis is moved next to the batch axis before the
   fold and back after; decode == full to 7e-7. HC checkpoints trained
   before v5.66 were trained on the scrambled layout.
-- T104 (`test_mhc_sinkhorn.py`, 7 tests, incl. the fold regression).
+- T104 (`test_mhc_sinkhorn.py`, 6 tests, incl. the fold regression).
 
 ## v5.65 (2026-10-16) - Roadmap B2-3: dense first layers (`moe.first_k_dense`)
 
