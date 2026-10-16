@@ -39,7 +39,7 @@ raises ``ValueError`` immediately on an invalid configuration instead of
 letting silent truncation happen downstream.
 """
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Callable, Optional
 
 
 @dataclass
@@ -421,6 +421,128 @@ class GRPOConfig:
                 f"grpo.tis_cap must be >= 1 or None, got {self.tis_cap!r}")
 
 
+class OptionConflictError(ValueError):
+    """Raised when an OPTION_RULES rule fails; ``rule`` names the rule.
+    A ValueError subclass, so existing ``except ValueError`` code and
+    message checks are unaffected."""
+
+    def __init__(self, rule, message):
+        super().__init__(message)
+        self.rule = rule
+
+
+@dataclass(frozen=True)
+class OptionRule:
+    """One cross-option constraint (tech-debt Phase 2). ``kind`` is
+    "requires" (when ``when(cfg)`` holds, ``other(cfg)`` must too) or
+    "excludes" (``when(cfg)`` and ``other(cfg)`` may not both hold).
+    ``message(cfg)`` is the ValueError text."""
+    name: str
+    kind: str
+    when: Callable
+    other: Callable
+    message: Callable
+
+
+# Every rule that couples two options lives here and nowhere else:
+# HeliosLMv5Config._validate checks them after all per-field checks, and
+# T110 (test_option_matrix.py) builds every pair of feature options and
+# requires each rejection to come from this table. Add a rule here (not
+# inline in _validate) when a new option cannot combine with another.
+OPTION_RULES = (
+    OptionRule(
+        "global_attention_every_needs_window", "requires",
+        lambda c: c.attention.global_attention_every is not None,
+        lambda c: c.attention.sliding_window is not None,
+        lambda c: "attention.global_attention_every requires "
+                  "attention.sliding_window (it picks which layers keep "
+                  "full attention instead of the window)"),
+    OptionRule(
+        "window_sink_needs_window", "requires",
+        lambda c: c.attention.sliding_window_sink > 0,
+        lambda c: c.attention.sliding_window is not None,
+        lambda c: "attention.sliding_window_sink > 0 requires "
+                  "attention.sliding_window to be set (attention sinks only "
+                  "have meaning inside a sliding window)"),
+    OptionRule(
+        "p_rope_excludes_rope_scaling", "excludes",
+        lambda c: c.attention.global_rope_partial < 1.0,
+        lambda c: c.attention.rope_scaling is not None,
+        lambda c: "attention.global_rope_partial < 1 cannot be combined with "
+                  "rope_scaling (YaRN's mscale would rescale the identity dims)"),
+    OptionRule(
+        "k_eq_v_needs_equal_dims", "requires",
+        lambda c: c.attention.global_k_eq_v,
+        lambda c: c.attention.v_head_dim == c.attention.no_rope_head_dim,
+        lambda c: f"attention.global_k_eq_v needs v_head_dim == no_rope_head_dim, "
+                  f"got {c.attention.v_head_dim} vs {c.attention.no_rope_head_dim}"),
+    OptionRule(
+        "kv_share_excludes_sparse", "excludes",
+        lambda c: c.attention.kv_share_last_n > 0,
+        lambda c: c.attention.sparse_top_k is not None,
+        lambda c: "attention.kv_share_last_n cannot be combined with sparse_top_k"),
+    OptionRule(
+        "kv_share_excludes_fp8_cache", "excludes",
+        lambda c: c.attention.kv_share_last_n > 0,
+        lambda c: c.attention.kv_cache_dtype == "fp8",
+        lambda c: "attention.kv_share_last_n cannot be combined with "
+                  "kv_cache_dtype='fp8'"),
+    OptionRule(
+        "nope_temperature_needs_nope", "requires",
+        lambda c: c.attention.nope_attn_temperature,
+        lambda c: c.attention.nope,
+        lambda c: "attention.nope_attn_temperature requires attention.nope"),
+    OptionRule(
+        "sparse_needs_absorption", "requires",
+        lambda c: c.attention.sparse_top_k is not None,
+        lambda c: c.attention.use_absorption,
+        lambda c: "attention.sparse_top_k requires use_absorption=True "
+                  "(the top-k selection runs over the shared latent "
+                  "cache; the expanded per-head cache is not supported)"),
+    OptionRule(
+        "learned_indexer_needs_sparse", "requires",
+        lambda c: c.attention.sparse_indexer == "learned",
+        lambda c: c.attention.sparse_top_k is not None,
+        lambda c: "attention.sparse_indexer='learned' requires "
+                  "attention.sparse_top_k to be set (the learned lightning "
+                  "indexer only exists to pick the top-k set)"),
+    OptionRule(
+        "indexer_share_needs_learned", "requires",
+        lambda c: c.attention.indexer_share_every > 1,
+        lambda c: c.attention.sparse_indexer == "learned",
+        lambda c: "attention.indexer_share_every > 1 requires "
+                  "attention.sparse_indexer='learned' — the 'head_mean' "
+                  "indexer has no parameters, so there is nothing to share"),
+    OptionRule(
+        "sparse_prefill_needs_sparse", "requires",
+        lambda c: c.attention.sparse_prefill,
+        lambda c: c.attention.sparse_top_k is not None,
+        lambda c: "attention.sparse_prefill=True requires "
+                  "attention.sparse_top_k to be set"),
+    OptionRule(
+        "fp8_cache_needs_absorption", "requires",
+        lambda c: c.attention.kv_cache_dtype == "fp8",
+        lambda c: c.attention.use_absorption,
+        lambda c: "attention.kv_cache_dtype='fp8' requires use_absorption=True "
+                  "(the fp8 cache stores the compressed latent c_kv; the "
+                  "expanded per-head cache has no latent to quantize)"),
+    OptionRule(
+        "sinkhorn_needs_hyper_connections", "requires",
+        lambda c: c.hyper_connection_sinkhorn,
+        lambda c: c.use_hyper_connections,
+        lambda c: "hyper_connection_sinkhorn requires use_hyper_connections"),
+    OptionRule(
+        # Both rewire cross-layer residual flow; combining them would
+        # silently double-inject previous-layer outputs.
+        "hyper_connections_exclude_attention_residuals", "excludes",
+        lambda c: c.use_hyper_connections,
+        lambda c: c.use_attention_residuals,
+        lambda c: "use_hyper_connections and use_attention_residuals are "
+                  "mutually exclusive (both rewire cross-layer residual flow); "
+                  "enable exactly one"),
+)
+
+
 @dataclass
 class HeliosLMv5Config:
     model_name: str = "HeliosLM-v5.49"
@@ -700,11 +822,6 @@ class HeliosLMv5Config:
                 raise ValueError(
                     f"attention.global_attention_every must be an int >= 2 "
                     f"or None, got {ge!r}")
-            if self.attention.sliding_window is None:
-                raise ValueError(
-                    "attention.global_attention_every requires "
-                    "attention.sliding_window (it picks which layers keep "
-                    "full attention instead of the window)")
         if not isinstance(self.attention.learnable_sink, bool):
             raise ValueError(
                 f"attention.learnable_sink must be a bool, got "
@@ -741,32 +858,14 @@ class HeliosLMv5Config:
                 or not 0.0 <= rp <= 1.0:
             raise ValueError(
                 f"attention.global_rope_partial must be in [0, 1], got {rp!r}")
-        if rp < 1.0 and a_.rope_scaling is not None:
-            raise ValueError(
-                "attention.global_rope_partial < 1 cannot be combined with "
-                "rope_scaling (YaRN's mscale would rescale the identity dims)")
         if not isinstance(a_.global_k_eq_v, bool):
             raise ValueError("attention.global_k_eq_v must be a bool")
         ks = a_.kv_share_last_n
         if isinstance(ks, bool) or not isinstance(ks, int) or ks < 0:
             raise ValueError(
                 f"attention.kv_share_last_n must be an int >= 0, got {ks!r}")
-        if ks > 0 and a_.sparse_top_k is not None:
-            raise ValueError(
-                "attention.kv_share_last_n cannot be combined with sparse_top_k")
-        if ks > 0 and a_.kv_cache_dtype == "fp8":
-            raise ValueError(
-                "attention.kv_share_last_n cannot be combined with "
-                "kv_cache_dtype='fp8'")
-        if a_.global_k_eq_v and a_.v_head_dim != a_.no_rope_head_dim:
-            raise ValueError(
-                f"attention.global_k_eq_v needs v_head_dim == no_rope_head_dim, "
-                f"got {a_.v_head_dim} vs {a_.no_rope_head_dim}")
         if not isinstance(a_.nope_attn_temperature, bool):
             raise ValueError("attention.nope_attn_temperature must be a bool")
-        if a_.nope_attn_temperature and not a_.nope:
-            raise ValueError(
-                "attention.nope_attn_temperature requires attention.nope")
         fs = a_.nope_temp_floor_scale
         if isinstance(fs, bool) or not isinstance(fs, int) or fs < 1:
             raise ValueError(
@@ -845,22 +944,10 @@ class HeliosLMv5Config:
                     f"attention.sparse_top_k must be a positive integer or "
                     f"None, got {a.sparse_top_k!r}"
                 )
-            if not a.use_absorption:
-                raise ValueError(
-                    "attention.sparse_top_k requires use_absorption=True "
-                    "(the top-k selection runs over the shared latent "
-                    "cache; the expanded per-head cache is not supported)"
-                )
         if a.sparse_indexer not in ("head_mean", "learned"):
             raise ValueError(
                 f"attention.sparse_indexer must be 'head_mean' or "
                 f"'learned', got {a.sparse_indexer!r}"
-            )
-        if a.sparse_indexer == "learned" and a.sparse_top_k is None:
-            raise ValueError(
-                "attention.sparse_indexer='learned' requires "
-                "attention.sparse_top_k to be set (the learned lightning "
-                "indexer only exists to pick the top-k set)"
             )
         for _name in ("indexer_num_heads", "indexer_head_dim",
                       "indexer_share_every"):
@@ -870,32 +957,15 @@ class HeliosLMv5Config:
                     f"attention.{_name} must be a positive integer, got "
                     f"{_value!r}"
                 )
-        if a.indexer_share_every > 1 and a.sparse_indexer != "learned":
-            raise ValueError(
-                "attention.indexer_share_every > 1 requires "
-                "attention.sparse_indexer='learned' — the 'head_mean' "
-                "indexer has no parameters, so there is nothing to share"
-            )
         if not isinstance(a.sparse_prefill, bool):
             raise ValueError(
                 f"attention.sparse_prefill must be a bool, got "
                 f"{a.sparse_prefill!r}"
             )
-        if a.sparse_prefill and a.sparse_top_k is None:
-            raise ValueError(
-                "attention.sparse_prefill=True requires "
-                "attention.sparse_top_k to be set"
-            )
         if a.kv_cache_dtype not in ("auto", "fp8"):
             raise ValueError(
                 f"attention.kv_cache_dtype must be 'auto' or 'fp8', got "
                 f"{a.kv_cache_dtype!r}"
-            )
-        if a.kv_cache_dtype == "fp8" and not a.use_absorption:
-            raise ValueError(
-                "attention.kv_cache_dtype='fp8' requires use_absorption=True "
-                "(the fp8 cache stores the compressed latent c_kv; the "
-                "expanded per-head cache has no latent to quantize)"
             )
         # v5.9: soft-capping, QK-norm, sliding window.
         if a.logit_soft_cap is not None:
@@ -920,12 +990,6 @@ class HeliosLMv5Config:
                 f"attention.sliding_window_sink must be a non-negative "
                 f"integer, got {a.sliding_window_sink!r}"
             )
-        if a.sliding_window_sink > 0 and a.sliding_window is None:
-            raise ValueError(
-                "attention.sliding_window_sink > 0 requires "
-                "attention.sliding_window to be set (attention sinks only "
-                "have meaning inside a sliding window)"
-            )
         # Hyper-Connections (v5.7): branch count and mutual exclusion with
         # the v5.5 attention-residual accumulator (both rewire how sublayer
         # outputs flow across the layer stack; combining them is untested
@@ -937,20 +1001,11 @@ class HeliosLMv5Config:
             )
         if not isinstance(self.hyper_connection_sinkhorn, bool):
             raise ValueError("hyper_connection_sinkhorn must be a bool")
-        if self.hyper_connection_sinkhorn and not self.use_hyper_connections:
-            raise ValueError(
-                "hyper_connection_sinkhorn requires use_hyper_connections")
         it = self.hyper_connection_sinkhorn_iters
         if isinstance(it, bool) or not isinstance(it, int) or it < 1:
             raise ValueError(
                 f"hyper_connection_sinkhorn_iters must be an int >= 1, "
                 f"got {it!r}")
-        if self.use_hyper_connections and self.use_attention_residuals:
-            raise ValueError(
-                "use_hyper_connections and use_attention_residuals are "
-                "mutually exclusive (both rewire cross-layer residual flow); "
-                "enable exactly one"
-            )
         # Vision transformer heads must tile the hidden width exactly.
         vision_hidden = getattr(self.multimodal, "vision_hidden_size", None)
         vision_heads = getattr(self.multimodal, "vision_num_heads", None)
@@ -984,6 +1039,12 @@ class HeliosLMv5Config:
                     f"final_logit_soft_cap must be a positive number or "
                     f"None, got {self.final_logit_soft_cap!r}"
                 )
+        # Cross-option constraints: one table (OPTION_RULES), checked after
+        # every per-field check so the predicates see well-typed values.
+        for rule in OPTION_RULES:
+            on, other = rule.when(self), rule.other(self)
+            if on and (other if rule.kind == "excludes" else not other):
+                raise OptionConflictError(rule.name, rule.message(self))
 
 
 def k3_block_config(size="lite", num_hidden_layers=None):

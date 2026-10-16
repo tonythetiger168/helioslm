@@ -61,7 +61,7 @@ class RMSNorm(nn.Module):
 
 
 def _zc(config):
-    return bool(getattr(config, "zero_centered_norm", False))
+    return bool(config.zero_centered_norm)
 
 
 class RotaryEmbedding(nn.Module):
@@ -314,7 +314,7 @@ class MLA(nn.Module):
         # getattr for robustness against configs built before the switch
         # existed; the dataclass default is True.
         self.use_absorption = bool(
-            getattr(config.attention, "use_absorption", True)
+            config.attention.use_absorption
         )
 
         # v5.22 NoPE (Kimi-K3 direction): skip RoPE entirely; q_rope /
@@ -322,14 +322,14 @@ class MLA(nn.Module):
         # only drive the causal mask / cache length. The rope_head_dim
         # split is retained so checkpoints and cache layouts are
         # unchanged — only the rotation is dropped.
-        self.nope = bool(getattr(config.attention, "nope", False))
+        self.nope = bool(config.attention.nope)
         # v5.69 U3 (Llama 4): NoPE attention temperature.
         self.nope_temp = self.nope and bool(
-            getattr(config.attention, "nope_attn_temperature", False))
+            config.attention.nope_attn_temperature)
         self.nope_temp_floor = int(
-            getattr(config.attention, "nope_temp_floor_scale", 8192))
+            config.attention.nope_temp_floor_scale)
         self.nope_temp_scale = float(
-            getattr(config.attention, "nope_temp_scale", 0.1))
+            config.attention.nope_temp_scale)
 
         # Q compression: d_model -> d_c' -> num_heads * head_dim
         self.q_a_proj = nn.Linear(self.hidden_size, self.q_lora_rank, bias=False)
@@ -357,17 +357,17 @@ class MLA(nn.Module):
         # off, so ungated models keep their exact parameter set.
         self.o_gate_proj = (nn.Linear(self.hidden_size,
                                  self.num_heads * self.v_head_dim, bias=False)
-                       if bool(getattr(config.attention, "output_gate", False))
+                       if bool(config.attention.output_gate)
                        else None)
 
         self.rope = RotaryEmbedding(
             self.rope_head_dim, config.max_position_embeddings,
-            scaling=getattr(config.attention, "rope_scaling", None),
+            scaling=config.attention.rope_scaling,
         )
 
         # v5.7: fp8 KV-cache storage (absorbed mode only, validated eagerly
         # in the config; the expanded mode raises below as a loud fallback).
-        self.kv_cache_dtype = getattr(config.attention, "kv_cache_dtype", "auto")
+        self.kv_cache_dtype = config.attention.kv_cache_dtype
         if self.kv_cache_dtype == "fp8":
             if not self.use_absorption:
                 raise ValueError(
@@ -386,7 +386,7 @@ class MLA(nn.Module):
 
         # v5.8: DSA-style sparse top-k attention at decode (absorbed mode
         # only). None = dense attention (v5.7 behaviour).
-        self.sparse_top_k = getattr(config.attention, "sparse_top_k", None)
+        self.sparse_top_k = config.attention.sparse_top_k
         if self.sparse_top_k is not None:
             if not isinstance(self.sparse_top_k, int) or self.sparse_top_k <= 0:
                 raise ValueError(
@@ -407,10 +407,9 @@ class MLA(nn.Module):
         # default); "learned" builds a dedicated LearnedLightningIndexer
         # whose key side reads the cached latent c_kv, leaving the
         # (c_kv, k_rope) cache contract untouched.
-        self.sparse_indexer = getattr(
-            config.attention, "sparse_indexer", "head_mean")
+        self.sparse_indexer = config.attention.sparse_indexer
         self.sparse_prefill = bool(
-            getattr(config.attention, "sparse_prefill", False))
+            config.attention.sparse_prefill)
         if self.sparse_indexer not in ("head_mean", "learned"):
             raise ValueError(
                 f"sparse_indexer must be 'head_mean' or 'learned', got "
@@ -436,8 +435,8 @@ class MLA(nn.Module):
                 self.indexer = LearnedLightningIndexer(
                     self.hidden_size,
                     self.kv_latent_dim,
-                    int(getattr(config.attention, "indexer_num_heads", 4)),
-                    int(getattr(config.attention, "indexer_head_dim", 32)),
+                    int(config.attention.indexer_num_heads),
+                    int(config.attention.indexer_head_dim),
                 )
             else:
                 # IndexShare (B1-1): score with the group leader's
@@ -469,7 +468,7 @@ class MLA(nn.Module):
         # v5.9: Gemma-2/3 & GLM-4.5 style attention logit soft-capping.
         # Validated eagerly in the config; re-checked here for hand-built
         # attention configs (same pattern as sparse_top_k above).
-        self.logit_soft_cap = getattr(config.attention, "logit_soft_cap", None)
+        self.logit_soft_cap = config.attention.logit_soft_cap
         if self.logit_soft_cap is not None:
             if not isinstance(self.logit_soft_cap, (int, float)) \
                     or self.logit_soft_cap <= 0:
@@ -485,7 +484,7 @@ class MLA(nn.Module):
         # re-normed per head: the shared latent c_kv already passes through
         # norm_kv (the DeepSeek-V3 design), and a per-head K_nope norm
         # cannot be folded into the absorbed W_UK matmul.
-        self.qk_norm = bool(getattr(config.attention, "qk_norm", False))
+        self.qk_norm = bool(config.attention.qk_norm)
         if self.qk_norm:
             self.norm_q_nope = RMSNorm(self.no_rope_head_dim,
                                        eps=config.rms_norm_eps,
@@ -503,9 +502,9 @@ class MLA(nn.Module):
         # plus the first sliding_window_sink positions unconditionally.
         # The cache is NEVER modified; absorbed decode slices gathered
         # copies so the decode matmul is O(window) instead of O(L).
-        self.sliding_window = getattr(config.attention, "sliding_window", None)
+        self.sliding_window = config.attention.sliding_window
         self.sliding_window_sink = int(
-            getattr(config.attention, "sliding_window_sink", 0))
+            config.attention.sliding_window_sink)
         if self.sliding_window is not None:
             if not isinstance(self.sliding_window, int) \
                     or self.sliding_window <= 0:
@@ -525,7 +524,7 @@ class MLA(nn.Module):
             )
         # v5.62: per-layer sliding/global interleave. A "global" layer drops
         # the window (and its sink tokens) and attends the full context.
-        every = getattr(config.attention, "global_attention_every", None)
+        every = config.attention.global_attention_every
         self.is_global_layer = (
             every is not None and layer_idx is not None
             and (layer_idx == 0 or layer_idx % every == every - 1))
@@ -534,14 +533,14 @@ class MLA(nn.Module):
             self.sliding_window_sink = 0
         # v5.70 U4 (Gemma 4): p-RoPE and K=V on global layers.
         is_global = self.sliding_window is None
-        rope_partial = float(getattr(config.attention, "global_rope_partial", 1.0))
+        rope_partial = float(config.attention.global_rope_partial)
         if is_global and rope_partial < 1.0 and not self.nope:
             self.rope = RotaryEmbedding(
                 self.rope_head_dim, config.max_position_embeddings,
-                scaling=getattr(config.attention, "rope_scaling", None),
+                scaling=config.attention.rope_scaling,
                 partial=rope_partial)
         self.k_eq_v = is_global and bool(
-            getattr(config.attention, "global_k_eq_v", False))
+            config.attention.global_k_eq_v)
         if self.k_eq_v:
             if self.v_head_dim != self.no_rope_head_dim:
                 raise ValueError("global_k_eq_v needs v_head_dim == no_rope_head_dim")
@@ -551,7 +550,7 @@ class MLA(nn.Module):
         # v5.62: learnable attention sink — one logit per head, used as an
         # extra value-less key in every softmax (see _softmax_with_sink).
         self.attn_sink = (nn.Parameter(torch.zeros(self.num_heads))
-                          if getattr(config.attention, "learnable_sink", False)
+                          if config.attention.learnable_sink
                           else None)
 
         self.norm_q = RMSNorm(self.q_lora_rank, eps=config.rms_norm_eps,
