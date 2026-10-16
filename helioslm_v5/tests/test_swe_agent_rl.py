@@ -110,12 +110,10 @@ def test_rollout_structure():
     assert all(int(t) in (ar.OBS_NONE, ar.OBS_PASS, ar.OBS_FAIL)
                for t in ids[~mask])
     assert list(mask[::2]) == [True] * len(mask[::2])
-    with torch.no_grad():
-        logits = model(r["full_ids"])[0][0, :-1].float()
-    allowed = torch.full((logits.shape[-1],), float("-inf"))
-    allowed[list(ar.ACTIONS)] = 0.0
-    logp = torch.log_softmax(logits + allowed, -1)
-    want = logp.gather(-1, ids[:, None]).squeeze(-1)[mask].sum()
+    # old_logprob must match what GRPOTrainer recomputes (full vocab), so
+    # the importance ratio is exactly 1 for an unchanged policy
+    want = GRPOTrainer._sequence_logprob(model, r["full_ids"], 1,
+                                         r["action_mask"])
     assert torch.allclose(r["old_logprob"], want, atol=1e-4)
     print("PASS test_rollout_structure")
 

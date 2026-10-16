@@ -156,7 +156,11 @@ def rollout(model, raw_task, rng, greedy=False, temperature=1.0,
             else:
                 g = torch.Generator().manual_seed(rng.randrange(2 ** 31))
                 a = int(torch.multinomial(logp.exp(), 1, generator=g))
-            old_lp += float(torch.log_softmax(logits + allowed, -1)[a])
+            # Record the FULL-vocabulary log-prob: GRPOTrainer recomputes
+            # log-probs over the full vocabulary, so a restricted one here
+            # would start every ratio far below 1 and, under the PPO clip,
+            # silence every negative-advantage sample (v5.63 fix).
+            old_lp += float(torch.log_softmax(logits, -1)[a])
             ids.append(a)
             mask.append(True)
             if a == DONE:
