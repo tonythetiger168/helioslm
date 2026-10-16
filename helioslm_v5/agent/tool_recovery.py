@@ -81,7 +81,20 @@ def _normalize_call(c, applied):
 
 def recover_tool_call(text, registry=None):
     """-> (calls, repairs applied as a sorted tuple). Strict-valid input
-    returns ``(calls, ())`` with exactly the strict parser's calls."""
+    returns ``(calls, ())`` with exactly the strict parser's calls.
+
+    Deeply nested payloads can make ``json.loads`` raise RecursionError
+    (CPython <= 3.12's decoder recurses in Python); that is converted to
+    ToolCallError so the module's only-ToolCallError contract holds on
+    every supported Python.
+    """
+    try:
+        return _recover(text, registry)
+    except RecursionError as e:
+        raise ToolCallError("payload nested too deeply") from e
+
+
+def _recover(text, registry):
     if not isinstance(text, str):
         raise ToolCallError("tool output must be a string")
     if len(text) > 4 * MAX_TEXT:
