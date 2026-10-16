@@ -587,6 +587,32 @@ class MLA(nn.Module):
             c_kv:   [B, seq, kv_latent_dim]      (post-norm latent)
             k_rope: [B, 1, seq, rope_head_dim]   (post-RoPE, shared)
         """
+        q_nope, q_rope = self._project_queries(hidden_states, position_ids)
+        c_kv, k_rope = self._project_kv(hidden_states, position_ids)
+        return q_nope, q_rope, c_kv, k_rope
+
+    def _project_kv(self, hidden_states, position_ids):
+        """c_kv [B, seq, d_c] (post-norm latent) and k_rope [B, 1, seq, r]
+        (post-RoPE) for the new tokens."""
+        B, seq, _ = hidden_states.shape
+        # KV: compress to the shared latent (post-norm; this is what the
+        # absorbed cache stores directly).
+        c_kv = self.norm_kv(self.kv_a_proj(hidden_states))  # [B, seq, d_c]
+
+        # Shared RoPE key for new tokens
+        k_rope = self.k_rope_proj(hidden_states)
+        k_rope = k_rope.view(B, seq, 1, self.rope_head_dim).transpose(1, 2)
+        # v5.9: QK-norm before RoPE (see _project_queries).
+        if self.qk_norm:
+            k_rope = self.norm_k_rope(k_rope)
+        # RoPE on the shared key only; skipped entirely under NoPE.
+        if not self.nope:
+            cos, sin = self.rope(position_ids)
+            k_rope = apply_rotary(k_rope, cos, sin)
+        return c_kv, k_rope
+
+    def _project_queries(self, hidden_states, position_ids):
+        """q_nope [B, H, seq, d_nope] and q_rope [B, H, seq, r] (post-RoPE)."""
         B, seq, _ = hidden_states.shape
 
         # Q: compress then expand, split into no-RoPE / RoPE parts
@@ -595,20 +621,11 @@ class MLA(nn.Module):
         q_nope = q[..., : self.no_rope_head_dim]
         q_rope = q[..., self.no_rope_head_dim :]
 
-        # KV: compress to the shared latent (post-norm; this is what the
-        # absorbed cache stores directly).
-        c_kv = self.norm_kv(self.kv_a_proj(hidden_states))  # [B, seq, d_c]
-
-        # Shared RoPE key for new tokens
-        k_rope = self.k_rope_proj(hidden_states)
-        k_rope = k_rope.view(B, seq, 1, self.rope_head_dim).transpose(1, 2)
-
         # v5.9: per-head QK-norm BEFORE RoPE (rotation preserves the norm,
         # so normalizing pre-rotation keeps the rotated vectors normed).
         if self.qk_norm:
             q_nope = self.norm_q_nope(q_nope)
             q_rope = self.norm_q_rope(q_rope)
-            k_rope = self.norm_k_rope(k_rope)
 
         # RoPE applied ONLY to the rope dims of q and the shared k_rope,
         # at the correct absolute positions. V is never rotated.
@@ -618,7 +635,6 @@ class MLA(nn.Module):
         if not self.nope:
             cos, sin = self.rope(position_ids)
             q_rope = apply_rotary(q_rope, cos, sin)
-            k_rope = apply_rotary(k_rope, cos, sin)
         elif self.nope_temp:
             # Llama 4 NoPE temperature: per-position query scale (exactly
             # 1.0 below the floor scale, so short contexts are unchanged).
@@ -626,7 +642,7 @@ class MLA(nn.Module):
             scale = scale[:, None, :, None]                   # [B, 1, seq, 1]
             q_nope = q_nope * scale
             q_rope = q_rope * scale
-        return q_nope, q_rope, c_kv, k_rope
+        return q_nope, q_rope
 
     def nope_attn_scale(self, position_ids):
         """[B, seq] query scale log(floor((p+1)/F) + 1) * s + 1 (Llama 4)."""
@@ -677,8 +693,23 @@ class MLA(nn.Module):
             return scores
         return self.logit_soft_cap * torch.tanh(scores / self.logit_soft_cap)
 
+    def share_kv_from(self, source):
+        """v5.71 U6: make this layer a KV consumer of ``source`` (an MLA
+        layer earlier in the model with the same window type). Its own
+        K/V projections are dropped (no parameters, no state-dict keys);
+        ``source`` is held unregistered so it is not a submodule twice."""
+        if not isinstance(source, MLA) or source is self:
+            raise ValueError("share_kv_from needs another MLA layer")
+        if (source.sliding_window is None) != (self.sliding_window is None):
+            raise ValueError("KV sharing needs the same window type")
+        object.__setattr__(self, "_kv_src", source)
+        for name in ("kv_a_proj", "kv_b_proj", "k_rope_proj", "norm_kv",
+                     "norm_k_rope"):
+            if name in self._modules:
+                self._modules[name] = None
+
     def forward(self, hidden_states, attention_mask=None, past_key_value=None,
-                use_cache=False, position_ids=None):
+                use_cache=False, position_ids=None, shared_kv=None):
         """
         Args:
             hidden_states: [B, seq, hidden] — only the NEW tokens when decoding.
@@ -691,21 +722,33 @@ class MLA(nn.Module):
             use_cache: return the updated cache tuple.
             position_ids: optional [B, seq] or [seq] absolute positions of the
                 new tokens. Defaults to past_len .. past_len + seq - 1.
+            shared_kv: (v5.71 U6) for a KV-sharing layer, the source
+                layer's cache tuple from THIS forward (past + new tokens).
+                The layer's own past_key_value is then ignored and its
+                present is that same tuple.
         Returns:
             (output [B, seq, hidden], present_key_value or None)
         """
+        if getattr(self, "_kv_src", None) is not None:
+            if shared_kv is None:
+                raise ValueError(
+                    "this MLA layer shares its KV (attention.kv_share_last_n) "
+                    "and needs shared_kv from its source layer; drive it "
+                    "through HeliosLMv5.forward")
+        elif shared_kv is not None:
+            raise ValueError("shared_kv given to a layer that does not share KV")
         if self.use_absorption:
             return self._forward_absorbed(
                 hidden_states, attention_mask, past_key_value, use_cache,
-                position_ids,
+                position_ids, shared_kv,
             )
         return self._forward_expanded(
             hidden_states, attention_mask, past_key_value, use_cache,
-            position_ids,
+            position_ids, shared_kv,
         )
 
     def _forward_expanded(self, hidden_states, attention_mask, past_key_value,
-                          use_cache, position_ids):
+                          use_cache, position_ids, shared_kv=None):
         """Non-absorbed path (v5.1 behaviour): cache expanded per-head K/V."""
         B, seq, _ = hidden_states.shape
         if past_key_value is not None and len(past_key_value) != 3:
@@ -720,15 +763,38 @@ class MLA(nn.Module):
                     if len(past_key_value) == 2 else ""
                 )
             )
-        past_len = past_key_value[0].shape[2] if past_key_value is not None else 0
-        position_ids, custom_positions = self._resolve_positions(
-            hidden_states, past_len, position_ids
-        )
+        if shared_kv is not None:
+            if len(shared_kv) != 3:
+                raise ValueError("expanded mode expects a 3-tensor shared_kv")
+            past_len = shared_kv[0].shape[2] - seq
+            position_ids, custom_positions = self._resolve_positions(
+                hidden_states, past_len, position_ids)
+            q_nope, q_rope = self._project_queries(hidden_states, position_ids)
+            k_nope, k_rope, v = shared_kv
+        else:
+            past_len = (past_key_value[0].shape[2]
+                        if past_key_value is not None else 0)
+            position_ids, custom_positions = self._resolve_positions(
+                hidden_states, past_len, position_ids
+            )
+            q_nope, q_rope, c_kv, k_rope = self._project_new_tokens(
+                hidden_states, position_ids
+            )
+            k_nope, k_rope, v = self._expand_kv(c_kv, k_rope, past_key_value)
+        if not use_cache:
+            present_key_value = None
+        elif shared_kv is not None:
+            present_key_value = shared_kv        # aliased, not re-tupled
+        else:
+            present_key_value = (k_nope, k_rope, v)
+        return self._expanded_attend(
+            hidden_states, attention_mask, position_ids, custom_positions,
+            past_len, q_nope, q_rope, k_nope, k_rope, v, present_key_value)
 
-        q_nope, q_rope, c_kv, k_rope = self._project_new_tokens(
-            hidden_states, position_ids
-        )
-
+    def _expand_kv(self, c_kv, k_rope, past_key_value):
+        """Expanded per-head K_nope / V for the new tokens, appended to the
+        cache; returns (k_nope, k_rope, v) covering past + new."""
+        B, seq = c_kv.shape[0], c_kv.shape[1]
         # Expand the latent ONCE per new token into K_nope and V.
         kv = self.kv_b_proj(c_kv)
         if self.k_eq_v:
@@ -753,8 +819,12 @@ class MLA(nn.Module):
                 k_nope = torch.cat([past_k_nope, k_nope], dim=2)
                 k_rope = torch.cat([past_k_rope, k_rope], dim=2)
                 v = torch.cat([past_v, v], dim=2)
+        return k_nope, k_rope, v
 
-        present_key_value = (k_nope, k_rope, v) if use_cache else None
+    def _expanded_attend(self, hidden_states, attention_mask, position_ids,
+                         custom_positions, past_len, q_nope, q_rope, k_nope,
+                         k_rope, v, present_key_value):
+        B, seq, _ = hidden_states.shape
         kv_len = k_nope.shape[2]
 
         q_full = torch.cat([q_nope, q_rope], dim=-1)
@@ -795,7 +865,7 @@ class MLA(nn.Module):
         return output, present_key_value
 
     def _forward_absorbed(self, hidden_states, attention_mask, past_key_value,
-                          use_cache, position_ids):
+                          use_cache, position_ids, shared_kv=None):
         """Absorbed path: cache stores (c_kv, k_rope); kv_b_proj is folded
         into the Q-side and output-side matmuls.
 
@@ -821,6 +891,23 @@ class MLA(nn.Module):
                 f"{len(past_key_value)} tensors; the cache format follows "
                 "config.attention.use_absorption and cannot be mixed"
             )
+        compute_dtype = hidden_states.dtype
+        if shared_kv is not None:
+            if len(shared_kv) != 2:
+                raise ValueError("absorbed mode expects a 2-tensor shared_kv")
+            # v5.71 U6: the source layer's (c_kv, k_rope) for past + new
+            # tokens; only the queries are projected here.
+            past_len = shared_kv[0].shape[2] - seq
+            position_ids, custom_positions = self._resolve_positions(
+                hidden_states, past_len, position_ids)
+            q_nope, q_rope = self._project_queries(hidden_states, position_ids)
+            stored_c_kv, k_rope = shared_kv
+            c_kv = stored_c_kv.to(compute_dtype)
+            present_key_value = shared_kv if use_cache else None
+            return self._absorbed_attend(
+                hidden_states, attention_mask, position_ids,
+                custom_positions, past_len, q_nope, q_rope, c_kv, k_rope,
+                present_key_value)
         past_len = past_key_value[0].shape[2] if past_key_value is not None else 0
         position_ids, custom_positions = self._resolve_positions(
             hidden_states, past_len, position_ids
@@ -830,7 +917,6 @@ class MLA(nn.Module):
             hidden_states, position_ids
         )
         c_kv = c_kv.unsqueeze(1)  # [B, 1, seq, d_c] — shared across heads
-        compute_dtype = hidden_states.dtype
 
         # Append to the latent cache (dim 2 = sequence length). An fp8-stored
         # past cache upcasts here; it is re-rounded to the E4M3 grid below
@@ -858,9 +944,22 @@ class MLA(nn.Module):
             c_kv = stored_c_kv.to(compute_dtype) + c_kv - c_kv.detach()
 
         present_key_value = (stored_c_kv, k_rope) if use_cache else None
+        return self._absorbed_attend(
+            hidden_states, attention_mask, position_ids, custom_positions,
+            past_len, q_nope, q_rope, c_kv, k_rope, present_key_value)
+
+    def _absorbed_attend(self, hidden_states, attention_mask, position_ids,
+                         custom_positions, past_len, q_nope, q_rope, c_kv,
+                         k_rope, present_key_value):
+        B, seq, _ = hidden_states.shape
         kv_len = c_kv.shape[2]
 
-        w_uk, w_uv = self._w_uk_w_uv()  # [H, d_nope, d_c], [H, d_v, d_c]
+        # v5.71 U6: a KV-sharing layer uses its source's W_UK / W_UV (the
+        # K/V it attends over are the source's).
+        kv_owner = getattr(self, "_kv_src", None)
+        if kv_owner is None:
+            kv_owner = self
+        w_uk, w_uv = kv_owner._w_uk_w_uv()  # [H, d_nope, d_c], [H, d_v, d_c]
 
         # q_absorbed[h] = q_nope[h] @ W_UK[h]  -> [B, H, seq, d_c]
         q_absorbed = torch.einsum("bhqd,hdc->bhqc", q_nope, w_uk)

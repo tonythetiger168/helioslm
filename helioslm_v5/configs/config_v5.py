@@ -115,6 +115,15 @@ class AttentionConfig:
     # Halves kv_b_proj and the expanded-mode K/V cache share; the absorbed
     # cache stores the latent and does not shrink.
     global_k_eq_v: bool = False
+    # v5.71 (roadmap U6, Gemma 3n/4 cross-layer KV sharing): the last N
+    # MLA layers (counted over MLA layers only) compute no K/V of their
+    # own; each reuses the full K/V of the most recent non-shared MLA
+    # layer of the same type (global vs sliding window), including that
+    # layer's kv_b_proj, so absorbed == expanded still holds. Their cache
+    # entry aliases the source's tuple, so unique KV memory is exactly
+    # (L_mla - N) / L_mla. 0 (default) = off, bit-identical. Not
+    # combinable with sparse_top_k or kv_cache_dtype="fp8".
+    kv_share_last_n: int = 0
     nope_attn_temperature: bool = False
     nope_temp_floor_scale: int = 8192
     nope_temp_scale: float = 0.1
@@ -738,6 +747,17 @@ class HeliosLMv5Config:
                 "rope_scaling (YaRN's mscale would rescale the identity dims)")
         if not isinstance(a_.global_k_eq_v, bool):
             raise ValueError("attention.global_k_eq_v must be a bool")
+        ks = a_.kv_share_last_n
+        if isinstance(ks, bool) or not isinstance(ks, int) or ks < 0:
+            raise ValueError(
+                f"attention.kv_share_last_n must be an int >= 0, got {ks!r}")
+        if ks > 0 and a_.sparse_top_k is not None:
+            raise ValueError(
+                "attention.kv_share_last_n cannot be combined with sparse_top_k")
+        if ks > 0 and a_.kv_cache_dtype == "fp8":
+            raise ValueError(
+                "attention.kv_share_last_n cannot be combined with "
+                "kv_cache_dtype='fp8'")
         if a_.global_k_eq_v and a_.v_head_dim != a_.no_rope_head_dim:
             raise ValueError(
                 f"attention.global_k_eq_v needs v_head_dim == no_rope_head_dim, "

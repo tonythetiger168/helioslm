@@ -84,12 +84,15 @@ def cache_bytes(cfg: HeliosLMv5Config, seq_len: int) -> dict:
     n_layers = cfg.num_hidden_layers
     n_gda = sum(1 for i in range(n_layers) if _is_gda_layer(cfg, i))
     n_mla = n_layers - n_gda
-    mla_total = mla_bytes_per_token(cfg) * n_mla * seq_len
+    # v5.71 U6: KV-sharing MLA layers alias their source's cache.
+    n_shared = int(getattr(cfg.attention, "kv_share_last_n", 0) or 0)
+    mla_total = mla_bytes_per_token(cfg) * (n_mla - n_shared) * seq_len
     gda_total = gda_state_bytes(cfg) * n_gda if n_gda else 0
     mha_total = mha_reference_bytes_per_token(cfg) * n_layers * seq_len
     return {
         "mla_layers": n_mla,
         "gda_layers": n_gda,
+        "kv_shared_layers": n_shared,
         "helioslm_bytes": mla_total + gda_total,
         "mha_reference_bytes": mha_total,
         "savings_vs_mha": 1.0 - (mla_total + gda_total) / mha_total,

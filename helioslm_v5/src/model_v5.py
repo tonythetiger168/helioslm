@@ -139,6 +139,12 @@ def balance_loss(model):
     return sum(losses) / len(losses)
 
 
+def _shared_kv_kw(shared_kv):
+    """v5.71 U6: only KV-sharing MLA layers receive ``shared_kv``, so every
+    other attention call keeps its exact pre-U6 signature."""
+    return {} if shared_kv is None else {"shared_kv": shared_kv}
+
+
 class HeliosLMv5Layer(nn.Module):
     """Single transformer layer: pre-norm attention + pre-norm Sigmoid MoE.
 
@@ -260,7 +266,8 @@ class HeliosLMv5Layer(nn.Module):
         return (1.0 - alpha) * A + alpha * S
 
     def _hc_step(self, streams, A, B, sublayer, norm, attention_mask,
-                 past_key_value, use_cache, position_ids, returns_kv):
+                 past_key_value, use_cache, position_ids, returns_kv,
+                 shared_kv=None):
         """One HC sublayer: read A, apply f(x) = x + sublayer(norm(x)) per
         branch, write back through B.
 
@@ -288,7 +295,8 @@ class HeliosLMv5Layer(nn.Module):
         if returns_kv:
             sub_out, present_kv = sublayer(
                 norm(xf), attention_mask=mask, past_key_value=past_key_value,
-                use_cache=use_cache, position_ids=pos)
+                use_cache=use_cache, position_ids=pos,
+                **_shared_kv_kw(shared_kv))
         else:
             sub_out, present_kv = sublayer(norm(xf)), None
         f = (xf + sub_out).reshape(Bb, n, L, d).permute(0, 2, 1, 3)  # f(h̃)
@@ -296,7 +304,7 @@ class HeliosLMv5Layer(nn.Module):
         return streams_new, present_kv
 
     def _forward_hc(self, streams, attention_mask=None, past_key_value=None,
-                    use_cache=False, position_ids=None):
+                    use_cache=False, position_ids=None, shared_kv=None):
         """Hyper-Connection forward. streams in/out: [B, L, n, d]."""
         if streams.dim() != 4:
             raise NotImplementedError(
@@ -309,7 +317,7 @@ class HeliosLMv5Layer(nn.Module):
         streams, present_kv = self._hc_step(
             streams, self.hc_read_matrix("attn"), self.hc_attn_B, self.attention,
             self.pre_attn_norm, attn_mask, past_key_value, use_cache,
-            position_ids, returns_kv=True)
+            position_ids, returns_kv=True, shared_kv=shared_kv)
         # MoE sublayer: no cache, so the stream step runs without KV args.
         moe_mask = attention_mask
         if moe_mask is not None and moe_mask.dim() == 2:
@@ -323,12 +331,13 @@ class HeliosLMv5Layer(nn.Module):
         return streams, present_kv, None
 
     def forward(self, hidden_states, attention_mask=None, past_key_value=None,
-                use_cache=False, position_ids=None, attn_res=None):
+                use_cache=False, position_ids=None, attn_res=None,
+                shared_kv=None):
         if self.use_hyper_connections:
             streams, present_kv, _ = self._forward_hc(
                 hidden_states, attention_mask=attention_mask,
                 past_key_value=past_key_value, use_cache=use_cache,
-                position_ids=position_ids)
+                position_ids=position_ids, shared_kv=shared_kv)
             return streams, present_kv, None
         attn_in = self.pre_attn_norm(hidden_states)
         if self.attn_res_gate is not None and attn_res is not None:
@@ -339,6 +348,7 @@ class HeliosLMv5Layer(nn.Module):
             past_key_value=past_key_value,
             use_cache=use_cache,
             position_ids=position_ids,
+            **_shared_kv_kw(shared_kv),
         )
         # Explicit accumulator threading: the updated accumulator is a
         # return value (part of the autograd graph), not an attribute.
@@ -419,6 +429,33 @@ class HeliosLMv5(nn.Module):
             self.audio_encoder = None
 
         self.apply(self._init_weights)
+
+        # v5.71 U6 (Gemma 3n/4 cross-layer KV sharing): the last
+        # ``kv_share_last_n`` MLA layers reuse the K/V of the most recent
+        # non-shared MLA layer of the same window type. Done after init so
+        # every remaining weight matches the unshared model's init.
+        self._kv_share_src = {}
+        n_share = int(getattr(config.attention, "kv_share_last_n", 0) or 0)
+        if n_share > 0:
+            mla_idx = [i for i, l in enumerate(self.layers)
+                       if isinstance(l.attention, MLA)]
+            if n_share >= len(mla_idx):
+                raise ValueError(
+                    f"attention.kv_share_last_n={n_share} must be smaller than "
+                    f"the number of MLA layers ({len(mla_idx)})")
+            owners = mla_idx[:-n_share]
+            for j in mla_idx[-n_share:]:
+                glob = self.layers[j].attention.sliding_window is None
+                src = [i for i in owners
+                       if (self.layers[i].attention.sliding_window is None) == glob]
+                if not src:
+                    raise ValueError(
+                        f"attention.kv_share_last_n: shared MLA layer {j} has "
+                        "no earlier non-shared MLA layer of the same window "
+                        "type to take its KV from")
+                self.layers[j].attention.share_kv_from(
+                    self.layers[src[-1]].attention)
+                self._kv_share_src[j] = src[-1]
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -522,6 +559,12 @@ class HeliosLMv5(nn.Module):
         # both mechanisms.
         use_hc = bool(getattr(self.config, "use_hyper_connections", False))
         present_key_values = [] if use_cache else None
+        # v5.71 U6: source layers always build their cache tuple (it is
+        # what their KV consumers attend over); consumers get it as
+        # shared_kv and return it as their present (aliased storage).
+        kv_src = getattr(self, "_kv_share_src", {})
+        kv_needed = set(kv_src.values())
+        kv_saved = {}
         if use_hc:
             n_br = self.config.hyper_connection_branches
             streams = hidden_states.unsqueeze(2).expand(
@@ -532,9 +575,12 @@ class HeliosLMv5(nn.Module):
                     streams,
                     attention_mask=attention_mask,
                     past_key_value=past_kv,
-                    use_cache=use_cache,
+                    use_cache=use_cache or i in kv_needed,
                     position_ids=position_ids,
+                    shared_kv=kv_saved.get(kv_src.get(i)),
                 )
+                if i in kv_needed:
+                    kv_saved[i] = present_kv
                 if use_cache:
                     present_key_values.append(present_kv)
             # Readout: mean over branches, accumulated in float64. The
@@ -556,10 +602,13 @@ class HeliosLMv5(nn.Module):
                     hidden_states,
                     attention_mask=attention_mask,
                     past_key_value=past_kv,
-                    use_cache=use_cache,
+                    use_cache=use_cache or i in kv_needed,
                     position_ids=position_ids,
                     attn_res=attn_res,
+                    shared_kv=kv_saved.get(kv_src.get(i)),
                 )
+                if i in kv_needed:
+                    kv_saved[i] = present_kv
                 if use_cache:
                     present_key_values.append(present_kv)
 
