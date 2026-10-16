@@ -56,8 +56,10 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--false-done-penalty", type=float, default=1.0,
                     help="reward for DONE with a failing verifier is -this")
+    ap.add_argument("--threads", type=int, default=1)
     ap.add_argument("--output")
     args = ap.parse_args()
+    torch.set_num_threads(args.threads)
 
     torch.manual_seed(args.seed)
     cfg = policy_config(args)

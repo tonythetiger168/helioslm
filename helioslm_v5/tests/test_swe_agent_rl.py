@@ -81,6 +81,26 @@ def test_env_semantics():
     print(f"PASS test_env_semantics ({len(sb.TASKS)} tasks)")
 
 
+def test_memo_key_is_sound():
+    """The memo key (applied patches deduplicated in first-application
+    order) is sound: replay real ordered sequences with repeats in a
+    fresh sandbox and compare with the memoized outcome."""
+    import itertools
+    import tempfile
+    from helioslm_v5.eval import term_bench as tb
+    for t in sb.TASKS[:4]:
+        env = ar.SweMacroEnv(t, random.Random(0))
+        for seq in itertools.product(range(3), repeat=3):   # incl. repeats
+            with tempfile.TemporaryDirectory() as root:
+                tb.seed_sandbox(env.term, root)
+                for pid in seq:
+                    tb.run_command(sb.patch_command(env.patches[pid]), root)
+                real = sb._verify(t, root)[0]
+            env.applied = seq
+            assert env.verify() == real, (t["id"], seq)
+    print("PASS test_memo_key_is_sound (4 tasks x 27 sequences)")
+
+
 def test_rollout_structure():
     model = _policy()
     r = ar.rollout(model, sb.TASKS[0], random.Random(0))
@@ -143,6 +163,7 @@ def test_training_artifact():
 if __name__ == "__main__":
     test_action_mask()
     test_env_semantics()
+    test_memo_key_is_sound()
     test_rollout_structure()
     test_scripted_policies()
     test_training_artifact()

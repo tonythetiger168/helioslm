@@ -74,13 +74,20 @@ _OUTCOMES = {}   # (task id, applied patch ids, "test"|"verify") -> bool
 class SweMacroEnv:
     """One episode on one task (use as a context manager).
 
-    The repository state is fully determined by the candidate patches
-    applied since the last REVERT, in order, so the env tracks that
-    sequence and the outcome of TEST / verify is memoized per (task,
-    sequence). A cache miss materializes the state in a fresh sandbox —
-    seed the files, run each patch command, then the real visible tests
-    or the real verifier — so every recorded outcome came from an actual
-    sandbox run; repeats only skip re-running it.
+    The outcome of TEST / verify depends on the ORDER in which candidate
+    patches were first applied since the last REVERT, but not on
+    repeats: a broken patch appends a failing line that no later patch
+    removes, and re-applying a patch is either a failing no-op (its
+    ``old`` text is gone) or appends one more failing line. Order does
+    matter — when the fix rewrites the file's last line, "fix then
+    broken" leaves the broken patch nothing to anchor on (passes) while
+    "broken then fix" keeps the failing line (fails). The env therefore
+    memoizes outcomes per (task, applied patch ids deduplicated in
+    first-application order) — at most 16 states per task. A cache miss
+    materializes that state in a fresh sandbox (seed the files, apply
+    the patches, run the real visible tests or the real verifier), so
+    every recorded outcome came from an actual sandbox run. T100 replays
+    real sequences with repeats and checks them against the memo.
     """
 
     def __init__(self, raw_task, rng):
@@ -100,11 +107,11 @@ class SweMacroEnv:
         return False
 
     def _outcome(self, kind):
-        key = (self.raw["id"], self.applied, kind)
+        key = (self.raw["id"], tuple(dict.fromkeys(self.applied)), kind)
         if key not in _OUTCOMES:
             with tempfile.TemporaryDirectory(prefix="swe_rl_") as root:
                 tb.seed_sandbox(self.term, root)
-                for pid in self.applied:
+                for pid in key[1]:
                     tb.run_command(sb.patch_command(self.patches[pid]), root)
                 if kind == "test":
                     ok = all(tb.run_command(f"python3 {v}", root)[0] == 0
