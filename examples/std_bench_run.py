@@ -41,6 +41,7 @@ from helioslm_v5.eval.std_bench import (  # noqa: E402
     SCHEMA_ID, gsm8k_prompt, humaneval_prompt, load_gsm8k, load_humaneval,
     run_gsm8k, run_humaneval, summarize)
 from helioslm_v5.eval import swe_bench  # noqa: E402
+from helioslm_v5.eval.stop_calibration import stop_report  # noqa: E402
 from helioslm_v5.eval.term_bench import load_tasks, run_term_bench  # noqa: E402
 
 DATE = "2026-10-15"
@@ -176,6 +177,8 @@ def api_run(args):
                                         if cost and n_correct else None),
                "prices_asof": PRICES_ASOF if price else None,
                "results": results}
+        if bench in ("terminal", "swe"):
+            out["stop"] = stop_report(results)   # AC5: was DONE justified?
         name = args.model.split("/")[-1]
         dest = Path(args.out_dir) / f"std_bench_{bench}_{name}_{DATE}.json"
         dest.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
