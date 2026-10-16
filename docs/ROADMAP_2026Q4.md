@@ -100,6 +100,35 @@ HeliosLM 不應追排行榜，它的優勢在別處：
 - **執行順序：** B2-1 ＋ B2-2 先做（延續長 context 探針，直接檢驗 MiMo 的核心主張），接著 B2-3，再來 B2-4、B2-5、B2-6。
 - **資料可信度：** GLM-5.3-Flash 的「3:1 KDA:MLA」只見於第三方分析；MiMo-V2.6-Pro 的 MTP 細節各來源不一致。表中只採官方或技術報告可佐證的部分。
 
+### Phase B3：Qwen 對照（2026-10-15 新增）
+
+對照 Qwen3 / Qwen3-Next / Qwen3.5 的公開架構。Gated attention（`output_gate`）、線性與全注意力混合、QK-Norm、MTP、細粒度 MoE 加共享專家都已具備，以下只列缺口。
+
+| ID | 項目 | 來源 | 完成標準 |
+|---|---|---|---|
+| Q1 | 線性注意力層（GDA）的 q/k/v 加 causal depthwise short conv（kernel 4） | Qwen3-Next Gated DeltaNet | 預設逐位元不變；用 B2 的 recall 任務 A/B 比較混合架構 |
+| Q2 | Zero-centered RMSNorm（gain = 1 + w，w 從 0 初始化並參與 weight decay） | Qwen3-Next | 預設逐位元不變；toy 訓練比較 norm 權重最大值與 loss |
+| Q3 | Global-batch load-balancing loss | Qwen3 MoE | 與現有 bias-update 平衡法比較專家使用熵與 loss |
+| Q4 | `qwen_next_config()` preset（超稀疏 MoE 512 選 10 加 1 共享、3:1 混合、gated attention、MTP） | Qwen3-Next | 結構 preset 加 smoke test，比照 `k3_block_config` |
+| Q5（可選） | MTP 推測解碼接受率量測（接上 `bench_spec_breakeven`） | Qwen3-Next | 報告 acceptance length 與加速比 |
+
+- **不跟：** 規模與資料策略（例如 36T token 預訓練），與「可驗證、純 PyTorch」的定位無關。
+
+### Phase AC：Agentic coding（2026-10-15 新增）
+
+排行榜的主戰場已轉向 agent 與程式能力（Terminal-Bench、SWE-bench Pro）。Qwen3-Coder 的公開做法是大規模 agent RL（多輪、以執行結果為獎勵）、「難解但容易驗證」的程式 RL、repo 級長 context 與穩定的 tool-call 格式。HeliosLM 已有 10 題終端沙盒（T90）、HumanEval 子集（T89）、GRPO 設定、`train_tool_tuned.py` 與 TrustGate。
+
+| ID | 項目 | 完成標準 |
+|---|---|---|
+| **AC1** | Mini SWE 任務集：約 20 個小 repo，各含 bug 與隱藏測試；agent 讀檔、產生 patch、跑測試 | 沙盒執行可重現；參考解答 gate（正解必過、空 patch 必敗）；結果標驗證層級 |
+| **AC2** | Agent RL 迴圈：GRPO 接上沙盒，多輪 rollout，以測試通過率為獎勵 | toy 模型在 AC1 簡單子集上通過率明顯高於訓練前；固定 seed 可重現 |
+| **AC3** | Tool-call 格式與解析器加固（JSON schema 驗證、截斷或錯格式恢復） | fuzz 測試：錯格式輸入不 crash，量測恢復率 |
+| **AC4** | Repo 級長 context 探針：在大量檔案中找到定義並正確引用 | 沿用 B2 的 SWA/global 與 CSA，比較 dense、混合、壓縮三種架構 |
+| **AC5** | 知止：校準「我修好了嗎／該提交了嗎」的信心 | 在 AC1 上報告自報完成與真實結果的 AUROC/ECE，連同每完成任務成本放上校準排行榜 |
+
+- **執行順序：** 先收尾 B2-1／B2-2，接著 AC1 → AC5 → AC3 → AC2 → AC4；Q1 可與 AC1 平行（它直接沿用 B2 的 recall 任務）。
+- **差異化：** AC5 是本 repo 的獨特賣點——排行榜不量「agent 知不知道自己真的做完了」，正好呼應「知止」。
+
 ### Phase C：規模與生態系（2026 年 12 月 – 2027 年 2 月）
 
 - CUDA 端到端驗證（#1），接著在 GPU 上做 fused vs unfused 量化 benchmark（#2）。

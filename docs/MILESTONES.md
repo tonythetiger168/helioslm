@@ -76,5 +76,15 @@ renumbered.
 | B2 | B2-4 learnable mHC with Sinkhorn projection (GLM-5.3-Flash) | ⬜ Not started |
 | B2 | B2-5 MiMo-style light MTP head | ⬜ Not started |
 | B2 | B2-6 on-policy distillation trainer (MiMo MOPD; confirm the definition first) | ⬜ Not started |
+| B3 | Q1 short conv in GDA linear-attention layers (Qwen3-Next) | ⬜ Not started |
+| B3 | Q2 zero-centered RMSNorm with weight decay (Qwen3-Next) | ⬜ Not started |
+| B3 | Q3 global-batch load-balancing loss (Qwen3 MoE) | ⬜ Not started |
+| B3 | Q4 `qwen_next_config()` preset | ⬜ Not started |
+| B3 | Q5 (optional) MTP speculative-decoding acceptance measurement | ⬜ Not started |
+| AC | AC1 mini SWE task set (~20 small repos, hidden tests, reference gates) | ⬜ Next after B2-1/B2-2 |
+| AC | AC2 agent RL loop (GRPO + sandbox, test-pass reward) | ⬜ Not started |
+| AC | AC3 tool-call format/parser hardening (fuzz-tested) | ⬜ Not started |
+| AC | AC4 repo-scale long-context probe (dense vs hybrid vs CSA) | ⬜ Not started |
+| AC | AC5 知止: calibrated "am I done" confidence on AC1 (AUROC/ECE) | ⬜ Not started |
 | C | CUDA verification (#1), fused quant benchmark (#2), BPE tokenizer (#5), HF Hub (#4), ~1B GPU run | ⬜ Not started |
 | D | DecisionHead at 1B, multi-env GRPO training at real scale (tooling exists since Phase 2.1), TrustGate CLARIFY threshold calibration | ⬜ Not started |
