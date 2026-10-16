@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""web_ui_v2.py — HeliosLM Harness Web UI v2.0.
+"""web_ui_v2.py — HeliosLM Harness Web UI v2.1.
 
 Drop-in replacement for helioslm_v5/harness/web_ui.py (v1.36).
 
@@ -27,6 +27,16 @@ Fixes vs v1.36:
     unified dark design (retro dashboard moved to /dashboard), request size
     limits, JSON error envelope.
   * MTP acceptance-rate telemetry surfaced when the backend reports it.
+
+v2.1 scalability fixes (large-history sessions made the UI unopenable):
+  * Session list reads only the 4 KiB head of each session file to extract
+    id/title/updated, instead of json.load-ing entire multi-MB histories.
+  * Per-session stored history capped at _MAX_STORED_MESSAGES on save, so a
+    session file can no longer grow without bound.
+  * GET /api/sessions/<id>?tail=N returns only the last N messages (plus
+    total_messages); the frontend loads the latest 100 and shows a divider
+    for the omitted older turns instead of rendering everything.
+  * Post-send title refresh uses ?tail=1 instead of fetching the full log.
 """
 
 import json
@@ -52,6 +62,9 @@ os.makedirs(_SESSIONS_DIR, exist_ok=True)
 _MAX_BODY = 1 << 20          # 1 MiB request cap
 _HISTORY_TURNS = 12          # messages of context sent to the backend
 _STREAM_CHUNK = 24           # chars per replay chunk for non-stream backends
+_MAX_STORED_MESSAGES = 300   # per-session cap; oldest turns dropped on save
+_META_HEAD_BYTES = 4096      # head read for cheap session metadata
+_META_FULL_PARSE_MAX = 262144  # below this, n_messages via full parse
 
 # ------------------------------------------------------- path containment --
 
@@ -119,18 +132,47 @@ class SessionStore:
                 if not fn.endswith(".json"):
                     continue
                 try:
-                    with open(os.path.join(self.dir, fn), "r", encoding="utf-8") as f:
-                        s = json.load(f)
-                    out.append({
-                        "id": s["id"],
-                        "title": s.get("title", "untitled"),
-                        "updated": s.get("updated", 0),
-                        "n_messages": len(s.get("messages", [])),
-                    })
+                    meta = self._read_meta(os.path.join(self.dir, fn))
                 except (OSError, ValueError, KeyError):
                     continue
+                if meta:
+                    out.append(meta)
         out.sort(key=lambda s: s.get("updated", 0), reverse=True)
         return out
+
+    @staticmethod
+    def _read_meta(path):
+        """Cheap session metadata without parsing the whole file.
+
+        Sessions are written with dict order id/title/created/updated/params/
+        messages, so id, title and updated always appear within the first
+        bytes — long before the (potentially huge) messages array. A 4 KiB
+        head read therefore suffices, keeping /api/sessions O(1) per file
+        no matter how large the histories grow. Falls back to a full
+        json.load for unexpected layouts; n_messages is only computed for
+        small files (-1 = unknown without full parse).
+        """
+        with open(path, "r", encoding="utf-8") as f:
+            head = f.read(_META_HEAD_BYTES)
+        mid = re.search(r'"id":\s*"([^"]+)"', head)
+        mtitle = re.search(r'"title":\s*"((?:[^"\\]|\\.)*)"', head)
+        mupd = re.search(r'"updated":\s*([0-9.eE+-]+)', head)
+        if not (mid and mupd):
+            with open(path, "r", encoding="utf-8") as f:
+                s = json.load(f)
+            return {"id": s["id"], "title": s.get("title", "untitled"),
+                    "updated": s.get("updated", 0),
+                    "n_messages": len(s.get("messages", []))}
+        title = json.loads('"%s"' % mtitle.group(1)) if mtitle else "untitled"
+        n_msg = -1
+        if os.path.getsize(path) < _META_FULL_PARSE_MAX:
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    n_msg = len(json.load(f).get("messages", []))
+            except (OSError, ValueError, KeyError):
+                pass
+        return {"id": mid.group(1), "title": title,
+                "updated": float(mupd.group(1)), "n_messages": n_msg}
 
     def create(self, title="new chat"):
         sid = uuid.uuid4().hex[:16]
@@ -190,6 +232,8 @@ class SessionStore:
             return None
         first_exchange = not s["messages"]
         s["messages"].extend(msgs)
+        if len(s["messages"]) > _MAX_STORED_MESSAGES:
+            s["messages"] = s["messages"][-_MAX_STORED_MESSAGES:]
         if first_exchange and s.get("title") in ("new chat", ""):
             first = msgs[0].get("content", "")
             s["title"] = (first[:48] + ("…" if len(first) > 48 else "")) or "new chat"
@@ -460,7 +504,7 @@ def _json_bytes(obj):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "HeliosUI/2.0"
+    server_version = "HeliosUI/2.1"
     protocol_version = "HTTP/1.1"
 
     # -- plumbing -----------------------------------------------------------
@@ -518,6 +562,17 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             return None
 
+    def _tail_param(self):
+        """Parse ?tail=N from the request URI (None if absent/invalid)."""
+        qs = self.path.partition("?")[2]
+        for kv in qs.split("&"):
+            if kv.startswith("tail="):
+                try:
+                    return max(1, min(10000, int(kv[5:])))
+                except ValueError:
+                    return None
+        return None
+
     # -- routing ------------------------------------------------------------
     def do_GET(self):
         if not _request_allowed(self.headers, state_changing=False):
@@ -539,7 +594,15 @@ class Handler(BaseHTTPRequestHandler):
         m = re.fullmatch(r"/api/sessions/([A-Za-z0-9_-]+)", path)
         if m:
             s = SESSIONS.get(m.group(1))
-            return self._send_json({"session": s}) if s else self._error(404, "not found")
+            if not s:
+                return self._error(404, "not found")
+            tail = self._tail_param()
+            msgs = s.get("messages", [])
+            if tail is not None and len(msgs) > tail:
+                s = dict(s)
+                s["messages"] = msgs[-tail:]
+                s["total_messages"] = len(msgs)
+            return self._send_json({"session": s})
         if path.startswith("/media/"):
             return self._serve_media(path[len("/media/"):])
         return self._error(404, "not found")
@@ -904,9 +967,16 @@ async function newSession(){
 }
 async function openSession(id){
   sessionId = id;
-  const s = (await api("/api/sessions/" + id)).session;
+  const s = (await api("/api/sessions/" + id + "?tail=100")).session;
   $("sessTitle").textContent = s.title;
   $("chat").innerHTML = "";
+  if (s.total_messages && s.total_messages > s.messages.length) {
+    const d = document.createElement("div");
+    d.style.cssText = "align-self:center;color:var(--dim);font-size:12px";
+    d.textContent = "…已省略較早的 " + (s.total_messages - s.messages.length) +
+                    " 則訊息（僅載入最近 100 則）";
+    $("chat").appendChild(d);
+  }
   for (const m of s.messages) addMsg(m.role, m.content, m);
   fillParams(s.params || {});
   await loadSessions();
@@ -995,7 +1065,7 @@ async function send(){
     abortCtl = null;
     $("sendBtn").disabled = false; $("stopBtn").style.display = "none";
     loadSessions();
-    const s = await api("/api/sessions/" + sessionId).catch(() => null);
+    const s = await api("/api/sessions/" + sessionId + "?tail=1").catch(() => null);
     if (s) $("sessTitle").textContent = s.session.title;
   }
 }
@@ -1081,7 +1151,7 @@ def _effects_html():
 
 def main(port=8990):
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print("HeliosLM Harness UI v2.0  →  http://127.0.0.1:%d" % port)
+    print("HeliosLM Harness UI v2.1  →  http://127.0.0.1:%d" % port)
     print("backend: %s   sessions: %s" % (BACKEND.name, _SESSIONS_DIR))
     try:
         srv.serve_forever()
