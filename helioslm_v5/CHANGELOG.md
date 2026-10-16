@@ -28,17 +28,24 @@
 - Roadmap Phase B4 (OpenAI gpt-oss, Gemma 3/4, Llama 4, Phi-4-mini-flash,
   Nemotron, Olmo 3, Arcee Trinity; U1–U7) and Phase TW (zh-TW data,
   TW1–TW4); `docs/TW_DATASETS_2026Q4.md` dataset and license survey.
-- AC2 (in progress, not learning yet): `helioslm_v5/src/training/
-  swe_agent_rl.py` (macro-action SWE sandbox env, memoized per patch
-  sequence in first-application order — checked against real sandboxes),
-  `examples/swe_agent_rl_train.py`, GRPO `action_mask` (None =
-  bit-identical) and T100. Fixed along the way: a free 1/3 for "apply,
-  DONE" (`--false-done-penalty`) and old log-probs taken over the action
-  subset instead of the full vocabulary (it silenced every negative
-  advantage under the PPO clip). After the fixes every setting tried
-  collapses to never-DONE; runs and diagnosis in
-  `benchmarks/swe_agent_rl_notes_2026-10-16.md`. Next: light SFT warm
-  start, then U1.
+- **AC2** multi-turn agent RL on the mini SWE sandbox
+  (`helioslm_v5/src/training/swe_agent_rl.py`,
+  `examples/swe_agent_rl_train.py`): macro actions (apply candidate /
+  revert / test / done), outcomes memoized per patch sequence in
+  first-application order and checked against real sandboxes. Light SFT
+  warm start (`--sft-demos/--sft-steps`, scripted careful demos on the
+  train tasks) then rejection-sampling fine-tuning (`--algo rft`) with a
+  verified-DONE reward (`--require-verified-done`): greedy pass rate
+  0.367 -> 1.0 on train and 10 held-out tasks
+  (`benchmarks/swe_agent_rl_2026-10-16.json`). Without SFT RFT also
+  reaches 1.0, more slowly. GRPO after SFT eroded the policy to 0.267
+  (negative-advantage samples dropped 0.48 nats vs +0.014 for positive);
+  every run and fix is in `benchmarks/swe_agent_rl_notes_2026-10-16.md`.
+  Fixes on the way: free 1/3 for "apply, DONE" (`--false-done-penalty`),
+  old log-probs over the action subset instead of the full vocabulary
+  (silenced every negative advantage under the clip). GRPO gains an
+  optional `action_mask` (None = bit-identical).
+- T100 (`test_swe_agent_rl.py`).
 - T101 (`test_qwen_next.py`, 5 tests).
 
 ## v5.62 (2026-10-16) - Phase B2: MiMo hybrid + learnable sink; Phase AC: agentic coding

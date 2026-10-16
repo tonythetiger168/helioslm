@@ -1,7 +1,25 @@
-# AC2 — 多輪 agent RL（mini SWE 沙盒）：尚未學會，負面結果紀錄（2026-10-16）
+# AC2 — 多輪 agent RL（mini SWE 沙盒）（2026-10-16）
 
-**狀態：未完成。** 迴圈、環境與測試已到位（T100），但到目前為止**沒有任何一組設定讓策略超越訓練前的基準**。
-本文件記錄每次嘗試與診斷，避免重複踩坑。沒有產生 `swe_agent_rl_*.json` artifact（T100 的 artifact 測試因此 SKIP）。
+**狀態：完成。** 「輕量 SFT 暖啟動 → rejection-sampling fine-tuning（RFT）＋驗證後才算完成的獎勵」在訓練題與 held-out 題上都從 0.367 到 **1.0**。
+結果 artifact：[`swe_agent_rl_2026-10-16.json`](swe_agent_rl_2026-10-16.json)（SFT 15 步 → RFT 60 次更新）。
+下方保留 GRPO 階段的負面結果與診斷，避免重複踩坑。
+
+## 最終結果（RFT，驗證後才算完成；貪婪評估，3 種候選順序）
+
+| 設定 | 訓練前 | SFT 後 | RL 後（train／held-out） | 第 60 次更新取樣通過率 |
+|---|---|---|---|---|
+| 無 SFT → RFT | 0.367 | — | 1.0／1.0 | 0.51 |
+| **SFT 15 步 → RFT**（artifact） | 0.367 | 0.367 | **1.0／1.0** | 0.89 |
+| SFT 25 步 → RFT | 0.367 | 0.633 | 1.0／1.0 | 0.93 |
+| 對照：SFT 15 步 → GRPO（罰 1.0，lr 1e-4） | 0.367 | 0.367 | 0.267／0.267 | 0.33 |
+| 對照：SFT 25 步 → GRPO | 0.367 | 0.633 | 0.267／0.267 | 0.34 |
+
+- **關鍵是 RFT 加上驗證後才算完成的獎勵**：不做 SFT 也能到 1.0。SFT 的作用是加速（取樣通過率 0.51 → 0.89）並讓行為更乾淨（無 SFT 版本的軌跡有多餘的 TEST）。
+- **GRPO 會把 SFT 學到的東西洗掉**：實測單次更新，負 advantage 樣本的 log-prob 平均下降 0.48 nats，正 advantage 樣本只上升 0.014（約 34 倍），把共用前綴的好行為（PASS 之後的 DONE）一起壓掉，策略變成「APPLY → TEST → 不管結果都 DONE」。
+- **驗證後才算完成**（`--require-verified-done`）：DONE 必須緊接在回報 PASS 的 TEST 之後，盲猜碰巧答對不給分——AC5「知止」的訓練版本。
+- SFT 的貪婪結果對步數很敏感（15／20／25／30／40 步 = 0.367／1.0／0.633／1.0／1.0），因此只用 15 步、對 RL 最不利的起點當正式結果。
+
+**誠實邊界：** 單一 seed、toy 尺度；動作是巨集動作（從給定的候選 patch 中選、測試、還原、宣告完成），模型**沒有自己寫 patch**；held-out 題共用同一套流程，所以測的是流程泛化，不是修 bug 的能力。
 
 ## 設定
 
@@ -10,7 +28,7 @@
 - 訓練前 10 題、評估另 10 題（貪婪，3 種候選順序）。
 - **參照：** 腳本化「套用 → TEST → 失敗就還原」策略 = 1.00；「套用第 0 個就 DONE」= 0.40；訓練前的貪婪策略 = 0.367（就是後者）。
 
-## 嘗試紀錄（每次更新 96 個 episode，group 16 × 6 題）
+## GRPO 階段的嘗試紀錄（每次更新 96 個 episode，group 16 × 6 題）
 
 | 次 | 錯誤 DONE 罰分 | lr | KL | 第 10 次更新（通過率／步數） | 最後（通過率／步數） | 訓練後貪婪（train／held-out） |
 |---|---|---|---|---|---|---|
@@ -40,13 +58,16 @@
 
 ## 下一步
 
-1. **輕量 SFT 暖啟動再 RL**（Llama 4、Olmo 3 的標準順序）：少量腳本化示範，分開報告「SFT 後」與「RL 後」，RL 的貢獻才看得清楚。
-2. **U1（Olmo 3／DAPO）**：token 級 loss、零梯度組過濾與補樣、clip-higher。
-3. 熵獎勵或對 DONE 的探索下限。
+1. **U1（Olmo 3／DAPO）**：token 級 loss、零梯度組過濾與補樣、clip-higher——看能否讓 GRPO 不再洗掉 SFT 的結果。
+2. 讓模型自己產生 patch（目前只從候選中選擇）。
+3. 多 seed。
 
 ## 重現
 
 ```bash
-python examples/swe_agent_rl_train.py --updates 80 --group 16 --tasks-per-update 6 \
-    --lr 1e-3 --false-done-penalty 0.3 --threads 1
+# 正式結果（約 5 分鐘）
+python examples/swe_agent_rl_train.py --sft-demos 2 --sft-steps 15 --algo rft \
+    --require-verified-done --updates 60 --group 16 --tasks-per-update 6 \
+    --lr 3e-4 --false-done-penalty 0 --threads 1 \
+    --output benchmarks/swe_agent_rl_2026-10-16.json
 ```
