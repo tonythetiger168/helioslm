@@ -1,0 +1,82 @@
+{
+  "experiment": "B2-1/B2-2 MiMo hybrid recall",
+  "task": {
+    "pairs": 8,
+    "keys": 16,
+    "filler": 64,
+    "seq": 96,
+    "window": 8,
+    "layers": 6,
+    "chance": 0.0625,
+    "train_seed": 1000,
+    "eval_seed": 0
+  },
+  "train": {
+    "steps": 1000,
+    "batch": 32,
+    "lr": 0.001,
+    "seed": 0,
+    "eval_batches": 16
+  },
+  "results": [
+    {
+      "arm": "gda_hybrid",
+      "layout": "GLGLLG",
+      "params": 1912548,
+      "query_acc": 0.426,
+      "train_loss_last50": 1.2341,
+      "attendable_keys_last_query": 288,
+      "curve": [
+        [
+          250,
+          0.4121
+        ],
+        [
+          500,
+          0.4141
+        ],
+        [
+          750,
+          0.4326
+        ],
+        [
+          1000,
+          0.415
+        ]
+      ],
+      "final_sink_logits": null
+    },
+    {
+      "arm": "gda_hybrid_conv",
+      "layout": "GLGLLG",
+      "params": 1917156,
+      "query_acc": 0.4203,
+      "train_loss_last50": 1.2353,
+      "attendable_keys_last_query": 288,
+      "curve": [
+        [
+          250,
+          0.415
+        ],
+        [
+          500,
+          0.3926
+        ],
+        [
+          750,
+          0.4287
+        ],
+        [
+          1000,
+          0.4219
+        ]
+      ],
+      "final_sink_logits": null
+    }
+  ],
+  "results_sha256": "2d4a338abcc6fad33f070f3b662c340c72ba110a75c4178505c8fb53db7db2a7",
+  "wall_seconds": {
+    "gda_hybrid": 2158.7,
+    "gda_hybrid_conv": 2204.0
+  }
+}

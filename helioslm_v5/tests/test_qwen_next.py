@@ -220,9 +220,33 @@ def test_q5_mtp_artifact():
           f"(toy acceptance {res['toy_v5.13']['acceptance_rate']})")
 
 
+def test_q1_recall_artifact():
+    sys.path.insert(0, str(_REPO / "examples"))
+    import mimo_hybrid_recall as exp
+    art = json.loads((_REPO / "benchmarks"
+                      / "q1_short_conv_2026-10-16.json").read_text())
+    res = {r["arm"]: r for r in art["results"]}
+    assert list(res) == list(exp.EXTRA_ARMS)
+    assert art["results_sha256"] == hashlib.sha256(json.dumps(
+        art["results"], sort_keys=True).encode()).hexdigest()
+    for arm, r in res.items():
+        model = HeliosLMv5(exp.arm_config(arm))
+        layout = "".join(
+            "L" if getattr(l.attention, "is_recurrent_attention", False)
+            else "G" for l in model.layers)
+        assert r["layout"] == layout == "GLGLLG", (arm, layout)
+        assert r["query_acc"] > 5 * art["task"]["chance"]
+    conv = HeliosLMv5(exp.arm_config("gda_hybrid_conv"))
+    assert sum(1 for n, _ in conv.named_parameters() if "conv_weight" in n) == 3
+    print("PASS test_q1_recall_artifact "
+          f"(no conv {res['gda_hybrid']['query_acc']}, "
+          f"conv {res['gda_hybrid_conv']['query_acc']})")
+
+
 if __name__ == "__main__":
     test_q1_short_conv()
     test_q2_zero_centered_norm()
     test_q3_global_batch_balance()
     test_q4_preset()
     test_q5_mtp_artifact()
+    test_q1_recall_artifact()

@@ -8,6 +8,9 @@
   `(state, conv_state)`, both StateTensors, so MTP rollback and engine
   batching handle it unchanged; padding contributes zeros and taps never
   cross packed-document boundaries.
+  Recall A/B on the B2 task (`benchmarks/q1_short_conv_2026-10-16.{json,md}`):
+  no benefit at toy scale, 0.420 with vs 0.426 without (recorded as no
+  effect).
 - **Q2** `zero_centered_norm`: RMSNorm gain `1 + w` with `w` init 0 on the
   layer, final, MLA latent and QK norms. Bit-identical at init.
   `model_v5.decay_param_groups(model, wd)` decays matrices and
