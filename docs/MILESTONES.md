@@ -86,7 +86,7 @@ renumbered.
 | B4 | U3 NoPE-layer attention temperature scaling (Llama 4) — 4x-length recall 0.267 → 0.317 on the same weights | ✅ Done (v5.69, T107) |
 | B4 | U4 p-RoPE + global-layer K=V (Gemma 4) — kv_b_proj halved, expanded cache shares K/V, p=1 bit-identical | ✅ Done (v5.70, T108) |
 | B4 | U5 clamped SwiGLU (gpt-oss) — defaults bit-identical, matches gpt-oss reference, activation bounded | ✅ Done (v5.68, T106) |
-| B4 | U6 cross-layer KV sharing / Gated Memory Unit (Gemma 4, SambaY) | ⬜ Not started |
+| B4 | U6 cross-layer KV sharing (Gemma 3n/4) — KV cache exactly (L−N)/L, N=4 of 8 halves it at val ppl 14.71 vs 14.94 (GMU not done) | ✅ Done (v5.71, T109) |
 | B4 | U7 SMEBU + depth-scaled sandwich norm (Arcee Trinity) | ⬜ Not started |
 | TW | TW1 dataset license audit (HF card license + gated status) | ⬜ Not started |
 | TW | TW2 zh-TW pretraining pipeline (Wikipedia s2twp + FineWeb-2 + data.gov.tw, ~100M tokens) | ⬜ Not started |
