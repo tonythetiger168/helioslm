@@ -1,5 +1,42 @@
 # HeliosLM v5 Changelog
 
+## v5.71 (2026-10-16) - Roadmap U6: cross-layer KV sharing (Gemma 3n/4)
+
+- `attention.kv_share_last_n` (default 0 = off, bit-identical): the last
+  N MLA layers (hybrid GDA layers are not counted) compute no K/V of
+  their own. Each one attends with its own queries over the full K/V of
+  the most recent non-shared MLA layer of the same window type (global
+  or sliding). It uses that layer's `kv_b_proj` too, so absorbed ==
+  expanded still holds.
+  - Shared layers drop `kv_a_proj`, `kv_b_proj`, `k_rope_proj`,
+    `norm_kv` and `norm_k_rope`. Sharing is applied after init, so every
+    kept weight matches the unshared model's.
+  - A shared layer's cache entry is its source's tuple (the same
+    object), so unique KV memory is exactly (L_mla - N) / L_mla.
+    `bench_cpu.cache_bytes` counts it once.
+  - Gradients from the shared layers flow into the source's KV
+    projections.
+  - It cannot be combined with `sparse_top_k` or `kv_cache_dtype="fp8"`.
+    A shared layer must be driven through `HeliosLMv5.forward`; other
+    layer loops, such as DualPipe, get a clear error.
+- Perplexity A/B (`examples/kv_share_ab.py` ->
+  `benchmarks/kv_share_ab_2026-10-16.json`): an 8-layer all-MLA
+  lite-width char LM, 400 steps, the same seed and batches, validated
+  on the held-out last 10% of the corpus:
+
+  | shared layers N | params | KV bytes / token | val ppl |
+  |---|---|---|---|
+  | 0 | 29.78M | 2304 (1.00) | 14.94 |
+  | 2 | 29.71M | 1728 (0.75) | 13.71 |
+  | 4 | 29.64M | 1152 (0.50) | 14.71 |
+
+  Halving the KV cache did not cost perplexity at this scale. The N = 2
+  gain is within what a single seed at toy scale can show, so it is not
+  a claim that sharing helps.
+- The SambaY Gated Memory Unit, the roadmap's alternative for U6, was
+  not implemented.
+- T109 (`test_kv_share.py`, 7 tests).
+
 ## v5.70 (2026-10-16) - Roadmap U4: Gemma 4 p-RoPE and global-layer K=V
 
 Both options apply only to global MLA layers (no sliding window; with

@@ -1,0 +1,59 @@
+{
+  "experiment": "U6 cross-layer KV sharing (Gemma 3n/4), char-LM perplexity A/B at lite width",
+  "model": {
+    "layers": 8,
+    "all_mla": true,
+    "mtp": false
+  },
+  "data": {
+    "corpus": "train_toy_checkpoint.build_corpus (char ids)",
+    "train_tokens": 2350352,
+    "val_tokens": 261151,
+    "val_windows": 16
+  },
+  "train": {
+    "layers": 8,
+    "shares": [
+      0,
+      2,
+      4
+    ],
+    "steps": 400,
+    "batch": 8,
+    "seq": 128,
+    "lr": 0.001,
+    "seed": 0,
+    "val_windows": 16
+  },
+  "results": [
+    {
+      "kv_share_last_n": 0,
+      "params": 29775680,
+      "kv_bytes_per_token": 2304.0,
+      "train_loss_last20": 2.4781,
+      "val_loss": 2.7041,
+      "val_ppl": 14.94,
+      "kv_ratio_vs_first": 1.0
+    },
+    {
+      "kv_share_last_n": 2,
+      "params": 29710016,
+      "kv_bytes_per_token": 1728.0,
+      "train_loss_last20": 2.3707,
+      "val_loss": 2.6182,
+      "val_ppl": 13.711,
+      "kv_ratio_vs_first": 0.75
+    },
+    {
+      "kv_share_last_n": 4,
+      "params": 29644352,
+      "kv_bytes_per_token": 1152.0,
+      "train_loss_last20": 2.4519,
+      "val_loss": 2.6884,
+      "val_ppl": 14.708,
+      "kv_ratio_vs_first": 0.5
+    }
+  ],
+  "results_sha256": "c45e8cb8392335506d7b6879e1c797258c092771db417ff8123715270e8d7457",
+  "wall_seconds": 1641.2
+}
