@@ -144,7 +144,7 @@ class GatedDeltaAttention(nn.Module):
         # fine-grained eraser, as used by GLM-5.3-Flash); when False the
         # v5.5 per-head scalar gate is kept (bit-identical).
         self.per_channel_decay = bool(
-            getattr(config.hybrid_attention, "per_channel_decay", False))
+            config.hybrid_attention.per_channel_decay)
         gate_width = self.num_heads * self.head_dim \
             if self.per_channel_decay else self.num_heads
         # Bias-free Linear + a raw bias parameter initialized to +4 so

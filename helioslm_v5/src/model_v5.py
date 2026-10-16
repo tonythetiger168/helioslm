@@ -54,7 +54,7 @@ def _is_full_attention_layer(config, layer_idx):
     ``idx % every == every - 1``; GatedDeltaAttention otherwise. With
     ``first_layer_full=False`` (v5.57, K3 block order) the layer-0
     exception is dropped."""
-    hcfg = getattr(config, "hybrid_attention", None)
+    hcfg = config.hybrid_attention
     if hcfg is None or not getattr(hcfg, "enabled", False):
         return True
     if layer_idx == 0 and getattr(hcfg, "first_layer_full", True):
@@ -176,22 +176,22 @@ class HeliosLMv5Layer(nn.Module):
         super().__init__()
         self.layer_idx = layer_idx  # kept for external cache plumbing/debugging
         self.pre_attn_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps,
-            zero_centered=bool(getattr(config, "zero_centered_norm", False)))
+            zero_centered=bool(config.zero_centered_norm))
         self.attention = (MLA(config, shared_indexer=shared_indexer,
                               layer_idx=layer_idx)
                           if _is_full_attention_layer(config, layer_idx)
                           else GatedDeltaAttention(config))
         self.pre_moe_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps,
-            zero_centered=bool(getattr(config, "zero_centered_norm", False)))
+            zero_centered=bool(config.zero_centered_norm))
         # B2-3 (v5.65): the first ``moe.first_k_dense`` layers use a dense
         # FFN. The attribute keeps the name ``moe`` so every forward path
         # (plain, hyper-connections) is unchanged; routing statistics and
         # balance losses only ever look at DeviceLimitedMoE instances.
-        if layer_idx < int(getattr(config.moe, "first_k_dense", 0) or 0):
+        if layer_idx < int(config.moe.first_k_dense or 0):
             self.moe = DenseFFN(config)
         else:
             self.moe = DeviceLimitedMoE(config)
-        if bool(getattr(config, "use_attention_residuals", False)):
+        if bool(config.use_attention_residuals):
             self.attn_res_gate = nn.Parameter(torch.tensor(0.1))
         else:
             self.attn_res_gate = None
@@ -209,7 +209,7 @@ class HeliosLMv5Layer(nn.Module):
         # no width/FLOP expansion is avoided — branches share the sublayer
         # weights and are folded into the batch dim.
         self.use_hyper_connections = bool(
-            getattr(config, "use_hyper_connections", False))
+            config.use_hyper_connections)
         if self.use_hyper_connections:
             n = config.hyper_connection_branches
             self.hc_num_branches = n
@@ -219,10 +219,10 @@ class HeliosLMv5Layer(nn.Module):
             self.hc_moe_B = nn.Parameter(torch.zeros(n, n))
             # mHC (v5.66, B2-4): learnable doubly stochastic read matrices.
             self.hc_sinkhorn = bool(
-                getattr(config, "hyper_connection_sinkhorn", False))
+                config.hyper_connection_sinkhorn)
             if self.hc_sinkhorn:
                 self.hc_sinkhorn_iters = int(
-                    getattr(config, "hyper_connection_sinkhorn_iters", 20))
+                    config.hyper_connection_sinkhorn_iters)
                 self.hc_attn_logits = nn.Parameter(torch.zeros(n, n))
                 self.hc_attn_alpha = nn.Parameter(torch.zeros(()))
                 self.hc_moe_logits = nn.Parameter(torch.zeros(n, n))
@@ -385,7 +385,7 @@ class HeliosLMv5(nn.Module):
         # via an unregistered reference (MLA._effective_indexer), so
         # parameters and state-dict keys are not duplicated. The default
         # 1 keeps one indexer per MLA layer (bit-identical to before).
-        share = int(getattr(config.attention, "indexer_share_every", 1))
+        share = int(config.attention.indexer_share_every)
         layers = []
         mla_ordinal = 0
         group_leader_indexer = None
@@ -403,7 +403,7 @@ class HeliosLMv5(nn.Module):
         self.layers = nn.ModuleList(layers)
 
         self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps,
-            zero_centered=bool(getattr(config, "zero_centered_norm", False)))
+            zero_centered=bool(config.zero_centered_norm))
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
         # P0: MTP modules — share the main model's embedding and LM head
@@ -435,7 +435,7 @@ class HeliosLMv5(nn.Module):
         # non-shared MLA layer of the same window type. Done after init so
         # every remaining weight matches the unshared model's init.
         self._kv_share_src = {}
-        n_share = int(getattr(config.attention, "kv_share_last_n", 0) or 0)
+        n_share = int(config.attention.kv_share_last_n or 0)
         if n_share > 0:
             mla_idx = [i for i, l in enumerate(self.layers)
                        if isinstance(l.attention, MLA)]
@@ -557,7 +557,7 @@ class HeliosLMv5(nn.Module):
         # (initialized as copies of the embedding, read out by mean at the
         # end). attn_res stays unused: the config validator rejects enabling
         # both mechanisms.
-        use_hc = bool(getattr(self.config, "use_hyper_connections", False))
+        use_hc = bool(self.config.use_hyper_connections)
         present_key_values = [] if use_cache else None
         # v5.71 U6: source layers always build their cache tuple (it is
         # what their KV consumers attend over); consumers get it as
@@ -594,7 +594,7 @@ class HeliosLMv5(nn.Module):
             hidden_states = (streams.sum(dim=2, dtype=torch.float64) / n_br).to(
                 streams.dtype)
         else:
-            use_attn_res = bool(getattr(self.config, "use_attention_residuals", False))
+            use_attn_res = bool(self.config.use_attention_residuals)
             attn_res = torch.zeros_like(hidden_states) if use_attn_res else None
             for i, layer in enumerate(self.layers):
                 past_kv = past_key_values[i] if past_key_values is not None else None
@@ -617,7 +617,7 @@ class HeliosLMv5(nn.Module):
         # v5.9: Gemma-2 style final logit soft-capping (None = uncapped,
         # v5.8 behaviour). Bounds every logit to (-cap, cap); generate()
         # inherits it because it consumes these logits.
-        cap = getattr(self.config, "final_logit_soft_cap", None)
+        cap = self.config.final_logit_soft_cap
         if cap is not None:
             logits = cap * torch.tanh(logits / cap)
 

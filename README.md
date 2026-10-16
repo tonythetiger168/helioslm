@@ -315,6 +315,7 @@ python helioslm_v5/tests/test_clamped_swiglu.py     # T106 U5 gpt-oss clamped Sw
 python helioslm_v5/tests/test_nope_temperature.py   # T107 U3 Llama 4 NoPE temperature: formula, short-context identity, decode == full, A/B artifact
 python helioslm_v5/tests/test_global_prope_kv.py    # T108 U4 Gemma 4 p-RoPE + global K=V: defaults identical, identity dims, only global layers, shared V cache
 python helioslm_v5/tests/test_kv_share.py           # T109 U6 cross-layer KV sharing: defaults identical, manual-attention oracle, aliased cache (L-N)/L, decode == full, ppl A/B artifact
+python helioslm_v5/tests/test_option_matrix.py      # T110 option matrix: every pair of 26 feature options builds with decode == full or is rejected by OPTION_RULES; core modules read config fields directly
 python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite (396 tests)
 ```
 

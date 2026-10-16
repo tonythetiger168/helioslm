@@ -39,7 +39,7 @@ class NaViTEncoder(nn.Module):
         self.hidden_size = config.multimodal.vision_hidden_size
         self.num_layers = config.multimodal.vision_num_layers
         self.num_heads = config.multimodal.vision_num_heads
-        self.max_grid = getattr(config.multimodal, "vision_max_grid", 64)
+        self.max_grid = config.multimodal.vision_max_grid
 
         # Patch embedding
         self.patch_embed = nn.Conv2d(3, self.hidden_size, kernel_size=self.patch_size, stride=self.patch_size)

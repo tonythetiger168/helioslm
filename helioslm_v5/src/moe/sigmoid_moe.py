@@ -149,8 +149,8 @@ class DeviceLimitedMoE(nn.Module):
         self.bias_update_rate = config.moe.bias_update_rate
         # v5.5: LatentMoE / balance strategy. getattr for robustness against
         # configs built before the fields existed.
-        self.latent_dim = getattr(config.moe, "latent_dim", None)
-        self.balance_strategy = getattr(config.moe, "balance_strategy", "heuristic")
+        self.latent_dim = config.moe.latent_dim
+        self.balance_strategy = config.moe.balance_strategy
         if self.balance_strategy not in ("heuristic", "quantile"):
             raise ValueError(
                 f"moe.balance_strategy must be 'heuristic' or 'quantile', "
@@ -193,7 +193,7 @@ class DeviceLimitedMoE(nn.Module):
         # normalized gate probs, token count); model_v5.balance_loss()
         # turns them into the loss with micro- or global-batch f_i and
         # clears them.
-        self.balance_loss_scope = getattr(config.moe, "balance_loss_scope", None)
+        self.balance_loss_scope = config.moe.balance_loss_scope
         self._balance_records = []
         # Lazy cache for the distributed local-expert id list (O3): the
         # expert->device map is fixed at construction and a rank's partition

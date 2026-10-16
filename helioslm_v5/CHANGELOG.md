@@ -1,5 +1,34 @@
 # HeliosLM v5 Changelog
 
+## Maintenance (2026-10-16) - tech-debt Phase 2: one option-compatibility table, one place for defaults
+
+- `config_v5.OPTION_RULES` collects all 14 cross-option constraints
+  ("requires" / "excludes"), for example sparse_top_k needs absorption,
+  KV sharing excludes the fp8 cache, and hyper-connections exclude
+  attention residuals. They used to be scattered through `_validate`.
+  - They are checked after every per-field check, and a failure raises
+    `OptionConflictError`, a `ValueError` subclass that carries the rule
+    name. The messages are unchanged.
+  - New cross-option rules go in this table.
+- The core modules (`mla`, `model_v5`, `sigmoid_moe`, `linear_attention`,
+  `navit`) read config fields directly instead of through
+  `getattr(config..., default)`.
+  - Behaviour is unchanged, because the config dataclasses always define
+    these fields.
+  - Four of those code-side defaults had drifted from the dataclass:
+    `use_attention_residuals` (code False, dataclass True), `latent_dim`,
+    `balance_strategy` and `vision_max_grid`.
+  - Modules that accept duck-typed configs (`mtp`, `vllm_engine`,
+    `grpo`, `fp8_trainer`, `gguf`) keep `getattr`.
+- T110 (`test_option_matrix.py`, 3 tests) covers 26 feature options:
+  - Every single option and every pair (351 configs) must either be
+    rejected by a table rule, or build a model whose cached decode equals
+    the full forward.
+  - Every rule must be reachable.
+  - An AST check verifies that every config field the core modules read
+    exists, and that no `getattr` fallback has come back.
+  - Today all 344 accepted configs pass; the 7 rejected ones hit 5 rules.
+
 ## v5.71 (2026-10-16) - Roadmap U6: cross-layer KV sharing (Gemma 3n/4)
 
 - `attention.kv_share_last_n` (default 0 = off, bit-identical): the last
