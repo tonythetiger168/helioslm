@@ -174,11 +174,14 @@ def test_training_artifact():
     res = art["results"]
     assert art["results_sha256"] == hashlib.sha256(
         json.dumps(res, sort_keys=True).encode()).hexdigest()
-    assert res["after"]["held_out"] > res["before"]["held_out"]
-    assert res["after"]["train"] > res["before"]["train"]
+    start = res["after_sft"] or res["before"]   # RL's own contribution
+    assert res["after"]["held_out"] > start["held_out"]
+    assert res["after"]["train"] > start["train"]
+    assert art["train"]["sft_demos"] and art["train"]["algo"] == "rft"
+    assert art["train"]["require_verified_done"]
     print("PASS test_training_artifact "
-          f"(held-out {res['before']['held_out']:.3f} -> "
-          f"{res['after']['held_out']:.3f})")
+          f"(held-out {res['before']['held_out']:.3f} -> SFT "
+          f"{start['held_out']:.3f} -> RL {res['after']['held_out']:.3f})")
 
 
 if __name__ == "__main__":
