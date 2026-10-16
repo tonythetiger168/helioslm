@@ -1,5 +1,17 @@
 # HeliosLM v5 Changelog
 
+## v5.65 (2026-10-16) - Roadmap B2-3: dense first layers (`moe.first_k_dense`)
+
+- `moe.first_k_dense` (GLM-5.3 uses 3, MiMo its first block): layers
+  0..k-1 use `model_v5.DenseFFN` (SwiGLU, width `intermediate_size`)
+  instead of the routed MoE. Default 0 keeps every layer MoE with an
+  identical state dict and output, so old checkpoints load strictly.
+  The attribute stays `layer.moe`, so the plain and hyper-connection
+  forward paths are unchanged; routing statistics (`expert_load`,
+  `update_bias`) and `balance_loss` only see `DeviceLimitedMoE`
+  instances, so dense layers are excluded by construction.
+- T103 (`test_first_k_dense.py`, 6 tests).
+
 ## v5.64 (2026-10-16) - Roadmap U1: DAPO / Olmo 3 options for GRPO
 
 - `GRPOConfig`: `loss_agg` ("sequence" | "token": per-token ratios and

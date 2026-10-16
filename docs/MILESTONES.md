@@ -72,7 +72,7 @@ renumbered.
 | B | Stable LatentMoE study | ⬜ Not started |
 | B2 | B2-1 per-layer sliding-window / global interleave + `mimo_hybrid_config()` (MiMo) — 5:1 hybrid 0.424 vs dense 0.428 at 39% of the keys | ✅ Done (v5.62, T96) |
 | B2 | B2-2 learnable attention sink bias (MiMo) — no effect at this scale (0.424 vs 0.424) | ✅ Done (v5.62, T96) |
-| B2 | B2-3 `moe.first_k_dense` (GLM-5.3, MiMo) | ⬜ Not started |
+| B2 | B2-3 `moe.first_k_dense` (GLM-5.3, MiMo) — default unchanged (state dict and output), routing stats and balance loss exclude dense layers | ✅ Done (v5.65, T103) |
 | B2 | B2-4 learnable mHC with Sinkhorn projection (GLM-5.3-Flash) | ⬜ Not started |
 | B2 | B2-5 MiMo-style light MTP head | ⬜ Not started |
 | B2 | B2-6 on-policy distillation trainer (MiMo MOPD; confirm the definition first) | ⬜ Not started |
