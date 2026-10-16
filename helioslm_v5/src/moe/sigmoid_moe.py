@@ -59,16 +59,37 @@ def _situ_cap(x, softcap):
 
 
 class SwiGLUExpert(nn.Module):
-    """SiLU-gated GLU expert MLP: w2(silu(a) * b) with w13(x) = (a, b)."""
+    """SiLU-gated GLU expert MLP: w2(silu(a) * b) with w13(x) = (a, b).
 
-    def __init__(self, in_dim, hidden_dim, out_dim):
+    v5.68 (roadmap U5): optional gpt-oss clamping. With ``limit`` set or
+    non-default ``alpha`` / ``up_offset`` the activation becomes
+    a = min(a, limit), b = clamp(b, -limit, limit),
+    w2(a * sigmoid(alpha * a) * (b + up_offset)) — gpt-oss uses limit 7,
+    alpha 1.702, up_offset 1. The pre-w2 activation is then bounded:
+    a * sigmoid(alpha * a) lies in (-0.2785 / alpha, limit] and
+    b + up_offset in [up_offset - limit, up_offset + limit]. Defaults keep
+    the original ``F.silu`` path bit for bit.
+    """
+
+    def __init__(self, in_dim, hidden_dim, out_dim, limit=None, alpha=1.0,
+                 up_offset=0.0):
         super().__init__()
         self.w13 = nn.Linear(in_dim, 2 * hidden_dim, bias=False)
         self.w2 = nn.Linear(hidden_dim, out_dim, bias=False)
+        self.limit = None if limit is None else float(limit)
+        self.alpha = float(alpha)
+        self.up_offset = float(up_offset)
+        self.clamped = not (self.limit is None and self.alpha == 1.0
+                            and self.up_offset == 0.0)
 
     def forward(self, x):
         a, b = self.w13(x).chunk(2, dim=-1)
-        return self.w2(F.silu(a) * b)
+        if not self.clamped:
+            return self.w2(F.silu(a) * b)
+        if self.limit is not None:
+            a = a.clamp(max=self.limit)
+            b = b.clamp(-self.limit, self.limit)
+        return self.w2(a * torch.sigmoid(self.alpha * a) * (b + self.up_offset))
 
 
 class SiTUExpert(nn.Module):
@@ -101,7 +122,11 @@ def build_expert(config, in_dim, out_dim):
         return SiTUExpert(in_dim, hidden_dim, out_dim,
                           softcap=config.moe.situ_softcap,
                           eps=config.rms_norm_eps)
-    return SwiGLUExpert(in_dim, hidden_dim, out_dim)
+    m = config.moe
+    return SwiGLUExpert(in_dim, hidden_dim, out_dim,
+                        limit=getattr(m, "swiglu_limit", None),
+                        alpha=getattr(m, "swiglu_alpha", 1.0),
+                        up_offset=getattr(m, "swiglu_up_offset", 0.0))
 
 
 class DeviceLimitedMoE(nn.Module):

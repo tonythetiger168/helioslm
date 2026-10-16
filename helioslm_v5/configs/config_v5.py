@@ -234,6 +234,14 @@ class MoEConfig:
     # before the output projection).
     activation: str = "swiglu"
     situ_softcap: float = 10.0  # tanh soft-cap magnitude for "situ"
+    # v5.68 (roadmap U5, gpt-oss clamped SwiGLU), "swiglu" experts only:
+    # a = min(a, limit), b = clamp(b, -limit, limit),
+    # out = w2(a * sigmoid(alpha * a) * (b + up_offset)).
+    # gpt-oss: limit 7.0, alpha 1.702, up_offset 1.0. The defaults (None,
+    # 1.0, 0.0) keep the original w2(silu(a) * b) code path bit for bit.
+    swiglu_limit: Optional[float] = None
+    swiglu_alpha: float = 1.0
+    swiglu_up_offset: float = 0.0
     # v5.63 (roadmap Q3, Qwen3): optional load-balancing loss scope —
     # None (off), "micro" (f_i per forward / micro-batch) or "global"
     # (f_i over every forward since the last balance_loss() call, i.e. the
@@ -720,6 +728,22 @@ class HeliosLMv5Config:
                 f"moe.activation must be 'swiglu' or 'situ', got "
                 f"{m.activation!r}"
             )
+        if m.swiglu_limit is not None and not (
+                isinstance(m.swiglu_limit, (int, float))
+                and not isinstance(m.swiglu_limit, bool) and m.swiglu_limit > 0):
+            raise ValueError(
+                f"moe.swiglu_limit must be a positive number or None, got "
+                f"{m.swiglu_limit!r}")
+        if isinstance(m.swiglu_alpha, bool) or not isinstance(
+                m.swiglu_alpha, (int, float)) or m.swiglu_alpha <= 0:
+            raise ValueError(
+                f"moe.swiglu_alpha must be a positive number, got "
+                f"{m.swiglu_alpha!r}")
+        if isinstance(m.swiglu_up_offset, bool) or not isinstance(
+                m.swiglu_up_offset, (int, float)):
+            raise ValueError(
+                f"moe.swiglu_up_offset must be a number, got "
+                f"{m.swiglu_up_offset!r}")
         if m.situ_softcap <= 0:
             raise ValueError(
                 f"moe.situ_softcap must be positive, got {m.situ_softcap}"

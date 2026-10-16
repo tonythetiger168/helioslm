@@ -85,7 +85,7 @@ renumbered.
 | B4 | U2 thinking-budget control (Nemotron 3 / gpt-oss reasoning effort) | ⬜ Not started |
 | B4 | U3 NoPE-layer attention temperature scaling (Llama 4) | ⬜ Not started |
 | B4 | U4 p-RoPE + global-layer K=V (Gemma 4) | ⬜ Not started |
-| B4 | U5 clamped SwiGLU (gpt-oss) | ⬜ Not started |
+| B4 | U5 clamped SwiGLU (gpt-oss) — defaults bit-identical, matches gpt-oss reference, activation bounded | ✅ Done (v5.68, T106) |
 | B4 | U6 cross-layer KV sharing / Gated Memory Unit (Gemma 4, SambaY) | ⬜ Not started |
 | B4 | U7 SMEBU + depth-scaled sandwich norm (Arcee Trinity) | ⬜ Not started |
 | TW | TW1 dataset license audit (HF card license + gated status) | ⬜ Not started |

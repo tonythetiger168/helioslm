@@ -1,5 +1,21 @@
 # HeliosLM v5 Changelog
 
+## v5.68 (2026-10-16) - Roadmap U5: gpt-oss clamped SwiGLU
+
+- `moe.swiglu_limit` / `swiglu_alpha` / `swiglu_up_offset` (routed and
+  shared "swiglu" experts): a = min(a, limit), b = clamp(b, -limit,
+  limit), out = w2(a * sigmoid(alpha * a) * (b + up_offset)). gpt-oss
+  uses 7.0 / 1.702 / 1.0. Defaults (None / 1.0 / 0.0) keep the original
+  `w2(silu(a) * b)` path bit for bit.
+- With gpt-oss settings the pre-w2 activation is bounded by the corner
+  products of the gate range [-0.2785/alpha, limit] and the linear range
+  [up_offset - limit, up_offset + limit], i.e. [-42, 56]; inputs scaled
+  to 1e4 hit both edges and never cross them, while the unclamped expert
+  grows without bound.
+- T106 (`test_clamped_swiglu.py`, 6 tests): defaults unchanged, match an
+  independent re-implementation of gpt-oss's swiglu, the bound, huge
+  limit == SiLU, decode == full with gpt-oss experts, validation.
+
 ## v5.67 (2026-10-16) - Roadmap B2-5: MiMo-style light MTP head
 
 - `mtp.style` ("default" | "light"), `mtp.light_window`,
