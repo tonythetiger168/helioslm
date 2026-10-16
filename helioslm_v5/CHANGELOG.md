@@ -1,5 +1,25 @@
 # HeliosLM v5 Changelog
 
+## v5.64 (2026-10-16) - Roadmap U1: DAPO / Olmo 3 options for GRPO
+
+- `GRPOConfig`: `loss_agg` ("sequence" | "token": per-token ratios and
+  clipping, loss averaged over every policy token in the batch),
+  `clip_eps_high` (clip-higher), `normalize_adv_std` (False = Dr. GRPO /
+  Olmo 3), `filter_zero_adv_groups` (flat groups leave the loss and its
+  normalization; an all-flat batch skips the optimizer step), `tis_cap`
+  (truncated importance sampling against sampler log-probs a sample
+  carries). Every default reproduces the previous update bit for bit
+  (checked against the pre-U1 trainer and a hand-written update).
+  `GRPOTrainer._token_logprobs`; stats gain `n_kept`.
+- AC2 trainer flags `--loss-agg/--clip-high/--no-adv-std/--filter-groups`.
+- Result on AC2 (SFT 15 steps -> GRPO, recorded in
+  `benchmarks/swe_agent_rl_notes_2026-10-16.md`): the U1 options alone
+  do not stop GRPO eroding the SFT policy (0.367 -> 0.267); adding a KL
+  anchor to the SFT model (kl 0.2) makes GRPO improve on SFT for the
+  first time (0.367 -> 0.733, sampled pass rate stable around 0.6).
+  Rejection-sampling fine-tuning stays best (1.0).
+- T102 (`test_grpo_u1.py`, 7 tests).
+
 ## v5.63 (2026-10-16) - Phase B3: Qwen Q1–Q5; roadmap B4 (US models) and TW (zh-TW data)
 
 - **Q1** `hybrid_attention.short_conv_kernel` (Qwen3-Next Gated DeltaNet):

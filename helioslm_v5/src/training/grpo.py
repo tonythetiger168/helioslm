@@ -55,6 +55,13 @@ class GRPOTrainer:
         self.group_size = config.grpo.group_size  # G, typically 8-16
         self.epsilon = config.grpo.epsilon  # Clip parameter
         self.kl_coef = config.grpo.kl_coef  # KL penalty coefficient
+        # v5.64 U1 (DAPO / Olmo 3) options; defaults = original update.
+        g = config.grpo
+        self.loss_agg = getattr(g, "loss_agg", "sequence")
+        self.clip_eps_high = getattr(g, "clip_eps_high", None)
+        self.normalize_adv_std = getattr(g, "normalize_adv_std", True)
+        self.filter_zero_adv_groups = getattr(g, "filter_zero_adv_groups", False)
+        self.tis_cap = getattr(g, "tis_cap", None)
         self.max_new_tokens = getattr(config.grpo, "max_new_tokens", 16)
 
         self.device = next(model.parameters()).device
@@ -84,6 +91,20 @@ class GRPOTrainer:
     # ------------------------------------------------------------------
     # Log-prob helpers
     # ------------------------------------------------------------------
+    @staticmethod
+    def _token_logprobs(model, full_ids: torch.Tensor, prompt_len: int,
+                        action_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """1-D per-token log-probs of the response (policy tokens only when
+        ``action_mask`` is given) — the token-level (U1) counterpart of
+        ``_sequence_logprob``."""
+        logits, _, _ = model(full_ids)
+        logp = torch.log_softmax(logits[:, prompt_len - 1:-1, :].float(), dim=-1)
+        tgt = full_ids[:, prompt_len:]
+        token_logp = logp.gather(-1, tgt.unsqueeze(-1)).squeeze(-1)[0]
+        if action_mask is not None:
+            token_logp = token_logp[action_mask.to(token_logp.device)]
+        return token_logp
+
     @staticmethod
     def _sequence_logprob(model, full_ids: torch.Tensor, prompt_len: int,
                           action_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -297,16 +318,54 @@ class GRPOTrainer:
         # Group-normalized advantages.
         rewards = rewards.view(batch_size, self.group_size)
         mean_rewards = rewards.mean(dim=1, keepdim=True)
-        std_rewards = rewards.std(dim=1, unbiased=False, keepdim=True) \
-            .clamp(min=1e-8)
-        advantages = (rewards - mean_rewards) / std_rewards
+        if self.normalize_adv_std:
+            std_rewards = rewards.std(dim=1, unbiased=False, keepdim=True) \
+                .clamp(min=1e-8)
+            advantages = (rewards - mean_rewards) / std_rewards
+        else:
+            # Dr. GRPO / Olmo 3 (U1): no std division.
+            advantages = rewards - mean_rewards
         # NOTE: with group_size == 1 every advantage is exactly 0 (each
         # sample is its own baseline), so the policy-gradient term
         # vanishes; use group_size >= 2 in practice.
         advantages_flat = advantages.reshape(-1).detach()
 
-        # Reference model log-probs (frozen, no grad, flat order).
-        ref_logprobs = self._get_ref_logprobs(samples).detach()
+        # U1 zero-gradient group filtering: a group whose rewards are all
+        # equal has zero advantage everywhere and only adds KL noise and
+        # dilutes the 1/N (or 1/tokens) normalization; drop it.
+        keep = [True] * n_samples
+        if self.filter_zero_adv_groups:
+            flat_groups = (rewards.max(dim=1).values
+                           == rewards.min(dim=1).values).tolist()
+            keep = [not flat_groups[i // self.group_size]
+                    for i in range(n_samples)]
+        kept = [i for i in range(n_samples) if keep[i]]
+        n_kept = len(kept)
+        eps_low = self.epsilon
+        eps_high = self.epsilon if self.clip_eps_high is None \
+            else self.clip_eps_high
+        token_level = self.loss_agg == "token"
+
+        if token_level:
+            # Old per-token log-probs: taken from the sample when the
+            # sampler stored them, else computed now, before any update,
+            # in eval mode (exact for fresh on-policy samples, which is
+            # what train_step and the env loops produce).
+            self.model.eval()
+            with torch.no_grad():
+                old_tok = [s["old_token_logprobs"]
+                           if "old_token_logprobs" in s
+                           else self._token_logprobs(
+                               self.model, s["full_ids"], s["prompt_len"],
+                               s.get("action_mask")).detach()
+                           for s in samples]
+                ref_tok = [self._token_logprobs(
+                    self.ref_model, s["full_ids"], s["prompt_len"],
+                    s.get("action_mask")).detach() for s in samples]
+            total_tokens = sum(int(old_tok[i].numel()) for i in kept)
+        else:
+            # Reference model log-probs (frozen, no grad, flat order).
+            ref_logprobs = self._get_ref_logprobs(samples).detach()
 
         # Grad-carrying training forwards MUST run in train mode so
         # dropout and other train-only behavior are active.
@@ -316,6 +375,31 @@ class GRPOTrainer:
         policy_loss_total = 0.0
         kl_total = 0.0
         for i, s in enumerate(samples):
+            if not keep[i]:
+                continue
+            adv = advantages_flat[i]
+            if token_level:
+                new_tok = self._token_logprobs(
+                    self.model, s["full_ids"], s["prompt_len"],
+                    s.get("action_mask"))
+                ratio = torch.exp((new_tok - old_tok[i]).clamp(-20.0, 20.0))
+                surr1 = ratio * adv
+                surr2 = torch.clamp(ratio, 1 - eps_low, 1 + eps_high) * adv
+                pol = -torch.min(surr1, surr2)
+                if self.tis_cap is not None and "sampler_token_logprobs" in s:
+                    w = torch.exp(old_tok[i] - s["sampler_token_logprobs"]) \
+                        .clamp(max=self.tis_cap).detach()
+                    pol = pol * w
+                logr = (ref_tok[i] - new_tok).clamp(max=60.0)
+                kl = self.kl_coef * (torch.expm1(logr) - logr)
+                policy_i = pol.sum()
+                kl_i = kl.sum()
+                loss_i = (policy_i + kl_i) / total_tokens
+                loss_i.backward()
+                policy_loss_total += policy_i.item() / total_tokens
+                kl_total += kl_i.item() / total_tokens
+                continue
+
             new_lp = self._sequence_logprob(
                 self.model, s["full_ids"], s["prompt_len"],
                 s.get("action_mask"))
@@ -327,11 +411,14 @@ class GRPOTrainer:
             # inf/overflow ratios (m3).
             log_ratio = (new_lp - s["old_logprob"]).clamp(-20.0, 20.0)
             ratio = torch.exp(log_ratio)
-            adv = advantages_flat[i]
             surr1 = ratio * adv
-            surr2 = torch.clamp(ratio, 1 - self.epsilon,
-                                1 + self.epsilon) * adv
+            surr2 = torch.clamp(ratio, 1 - eps_low,
+                                1 + eps_high) * adv
             policy_i = -torch.min(surr1, surr2)
+            if self.tis_cap is not None and "sampler_logprob" in s:
+                w = torch.exp(s["old_logprob"] - s["sampler_logprob"]) \
+                    .clamp(max=self.tis_cap).detach()
+                policy_i = policy_i * w
 
             # KL penalty with DeepSeekMath's k3 estimator:
             # exp(logr) - logr - 1 >= 0 pointwise for
@@ -343,19 +430,21 @@ class GRPOTrainer:
             kl_i = self.kl_coef * (torch.expm1(logr) - logr)
 
             # 1/N scaling: accumulated grads == single batched mean.
-            loss_i = (policy_i + kl_i) / n_samples
+            loss_i = (policy_i + kl_i) / n_kept
             loss_i.backward()
-            policy_loss_total += policy_i.item() / n_samples
-            kl_total += kl_i.item() / n_samples
+            policy_loss_total += policy_i.item() / n_kept
+            kl_total += kl_i.item() / n_kept
 
-        # Update
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
-        self.optimizer.step()
+        # Update (skipped when filtering left nothing to learn from)
+        if n_kept:
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+            self.optimizer.step()
         return {
             "loss": policy_loss_total + kl_total,
             "policy_loss": policy_loss_total,
             "kl_penalty": kl_total,
             "mean_reward": mean_rewards.mean().item(),
+            "n_kept": n_kept,
         }
 
     def _sample_response(self, question: str) -> Tuple[str, torch.Tensor, torch.Tensor, int]:
