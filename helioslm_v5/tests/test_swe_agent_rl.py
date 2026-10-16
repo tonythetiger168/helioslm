@@ -130,6 +130,29 @@ def _scripted(env, careful):
     return False
 
 
+def test_sft_warm_start_pieces():
+    rng = random.Random(0)
+    for t in sb.TASKS:
+        d = ar.scripted_demo(t, rng)
+        ids, mask = d["full_ids"][0, 1:], d["action_mask"]
+        assert d["passed"], t["id"]
+        assert len(ids) == len(mask) and int(mask.sum()) <= ar.MAX_STEPS
+        assert int(ids[mask][-1]) == ar.DONE
+        assert all(int(x) in ar.ACTIONS for x in ids[mask])
+    model = _policy()
+    model.train()
+    demos = [ar.scripted_demo(t, rng) for t in sb.TASKS[:4]]
+    opt = torch.optim.AdamW(model.parameters(), lr=1e-3)
+    first = ar.sft_loss(model, demos)
+    for _ in range(5):
+        loss = ar.sft_loss(model, demos)
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+    assert ar.sft_loss(model, demos).item() < first.item()
+    print("PASS test_sft_warm_start_pieces")
+
+
 def test_scripted_policies():
     careful = naive = n = 0
     for s in range(3):
@@ -163,5 +186,6 @@ if __name__ == "__main__":
     test_env_semantics()
     test_memo_key_is_sound()
     test_rollout_structure()
+    test_sft_warm_start_pieces()
     test_scripted_policies()
     test_training_artifact()

@@ -57,6 +57,11 @@ def main():
     ap.add_argument("--false-done-penalty", type=float, default=1.0,
                     help="reward for DONE with a failing verifier is -this")
     ap.add_argument("--threads", type=int, default=1)
+    ap.add_argument("--sft-demos", type=int, default=0,
+                    help="scripted demos per TRAIN task for the SFT warm "
+                         "start (0 = no SFT, RL from scratch)")
+    ap.add_argument("--sft-steps", type=int, default=0)
+    ap.add_argument("--sft-lr", type=float, default=1e-3)
     ap.add_argument("--output")
     args = ap.parse_args()
     torch.set_num_threads(args.threads)
@@ -72,9 +77,33 @@ def main():
               "held_out": ar.evaluate(model, held_tasks)}
     print("before", before, flush=True)
 
+    t0 = time.time()
+    after_sft = None
+    if args.sft_demos and args.sft_steps:
+        # Light SFT warm start (behaviour cloning of the careful script on
+        # the TRAIN tasks only), then RL — the SFT -> online-RL order of
+        # Llama 4 / Olmo 3. Held-out tasks never contribute demos.
+        drng = random.Random(500 + args.seed)
+        demos = [ar.scripted_demo(t, drng) for t in train_tasks
+                 for _ in range(args.sft_demos)]
+        assert all(d["passed"] for d in demos)
+        sft_opt = torch.optim.AdamW(model.parameters(), lr=args.sft_lr)
+        model.train()
+        for step in range(args.sft_steps):
+            loss = ar.sft_loss(model, demos)
+            sft_opt.zero_grad()
+            loss.backward()
+            sft_opt.step()
+            if (step + 1) % max(1, args.sft_steps // 5) == 0:
+                print(f"sft step {step + 1}: nll {loss.item():.4f}", flush=True)
+        after_sft = {"train": ar.evaluate(model, train_tasks),
+                     "held_out": ar.evaluate(model, held_tasks)}
+        print("after_sft", after_sft, flush=True)
+        # KL anchor and old policy start from the SFT model
+        trainer.ref_model.load_state_dict(model.state_dict())
+
     rng = random.Random(1000 + args.seed)
     curve = []
-    t0 = time.time()
     for u in range(args.updates):
         tasks = rng.sample(train_tasks, args.tasks_per_update)
         samples = []
@@ -100,10 +129,12 @@ def main():
     model.eval()
     example = ar.rollout(model, held_tasks[0], random.Random(7), greedy=True)
     print("after", after, "example trace", example["trace"], flush=True)
-    results = {"before": before, "after": after, "curve": curve,
+    results = {"before": before, "after_sft": after_sft, "after": after,
+               "curve": curve,
                "example_held_out_trace": example["trace"]}
     out = {
-        "experiment": "AC2 multi-turn agent RL (macro actions, GRPO)",
+        "experiment": "AC2 multi-turn agent RL (macro actions, GRPO; "
+                      "optional SFT warm start)",
         "setting": {"train_tasks": [t["id"] for t in train_tasks],
                     "held_out_tasks": [t["id"] for t in held_tasks],
                     "candidates": "reference fix + 2 broken patches, "

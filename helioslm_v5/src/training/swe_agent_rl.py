@@ -193,3 +193,53 @@ def evaluate(model, tasks, seeds=(0, 1, 2), greedy=True):
             wins += r["passed"]
             n += 1
     return wins / n
+
+
+def scripted_demo(raw_task, rng):
+    """One demonstration of the careful procedure (SFT warm start, v5.63).
+
+    Tries the candidate slots in a random order: APPLY, TEST, and on
+    OBS_FAIL REVERT and move on; DONE right after OBS_PASS. Returns the
+    same token layout as ``rollout`` (actions masked True, observations
+    False) plus whether the verifier passed. Every demo passes by
+    construction (the fix is always one of the three candidates); T100
+    pins that.
+    """
+    ids, mask = [BOS], []
+    env = SweMacroEnv(raw_task, rng)
+
+    def act(a):
+        ids.append(a)
+        mask.append(True)
+        if a != DONE:
+            ids.append(env.step(a))
+            mask.append(False)
+            return ids[-1]
+        return None
+
+    order = list(range(3))
+    rng.shuffle(order)
+    for i, slot in enumerate(order):
+        if i:
+            act(REVERT)
+        act(APPLY[slot])
+        if act(TEST) == OBS_PASS:
+            act(DONE)
+            break
+    return {"full_ids": torch.tensor([ids]),
+            "action_mask": torch.tensor(mask, dtype=torch.bool),
+            "passed": env.verify()}
+
+
+def sft_loss(model, demos):
+    """Mean negative log-likelihood of the demos' ACTION tokens (full
+    vocabulary, observations masked out) — behaviour cloning."""
+    total, n = 0.0, 0
+    for d in demos:
+        ids = d["full_ids"]
+        logits = model(ids)[0][:, :-1].float()
+        logp = torch.log_softmax(logits, -1).gather(
+            -1, ids[:, 1:, None]).squeeze(-1)[0]
+        total = total - logp[d["action_mask"]].sum()
+        n += int(d["action_mask"].sum())
+    return total / n
