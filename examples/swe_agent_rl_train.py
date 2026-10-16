@@ -43,7 +43,12 @@ def policy_config(args):
                       expert_hidden_size=128),
         use_attention_residuals=False, use_hyper_connections=False,
         grpo=GRPOConfig(group_size=args.group, epsilon=0.2,
-                        kl_coef=args.kl, lr=args.lr))
+                        kl_coef=args.kl, lr=args.lr,
+                        loss_agg=getattr(args, "loss_agg", "sequence"),
+                        clip_eps_high=getattr(args, "clip_high", None),
+                        normalize_adv_std=not getattr(args, "no_adv_std", False),
+                        filter_zero_adv_groups=getattr(args, "filter_groups",
+                                                       False)))
 
 
 def main():
@@ -66,6 +71,12 @@ def main():
                     help="grpo: GRPOTrainer update; rft: rejection-sampling "
                          "fine-tuning (behaviour-clone the successful "
                          "episodes of each batch)")
+    # U1 (DAPO / Olmo 3) GRPO options
+    ap.add_argument("--loss-agg", choices=("sequence", "token"),
+                    default="sequence")
+    ap.add_argument("--clip-high", type=float, default=None)
+    ap.add_argument("--no-adv-std", action="store_true")
+    ap.add_argument("--filter-groups", action="store_true")
     ap.add_argument("--require-verified-done", action="store_true",
                     help="reward a DONE only right after a passing TEST")
     ap.add_argument("--output")

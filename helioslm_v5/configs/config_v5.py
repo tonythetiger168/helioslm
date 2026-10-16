@@ -314,6 +314,23 @@ class GRPOConfig:
     epsilon: float = 0.2
     kl_coef: float = 0.01
     lr: float = 1e-6
+    # v5.64 (roadmap U1, DAPO / Olmo 3 OlmoRL). Every default reproduces
+    # the original sequence-level GRPO update bit for bit.
+    # "sequence": one ratio per response (summed log-probs), each sample's
+    # loss weighted 1/N. "token": per-token ratios and clipping, the loss
+    # averaged over every policy token in the batch (DAPO token-level).
+    loss_agg: str = "sequence"
+    # Clip-higher: upper clip bound 1 + clip_eps_high (None = epsilon).
+    clip_eps_high: Optional[float] = None
+    # Divide group advantages by the group std (False = Dr. GRPO / Olmo 3).
+    normalize_adv_std: bool = True
+    # Drop groups whose rewards are all equal (zero advantage) from the
+    # loss and its normalization (DAPO dynamic sampling, filtering half).
+    filter_zero_adv_groups: bool = False
+    # Truncated importance sampling against the SAMPLER's log-probs when a
+    # sample carries them ("sampler_logprob" / "sampler_token_logprobs"):
+    # weight = min(exp(old - sampler), tis_cap). None = off.
+    tis_cap: Optional[float] = None
 
     def __post_init__(self):
         self._validate()
@@ -338,6 +355,20 @@ class GRPOConfig:
             )
         if self.lr <= 0:
             raise ValueError(f"grpo.lr must be positive, got {self.lr}")
+        if self.loss_agg not in ("sequence", "token"):
+            raise ValueError(
+                f"grpo.loss_agg must be 'sequence' or 'token', got "
+                f"{self.loss_agg!r}")
+        if self.clip_eps_high is not None and not (0.0 < self.clip_eps_high < 10.0):
+            raise ValueError(
+                f"grpo.clip_eps_high must be in (0, 10) or None, got "
+                f"{self.clip_eps_high!r}")
+        for name in ("normalize_adv_std", "filter_zero_adv_groups"):
+            if not isinstance(getattr(self, name), bool):
+                raise ValueError(f"grpo.{name} must be a bool")
+        if self.tis_cap is not None and not self.tis_cap >= 1.0:
+            raise ValueError(
+                f"grpo.tis_cap must be >= 1 or None, got {self.tis_cap!r}")
 
 
 @dataclass
