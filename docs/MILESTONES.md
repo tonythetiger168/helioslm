@@ -81,6 +81,17 @@ renumbered.
 | B3 | Q3 global-batch load-balancing loss (Qwen3 MoE) | ⬜ Not started |
 | B3 | Q4 `qwen_next_config()` preset | ⬜ Not started |
 | B3 | Q5 (optional) MTP speculative-decoding acceptance measurement | ⬜ Not started |
+| B4 | U1 GRPO DAPO/OlmoRL options (token-level loss, clip-higher, zero-gradient filtering, TIS) | ⬜ Not started |
+| B4 | U2 thinking-budget control (Nemotron 3 / gpt-oss reasoning effort) | ⬜ Not started |
+| B4 | U3 NoPE-layer attention temperature scaling (Llama 4) | ⬜ Not started |
+| B4 | U4 p-RoPE + global-layer K=V (Gemma 4) | ⬜ Not started |
+| B4 | U5 clamped SwiGLU (gpt-oss) | ⬜ Not started |
+| B4 | U6 cross-layer KV sharing / Gated Memory Unit (Gemma 4, SambaY) | ⬜ Not started |
+| B4 | U7 SMEBU + depth-scaled sandwich norm (Arcee Trinity) | ⬜ Not started |
+| TW | TW1 dataset license audit (HF card license + gated status) | ⬜ Not started |
+| TW | TW2 zh-TW pretraining pipeline (Wikipedia s2twp + FineWeb-2 + data.gov.tw, ~100M tokens) | ⬜ Not started |
+| TW | TW3 Traditional-Chinese evals in the harness (TMMLU+, TMLU, TW-JusticeBench) | ⬜ Not started |
+| TW | TW4 zh-TW tokenizer coverage report | ⬜ Not started |
 | AC | AC1 mini SWE task set (20 small repos, hidden tests, trap gates) | ✅ Done (v5.62, T97) |
 | AC | AC2 agent RL loop (GRPO + sandbox, test-pass reward) | 🔄 In progress |
 | AC | AC3 tool-call recovery layer (7 named repairs, fuzz-tested) | ✅ Done (v5.62, T99) |

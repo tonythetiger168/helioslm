@@ -268,6 +268,9 @@ class HybridAttentionConfig:
     per_channel_decay: bool = False
     # v5.57: see the class docstring. True = v5.5 rule (bit-identical).
     first_layer_full: bool = True
+    # v5.63 (roadmap Q1, Qwen3-Next): causal depthwise short conv (kernel
+    # size) + SiLU over the linear-attention q/k/v projections. 0 = off.
+    short_conv_kernel: int = 0
 
 
 @dataclass
@@ -575,6 +578,11 @@ class HeliosLMv5Config:
                 f"(a value of 1 would make every layer MLA), got "
                 f"{h.full_attention_every}"
             )
+        k = h.short_conv_kernel
+        if isinstance(k, bool) or not isinstance(k, int) or k < 0 or k == 1:
+            raise ValueError(
+                f"hybrid_attention.short_conv_kernel must be 0 (off) or an "
+                f"int >= 2, got {k!r}")
         if not isinstance(h.first_layer_full, bool):
             raise ValueError(
                 f"hybrid_attention.first_layer_full must be a bool, got "

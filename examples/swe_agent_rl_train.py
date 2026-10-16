@@ -54,6 +54,8 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--kl", type=float, default=0.0)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--false-done-penalty", type=float, default=1.0,
+                    help="reward for DONE with a failing verifier is -this")
     ap.add_argument("--output")
     args = ap.parse_args()
 
@@ -77,13 +79,17 @@ def main():
         model.eval()
         for t in tasks:
             for _ in range(args.group):
-                samples.append(ar.rollout(model, t, rng))
+                samples.append(ar.rollout(
+                    model, t, rng,
+                    false_done_penalty=args.false_done_penalty))
         rewards = torch.tensor([s["reward"] for s in samples])
         stats = trainer._learn_from_samples(samples, None, rewards=rewards)
         mean_steps = sum(s["steps"] for s in samples) / len(samples)
+        pass_rate = sum(s["passed"] for s in samples) / len(samples)
         curve.append([u + 1, round(rewards.mean().item(), 4),
-                      round(mean_steps, 2)])
-        print(f"update {u + 1}: reward {rewards.mean():.3f} steps "
+                      round(pass_rate, 4), round(mean_steps, 2)])
+        print(f"update {u + 1}: reward {rewards.mean():.3f} pass "
+              f"{pass_rate:.3f} steps "
               f"{mean_steps:.2f} loss {stats['loss']:.4f} "
               f"({time.time() - t0:.0f}s)", flush=True)
 
@@ -100,8 +106,9 @@ def main():
                     "held_out_tasks": [t["id"] for t in held_tasks],
                     "candidates": "reference fix + 2 broken patches, "
                                   "shuffled per episode",
-                    "reward": "1 if DONE and verifier (visible + hidden) "
-                              "passes, else 0",
+                    "reward": "+1 DONE with verifier (visible + hidden) "
+                              "passing, -false_done_penalty DONE failing, "
+                              "0 out of steps",
                     "eval": "greedy, 3 shuffled candidate orders per task",
                     "max_steps": ar.MAX_STEPS},
         "train": vars(args) | {"output": None},

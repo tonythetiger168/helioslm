@@ -21,6 +21,12 @@ import, so the visible tests fail). Actions:
     TEST                          run the visible tests -> OBS_PASS / OBS_FAIL
     DONE                          stop; reward = 1 if the verifier passes
 
+Reward (知止, the AC5 view): +1 for DONE with a passing verifier,
+``-false_done_penalty`` for DONE with a failing one, 0 for running out
+of steps. With the penalty at 0, "apply any candidate, DONE" earns 1/3
+for free and GRPO collapses onto it (observed: v5.63 run 1); at 1 a
+blind guess is worth -1/3 and only stopping after a passing TEST pays.
+
 Applying after a broken patch without REVERT leaves the repo broken, and
 the candidate order is reshuffled every episode, so no fixed action
 sequence works: a good policy must apply, test, revert on failure and
@@ -123,7 +129,8 @@ class SweMacroEnv:
         return self._outcome("verify")
 
 
-def rollout(model, raw_task, rng, greedy=False, temperature=1.0):
+def rollout(model, raw_task, rng, greedy=False, temperature=1.0,
+            false_done_penalty=0.0):
     """-> sample dict for GRPOTrainer plus episode stats."""
     ids = [BOS]
     mask = []
@@ -156,7 +163,8 @@ def rollout(model, raw_task, rng, greedy=False, temperature=1.0):
         "prompt_len": 1,
         "action_mask": torch.tensor(mask, dtype=torch.bool),
         "old_logprob": torch.tensor(old_lp),
-        "reward": 1.0 if passed else 0.0,
+        "reward": 1.0 if passed else (-false_done_penalty if done else 0.0),
+        "passed": passed,
         "done": done,
         "steps": sum(mask),
         "trace": [ACTION_NAMES.get(t, "?") for t in ids[1::2]],
@@ -171,6 +179,6 @@ def evaluate(model, tasks, seeds=(0, 1, 2), greedy=True):
         rng = random.Random(10_000 + s)
         for t in tasks:
             r = rollout(model, t, rng, greedy=greedy)
-            wins += r["reward"]
+            wins += r["passed"]
             n += 1
     return wins / n

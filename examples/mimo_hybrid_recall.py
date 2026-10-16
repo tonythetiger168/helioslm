@@ -56,9 +56,24 @@ SEQ = 4 * N_PAIRS + FILLER          # 96
 WINDOW = 8
 LAYERS = 6
 ARMS = ("dense", "all_swa", "hybrid_5to1", "hybrid_5to1_sink")
+# Q1 (v5.63): linear-attention hybrid (GDA layers at 1, 3, 4; MLA at
+# 0, 2, 5 with full_attention_every=3) without / with the short conv.
+EXTRA_ARMS = ("gda_hybrid", "gda_hybrid_conv")
+ALL_ARMS = ARMS + EXTRA_ARMS
 
 
 def arm_config(arm):
+    if arm in EXTRA_ARMS:
+        return HeliosLMv5Config(
+            size="lite", num_hidden_layers=LAYERS, vocab_size=VOCAB,
+            hidden_size=128, intermediate_size=256,
+            hybrid_attention=HybridAttentionConfig(
+                enabled=True, full_attention_every=3,
+                short_conv_kernel=4 if arm == "gda_hybrid_conv" else 0),
+            mtp=MTPConfig(enabled=False),
+            moe=MoEConfig(num_experts=4, num_activated_experts=2,
+                          expert_hidden_size=128),
+            use_attention_residuals=False, use_hyper_connections=False)
     att = {"dense": AttentionConfig(),
            "all_swa": AttentionConfig(sliding_window=WINDOW),
            "hybrid_5to1": AttentionConfig(sliding_window=WINDOW,
@@ -98,6 +113,10 @@ def attendable_keys(cfg):
     w = cfg.attention.sliding_window
     every = cfg.attention.global_attention_every
     total = 0
+    if cfg.hybrid_attention.enabled:      # GDA layers read a fixed state
+        from helioslm_v5.src.model_v5 import _is_full_attention_layer
+        return sum(SEQ for i in range(cfg.num_hidden_layers)
+                   if _is_full_attention_layer(cfg, i))
     for i in range(cfg.num_hidden_layers):
         is_global = w is None or (every is not None
                                   and (i == 0 or i % every == every - 1))
@@ -154,8 +173,10 @@ def train_arm(arm, args):
                  for layer in model.layers]
     return {
         "arm": arm,
-        "layout": "".join("G" if (layer.attention.sliding_window is None)
-                          else "S" for layer in model.layers),
+        "layout": "".join(
+            "L" if getattr(layer.attention, "is_recurrent_attention", False)
+            else "G" if layer.attention.sliding_window is None else "S"
+            for layer in model.layers),
         "params": sum(p.numel() for p in model.parameters()),
         "query_acc": round(acc, 4),
         "train_loss_last50": round(sum(losses[-50:]) / max(len(losses[-50:]), 1), 4),
@@ -167,7 +188,7 @@ def train_arm(arm, args):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--arms", nargs="+", default=list(ARMS), choices=ARMS)
+    ap.add_argument("--arms", nargs="+", default=list(ARMS), choices=ALL_ARMS)
     ap.add_argument("--steps", type=int, default=1500)
     ap.add_argument("--batch", type=int, default=32)
     ap.add_argument("--lr", type=float, default=1e-3)
@@ -189,7 +210,7 @@ def main():
             assert p["task"] == out["task"] and p["train"] == out["train"], p
             out["results"] += p["results"]
             out["wall_seconds"].update(p["wall_seconds"])
-        out["results"].sort(key=lambda r: ARMS.index(r["arm"]))
+        out["results"].sort(key=lambda r: ALL_ARMS.index(r["arm"]))
         out["results_sha256"] = hashlib.sha256(json.dumps(
             out["results"], sort_keys=True).encode()).hexdigest()
         Path(args.output).write_text(json.dumps(out, indent=2) + "\n")

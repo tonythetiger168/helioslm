@@ -114,6 +114,36 @@ HeliosLM 不應追排行榜，它的優勢在別處：
 
 - **不跟：** 規模與資料策略（例如 36T token 預訓練），與「可驗證、純 PyTorch」的定位無關。
 
+### Phase B4：美國模型對照（2026-10-16 新增）
+
+對照 OpenAI（gpt-oss）、Google（Gemma 3／4）、Meta（Llama 4）、Microsoft（Phi-4-mini-flash／SambaY）、NVIDIA（Nemotron-H／Nemotron 3）、AI2（Olmo 3）與 Arcee（Trinity）的官方報告、model card 與程式碼。已具備：attention sink（gpt-oss）、5:1 local:global 加 QK-norm（Gemma 3）、MXFP4 QAT、LatentMoE、MTP、多環境 GRPO。Anthropic 與 GPT-5 的架構未公開，只當概念參考。
+
+| ID | 項目 | 來源 | 完成標準 |
+|---|---|---|---|
+| **U1** | GRPO 改成 DAPO／OlmoRL 版本：token-level loss、clip-higher、零梯度組過濾與補樣、可關閉的 KL 與 std 正規化、truncated importance sampling | Olmo 3 | 全部旗標關閉時 loss 與梯度逐位元不變；oracle：全同分組貢獻 0、新舊 logprob 相同時 TIS 權重全為 1 |
+| **U2** | 思考預算控制（訓練時隨機截斷思考軌跡；推論到預算強制插入 `</think>`） | Nemotron 3 Nano；gpt-oss low/med/high | oracle：思考 token 數 ≤ B 且到 B 必插入結束標記；小型數學集上準確率對預算單調 |
+| U3 | NoPE 層的注意力溫度縮放 `log(floor(pos/8192)+1)*0.1+1` | Llama 4（vLLM 原始碼） | 關閉時逐位元不變；pos < 8192 時縮放恰為 1；4 倍訓練長度 passkey A/B |
+| U4 | p-RoPE（partial rotary 0.25）與 global 層 K=V | Gemma 4 | partial=1.0 時與現有 RoPE 逐位元一致；K=V 時 global 層 KV bytes 精確減半 |
+| U5 | Clamped SwiGLU（含 up+1） | gpt-oss | limit=∞ 且不加 1 時逐位元一致；輸出受 limit 限制 |
+| U6 | 跨層 KV 共享（末 N 層共用）或 SambaY 的 Gated Memory Unit | Gemma 4、Phi-4-mini-flash | KV cache 精確降為 (L−N)/L；小模型 ppl A/B |
+| U7 | SMEBU（軟截斷 momentum expert bias）加 depth-scaled sandwich norm | Arcee Trinity | 關閉時逐位元不變；專家負載最大違反量方差下降 |
+
+- **執行順序：** U1 → U2 → U5 → U3 → U4 → U6 → U7。U1 直接改善 AC2 的 agent RL（目前用的是序列級 ratio 加 k3 KL）。
+- **資料可信度：** 調查時沙箱連不到 arxiv／huggingface，主要來源以搜尋摘錄核對；Gemma 4 的 PLE 適用範圍、Llama 4 部分訓練細節為第三方說法。
+
+### Phase TW：台灣繁體中文資料（2026-10-16 新增）
+
+詳見 [`TW_DATASETS_2026Q4.md`](TW_DATASETS_2026Q4.md)。
+
+| ID | 項目 | 完成標準 |
+|---|---|---|
+| TW1 | 授權稽核工具：逐一讀取 HF 卡片的 `license:` 與 gated 狀態，輸出可商用／非商用／未知的清單 | 清單進 `benchmarks/`，每列附來源 hash |
+| TW2 | zh-TW 預訓練資料管線：zh Wikipedia（OpenCC `s2twp`）＋ FineWeb-2 中文子集繁體過濾＋ data.gov.tw，約 1 億 token | 去重與繁體比例統計可重現；每份資料保留授權與標示 |
+| TW3 | 繁中評測接入 harness：TMMLU+、TMLU（本地，不再散布）、TW-JusticeBench | 參考答案 gate 100%、空答案 0%，比照 Phase A |
+| TW4 | 繁中 tokenizer 覆蓋率量測（與現有 tokenizer 比較每字 token 數） | 報告可重現 |
+
+- **原則：** 用到 NC 資料時，權重與衍生資料標為非商用；不再散布任何非 CC BY／OGDL 的原始資料。
+
 ### Phase AC：Agentic coding（2026-10-15 新增）
 
 排行榜的主戰場已轉向 agent 與程式能力（Terminal-Bench、SWE-bench Pro）。Qwen3-Coder 的公開做法是大規模 agent RL（多輪、以執行結果為獎勵）、「難解但容易驗證」的程式 RL、repo 級長 context 與穩定的 tool-call 格式。HeliosLM 已有 10 題終端沙盒（T90）、HumanEval 子集（T89）、GRPO 設定、`train_tool_tuned.py` 與 TrustGate。
