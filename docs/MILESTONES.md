@@ -93,7 +93,7 @@ renumbered.
 | TW | TW3 Traditional-Chinese evals in the harness (TMMLU+, TMLU, TW-JusticeBench) | ⬜ Not started |
 | TW | TW4 zh-TW tokenizer coverage report | ⬜ Not started |
 | AC | AC1 mini SWE task set (20 small repos, hidden tests, trap gates) | ✅ Done (v5.62, T97) |
-| AC | AC2 agent RL loop (GRPO + sandbox, test-pass reward) | 🔄 In progress |
+| AC | AC2 agent RL loop (GRPO + sandbox, test-pass reward) — loop, env and T100 done; RL does not learn yet (collapses to never-DONE), see `benchmarks/swe_agent_rl_notes_2026-10-16.md` | 🔄 In progress |
 | AC | AC3 tool-call recovery layer (7 named repairs, fuzz-tested) | ✅ Done (v5.62, T99) |
 | AC | AC4 repo-scale long-context probe (dense vs hybrid vs CSA) | ⬜ Not started |
 | AC | AC5 知止: stop-decision metrics (false DONE, tested-before-done) on terminal/SWE runs | ✅ Done (v5.62, T98) — frontier rows need an API key |
