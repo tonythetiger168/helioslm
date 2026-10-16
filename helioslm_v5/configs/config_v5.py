@@ -288,6 +288,13 @@ class MTPConfig:
     enabled: bool = True
     # Size-dependent: None = "follow the size" (full: 2, lite: 1).
     num_modules: Optional[int] = None
+    # v5.67 (roadmap B2-5, MiMo-V2-Flash): "light" MTP blocks use
+    # sliding-window causal attention (light_window tokens) in the training
+    # path and a narrow dense FFN (light_ffn_size, None = hidden_size)
+    # instead of intermediate_size. "default" = the original block.
+    style: str = "default"
+    light_window: int = 128
+    light_ffn_size: Optional[int] = None
 
 
 @dataclass
@@ -672,6 +679,16 @@ class HeliosLMv5Config:
             raise ValueError(
                 f"moe.first_k_dense ({k}) exceeds num_hidden_layers "
                 f"({self.num_hidden_layers})")
+        if self.mtp.style not in ("default", "light"):
+            raise ValueError(
+                f"mtp.style must be 'default' or 'light', got {self.mtp.style!r}")
+        w = self.mtp.light_window
+        if isinstance(w, bool) or not isinstance(w, int) or w < 1:
+            raise ValueError(f"mtp.light_window must be an int >= 1, got {w!r}")
+        f = self.mtp.light_ffn_size
+        if f is not None and (isinstance(f, bool) or not isinstance(f, int) or f < 1):
+            raise ValueError(
+                f"mtp.light_ffn_size must be a positive int or None, got {f!r}")
         if self.moe.balance_loss_scope not in (None, "micro", "global"):
             raise ValueError(
                 f"moe.balance_loss_scope must be None, 'micro' or 'global', "

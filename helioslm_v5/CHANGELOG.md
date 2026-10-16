@@ -1,5 +1,22 @@
 # HeliosLM v5 Changelog
 
+## v5.67 (2026-10-16) - Roadmap B2-5: MiMo-style light MTP head
+
+- `mtp.style` ("default" | "light"), `mtp.light_window`,
+  `mtp.light_ffn_size`: a light MTP block uses sliding-window causal
+  attention in its training path (each query sees at most `light_window`
+  keys) and a narrow dense FFN (`light_ffn_size`, default `hidden_size`)
+  instead of `intermediate_size`. The default style is unchanged (same
+  state dict and logits). The inference path runs one token, so the
+  window only shapes training.
+- A/B on the frozen toy main model (`examples/mtp_light_ab.py` ->
+  `benchmarks/mtp_light_ab_2026-10-16.json`; fresh heads, same data,
+  steps and seed): light head 527K vs 658K parameters (-20%), CPU head
+  step 519 vs 845 us (-39%), acceptance 0.813 vs 0.822, 2.72 vs 2.75
+  tokens per verification round; greedy speculative decoding stays
+  token-identical to plain greedy for both.
+- T105 (`test_mtp_light.py`, 7 tests).
+
 ## v5.66 (2026-10-16) - Roadmap B2-4: learnable mHC (Sinkhorn); HC branch-fold fix
 
 - `hyper_connection_sinkhorn` (requires `use_hyper_connections`): the HC
