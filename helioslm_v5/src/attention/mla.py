@@ -74,7 +74,8 @@ class RotaryEmbedding(nn.Module):
 
     _INIT_BUDGET = 8192
 
-    def __init__(self, dim, max_position_embeddings, base=10000.0, scaling=None):
+    def __init__(self, dim, max_position_embeddings, base=10000.0, scaling=None,
+                 partial=1.0):
         super().__init__()
         if dim % 2 != 0:
             raise ValueError(f"rotary dim must be even, got {dim}")
@@ -122,6 +123,13 @@ class RotaryEmbedding(nn.Module):
             inv_freq = inv_freq / float(scaling["factor"])
         elif scaling is not None and scaling["type"] == "yarn":
             inv_freq = self._yarn_inv_freq(inv_freq, scaling, max_position_embeddings)
+        if partial < 1.0:
+            # v5.70 p-RoPE (Gemma 4): keep the highest-frequency pairs, set
+            # the rest to frequency 0 -> cos 1, sin 0, an exact identity.
+            keep = int(round(partial * inv_freq.numel()))
+            inv_freq = inv_freq.clone()
+            inv_freq[keep:] = 0.0
+        self.partial = float(partial)
         self.register_buffer("inv_freq", inv_freq)
         # YaRN attention temperature (mscale): scaling cos/sin by this
         # factor scales the rotated q AND k, so attention scores pick up
@@ -524,6 +532,22 @@ class MLA(nn.Module):
         if self.is_global_layer:
             self.sliding_window = None
             self.sliding_window_sink = 0
+        # v5.70 U4 (Gemma 4): p-RoPE and K=V on global layers.
+        is_global = self.sliding_window is None
+        rope_partial = float(getattr(config.attention, "global_rope_partial", 1.0))
+        if is_global and rope_partial < 1.0 and not self.nope:
+            self.rope = RotaryEmbedding(
+                self.rope_head_dim, config.max_position_embeddings,
+                scaling=getattr(config.attention, "rope_scaling", None),
+                partial=rope_partial)
+        self.k_eq_v = is_global and bool(
+            getattr(config.attention, "global_k_eq_v", False))
+        if self.k_eq_v:
+            if self.v_head_dim != self.no_rope_head_dim:
+                raise ValueError("global_k_eq_v needs v_head_dim == no_rope_head_dim")
+            self.kv_b_proj = nn.Linear(
+                self.kv_latent_dim, self.num_heads * self.no_rope_head_dim,
+                bias=False)
         # v5.62: learnable attention sink — one logit per head, used as an
         # extra value-less key in every softmax (see _softmax_with_sink).
         self.attn_sink = (nn.Parameter(torch.zeros(self.num_heads))
@@ -628,8 +652,12 @@ class MLA(nn.Module):
         such attribute and falls back to ``.weight`` (bitwise unchanged).
         """
         proj = self.kv_b_proj
-        w = (proj.ste_weight() if hasattr(proj, "ste_weight")
-             else proj.weight).view(
+        weight = proj.ste_weight() if hasattr(proj, "ste_weight") else proj.weight
+        if getattr(self, "k_eq_v", False):
+            w = weight.view(self.num_heads, self.no_rope_head_dim,
+                            self.kv_latent_dim)
+            return w, w                      # V = K (v5.70 U4)
+        w = weight.view(
             self.num_heads, self.no_rope_head_dim + self.v_head_dim,
             self.kv_latent_dim,
         )
@@ -703,17 +731,28 @@ class MLA(nn.Module):
 
         # Expand the latent ONCE per new token into K_nope and V.
         kv = self.kv_b_proj(c_kv)
-        kv = kv.view(B, seq, self.num_heads, self.no_rope_head_dim + self.v_head_dim)
-        kv = kv.transpose(1, 2)  # [B, H, seq, no_rope + v]
-        k_nope = kv[..., : self.no_rope_head_dim].contiguous()
-        v = kv[..., self.no_rope_head_dim :].contiguous()
+        if self.k_eq_v:
+            # v5.70 U4: values ARE the keys; the cache's v entry is the
+            # same tensor as k_nope (one storage).
+            k_nope = kv.view(B, seq, self.num_heads,
+                             self.no_rope_head_dim).transpose(1, 2).contiguous()
+            if past_key_value is not None:
+                past_k_nope, past_k_rope, _ = past_key_value
+                k_nope = torch.cat([past_k_nope, k_nope], dim=2)
+                k_rope = torch.cat([past_k_rope, k_rope], dim=2)
+            v = k_nope
+        else:
+            kv = kv.view(B, seq, self.num_heads, self.no_rope_head_dim + self.v_head_dim)
+            kv = kv.transpose(1, 2)  # [B, H, seq, no_rope + v]
+            k_nope = kv[..., : self.no_rope_head_dim].contiguous()
+            v = kv[..., self.no_rope_head_dim :].contiguous()
 
-        # Append to cache (cache holds expanded per-head tensors)
-        if past_key_value is not None:
-            past_k_nope, past_k_rope, past_v = past_key_value
-            k_nope = torch.cat([past_k_nope, k_nope], dim=2)
-            k_rope = torch.cat([past_k_rope, k_rope], dim=2)
-            v = torch.cat([past_v, v], dim=2)
+            # Append to cache (cache holds expanded per-head tensors)
+            if past_key_value is not None:
+                past_k_nope, past_k_rope, past_v = past_key_value
+                k_nope = torch.cat([past_k_nope, k_nope], dim=2)
+                k_rope = torch.cat([past_k_rope, k_rope], dim=2)
+                v = torch.cat([past_v, v], dim=2)
 
         present_key_value = (k_nope, k_rope, v) if use_cache else None
         kv_len = k_nope.shape[2]
@@ -1099,7 +1138,8 @@ class MLA(nn.Module):
 
         Modes (this MLA instance reports ``mla`` for its ACTIVE mode):
           absorbed:  kv_latent_dim + rope_head_dim per token (latent cache).
-          expanded:  H*(no_rope_head_dim + v_head_dim) + rope_head_dim.
+          expanded:  H*(no_rope_head_dim + v_head_dim) + rope_head_dim
+                     (v_head_dim counted 0 with global_k_eq_v: V is K).
         Baselines: GQA (num_key_value_heads) and MHA (num_attention_heads),
         both caching full per-head K and V.
 
@@ -1108,8 +1148,9 @@ class MLA(nn.Module):
         for MHA (~97.7% reduction); the lite config stores 72 vs 256
         (~71.9% reduction).
         """
+        v_dim = 0 if getattr(self, "k_eq_v", False) else self.v_head_dim
         expanded = seq_len * (
-            self.num_heads * (self.no_rope_head_dim + self.v_head_dim)
+            self.num_heads * (self.no_rope_head_dim + v_dim)
             + self.rope_head_dim
         )
         latent = seq_len * (self.kv_latent_dim + self.rope_head_dim)
