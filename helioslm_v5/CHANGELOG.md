@@ -1,5 +1,28 @@
 # HeliosLM v5 Changelog
 
+## v5.69 (2026-10-16) - Roadmap U3: Llama 4 NoPE attention temperature
+
+- `attention.nope_attn_temperature` (requires `nope`), with
+  `nope_temp_floor_scale` (default 8192) and `nope_temp_scale` (0.1):
+  queries at position p are scaled by
+  log(floor((p + 1) / F) + 1) * s + 1 before attention (both the
+  absorbed and expanded paths). The scale is exactly 1.0 for
+  p + 1 < F, so contexts shorter than the floor are bit-identical to off.
+- Length-generalization A/B (`examples/nope_temperature_ab.py` ->
+  `benchmarks/nope_temperature_ab_2026-10-16.json`): one all-NoPE model
+  trained on key-value recall at length 64 with F = 64 (so training is
+  unaffected), evaluated on the same weights:
+
+  | temperature scale | 1x (64) | 2x (128) | 4x (256) |
+  |---|---|---|---|
+  | off | 0.422 | 0.332 | 0.267 |
+  | 0.1 (Llama 4) | 0.422 | 0.356 | 0.279 |
+  | 0.3 | 0.422 | 0.395 | 0.317 |
+
+  Accuracy at the training length is identical by construction; beyond
+  it the temperature recovers part of the drop. Single seed, toy scale.
+- T107 (`test_nope_temperature.py`, 5 tests).
+
 ## v5.68 (2026-10-16) - Roadmap U5: gpt-oss clamped SwiGLU
 
 - `moe.swiglu_limit` / `swiglu_alpha` / `swiglu_up_offset` (routed and

@@ -97,6 +97,15 @@ class AttentionConfig:
     # rope_scaling is ignored (loud warning-free by design: the config
     # simply has no rotary to scale).
     nope: bool = False
+    # v5.69 (roadmap U3, Llama 4): attention temperature for NoPE layers.
+    # With nope, queries at position p are scaled by
+    #   log(floor((p + 1) / nope_temp_floor_scale) + 1) * nope_temp_scale + 1
+    # (exactly 1.0 for p + 1 < floor_scale), sharpening attention at long
+    # range where a position-free softmax flattens. Llama 4 uses 8192 / 0.1.
+    # False (default) = no scaling.
+    nope_attn_temperature: bool = False
+    nope_temp_floor_scale: int = 8192
+    nope_temp_scale: float = 0.1
     # Gated MLA (v5.57, Kimi-K3 direction): an elementwise sigmoid output
     # gate computed from the layer input, applied to the per-head values
     # right before o_proj:  o = o_proj(attn_out * sigmoid(o_gate_proj(x))).
@@ -705,6 +714,20 @@ class HeliosLMv5Config:
             raise ValueError(
                 f"zero_centered_norm must be a bool, got "
                 f"{self.zero_centered_norm!r}")
+        a_ = self.attention
+        if not isinstance(a_.nope_attn_temperature, bool):
+            raise ValueError("attention.nope_attn_temperature must be a bool")
+        if a_.nope_attn_temperature and not a_.nope:
+            raise ValueError(
+                "attention.nope_attn_temperature requires attention.nope")
+        fs = a_.nope_temp_floor_scale
+        if isinstance(fs, bool) or not isinstance(fs, int) or fs < 1:
+            raise ValueError(
+                f"attention.nope_temp_floor_scale must be an int >= 1, got {fs!r}")
+        ts = a_.nope_temp_scale
+        if isinstance(ts, bool) or not isinstance(ts, (int, float)) or ts < 0:
+            raise ValueError(
+                f"attention.nope_temp_scale must be a number >= 0, got {ts!r}")
         if not isinstance(self.attention.output_gate, bool):
             raise ValueError(
                 f"attention.output_gate must be a bool, got "

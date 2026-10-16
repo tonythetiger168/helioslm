@@ -315,6 +315,13 @@ class MLA(nn.Module):
         # split is retained so checkpoints and cache layouts are
         # unchanged — only the rotation is dropped.
         self.nope = bool(getattr(config.attention, "nope", False))
+        # v5.69 U3 (Llama 4): NoPE attention temperature.
+        self.nope_temp = self.nope and bool(
+            getattr(config.attention, "nope_attn_temperature", False))
+        self.nope_temp_floor = int(
+            getattr(config.attention, "nope_temp_floor_scale", 8192))
+        self.nope_temp_scale = float(
+            getattr(config.attention, "nope_temp_scale", 0.1))
 
         # Q compression: d_model -> d_c' -> num_heads * head_dim
         self.q_a_proj = nn.Linear(self.hidden_size, self.q_lora_rank, bias=False)
@@ -588,7 +595,20 @@ class MLA(nn.Module):
             cos, sin = self.rope(position_ids)
             q_rope = apply_rotary(q_rope, cos, sin)
             k_rope = apply_rotary(k_rope, cos, sin)
+        elif self.nope_temp:
+            # Llama 4 NoPE temperature: per-position query scale (exactly
+            # 1.0 below the floor scale, so short contexts are unchanged).
+            scale = self.nope_attn_scale(position_ids).to(q_nope.dtype)
+            scale = scale[:, None, :, None]                   # [B, 1, seq, 1]
+            q_nope = q_nope * scale
+            q_rope = q_rope * scale
         return q_nope, q_rope, c_kv, k_rope
+
+    def nope_attn_scale(self, position_ids):
+        """[B, seq] query scale log(floor((p+1)/F) + 1) * s + 1 (Llama 4)."""
+        p = position_ids.to(torch.float32)
+        return torch.log(torch.floor((p + 1.0) / self.nope_temp_floor) + 1.0) \
+            * self.nope_temp_scale + 1.0
 
     def _w_uk_w_uv(self):
         """Split kv_b_proj.weight into per-head W_UK and W_UV (views).

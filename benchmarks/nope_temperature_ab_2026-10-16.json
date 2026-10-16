@@ -1,0 +1,55 @@
+{
+  "experiment": "U3 NoPE attention temperature (Llama 4), length generalization on one set of weights",
+  "task": {
+    "pairs": 8,
+    "keys": 16,
+    "chance": 0.0625,
+    "train_seq": 64,
+    "eval_seqs": [
+      64,
+      128,
+      256
+    ],
+    "floor_scale": 64,
+    "train_seed": 1000,
+    "eval_seed": 0
+  },
+  "train": {
+    "steps": 1500,
+    "batch": 32,
+    "lr": 0.001,
+    "seed": 0,
+    "scales": [
+      0.1,
+      0.3
+    ]
+  },
+  "results": [
+    {
+      "nope_temp_scale": 0.0,
+      "acc": {
+        "64": 0.4219,
+        "128": 0.332,
+        "256": 0.2666
+      }
+    },
+    {
+      "nope_temp_scale": 0.1,
+      "acc": {
+        "64": 0.4219,
+        "128": 0.3555,
+        "256": 0.2788
+      }
+    },
+    {
+      "nope_temp_scale": 0.3,
+      "acc": {
+        "64": 0.4219,
+        "128": 0.3945,
+        "256": 0.3174
+      }
+    }
+  ],
+  "results_sha256": "68c617ec834d88b68246d246453e455f87d77371f0e18711f323f11d9c48485d",
+  "wall_seconds": 682.5
+}
