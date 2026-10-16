@@ -63,6 +63,64 @@ def _is_full_attention_layer(config, layer_idx):
     return layer_idx % every == every - 1
 
 
+def decay_param_groups(model, weight_decay):
+    """AdamW param groups (v5.63, roadmap Q2).
+
+    Matrices (dim >= 2) and ZERO-CENTERED norm weights are decayed;
+    standard norm gains, biases and other 1-D parameters are not. With
+    standard RMSNorm, decay would pull the gain toward 0 (a shrinking
+    layer); with ``zero_centered_norm`` the stored weight is ``gain - 1``,
+    so decay pulls the gain toward 1 — the reason Qwen3-Next centers it.
+    Every trainable parameter lands in exactly one group.
+    """
+    from helioslm_v5.src.attention.mla import RMSNorm
+    zc = {id(m.weight) for m in model.modules()
+          if isinstance(m, RMSNorm) and m.zero_centered}
+    decay, no_decay = [], []
+    for p in model.parameters():
+        if not p.requires_grad:
+            continue
+        (decay if p.dim() >= 2 or id(p) in zc else no_decay).append(p)
+    return [{"params": decay, "weight_decay": weight_decay},
+            {"params": no_decay, "weight_decay": 0.0}]
+
+
+def balance_loss(model):
+    """Load-balancing loss E * sum_i f_i * P_i (v5.63, roadmap Q3).
+
+    Averaged over MoE layers; 1.0 at perfect balance. f_i is the share of
+    top-k slots routed to expert i (no gradient), P_i the mean per-token
+    normalized gate probability (differentiable). Scope comes from
+    ``moe.balance_loss_scope``:
+      - "micro": the loss of each recorded forward, averaged;
+      - "global": f_i and P_i over ALL forwards recorded since the last
+        call — with gradient accumulation this is exactly the loss of the
+        concatenated global batch (Qwen's global-batch balancing), which
+        lets experts specialize per domain inside the batch.
+    Records are cleared. Returns None when no layer recorded anything.
+    Keep the micro-batch graphs alive until this loss is backpropagated
+    (sum the micro-batch LM losses with it and call backward once).
+    """
+    from helioslm_v5.src.moe.sigmoid_moe import DeviceLimitedMoE
+    losses = []
+    for m in model.modules():
+        if not isinstance(m, DeviceLimitedMoE) or not m._balance_records:
+            continue
+        recs, m._balance_records = m._balance_records, []
+        E, K = m.num_experts, m.top_k
+        if m.balance_loss_scope == "global":
+            counts = sum(r[0] for r in recs)
+            p_sum = sum(r[1] for r in recs)
+            n = sum(r[2] for r in recs)
+            losses.append(E * ((counts / (n * K)) * (p_sum / n)).sum())
+        else:
+            losses.append(sum(E * ((c / (n * K)) * (p / n)).sum()
+                              for c, p, n in recs) / len(recs))
+    if not losses:
+        return None
+    return sum(losses) / len(losses)
+
+
 class HeliosLMv5Layer(nn.Module):
     """Single transformer layer: pre-norm attention + pre-norm Sigmoid MoE.
 
@@ -93,12 +151,14 @@ class HeliosLMv5Layer(nn.Module):
     def __init__(self, config, layer_idx, shared_indexer=None):
         super().__init__()
         self.layer_idx = layer_idx  # kept for external cache plumbing/debugging
-        self.pre_attn_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.pre_attn_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps,
+            zero_centered=bool(getattr(config, "zero_centered_norm", False)))
         self.attention = (MLA(config, shared_indexer=shared_indexer,
                               layer_idx=layer_idx)
                           if _is_full_attention_layer(config, layer_idx)
                           else GatedDeltaAttention(config))
-        self.pre_moe_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.pre_moe_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps,
+            zero_centered=bool(getattr(config, "zero_centered_norm", False)))
         self.moe = DeviceLimitedMoE(config)
         if bool(getattr(config, "use_attention_residuals", False)):
             self.attn_res_gate = nn.Parameter(torch.tensor(0.1))
@@ -257,7 +317,8 @@ class HeliosLMv5(nn.Module):
             layers.append(layer)
         self.layers = nn.ModuleList(layers)
 
-        self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps,
+            zero_centered=bool(getattr(config, "zero_centered_norm", False)))
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
         # P0: MTP modules — share the main model's embedding and LM head

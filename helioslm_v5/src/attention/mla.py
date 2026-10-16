@@ -41,13 +41,27 @@ import torch.nn.functional as F
 
 
 class RMSNorm(nn.Module):
-    def __init__(self, dim, eps=1e-6):
+    """RMSNorm. ``zero_centered`` (v5.63, roadmap Q2, Qwen3-Next): the gain
+    is ``1 + weight`` with ``weight`` initialized to 0, so weight decay
+    pulls the gain toward 1 instead of toward 0 and norm weights can join
+    the decayed group (see ``model_v5.decay_param_groups``). At init the
+    output is bit-identical to the standard norm (1 + 0 == 1 exactly).
+    """
+
+    def __init__(self, dim, eps=1e-6, zero_centered=False):
         super().__init__()
         self.eps = eps
-        self.weight = nn.Parameter(torch.ones(dim))
+        self.zero_centered = bool(zero_centered)
+        self.weight = nn.Parameter(
+            torch.zeros(dim) if self.zero_centered else torch.ones(dim))
 
     def forward(self, x):
-        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps) * self.weight
+        gain = 1.0 + self.weight if self.zero_centered else self.weight
+        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps) * gain
+
+
+def _zc(config):
+    return bool(getattr(config, "zero_centered_norm", False))
 
 
 class RotaryEmbedding(nn.Module):
@@ -459,11 +473,14 @@ class MLA(nn.Module):
         self.qk_norm = bool(getattr(config.attention, "qk_norm", False))
         if self.qk_norm:
             self.norm_q_nope = RMSNorm(self.no_rope_head_dim,
-                                       eps=config.rms_norm_eps)
+                                       eps=config.rms_norm_eps,
+                                       zero_centered=_zc(config))
             self.norm_q_rope = RMSNorm(self.rope_head_dim,
-                                       eps=config.rms_norm_eps)
+                                       eps=config.rms_norm_eps,
+                                       zero_centered=_zc(config))
             self.norm_k_rope = RMSNorm(self.rope_head_dim,
-                                       eps=config.rms_norm_eps)
+                                       eps=config.rms_norm_eps,
+                                       zero_centered=_zc(config))
 
         # v5.9: sliding-window attention with optional attention sinks
         # (StreamingLLM / Gemma-3 / Qwen3 hybrid style). Semantics: a query
@@ -506,8 +523,10 @@ class MLA(nn.Module):
                           if getattr(config.attention, "learnable_sink", False)
                           else None)
 
-        self.norm_q = RMSNorm(self.q_lora_rank, eps=config.rms_norm_eps)
-        self.norm_kv = RMSNorm(self.kv_latent_dim, eps=config.rms_norm_eps)
+        self.norm_q = RMSNorm(self.q_lora_rank, eps=config.rms_norm_eps,
+                              zero_centered=_zc(config))
+        self.norm_kv = RMSNorm(self.kv_latent_dim, eps=config.rms_norm_eps,
+                               zero_centered=_zc(config))
         self.attention_dropout = config.attention.attention_dropout
         # Matches the SDPA default scale (1/sqrt(head_dim)) used by the
         # non-absorbed path, where the score matmul runs over head_dim dims.

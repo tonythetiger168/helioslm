@@ -234,6 +234,11 @@ class MoEConfig:
     # before the output projection).
     activation: str = "swiglu"
     situ_softcap: float = 10.0  # tanh soft-cap magnitude for "situ"
+    # v5.63 (roadmap Q3, Qwen3): optional load-balancing loss scope —
+    # None (off), "micro" (f_i per forward / micro-batch) or "global"
+    # (f_i over every forward since the last balance_loss() call, i.e. the
+    # whole global batch). Read with model_v5.balance_loss(model).
+    balance_loss_scope: Optional[str] = None
 
 
 @dataclass
@@ -385,6 +390,10 @@ class HeliosLMv5Config:
     # logits against rare activation spikes. None = uncapped (v5.8
     # behaviour, bit-identical).
     final_logit_soft_cap: Optional[float] = None
+    # v5.63 (roadmap Q2, Qwen3-Next): zero-centered RMSNorm gains
+    # (gain = 1 + w, w init 0) for the layer / final / MLA / QK norms.
+    # Bit-identical at init; lets norm weights take weight decay toward 1.
+    zero_centered_norm: bool = False
 
     # Size presets for the architecture fields declared Optional above. A
     # field still None at __post_init__ time ("follow the size") is filled
@@ -610,6 +619,14 @@ class HeliosLMv5Config:
             raise ValueError(
                 f"attention.learnable_sink must be a bool, got "
                 f"{self.attention.learnable_sink!r}")
+        if self.moe.balance_loss_scope not in (None, "micro", "global"):
+            raise ValueError(
+                f"moe.balance_loss_scope must be None, 'micro' or 'global', "
+                f"got {self.moe.balance_loss_scope!r}")
+        if not isinstance(self.zero_centered_norm, bool):
+            raise ValueError(
+                f"zero_centered_norm must be a bool, got "
+                f"{self.zero_centered_norm!r}")
         if not isinstance(self.attention.output_gate, bool):
             raise ValueError(
                 f"attention.output_gate must be a bool, got "
@@ -858,3 +875,46 @@ def mimo_hybrid_config(size="lite", window=128, num_hidden_layers=None,
                                   learnable_sink=learnable_sink),
         hybrid_attention=HybridAttentionConfig(enabled=False),
     )
+
+
+def qwen_next_config(size="lite", num_hidden_layers=None):
+    """Qwen3-Next-style preset (v5.63, roadmap Q4).
+
+    - 3:1 linear/global interleave in Qwen3-Next order: GDA, GDA, GDA,
+      gated attention (``full_attention_every=4``, ``first_layer_full=
+      False``), with the causal short conv on the GDA q/k/v (Q1,
+      ``short_conv_kernel=4``);
+    - gated attention (``attention.output_gate=True``) with QK-norm;
+    - zero-centered RMSNorm gains (Q2, ``zero_centered_norm=True``);
+    - ultra-sparse MoE with one shared expert: "full" uses 512 routed
+      experts, top-10 (Qwen3-Next-80B-A3B's ratio, ~2% active), expert
+      width ``hidden_size // 4``; smaller sizes use 32 experts, top-2;
+    - global-batch load-balancing loss (Q3,
+      ``moe.balance_loss_scope="global"``) on top of the bias balancing;
+    - MTP stays on (the size default).
+
+    Not reproduced: Qwen3-Next's exact widths, its partial RoPE on the
+    attention layers (MLA already rotates only ``rope_head_dim`` of each
+    head), training recipe and scale. "lite" (2 layers) is raised to 4 so
+    one full block exists. Mutate the result and call ``_validate()`` to
+    adjust.
+    """
+    if size == "lite" and num_hidden_layers is None:
+        num_hidden_layers = 4
+    full = size == "full"
+    cfg = HeliosLMv5Config(
+        size=size,
+        num_hidden_layers=num_hidden_layers,
+        zero_centered_norm=True,
+        attention=AttentionConfig(output_gate=True, qk_norm=True),
+        hybrid_attention=HybridAttentionConfig(
+            enabled=True, full_attention_every=4, first_layer_full=False,
+            short_conv_kernel=4),
+        moe=MoEConfig(num_experts=512 if full else 32,
+                      num_activated_experts=10 if full else 2,
+                      num_shared_experts=1,
+                      balance_loss_scope="global"),
+    )
+    cfg.moe.expert_hidden_size = cfg.hidden_size // 4
+    cfg._validate()
+    return cfg

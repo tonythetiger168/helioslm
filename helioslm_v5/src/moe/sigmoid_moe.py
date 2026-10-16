@@ -162,6 +162,14 @@ class DeviceLimitedMoE(nn.Module):
                 torch.zeros(self.num_experts, self._MARGIN_BUF),
             )
             self.register_buffer("margin_count", torch.zeros((), dtype=torch.long))
+        # v5.63 (roadmap Q3, Qwen3 MoE): optional load-balancing loss
+        # records. None = off (no records, forward unchanged). When set,
+        # every TRAINING forward appends (counts, sum of per-token
+        # normalized gate probs, token count); model_v5.balance_loss()
+        # turns them into the loss with micro- or global-batch f_i and
+        # clears them.
+        self.balance_loss_scope = getattr(config.moe, "balance_loss_scope", None)
+        self._balance_records = []
         # Lazy cache for the distributed local-expert id list (O3): the
         # expert->device map is fixed at construction and a rank's partition
         # never changes within a process, so the list is built at most once
@@ -214,6 +222,7 @@ class DeviceLimitedMoE(nn.Module):
         """
         router_logits = self.router(flat)
         scores = torch.sigmoid(router_logits)                    # bias-free gates
+        self._last_scores = scores if self.balance_loss_scope else None
         scores_for_select = scores + self.route_bias             # selection only
 
         if self.balance_strategy == "quantile" and self.training \
@@ -305,6 +314,12 @@ class DeviceLimitedMoE(nn.Module):
                     topk_indices.reshape(-1), minlength=self.num_experts
                 )
                 self.expert_load += counts_all.to(self.expert_load.dtype)
+            if self.balance_loss_scope:
+                sc = self._last_scores
+                probs = sc / sc.sum(-1, keepdim=True).clamp(min=1e-9)
+                self._balance_records.append(
+                    (counts_all.detach().float(), probs.sum(0), N))
+        self._last_scores = None
 
         # Dispatch: sort tokens by expert id once, then process contiguous
         # segments — O(num_experts) iterations and a single .tolist() sync,
