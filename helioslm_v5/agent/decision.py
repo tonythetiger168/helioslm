@@ -19,7 +19,7 @@ pi-warden preset: the four guardrail questions from the open-source
 pi-warden project (is_irreversible / off_task / mutates / out_of_scope)
 plus our route Choice — one batch, one state.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 NOUL_YES, NOUL_NO, NOUL_UNKNOWN = "yes", "no", "unknown"
 

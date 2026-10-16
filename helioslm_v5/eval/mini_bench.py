@@ -23,7 +23,6 @@ Honesty constraints:
 import json
 from typing import Dict, List, Optional, Union
 
-import torch
 
 from helioslm_v5.eval.quant_calib import choice_confidence
 from helioslm_v5.eval.score_stream import _encode

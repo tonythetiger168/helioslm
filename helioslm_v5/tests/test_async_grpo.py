@@ -93,7 +93,7 @@ def test_backpressure_and_stop():
     pipe.stop()               # cooperative shutdown
     worker.join(timeout=10)
     assert not worker.is_alive(), "worker did not stop"
-    print(f"PASS test_backpressure_and_stop (queue<=2, clean stop)")
+    print("PASS test_backpressure_and_stop (queue<=2, clean stop)")
 
 
 if __name__ == "__main__":

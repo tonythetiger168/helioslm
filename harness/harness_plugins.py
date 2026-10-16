@@ -135,7 +135,7 @@ class AgentWorkflowPlugin:
                 try:
                     kind, payload = parse_chat_turn(raw, ctx.tools.registry)
                 except ToolCallError:
-                    transcript += f"\nPARSE_ERROR"
+                    transcript += "\nPARSE_ERROR"
                     continue
                 if kind == "text":
                     ctx.state["workflow"]["final"] = payload
@@ -295,7 +295,6 @@ class CodePlugin:
     def apply(self, ctx):
         def run_code(task_text, model_fn, max_steps=12, seed=0):
             ctx.state["code"] = {"task": task_text, "steps": []}
-            from envs import make_long_envs
             from grounding import GroundingGate
             from gate import FixedGate, Route
             from envs.file_env import FileLongHorizonEnv
@@ -963,7 +962,7 @@ class MCPWizardPlugin:
     def apply(self, ctx):
         def wrap(server_name, command, args=None):
             try:
-                import mcp
+                import mcp  # noqa: F401  (availability probe)
             except ImportError:
                 return {"error": "mcp package not installed"}
             # registration would go here; recorded for audit
@@ -1217,7 +1216,7 @@ class OmiPlugin:
     def apply(self, ctx):
         def connect(device_name="Omi"):
             try:
-                import bleak
+                import bleak  # noqa: F401  (availability probe)
             except ImportError:
                 return {"error": "bleak not installed (pip install bleak)"}
             ctx.effect("omi_connect", {"device": device_name[:30]},

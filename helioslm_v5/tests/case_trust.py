@@ -75,8 +75,8 @@ def test_quant_drift_trust_gate():
     assert rec["route"] == "ESCALATE" and \
         abs(rec["margin"] - 0.15) < 1e-9, rec
     _pass("test_quant_drift_trust_gate",
-          f"drift +0.03 -> ece 0.08; widen-only; same p=0.84 DIRECTs on "
-          f"bf16, ESCALATEs with +0.10 quant drift")
+          "drift +0.03 -> ece 0.08; widen-only; same p=0.84 DIRECTs on "
+          "bf16, ESCALATEs with +0.10 quant drift")
 
 
 # ----------------------------------------------------------------------

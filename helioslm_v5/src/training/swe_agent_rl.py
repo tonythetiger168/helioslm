@@ -39,7 +39,6 @@ procedure, which is what the held-out evaluation checks.
 """
 import random
 import tempfile
-from pathlib import Path
 
 import torch
 

@@ -26,11 +26,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-try:
-    from helioslm_v5.src.attention.linear_attention import past_seq_len as _past_seq_len_impl
-except ImportError:  # pragma: no cover - package-relative fallback
-    from ..attention.linear_attention import past_seq_len as _past_seq_len_impl
-
 
 def _derive_nhead(hidden_size: int, config) -> int:
     """Pick a num_heads that divides hidden_size (M22)."""

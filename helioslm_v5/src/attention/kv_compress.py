@@ -137,7 +137,6 @@ class IndexedSparseAttention(nn.Module):
         q, k, v = qkv.unbind(dim=2)              # (B, L, H, dh)
         if attention_mask is None:
             attention_mask = torch.ones(B, L, dtype=torch.long, device=x.device)
-        pos = torch.arange(L, device=x.device)
 
         # indexer scores per position (content-only; causal use below)
         idx = self.indexer(x).view(B, L, H, dh)

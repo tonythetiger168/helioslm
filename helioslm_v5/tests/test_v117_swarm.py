@@ -28,8 +28,8 @@ def test_swarm_spawn_and_delegate():
     ctx.use(ModelPlugin("b", _worker_b))
     s = ctx.swarm.spawn("Compute 6*7", {"a": _worker_a, "b": _worker_b})
     assert s["n"] == 2
-    r1 = ctx.swarm.delegate("a", "Compute 6*7", ctx.model.a)
-    r2 = ctx.swarm.delegate("b", "Compute 6*7", ctx.model.b)
+    ctx.swarm.delegate("a", "Compute 6*7", ctx.model.a)
+    ctx.swarm.delegate("b", "Compute 6*7", ctx.model.b)
     agg = ctx.swarm.aggregate()
     assert agg == "42" or "42" in str(agg)
     print("PASS test_swarm_spawn_and_delegate")

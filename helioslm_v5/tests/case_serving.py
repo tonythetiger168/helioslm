@@ -44,7 +44,6 @@ def test_spec_breakeven():
     assert r["misses"] > 0 and r["evictions"] == 0  # full residency: no churn
 
     # 3) MTP acceptance field present and in range on the toy checkpoint
-    from pathlib import Path
     ck = Path(__file__).resolve().parents[2] / "checkpoints" / "toy_v5.13.pt"
     if ck.exists():
         from helioslm_v5.src.inference.mtp import MTPDecoder
@@ -64,7 +63,6 @@ def test_spec_breakeven():
 
 def test_score_stream():
     """v5.17: standalone token-stream scorer — engine-agnostic quality gate."""
-    from pathlib import Path
     from helioslm_v5.eval.score_stream import score_record
     from helioslm_v5.src.model_v5 import HeliosLMv5
 
@@ -84,7 +82,6 @@ def test_score_stream():
         greedy = "".join(chr(int(t)) for t in
                          model.generate(ids, max_new_tokens=16,
                                         temperature=0)[0, len(prompt):])
-    rng = torch.Generator().manual_seed(5)
     import random as _r
     _r.seed(5)
     noise = "".join(chr(_r.randint(97, 122)) for _ in range(16))
@@ -102,7 +99,6 @@ def test_score_stream():
 
 def test_prefix_pool():
     """v5.18: content-addressed KV prefix pool — pooled == from-scratch."""
-    from pathlib import Path
     from helioslm_v5.src.inference.prefix_pool import PrefixPool
     from helioslm_v5.src.model_v5 import HeliosLMv5
 
@@ -182,7 +178,6 @@ def test_prefix_pool_high_token_ids():
 
 def test_harness_evolver():
     """v5.19: oracle-gated serving-harness evolution (ModularRSI-style)."""
-    from pathlib import Path
     from helioslm_v5.src.inference.harness_evolver import HarnessEvolver
     from helioslm_v5.src.model_v5 import HeliosLMv5
 
@@ -226,7 +221,6 @@ def test_harness_evolver():
 
 def test_evolver_pareto_adaptation():
     """v5.20: memory axis + Pareto frontier + cross-workload adaptation."""
-    from pathlib import Path
     from helioslm_v5.src.inference.harness_evolver import (AdaptationLoop,
                                                            HarnessEvolver)
     from helioslm_v5.src.model_v5 import HeliosLMv5
@@ -339,7 +333,6 @@ def test_expert_streaming():
 
 def test_toy_checkpoint():
     """v5.13: shipped toy checkpoint loads, generates deterministically."""
-    from pathlib import Path
     from helioslm_v5.src.model_v5 import HeliosLMv5
 
     ckpt_path = Path(__file__).resolve().parents[2] / "checkpoints" / "toy_v5.13.pt"

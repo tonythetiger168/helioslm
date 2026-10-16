@@ -22,7 +22,6 @@ def _mk_records(n=200, seed=3):
     """Two synthetic states: state A -> route DIRECT + safe; state B ->
     route ESCALATE + irreversible. Char-level separable by construction
     (distinct keyword chars) so the honest minimum encoder can learn it."""
-    rng = random.Random(seed)
     recs = []
     for i in range(n):
         if i % 2 == 0:

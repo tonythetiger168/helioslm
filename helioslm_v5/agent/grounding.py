@@ -33,7 +33,6 @@ Boundaries (recorded, not hidden):
 - _state grows per task text and is not thread-safe: single-session
   loops only (documented, matches AgentLoop/ChatSession semantics).
 """
-import re
 from dataclasses import dataclass, field
 
 try:

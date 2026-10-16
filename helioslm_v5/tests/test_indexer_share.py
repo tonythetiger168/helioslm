@@ -81,7 +81,7 @@ def test_default_per_layer_unchanged():
     for i in range(4):
         assert any(k.startswith(f"layers.{i}.attention.indexer.")
                    for k in keys), f"layer {i} must register its indexer"
-    single = _single_indexer_params(cfg)
+    _single_indexer_params(cfg)
     total = sum(p.numel() for p in model.parameters())
     model2, _ = _make_model(share=1, layers=4)
     total2 = sum(p.numel() for p in model2.parameters())
