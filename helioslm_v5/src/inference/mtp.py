@@ -74,10 +74,21 @@ class MTPModule(nn.Module):
 
         # MTP-specific transformer layer (causal-masked at runtime, M22)
         nhead = _derive_nhead(config.hidden_size, config)
+        mtp_cfg = getattr(config, "mtp", None)
+        self.style = getattr(mtp_cfg, "style", "default")
+        # v5.67 B2-5 (MiMo-V2-Flash light MTP): sliding-window attention in
+        # the training path + a narrow dense FFN. The inference path runs a
+        # single token, where the window is a no-op either way.
+        self.window = (getattr(mtp_cfg, "light_window", 128)
+                       if self.style == "light" else None)
+        if self.style == "light":
+            ffn = getattr(mtp_cfg, "light_ffn_size", None) or config.hidden_size
+        else:
+            ffn = getattr(config, "intermediate_size", config.hidden_size * 4)
         self.transformer = nn.TransformerEncoderLayer(
             d_model=config.hidden_size,
             nhead=nhead,
-            dim_feedforward=getattr(config, "intermediate_size", config.hidden_size * 4),
+            dim_feedforward=ffn,
             batch_first=True,
             dropout=0.0,
         )
@@ -87,12 +98,20 @@ class MTPModule(nn.Module):
 
     # ------------------------------------------------------------------
     @staticmethod
-    def _causal_mask(n: int, device, dtype) -> torch.Tensor:
-        # M22: upper-triangular -inf mask => no future-token leakage
-        return torch.triu(
+    def _causal_mask(n: int, device, dtype, window: Optional[int] = None) -> torch.Tensor:
+        # M22: upper-triangular -inf mask => no future-token leakage.
+        # window (B2-5 light MTP): also mask keys more than window-1
+        # positions back, so each query sees at most ``window`` keys.
+        mask = torch.triu(
             torch.full((n, n), float("-inf"), device=device, dtype=dtype),
             diagonal=1,
         )
+        if window is not None and window < n:
+            mask = mask + torch.tril(
+                torch.full((n, n), float("-inf"), device=device, dtype=dtype),
+                diagonal=-window,
+            )
+        return mask
 
     def forward_with_hidden(
         self,
@@ -135,7 +154,8 @@ class MTPModule(nn.Module):
             tok = next_token_ids[:, d : d + usable]        # ids[t + d]
             emb = self.embed_tokens(tok)                   # [B, usable, H]
             fused = self.fusion_proj(torch.cat([h, emb], dim=-1))
-            mask = self._causal_mask(usable, fused.device, fused.dtype)
+            mask = self._causal_mask(usable, fused.device, fused.dtype,
+                                     self.window)
             transformed = self.transformer(fused, src_mask=mask)
         else:
             # ----- inference path (single token, no shift) -----

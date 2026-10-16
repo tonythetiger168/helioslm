@@ -1,0 +1,41 @@
+{
+  "experiment": "B2-5 light MTP head A/B (frozen toy main model)",
+  "train": {
+    "steps": 600,
+    "batch": 16,
+    "seq": 64,
+    "lr": 0.001,
+    "window": 16,
+    "seed": 0,
+    "max_new": 32
+  },
+  "results": [
+    {
+      "style": "default",
+      "head_params": 658432,
+      "ffn_size": 512,
+      "train_window": null,
+      "mtp_loss_last20": 1.9607,
+      "gate_greedy_equal": true,
+      "acceptance_rate": 0.8222,
+      "accepted_per_round": 0.7957,
+      "tokens_per_round": 2.7527
+    },
+    {
+      "style": "light",
+      "head_params": 527104,
+      "ffn_size": 256,
+      "train_window": 16,
+      "mtp_loss_last20": 1.9971,
+      "gate_greedy_equal": true,
+      "acceptance_rate": 0.8132,
+      "accepted_per_round": 0.7872,
+      "tokens_per_round": 2.7234
+    }
+  ],
+  "results_sha256": "0f8b379fb0ce2f65a99587d10fd17d144a828a3a528050291d3f3451e9bd310d",
+  "head_step_latency_us_median": {
+    "default": 845.3,
+    "light": 518.9
+  }
+}
