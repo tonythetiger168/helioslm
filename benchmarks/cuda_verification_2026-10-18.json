@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-18T06:07:00.102661+00:00",
+  "environment": {
+    "python": "3.12.14",
+    "torch": "2.14.1+cpu",
+    "cuda_build": null,
+    "cuda_available": false,
+    "device_count": 0
+  },
+  "source_revision": "a0f09332f1fc6633615d48397dda77e629ac6cf6",
+  "cuda_checks_passed": false,
+  "areas": [],
+  "regression": [],
+  "unverified_scope": [
+    "multi-GPU/NCCL",
+    "native FP8 tensor-core kernels",
+    "legacy CPU fixtures do not become CUDA tests"
+  ],
+  "status": "blocked_no_cuda",
+  "reason": "Requested CUDA device unavailable; no CPU fallback"
+}

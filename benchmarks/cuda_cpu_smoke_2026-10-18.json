@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-18T06:06:56.539118+00:00",
+  "environment": {
+    "python": "3.12.14",
+    "torch": "2.14.1+cpu",
+    "cuda_build": null,
+    "cuda_available": false,
+    "device_count": 0
+  },
+  "source_revision": "a0f09332f1fc6633615d48397dda77e629ac6cf6",
+  "cuda_checks_passed": false,
+  "areas": [
+    {
+      "area": "cache_float32",
+      "device": "cpu",
+      "metrics": {
+        "max_abs_error": 9.834766387939453e-07,
+        "max_scaled_error": 8.24988030753053e-07,
+        "tolerance": 0.0001
+      },
+      "status": "passed",
+      "seconds": 0.11125957000001563
+    },
+    {
+      "area": "hybrid_cache",
+      "device": "cpu",
+      "metrics": {
+        "max_abs_error": 9.834766387939453e-07,
+        "max_scaled_error": 8.24988030753053e-07,
+        "tolerance": 0.0001
+      },
+      "status": "passed",
+      "seconds": 0.11514949200000046
+    },
+    {
+      "area": "mtp",
+      "device": "cpu",
+      "metrics": {
+        "greedy_exact": true
+      },
+      "status": "passed",
+      "seconds": 0.1317009869999879
+    },
+    {
+      "area": "engine_paged",
+      "device": "cpu",
+      "metrics": {
+        "greedy_prefix_exact": true,
+        "paged_cache_device": "cpu"
+      },
+      "status": "passed",
+      "seconds": 0.15495708600002445
+    },
+    {
+      "area": "fp8_training",
+      "device": "cpu",
+      "metrics": {
+        "losses": [
+          6.997919082641602,
+          4.468653678894043
+        ],
+        "scope": "FP8 value quantization/STE; no tensor-core claim"
+      },
+      "status": "passed",
+      "seconds": 1.0663526280000042
+    },
+    {
+      "area": "grpo",
+      "device": "cpu",
+      "metrics": {
+        "loss": 0.0,
+        "gradient_tensors": 59
+      },
+      "status": "passed",
+      "seconds": 0.3634849780000309
+    },
+    {
+      "area": "dualpipe",
+      "device": "cpu",
+      "metrics": {
+        "loss": 0.9631004631519318,
+        "scope": "single-process schedule; not multi-GPU/NCCL"
+      },
+      "status": "passed",
+      "seconds": 0.15668717299996615
+    },
+    {
+      "area": "audio",
+      "device": "cpu",
+      "metrics": {
+        "max_abs_error": 2.1457672119140625e-06,
+        "tolerance": 0.001
+      },
+      "status": "passed",
+      "seconds": 0.003605428000014399
+    },
+    {
+      "area": "vision",
+      "device": "cpu",
+      "metrics": {
+        "shape": [
+          1,
+          16,
+          64
+        ]
+      },
+      "status": "passed",
+      "seconds": 0.0023430949999578843
+    },
+    {
+      "area": "quant_awq",
+      "device": "cpu",
+      "metrics": {
+        "max_scaled_error": 1.444552921617122e-07,
+        "tolerance": 0.0001,
+        "scope": "quantized linear; not whole-model speed or native CUDA kernels"
+      },
+      "status": "passed",
+      "seconds": 0.008401893999973709
+    },
+    {
+      "area": "quant_gptq",
+      "device": "cpu",
+      "metrics": {
+        "max_scaled_error": 1.6018376173648907e-07,
+        "tolerance": 0.0001,
+        "scope": "quantized linear; not whole-model speed or native CUDA kernels"
+      },
+      "status": "passed",
+      "seconds": 0.004736715000035474
+    },
+    {
+      "area": "quant_mxfp4",
+      "device": "cpu",
+      "metrics": {
+        "max_scaled_error": 1.4577486760883282e-07,
+        "tolerance": 0.0001,
+        "scope": "quantized linear; not whole-model speed or native CUDA kernels"
+      },
+      "status": "passed",
+      "seconds": 0.0010841359999744782
+    }
+  ],
+  "regression": [],
+  "unverified_scope": [
+    "multi-GPU/NCCL",
+    "native FP8 tensor-core kernels",
+    "legacy CPU fixtures do not become CUDA tests"
+  ],
+  "dtypes_run": [
+    "float32"
+  ],
+  "execution_device": "cpu",
+  "status": "cpu_smoke_passed"
+}

@@ -232,7 +232,10 @@ class FP8Trainer:
                     module.out_features,
                     bias=module.bias is not None,
                     fp8_format=self.fp8_format,
-                )
+                ).to(device=module.weight.device, dtype=module.weight.dtype)
+                # Conversion can happen after model.to(cuda/bf16/etc.).
+                # Preserve placement before copying values and constructing
+                # the fp32 optimizer masters; CPU defaults would split the model.
                 # Copy weights
                 fp8_module.weight.data.copy_(module.weight.data)
                 if module.bias is not None:
