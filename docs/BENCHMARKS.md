@@ -48,3 +48,19 @@ represent the full config (which cannot run wall-clock benchmarks on CPU).
   time of a 32-token pass (approximation documented in `bench_cpu.py`).
 - MHA reference = every head caches K (`head_dim`) + V (`v_head_dim`) at
   bf16 — the design MLA replaces.
+
+
+## Fused vs unfused AWQ/GPTQ benchmark (Issue #2)
+
+A reproducible benchmark driver is available at `benchmarks/bench_quant.py`.
+It runs each quantization method and fused flag in a **separate process**, reporting median forward latency (milliseconds), individual samples, and process peak RSS when supported by the operating system. Quantization setup and model initialization are excluded from forward timings. Results are saved as JSON; **no measured speedup is claimed until an actual run is attached**.
+
+```bash
+# Laptop-sized CPU smoke run
+python benchmarks/bench_quant.py --in-features 256 --out-features 512 --repeats 3 --out benchmarks/quant_smoke.json
+
+# Requested representative projection size (high CPU RAM/time cost)
+python benchmarks/bench_quant.py --in-features 4096 --out-features 14336 --group-size 128 --repeats 7 --out benchmarks/quant_results.json
+```
+
+The reported speedup is `unfused_median_ms / fused_median_ms`; values below 1 indicate a regression. Peak RSS is per-process high-water memory, not isolated kernel allocation, and may be unavailable on Windows. Both paths use the same deterministic seed and quantization recipe. The benchmark does **not** claim a GPU kernel speedup or cover FP8/MXFP4 yet; add separate hardware-specific runs before generalizing. Follow up with correctness comparisons and actual measured results before closing Issue #2.
