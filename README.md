@@ -484,3 +484,66 @@ Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/hel
 ## License
 
 Apache License 2.0 — see [LICENSE](https://github.com/tonythetiger168/helioslm/blob/main/LICENSE).
+
+
+<!-- HELIOSLM_PRODUCT_ROADMAP_START -->
+## Product roadmap (proposed; not a release claim)
+
+> **Planning baseline: October 2026.** This roadmap describes **future product generations**, not the existing `helioslm_v5` Python package, historical v5.x research iterations, or harness plugin releases. The current repository is primarily a correctness-focused reference implementation. None of the model sizes below should be interpreted as already-trained checkpoints or committed delivery dates. Promotion requires benchmark, reproducibility, security and budget gates.
+
+### Vision and product portfolio
+
+HeliosLM aims to evolve from a verifiable, modifiable LLM research stack into an independent model and agent platform. Commercial rollout priority: **Helios Code → Helios Cloud → Helios Enterprise → Frontier research commercialization**.
+
+| Product | Audience | Proposed offering |
+| --- | --- | --- |
+| **HeliosLM Models** | Researchers and developers | Open research components, independent model weights when trained and licensed, SDK and inference |
+| **Helios Code** | Software engineers and teams | Auditable GitHub coding agent, sandboxed tools, tests, patch review and rollback |
+| **Helios Cloud** | AI application builders | Model-serving API, routing, metering, monitoring and usage-based billing |
+| **Helios Enterprise** | Organizations | Private deployment, RBAC, audit trails, enterprise integrations and support |
+
+### Six proposed product generations and parameter targets
+
+**B = billion (10^9) parameters; T = trillion (10^12) parameters.** *Active parameters* denotes the approximate per-token compute path in an MoE model, **not** the amount of weight memory required to load the model. Exact counts depend on final shared layers, experts and routing configuration.
+
+| Product generation | Target model | Total parameters | Active parameters / token | Architecture | Proposed deliverable |
+| --- | --- | ---: | ---: | --- | --- |
+| **v1.0 — Foundation** | HeliosLM Lite | **0.5B** | 0.5B | Dense | Reproducible training/inference, CLI, tests, developer preview |
+| **v2.0 — Training & API** | HeliosLM Base | **3B** | 3B | Dense | Data pipeline, SFT/LoRA, checkpoints, evaluation, SDK/API |
+| **v3.0 — Advanced MoE / Code** | HeliosLM MoE | **30B** | ~3B | MoE | Expert routing, quantized serving, Helios Code beta |
+| **v4.0 — Reasoning / Cloud** | HeliosLM Reasoner | **100B** | ~10B | MoE | Reasoning, coding agent, cloud API, metering and safety gates |
+| **v5.0 — Pro / Enterprise** | HeliosLM Pro | **300B** | ~20B | MoE | Multimodal/long-context R&D, enterprise pilot, distributed serving |
+| **v6.0 — Frontier** | HeliosLM Frontier | **1T (1,000B)** | ~40B | MoE | Frontier research candidate; competitive performance on defined evaluations |
+
+These are **stretch targets, not mandatory training commitments**. A version may ship with a smaller verified model if quality, economics or safety gates are not met. The 1T target is contingent on major external funding, training data rights, infrastructure and distributed-systems validation; matching parameter count alone does not imply matching DeepSeek, Kimi, OpenAI or Anthropic capabilities.
+
+### Tentative product windows (subject to gates)
+
+| Window | Product milestone | Exit criteria |
+| --- | --- | --- |
+| **2026 Q4** | Foundation developer preview | Windows/Linux CI, reproducible test suite, documented local inference |
+| **2027 Q1** | Training & SDK/API | End-to-end train → save → restore → evaluate reproducibility |
+| **2027 Q2** | Helios Code beta | Auditable tool execution, human approval for writes, benchmarked real-repo tasks |
+| **2027 H2** | Helios Cloud pilot | API reliability, authentication, tenant isolation, billing reconciliation |
+| **2028 (tentative)** | Enterprise pilots and Pro research | Private deployment security review and paid pilot validation |
+| **2029+ (conditional)** | Frontier challenger research | Pre-registered, reproducible domain-specific evaluation against current baselines |
+
+### Engineering priorities and acceptance gates
+
+- **P0 — Correctness and security:** fix outstanding pytest failures; verify Windows RTX 4060 and Linux CUDA paths; reproducible seeds/checkpoints; sandbox tools, approval gates, rollback and secrets handling.
+- **P1 — Usable product:** training/data pipeline, model registry, OpenAI-compatible API, agent task execution, observability, token/GPU cost reporting and user documentation.
+- **P2 — Scale research:** MLA/KDA/DSA ablations, expert parallelism, long-context evaluations, distributed training, quantization and multimodal experiments.
+- **Evaluation:** publish methodology and comparable baselines for coding (e.g. SWE-bench Verified), reasoning, tool-use, latency, VRAM, reliability and cost; report limitations and negative results.
+- **Go/no-go:** do not scale parameter count or launch paid services until quality, security, repeatability, licensing and unit economics meet predeclared thresholds.
+
+### Compute and model strategy
+
+- **Local RTX 4060:** development, CPU/CUDA oracles, tiny-model training and CI reproduction.
+- **On-demand RTX PRO 6000 Blackwell 96GB:** prototyping, fine-tuning/quantized inference for suitably sized models, memory and performance measurements; **not** a single-GPU path to training 300B–1T models.
+- **Multi-GPU clusters:** only after measured throughput, interconnect, memory, data, reliability and cost justify the scale.
+- **Independent model + optional external APIs:** research open architectures (including DeepSeek/Kimi ideas) while using properly licensed OpenAI/Anthropic or other APIs for routing/benchmarks where permitted. Do not present external model output as an independently trained HeliosLM model or assume API outputs may be used for competitive training.
+
+### Roadmap governance
+
+This section tracks **intent**, not verified implementation status. Track actual completion in GitHub Issues/Milestones and link benchmark artifacts, commit SHAs, reproducible commands and release notes before marking an item complete. Keep the historical `helioslm_v5` code/release numbering distinct from these forward-looking product-generation labels.
+<!-- HELIOSLM_PRODUCT_ROADMAP_END -->
