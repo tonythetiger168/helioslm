@@ -45,6 +45,15 @@ _AWQ_CLIP_GRID = tuple(1.0 - 0.05 * i for i in range(11))  # 1.00 .. 0.50
 _AWQ_SCALE_CLAMP = (1.0, 2.0)
 
 
+def _cuda_tile_columns(out_features):
+    """At most 1024 columns and ~1M elements per decoded tile.
+
+    Bound applies to one decoded tensor, not aggregate temporaries/autograd.
+    A small matrix may fit in one tile. Metadata never leaves the device.
+    """
+    return max(1, min(1024, (1024 * 1024) // max(1, out_features)))
+
+
 def _quantize_groups(W, group_size, bits, clip_grid=(1.0,), col_weight=None):
     """Per-group asymmetric min/max quantization of W [out, in].
 
@@ -241,16 +250,32 @@ class AWQLinear(nn.Module):
             w = w / self.act_scale.to(device=w.device, dtype=w.dtype).unsqueeze(0)
         return w
 
-    def _fused_forward(self, x, bias):
-        """Group-wise dequant x matmul (v5.11).
+    def _tiled_forward(self, x, bias):
+        acc = None
+        width = _cuda_tile_columns(self.out_features)
+        for c0 in range(0, self.in_features, width):
+            c1 = min(c0 + width, self.in_features)
+            cols = torch.arange(c0, c1, device=x.device)
+            packed = self.qweight[:, cols // 2]
+            q = (packed >> ((cols % 2) * 4).to(torch.uint8)) & 0xF
+            groups = cols // self.group_size
+            w = (q.to(self.scales.dtype) - self.zeros[:, groups]) * self.scales[:, groups]
+            part = F.linear(x[..., c0:c1], w.to(dtype=x.dtype))
+            acc = part if acc is None else acc + part
+        return acc if bias is None else acc + bias
 
-        Dequantizes only one group slice at a time and accumulates
+    def _fused_forward(self, x, bias):
+        """Group-wise CPU path; vectorized bounded tiles on CUDA.
+
+        CPU: dequantizes only one group slice at a time and accumulates
         ``x[:, g] @ w_g.T`` — the dense [out, in] fp32 weight is never
         materialized (the old path allocates it on EVERY call, plus the
         full unpacked-int copy). Arithmetic per group is identical to
         ``_dequantize``; only the matmul reduction order differs, so the
         result matches the reference path to fp32 rounding (~1e-6).
         """
+        if x.device.type == "cuda":
+            return self._tiled_forward(x, bias)
         acc = None
         for g0 in range(0, self.in_features, self.group_size):
             g1 = min(g0 + self.group_size, self.in_features)
@@ -567,15 +592,34 @@ class GPTQLinear(nn.Module):
         """
         return self._dequantize()
 
-    def _fused_forward(self, x, bias):
-        """Run-wise dequant x matmul (v5.11).
+    def _tiled_forward(self, x, bias):
+        # g_idx may be nonmonotonic after act-order restores input columns.
+        # Gather per column in bounded tiles; never enumerate group runs on CPU.
+        acc = None
+        width = _cuda_tile_columns(self.out_features)
+        out_cols = torch.arange(self.out_features, device=x.device)
+        for c0 in range(0, self.in_features, width):
+            c1 = min(c0 + width, self.in_features)
+            cols = torch.arange(c0, c1, device=x.device)
+            q = (self.qweight[cols // 8] >> ((cols % 8) * 4).to(torch.int32).unsqueeze(1)) & 0xF
+            groups = self.g_idx[c0:c1].long()
+            z = (self.qzeros[groups][:, out_cols // 8] >> ((out_cols % 8) * 4).to(torch.int32)) & 0xF
+            w = (q.float() - z.float()) * self.scales[groups]
+            part = F.linear(x[..., c0:c1], w.t().to(dtype=x.dtype))
+            acc = part if acc is None else acc + part
+        return acc if bias is None else acc + bias
 
-        GPTQ's ``g_idx`` maps each input column to a group (act-order makes
-        it monotonic; plain grouping makes it piecewise-constant). Slicing by
+    def _fused_forward(self, x, bias):
+        """Run-wise CPU path; vectorized per-column group gathers on CUDA.
+
+        GPTQ's ``g_idx`` maps each input column to a group; act-order may
+        make these group IDs nonmonotonic in input-column order. CPU slicing by
         maximal runs of constant ``g_idx`` gives the largest fused tiles; the
         dense [out, in] weight is never materialized. Per-run arithmetic is
         identical to ``_dequantize``.
         """
+        if x.device.type == "cuda":
+            return self._tiled_forward(x, bias)
         dev = self.qweight.device
         shifts8 = torch.arange(8, device=dev, dtype=torch.int32) * 4
         g_idx = self.g_idx.long()
@@ -773,14 +817,31 @@ class MXFP4Linear(nn.Module):
         """Compatibility accessor: reconstructed dense weight (slow path)."""
         return self._dequantize()
 
-    def _fused_forward(self, x, bias):
-        """Block-wise dequant x matmul (v5.11).
+    def _tiled_forward(self, x, bias):
+        acc = None
+        width = _cuda_tile_columns(self.out_features)
+        mag = torch.tensor(self.E2M1_MAGNITUDES, dtype=self.scales.dtype, device=x.device)
+        for c0 in range(0, self.in_features, width):
+            c1 = min(c0 + width, self.in_features)
+            cols = torch.arange(c0, c1, device=x.device)
+            packed = self.qweight[:, cols // 2]
+            codes = (packed >> ((cols % 2) * 4).to(torch.uint8)) & 0xF
+            signs = torch.where((codes & 0x8) != 0, -1.0, 1.0).to(self.scales.dtype)
+            w = mag[(codes & 0x7).long()] * signs * self.scales[:, cols // self.block_size]
+            part = F.linear(x[..., c0:c1], w.to(dtype=x.dtype))
+            acc = part if acc is None else acc + part
+        return acc if bias is None else acc + bias
 
-        Decodes only one E2M1 block slice at a time (magnitude lookup +
+    def _fused_forward(self, x, bias):
+        """Block-wise CPU path; vectorized bounded tiles on CUDA.
+
+        CPU: decodes only one E2M1 block slice at a time (magnitude lookup +
         sign + E8M0 power-of-two scale) and accumulates; the dense
         [out, in] weight is never materialized. Pad codes decode to exact
         zero magnitude, so a ragged final block needs no special casing.
         """
+        if x.device.type == "cuda":
+            return self._tiled_forward(x, bias)
         mag = x.new_tensor(self.E2M1_MAGNITUDES).to(self.scales.dtype)
         acc = None
         for b0 in range(0, self.in_features, self.block_size):
