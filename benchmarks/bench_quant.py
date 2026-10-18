@@ -31,7 +31,16 @@ def _run_case(kind, fused, args):
     quant.fused = fused
     quant.eval()
     x = torch.randn(args.batch, args.in_features)
+    # Validate fused/unfused numerical parity on the SAME quantized weights
+    # before measuring; fail loudly rather than publishing invalid speedups.
     with torch.inference_mode():
+        quant.fused = False
+        oracle = quant(x)
+        quant.fused = True
+        candidate = quant(x)
+        max_abs_error = (candidate - oracle).abs().max().item()
+        torch.testing.assert_close(candidate, oracle, atol=1e-4, rtol=1e-4)
+        quant.fused = fused
         for _ in range(args.warmup):
             quant(x)
         durations = []
@@ -40,7 +49,7 @@ def _run_case(kind, fused, args):
             quant(x)
             durations.append((time.perf_counter() - start) * 1000)
     return {"method": kind, "fused": fused, "median_ms": statistics.median(durations),
-            "samples_ms": durations, "torch": torch.__version__}
+            "samples_ms": durations, "max_abs_error_vs_reference": max_abs_error, "torch": torch.__version__}
 
 
 def _rss_kb():
