@@ -1,0 +1,141 @@
+"""Train a reproducible BPE toy checkpoint for Issue #5.
+
+Requires: pip install tokenizers torch
+Example: python examples/train_toy_bpe.py --steps 400
+Artifacts: checkpoints/toy_bpe.pt, checkpoints/toy_bpe.tokenizer.json,
+           checkpoints/toy_bpe.metrics.json
+
+Tokenizer is trained on the training split only. Held-out text is not
+included in vocabulary learning. Char and BPE token losses are NOT directly
+comparable; report per-byte NLL for an apples-to-apples text likelihood.
+"""
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import random
+import sys
+import time
+
+import torch
+import torch.nn.functional as F
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from helioslm_v5.configs.config_v5 import HeliosLMv5Config
+from helioslm_v5.src.model_v5 import HeliosLMv5
+
+
+def corpus_files():
+    excluded = {".git", "__pycache__", "checkpoints", ".venv", "venv", "node_modules"}
+    return sorted(p for p in ROOT.rglob("*") if p.suffix in (".py", ".md")
+                  and not any(part in excluded for part in p.relative_to(ROOT).parts)
+                  and p.is_file())
+
+
+def split_corpus(seed):
+    paths = corpus_files()
+    if len(paths) < 3:
+        raise ValueError("Need at least three source files for train/validation split")
+    rng = random.Random(seed)
+    rng.shuffle(paths)
+    n_val = max(1, len(paths) // 10)
+    train_paths, val_paths = paths[n_val:], paths[:n_val]
+    def read(items):
+        return "\n\n".join(p.read_text(encoding="utf-8", errors="replace") for p in items)
+    return read(train_paths), read(val_paths), [str(p.relative_to(ROOT)) for p in val_paths]
+
+
+def train_tokenizer(train_text, vocab_size):
+    from tokenizers import Tokenizer, models, pre_tokenizers, decoders, trainers
+    tokenizer = Tokenizer(models.BPE(unk_token="[UNK]"))
+    tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
+    tokenizer.decoder = decoders.ByteLevel()
+    trainer = trainers.BpeTrainer(vocab_size=vocab_size, min_frequency=2,
+                                 initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
+                                 special_tokens=["[UNK]"], show_progress=False)
+    tokenizer.train_from_iterator([train_text], trainer=trainer)
+    if tokenizer.get_vocab_size() > vocab_size:
+        raise ValueError("Tokenizer exceeds model embedding budget")
+    return tokenizer
+
+
+def train_model(ids, val_ids, cfg, steps, batch, seq, lr, seed):
+    torch.manual_seed(seed)
+    model = HeliosLMv5(cfg)
+    model.train()
+    opt = torch.optim.Adam(model.parameters(), lr=lr)
+    gen = torch.Generator().manual_seed(seed)
+    if len(ids) < seq + 2 or len(val_ids) < 3:
+        raise ValueError("Insufficient train or validation tokens")
+    start = time.perf_counter()
+    for step in range(steps):
+        ix = torch.randint(0, len(ids) - seq - 1, (batch,), generator=gen)
+        data = torch.stack([ids[i:i+seq+1] for i in ix])
+        logits, _, _ = model(data[:, :-1])
+        loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), data[:, 1:].reshape(-1))
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+        if step % 50 == 0 or step == steps-1:
+            print(f"step={step} loss={loss.item():.4f}", flush=True)
+    model.eval()
+    # Chunked evaluation with context resets; all tokens except first of each
+    # chunk are scored. Byte normalization makes tokenizer comparisons valid.
+    total_nll, predicted = 0.0, 0
+    with torch.inference_mode():
+        for offset in range(0, len(val_ids)-1, seq):
+            chunk = val_ids[offset:offset+seq+1]
+            if len(chunk) < 2:
+                continue
+            logits, _, _ = model(chunk[:-1].unsqueeze(0))
+            total_nll += F.cross_entropy(logits.reshape(-1, logits.size(-1)),
+                                        chunk[1:], reduction="sum").item()
+            predicted += len(chunk)-1
+    return model, {"val_nll": total_nll, "val_tokens": predicted,
+                   "val_loss_per_token": total_nll / predicted,
+                   "train_seconds": round(time.perf_counter()-start, 2)}
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--steps", type=int, default=400)
+    ap.add_argument("--batch", type=int, default=8)
+    ap.add_argument("--seq", type=int, default=64)
+    ap.add_argument("--lr", type=float, default=3e-3)
+    ap.add_argument("--seed", type=int, default=13)
+    ap.add_argument("--out", default="checkpoints/toy_bpe.pt")
+    args = ap.parse_args()
+    if min(args.steps, args.batch, args.seq, args.lr) <= 0:
+        ap.error("steps, batch, seq and lr must be positive")
+    cfg = HeliosLMv5Config(size="lite")
+    train_text, val_text, val_paths = split_corpus(args.seed)
+    tok = train_tokenizer(train_text, cfg.vocab_size)
+    train_ids = torch.tensor(tok.encode(train_text).ids, dtype=torch.long)
+    val_ids = torch.tensor(tok.encode(val_text).ids, dtype=torch.long)
+    model, metrics = train_model(train_ids, val_ids, cfg, args.steps,
+                                 args.batch, args.seq, args.lr, args.seed)
+    metrics.update({"tokenizer": "bytelevel-bpe", "seed": args.seed, "steps": args.steps,
+                    "vocab_size": tok.get_vocab_size(),
+                    "val_utf8_bytes": len(val_text.encode("utf-8")),
+                    "val_nll_per_utf8_byte": metrics["val_nll"] / len(val_text.encode("utf-8")),
+                    "val_files": val_paths,
+                    "val_text_sha256": hashlib.sha256(val_text.encode("utf-8")).hexdigest()})
+    with torch.inference_mode():
+        prompt = "HeliosLM"
+        pids = torch.tensor([tok.encode(prompt).ids])
+        generated = model.generate(pids, max_new_tokens=80, temperature=0)[0].tolist()
+        metrics["sample"] = tok.decode(generated, skip_special_tokens=False)
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tokenizer_path = out.with_suffix(".tokenizer.json")
+    tok.save(str(tokenizer_path))
+    torch.save({"state_dict": model.state_dict(), "config_size": cfg.size,
+                "tokenizer": "bytelevel-bpe", "tokenizer_file": tokenizer_path.name,
+                "vocab_size": cfg.vocab_size, "meta": metrics}, out)
+    out.with_suffix(".metrics.json").write_text(json.dumps(metrics, indent=2)+"\n", encoding="utf-8")
+    print(json.dumps(metrics, indent=2))
+
+
+if __name__ == "__main__":
+    main()
