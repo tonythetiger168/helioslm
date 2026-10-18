@@ -21,3 +21,4 @@ def test_quant_benchmark_awq_smoke(tmp_path):
     assert {r["fused"] for r in data["results"]} == {False, True}
     assert all(r["median_ms"] > 0 for r in data["results"])
     assert data["summary"]["awq"]["speedup_x"] > 0
+    assert all(r["max_abs_error_vs_reference"] <= 1e-4 for r in data["results"])
