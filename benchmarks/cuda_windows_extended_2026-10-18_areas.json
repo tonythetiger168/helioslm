@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-18T08:40:34.046621+00:00",
+  "environment": {
+    "python": "3.14.8",
+    "torch": "2.14.1+cu126",
+    "cuda_build": "12.6",
+    "cuda_available": true,
+    "device_count": 1,
+    "gpu_name": "NVIDIA GeForce RTX 4060",
+    "compute_capability": [
+      8,
+      9
+    ],
+    "gpu_total_memory": 8585216000
+  },
+  "source_revision": "a0f09332f1fc6633615d48397dda77e629ac6cf6",
+  "cuda_checks_passed": true,
+  "areas": [
+    {
+      "area": "cache_float32",
+      "device": "cuda:0",
+      "metrics": {
+        "max_abs_error": 6.295740604400635e-07,
+        "max_scaled_error": 5.281171794355763e-07,
+        "tolerance": 0.0001
+      },
+      "status": "passed",
+      "seconds": 0.9140710999490693
+    },
+    {
+      "area": "cache_float16",
+      "device": "cuda:0",
+      "metrics": {
+        "max_abs_error": 0.00146484375,
+        "max_scaled_error": 0.0012295081864015052,
+        "tolerance": 0.02
+      },
+      "status": "passed",
+      "seconds": 0.41828639997402206
+    },
+    {
+      "area": "cache_bfloat16",
+      "device": "cuda:0",
+      "metrics": {
+        "max_abs_error": 0.0,
+        "max_scaled_error": 0.0,
+        "tolerance": 0.05
+      },
+      "status": "passed",
+      "seconds": 0.2879184000194073
+    },
+    {
+      "area": "hybrid_cache",
+      "device": "cuda:0",
+      "metrics": {
+        "max_abs_error": 6.295740604400635e-07,
+        "max_scaled_error": 5.281171794355763e-07,
+        "tolerance": 0.0001
+      },
+      "status": "passed",
+      "seconds": 0.11370799998985603
+    },
+    {
+      "area": "mtp",
+      "device": "cuda:0",
+      "metrics": {
+        "greedy_exact": true
+      },
+      "status": "passed",
+      "seconds": 0.2016293000197038
+    },
+    {
+      "area": "engine_paged",
+      "device": "cuda:0",
+      "metrics": {
+        "greedy_prefix_exact": true,
+        "paged_cache_device": "cuda:0"
+      },
+      "status": "passed",
+      "seconds": 0.25235159997828305
+    },
+    {
+      "area": "fp8_training",
+      "device": "cuda:0",
+      "metrics": {
+        "losses": [
+          6.997920036315918,
+          4.575286865234375
+        ],
+        "scope": "FP8 value quantization/STE; no tensor-core claim"
+      },
+      "status": "passed",
+      "seconds": 2.9384783999994397
+    },
+    {
+      "area": "grpo",
+      "device": "cuda:0",
+      "metrics": {
+        "loss": 0.0,
+        "gradient_tensors": 55
+      },
+      "status": "passed",
+      "seconds": 0.7710895999916829
+    },
+    {
+      "area": "dualpipe",
+      "device": "cuda:0",
+      "metrics": {
+        "loss": 0.9506700932979584,
+        "scope": "single-process schedule; not multi-GPU/NCCL"
+      },
+      "status": "passed",
+      "seconds": 0.23863399995025247
+    },
+    {
+      "area": "audio",
+      "device": "cuda:0",
+      "metrics": {
+        "max_abs_error": 1.3113021850585938e-06,
+        "tolerance": 0.001
+      },
+      "status": "passed",
+      "seconds": 0.3077169000171125
+    },
+    {
+      "area": "vision",
+      "device": "cuda:0",
+      "metrics": {
+        "shape": [
+          1,
+          16,
+          64
+        ]
+      },
+      "status": "passed",
+      "seconds": 0.00976980000268668
+    },
+    {
+      "area": "quant_awq",
+      "device": "cuda:0",
+      "metrics": {
+        "max_scaled_error": 1.9498938273985857e-07,
+        "tolerance": 0.0001,
+        "scope": "quantized linear; not whole-model speed or native CUDA kernels"
+      },
+      "status": "passed",
+      "seconds": 0.16861640004208311
+    },
+    {
+      "area": "quant_gptq",
+      "device": "cuda:0",
+      "metrics": {
+        "max_scaled_error": 2.848596237477388e-07,
+        "tolerance": 0.0001,
+        "scope": "quantized linear; not whole-model speed or native CUDA kernels"
+      },
+      "status": "passed",
+      "seconds": 0.11119720002170652
+    },
+    {
+      "area": "quant_mxfp4",
+      "device": "cuda:0",
+      "metrics": {
+        "max_scaled_error": 2.0790743950756013e-07,
+        "tolerance": 0.0001,
+        "scope": "quantized linear; not whole-model speed or native CUDA kernels"
+      },
+      "status": "passed",
+      "seconds": 0.3543978999950923
+    }
+  ],
+  "regression": [],
+  "unverified_scope": [
+    "multi-GPU/NCCL",
+    "native FP8 tensor-core kernels",
+    "legacy CPU fixtures do not become CUDA tests"
+  ],
+  "dtypes_run": [
+    "float32",
+    "float16",
+    "bfloat16"
+  ],
+  "execution_device": "cuda:0",
+  "status": "cuda_area_checks_passed"
+}

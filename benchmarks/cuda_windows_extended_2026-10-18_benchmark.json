@@ -1,0 +1,769 @@
+{
+  "cuda_benchmark_passed": true,
+  "rows": [
+    {
+      "name": "model_float32",
+      "status": "passed",
+      "metrics": {
+        "prefill": {
+          "median_ms": 6.142500031273812,
+          "samples_ms": [
+            6.133700022473931,
+            6.310199969448149,
+            6.292500009294599,
+            6.0965000302530825,
+            6.380899983923882,
+            6.142500031273812,
+            5.91299997176975
+          ],
+          "output_shapes": [
+            [
+              1,
+              64,
+              1024
+            ],
+            [
+              1,
+              64,
+              1024
+            ],
+            [
+              1,
+              64,
+              1024
+            ],
+            [
+              1,
+              64,
+              1024
+            ],
+            [
+              1,
+              64,
+              1024
+            ],
+            [
+              1,
+              64,
+              1024
+            ],
+            [
+              1,
+              64,
+              1024
+            ]
+          ],
+          "baseline_allocated_bytes": 42768896,
+          "peak_allocated_bytes": 43872256,
+          "peak_reserved_bytes": 56623104,
+          "warmup": 2,
+          "repeats": 7,
+          "input_tokens": 64
+        },
+        "generate": {
+          "median_ms": 86.87510003801435,
+          "samples_ms": [
+            86.87510003801435,
+            85.23969998350367,
+            86.19530004216358,
+            84.55219998722896,
+            87.53050002269447,
+            88.53110001655295,
+            93.0293999845162
+          ],
+          "output_shapes": [
+            [
+              1,
+              80
+            ],
+            [
+              1,
+              80
+            ],
+            [
+              1,
+              80
+            ],
+            [
+              1,
+              80
+            ],
+            [
+              1,
+              80
+            ],
+            [
+              1,
+              80
+            ],
+            [
+              1,
+              80
+            ]
+          ],
+          "baseline_allocated_bytes": 42768896,
+          "peak_allocated_bytes": 43910656,
+          "peak_reserved_bytes": 56623104,
+          "warmup": 2,
+          "repeats": 7,
+          "prompt_tokens": 64,
+          "max_new_tokens": 16,
+          "actual_new_tokens": [
+            16,
+            16,
+            16,
+            16,
+            16,
+            16,
+            16
+          ],
+          "tokens_per_second": 184.1724497928498,
+          "scope": "end-to-end generate including prefill; batch=1"
+        }
+      }
+    },
+    {
+      "name": "model_float16",
+      "status": "passed",
+      "metrics": {
+        "prefill": {
+          "median_ms": 5.778699996881187,
+          "samples_ms": [
+            5.842899961862713,
+            6.09669997356832,
+            5.680300004314631,
+            5.751500022597611,
+            5.696200008969754,
+            6.209799961652607,
+            5.778699996881187
+          ],
+          "output_shapes": [
+            [
+              1,
+              64,
+              1024
+            ],
+            [
+              1,
+              64,
+              1024
+            ],
+            [
+              1,
+              64,
+              1024
+            ],
+            [
+              1,
+              64,
+              1024
+            ],
+            [
+              1,
+              64,
+              1024
+            ],
+            [
+              1,
+              64,
+              1024
+            ],
+            [
+              1,
+              64,
+              1024
+            ]
+          ],
+          "baseline_allocated_bytes": 25647104,
+          "peak_allocated_bytes": 26201600,
+          "peak_reserved_bytes": 39845888,
+          "warmup": 2,
+          "repeats": 7,
+          "input_tokens": 64
+        },
+        "generate": {
+          "median_ms": 78.64479999989271,
+          "samples_ms": [
+            86.2970000016503,
+            78.64479999989271,
+            81.258499994874,
+            75.23700001183897,
+            74.16280003963038,
+            74.45459999144077,
+            81.35910000419244
+          ],
+          "output_shapes": [
+            [
+              1,
+              80
+            ],
+            [
+              1,
+              80
+            ],
+            [
+              1,
+              80
+            ],
+            [
+              1,
+              80
+            ],
+            [
+              1,
+              80
+            ],
+            [
+              1,
+              80
+            ],
+            [
+              1,
+              80
+            ]
+          ],
+          "baseline_allocated_bytes": 25647104,
+          "peak_allocated_bytes": 26221568,
+          "peak_reserved_bytes": 39845888,
+          "warmup": 2,
+          "repeats": 7,
+          "prompt_tokens": 64,
+          "max_new_tokens": 16,
+          "actual_new_tokens": [
+            16,
+            16,
+            16,
+            16,
+            16,
+            16,
+            16
+          ],
+          "tokens_per_second": 203.4463817063789,
+          "scope": "end-to-end generate including prefill; batch=1"
+        }
+      }
+    },
+    {
+      "name": "model_bfloat16",
+      "status": "passed",
+      "metrics": {
+        "prefill": {
+          "median_ms": 5.176200007554144,
+          "samples_ms": [
+            5.287399981170893,
+            4.944499989505857,
+            4.952200048137456,
+            5.260700010694563,
+            5.176200007554144,
+            5.1451000035740435,
+            5.468000017572194
+          ],
+          "output_shapes": [
+            [
+              1,
+              64,
+              1024
+            ],
+            [
+              1,
+              64,
+              1024
+            ],
+            [
+              1,
+              64,
+              1024
+            ],
+            [
+              1,
+              64,
+              1024
+            ],
+            [
+              1,
+              64,
+              1024
+            ],
+            [
+              1,
+              64,
+              1024
+            ],
+            [
+              1,
+              64,
+              1024
+            ]
+          ],
+          "baseline_allocated_bytes": 25647104,
+          "peak_allocated_bytes": 26201600,
+          "peak_reserved_bytes": 39845888,
+          "warmup": 2,
+          "repeats": 7,
+          "input_tokens": 64
+        },
+        "generate": {
+          "median_ms": 75.39830001769587,
+          "samples_ms": [
+            75.39830001769587,
+            75.99630003096536,
+            75.56570001179352,
+            75.14719996834174,
+            72.68099999055266,
+            73.88870004797354,
+            75.72600001003593
+          ],
+          "output_shapes": [
+            [
+              1,
+              80
+            ],
+            [
+              1,
+              80
+            ],
+            [
+              1,
+              80
+            ],
+            [
+              1,
+              80
+            ],
+            [
+              1,
+              80
+            ],
+            [
+              1,
+              80
+            ],
+            [
+              1,
+              80
+            ]
+          ],
+          "baseline_allocated_bytes": 25647104,
+          "peak_allocated_bytes": 26221568,
+          "peak_reserved_bytes": 39845888,
+          "warmup": 2,
+          "repeats": 7,
+          "prompt_tokens": 64,
+          "max_new_tokens": 16,
+          "actual_new_tokens": [
+            16,
+            16,
+            16,
+            16,
+            16,
+            16,
+            16
+          ],
+          "tokens_per_second": 212.20637595602054,
+          "scope": "end-to-end generate including prefill; batch=1"
+        }
+      }
+    },
+    {
+      "name": "quant_awq",
+      "status": "passed",
+      "metrics": {
+        "shape": [
+          16,
+          512,
+          1024
+        ],
+        "dtype": "float32",
+        "max_scaled_error": 1.9189703188553948e-07,
+        "tolerance": 0.0001,
+        "unfused": {
+          "median_ms": 0.1981999957934022,
+          "samples_ms": [
+            0.22490002447739244,
+            0.21730002481490374,
+            0.1981999957934022,
+            0.2188000362366438,
+            0.1936000189743936,
+            0.19109999993816018,
+            0.19619998056441545
+          ],
+          "output_shapes": [
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ]
+          ],
+          "baseline_allocated_bytes": 11020288,
+          "peak_allocated_bytes": 19412992,
+          "peak_reserved_bytes": 27262976,
+          "warmup": 2,
+          "repeats": 7
+        },
+        "fused": {
+          "median_ms": 0.8582000155001879,
+          "samples_ms": [
+            0.9050999651663005,
+            0.8861999958753586,
+            0.8395000477321446,
+            0.8793000015430152,
+            0.8550999918952584,
+            0.8582000155001879,
+            0.8494000067003071
+          ],
+          "output_shapes": [
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ]
+          ],
+          "baseline_allocated_bytes": 11085824,
+          "peak_allocated_bytes": 12564480,
+          "peak_reserved_bytes": 27262976,
+          "warmup": 2,
+          "repeats": 7
+        },
+        "latency_ratio_unfused_over_fused": 0.23094848778100355,
+        "scope": "small Linear only; preparation excluded; no required speedup threshold"
+      }
+    },
+    {
+      "name": "quant_gptq",
+      "status": "passed",
+      "metrics": {
+        "shape": [
+          16,
+          512,
+          1024
+        ],
+        "dtype": "float32",
+        "max_scaled_error": 5.632835956771151e-07,
+        "tolerance": 0.0001,
+        "unfused": {
+          "median_ms": 0.25480001932010055,
+          "samples_ms": [
+            0.3082000184804201,
+            0.2645000349730253,
+            0.2505999873392284,
+            0.25480001932010055,
+            0.24930003564804792,
+            0.2395000192336738,
+            0.258200045209378
+          ],
+          "output_shapes": [
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ]
+          ],
+          "baseline_allocated_bytes": 11005952,
+          "peak_allocated_bytes": 19411456,
+          "peak_reserved_bytes": 29360128,
+          "warmup": 2,
+          "repeats": 7
+        },
+        "fused": {
+          "median_ms": 66.07000000076368,
+          "samples_ms": [
+            66.07000000076368,
+            63.019499997608364,
+            62.39179999101907,
+            67.44740001158789,
+            69.36870003119111,
+            67.2422000207007,
+            64.9260000209324
+          ],
+          "output_shapes": [
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ]
+          ],
+          "baseline_allocated_bytes": 11071488,
+          "peak_allocated_bytes": 11390464,
+          "peak_reserved_bytes": 29360128,
+          "warmup": 2,
+          "repeats": 7
+        },
+        "latency_ratio_unfused_over_fused": 0.0038565161089322746,
+        "scope": "small Linear only; preparation excluded; no required speedup threshold"
+      }
+    },
+    {
+      "name": "quant_mxfp4",
+      "status": "passed",
+      "metrics": {
+        "shape": [
+          16,
+          512,
+          1024
+        ],
+        "dtype": "float32",
+        "max_scaled_error": 1.8446530860197378e-07,
+        "tolerance": 0.0001,
+        "unfused": {
+          "median_ms": 0.23499998496845365,
+          "samples_ms": [
+            0.2597999991849065,
+            0.25460001779720187,
+            0.2335000317543745,
+            0.2337999758310616,
+            0.24449999909847975,
+            0.23499998496845365,
+            0.22230000467970967
+          ],
+          "output_shapes": [
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ]
+          ],
+          "baseline_allocated_bytes": 11051008,
+          "peak_allocated_bytes": 24158720,
+          "peak_reserved_bytes": 46137344,
+          "warmup": 2,
+          "repeats": 7
+        },
+        "fused": {
+          "median_ms": 3.6786000127904117,
+          "samples_ms": [
+            3.715700004249811,
+            3.5386999952606857,
+            3.5217999829910696,
+            3.681299975141883,
+            3.6786000127904117,
+            3.6241000052541494,
+            4.105400003027171
+          ],
+          "output_shapes": [
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ],
+            [
+              16,
+              1024
+            ]
+          ],
+          "baseline_allocated_bytes": 11116544,
+          "peak_allocated_bytes": 12329472,
+          "peak_reserved_bytes": 46137344,
+          "warmup": 2,
+          "repeats": 7
+        },
+        "latency_ratio_unfused_over_fused": 0.06388299465866466,
+        "scope": "small Linear only; preparation excluded; no required speedup threshold"
+      }
+    },
+    {
+      "name": "fp8_operator_profile",
+      "status": "passed",
+      "metrics": {
+        "device": "cuda:0",
+        "input_dtype": "torch.float32",
+        "output_dtype": "torch.float32",
+        "operators": [
+          "AddBackward0",
+          "MeanBackward0",
+          "MmBackward0",
+          "PowBackward0",
+          "TBackward0",
+          "aten::_local_scalar_dense",
+          "aten::_to_copy",
+          "aten::abs",
+          "aten::add",
+          "aten::add_",
+          "aten::as_strided",
+          "aten::clamp",
+          "aten::copy_",
+          "aten::detach",
+          "aten::div",
+          "aten::empty",
+          "aten::empty_like",
+          "aten::empty_strided",
+          "aten::expand",
+          "aten::fill_",
+          "aten::item",
+          "aten::matmul",
+          "aten::max",
+          "aten::mean",
+          "aten::mm",
+          "aten::mul",
+          "aten::nan_to_num",
+          "aten::ones_like",
+          "aten::pow",
+          "aten::resize_",
+          "aten::result_type",
+          "aten::select",
+          "aten::square",
+          "aten::sub",
+          "aten::t",
+          "aten::to",
+          "aten::transpose",
+          "autograd::engine::evaluate_function: AddBackward0",
+          "autograd::engine::evaluate_function: MeanBackward0",
+          "autograd::engine::evaluate_function: MmBackward0",
+          "autograd::engine::evaluate_function: PowBackward0",
+          "autograd::engine::evaluate_function: TBackward0",
+          "autograd::engine::evaluate_function: torch::autograd::AccumulateGrad",
+          "detach",
+          "torch::autograd::AccumulateGrad"
+        ],
+        "scope": "CPU operator dispatch of a CUDA FP8Linear; not GPU kernel trace",
+        "native_fp8_tensor_core_verified": false,
+        "reason": "Current FP8Linear uses grid simulation + STE + ordinary matmul, not a native FP8 GEMM."
+      }
+    }
+  ],
+  "methodology": "2 warmups, 7 synchronized wall-clock samples; small lite model / Linear; no performance threshold",
+  "unverified": [
+    "multi-GPU/NCCL",
+    "native FP8 product kernels",
+    "large-model throughput"
+  ],
+  "environment": {
+    "torch": "2.14.1+cu126",
+    "cuda_build": "12.6",
+    "gpu": "NVIDIA GeForce RTX 4060"
+  },
+  "status": "passed"
+}

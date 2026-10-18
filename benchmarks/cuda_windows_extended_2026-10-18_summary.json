@@ -1,0 +1,834 @@
+{
+  "status": "passed",
+  "jobs": [
+    {
+      "timeout_seconds": 600,
+      "log": "cuda_areas.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 12.390191000013147,
+      "name": "cuda_areas"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_000_test_mla.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.243715999997221,
+      "name": "case_000_test_mla"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_001_test_mla_absorption.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.0674974999856204,
+      "name": "case_001_test_mla_absorption"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_002_test_mla_absorbed_left_padding.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.055337800004054,
+      "name": "case_002_test_mla_absorbed_left_padding"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_003_test_packed_positions.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.2071157000027597,
+      "name": "case_003_test_packed_positions"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_004_test_sigmoid_moe.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.2145937999594025,
+      "name": "case_004_test_sigmoid_moe"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_005_test_v5_model.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.3615950000239536,
+      "name": "case_005_test_v5_model"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_006_test_mtp.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.2130386999924667,
+      "name": "case_006_test_mtp"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_007_test_paged_attention.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.0706599000259303,
+      "name": "case_007_test_paged_attention"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_008_test_vllm_engine.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.566428199992515,
+      "name": "case_008_test_vllm_engine"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_009_test_dualpipe.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.9875058999750763,
+      "name": "case_009_test_dualpipe"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_010_test_fp8_trainer.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 5.103703200002201,
+      "name": "case_010_test_fp8_trainer"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_011_test_grpo.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 5.316588999994565,
+      "name": "case_011_test_grpo"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_012_test_env_grpo_loop.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 5.533752600022126,
+      "name": "case_012_test_env_grpo_loop"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_013_test_topk_self_consistency.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.1825274000293575,
+      "name": "case_013_test_topk_self_consistency"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_014_test_quant_drift_trust_gate.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.141131799959112,
+      "name": "case_014_test_quant_drift_trust_gate"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_015_test_prefill_stability.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.130669599981047,
+      "name": "case_015_test_prefill_stability"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_016_test_trust_calibration_from_report.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.1221995999803767,
+      "name": "case_016_test_trust_calibration_from_report"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_017_test_async_env_grpo.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 5.426025099994149,
+      "name": "case_017_test_async_env_grpo"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_018_test_decision_head_noul_targets.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.1373089000117034,
+      "name": "case_018_test_decision_head_noul_targets"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_019_test_quant_calib_trust_gate_example.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 42.235118700016756,
+      "name": "case_019_test_quant_calib_trust_gate_example"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_020_test_indexer_stability_min_gate.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 3.6485322000226006,
+      "name": "case_020_test_indexer_stability_min_gate"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_021_test_sparse_mtp_acceptance_sweep.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 3.2663928999681957,
+      "name": "case_021_test_sparse_mtp_acceptance_sweep"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_022_test_indexer_distill_learned_sweep.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 15.424970199994277,
+      "name": "case_022_test_indexer_distill_learned_sweep"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_023_test_engine_sparse_serving.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 4.294642599998042,
+      "name": "case_023_test_engine_sparse_serving"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_024_test_muon.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 3.5135506999795325,
+      "name": "case_024_test_muon"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_025_test_streaming_audio.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.081712599960156,
+      "name": "case_025_test_streaming_audio"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_026_test_navit.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.1202943000243977,
+      "name": "case_026_test_navit"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_027_test_navit_input_validation.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.065265500044916,
+      "name": "case_027_test_navit_input_validation"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_028_test_quantization.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.0944703000131994,
+      "name": "case_028_test_quantization"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_029_test_gptq_calibration.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.0735611999989487,
+      "name": "case_029_test_gptq_calibration"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_030_test_awq_calibration.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.1104295999975875,
+      "name": "case_030_test_awq_calibration"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_031_test_quant_weight_property.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.122525599959772,
+      "name": "case_031_test_quant_weight_property"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_032_test_quant_input_validation.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.0092410999932326,
+      "name": "case_032_test_quant_input_validation"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_033_test_gptq_odd_dims.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.0728130000061356,
+      "name": "case_033_test_gptq_odd_dims"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_034_test_mxfp4.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.501365399977658,
+      "name": "case_034_test_mxfp4"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_035_test_mtp_rebind_after_quantization.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.249231499969028,
+      "name": "case_035_test_mtp_rebind_after_quantization"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_036_test_audio_sliding_window.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.1361930999555625,
+      "name": "case_036_test_audio_sliding_window"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_037_test_nvfp4_qat.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.0721238999976777,
+      "name": "case_037_test_nvfp4_qat"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_038_test_nope_attention.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.266405499947723,
+      "name": "case_038_test_nope_attention"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_039_test_per_channel_decay.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.0851886000018567,
+      "name": "case_039_test_per_channel_decay"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_040_test_mtp_per_channel_rollback.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.456086299964227,
+      "name": "case_040_test_mtp_per_channel_rollback"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_041_test_linear_attention.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.0250201000017114,
+      "name": "case_041_test_linear_attention"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_042_test_hybrid_model.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.5824360999977216,
+      "name": "case_042_test_hybrid_model"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_043_test_latent_moe.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.1238509000395425,
+      "name": "case_043_test_latent_moe"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_044_test_quantile_balancing.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.5155760999768972,
+      "name": "case_044_test_quantile_balancing"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_045_test_attention_residuals.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.2859345000470057,
+      "name": "case_045_test_attention_residuals"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_046_test_situ_glu.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.2896830999525264,
+      "name": "case_046_test_situ_glu"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_047_test_mtp_hybrid_rollback.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.509262099978514,
+      "name": "case_047_test_mtp_hybrid_rollback"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_048_test_quantile_margin_boundary.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 4.299172000028193,
+      "name": "case_048_test_quantile_margin_boundary"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_049_test_balance_state_resume.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.6057022999739274,
+      "name": "case_049_test_balance_state_resume"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_050_test_hybrid_packed_positions.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.3507125999894924,
+      "name": "case_050_test_hybrid_packed_positions"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_051_test_attention_residuals_dualpipe.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 3.286270299984608,
+      "name": "case_051_test_attention_residuals_dualpipe"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_052_test_linear_attention_guards.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.1106925000203773,
+      "name": "case_052_test_linear_attention_guards"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_053_test_rope_scaling.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.0628702000249177,
+      "name": "case_053_test_rope_scaling"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_054_test_fp8_kv_cache.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.10927689995151,
+      "name": "case_054_test_fp8_kv_cache"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_055_test_hyper_connections.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 3.384943299985025,
+      "name": "case_055_test_hyper_connections"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_056_test_qat.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 3.765737599984277,
+      "name": "case_056_test_qat"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_057_test_yarn_rope_scaling.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.089649500034284,
+      "name": "case_057_test_yarn_rope_scaling"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_058_test_yarn_longctx_position_stress.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.4949598000384867,
+      "name": "case_058_test_yarn_longctx_position_stress"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_059_test_sparse_top_k_attention.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.574248199991416,
+      "name": "case_059_test_sparse_top_k_attention"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_060_test_learned_lightning_indexer.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 4.924991600040812,
+      "name": "case_060_test_learned_lightning_indexer"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_061_test_sparse_prefill_indexer.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.1963103999732994,
+      "name": "case_061_test_sparse_prefill_indexer"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_062_test_indexer_share_group_stress.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 3.827416100015398,
+      "name": "case_062_test_indexer_share_group_stress"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_063_test_per_head_muon.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 3.388858199992683,
+      "name": "case_063_test_per_head_muon"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_064_test_gptq_act_order.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.080235500005074,
+      "name": "case_064_test_gptq_act_order"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_065_test_attention_logit_soft_cap.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.0840255999937654,
+      "name": "case_065_test_attention_logit_soft_cap"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_066_test_qk_norm.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.0793733000173233,
+      "name": "case_066_test_qk_norm"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_067_test_sliding_window_attention.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.167112299997825,
+      "name": "case_067_test_sliding_window_attention"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_068_test_final_logit_soft_cap.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.3171748999739066,
+      "name": "case_068_test_final_logit_soft_cap"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_069_test_gguf_export.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 3.3551252000033855,
+      "name": "case_069_test_gguf_export"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_070_test_decision_layer_audit.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.0953658999642357,
+      "name": "case_070_test_decision_layer_audit"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_071_test_evolver_pareto_adaptation.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 7.351308999990579,
+      "name": "case_071_test_evolver_pareto_adaptation"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_072_test_harness_evolver.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 3.314997499983292,
+      "name": "case_072_test_harness_evolver"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_073_test_prefix_pool.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.7086057999986224,
+      "name": "case_073_test_prefix_pool"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_074_test_score_stream.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.2381967999972403,
+      "name": "case_074_test_score_stream"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_075_test_spec_breakeven.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.252913800009992,
+      "name": "case_075_test_spec_breakeven"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_076_test_expert_streaming.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.1096017000381835,
+      "name": "case_076_test_expert_streaming"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_077_test_multi_process_dualpipe.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 5.562754699960351,
+      "name": "case_077_test_multi_process_dualpipe"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_078_test_toy_checkpoint.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.464891700015869,
+      "name": "case_078_test_toy_checkpoint"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_079_test_batched_prefill.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.4794623000198044,
+      "name": "case_079_test_batched_prefill"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_080_test_fused_quant_kernels.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.155177300039213,
+      "name": "case_080_test_fused_quant_kernels"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_081_test_eval_harness.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 7.416184199973941,
+      "name": "case_081_test_eval_harness"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_082_test_vllm_engine_padded_batched_prefill.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.2296336999861524,
+      "name": "case_082_test_vllm_engine_padded_batched_prefill"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_083_test_prefix_pool_high_token_ids.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.270807799999602,
+      "name": "case_083_test_prefix_pool_high_token_ids"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_084_test_multi_process_dualpipe_attention_residuals.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 6.094760400010273,
+      "name": "case_084_test_multi_process_dualpipe_attention_residuals"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_085_test_fp8_trainer_cross_entropy.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 3.7814606999745592,
+      "name": "case_085_test_fp8_trainer_cross_entropy"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_086_test_model_fingerprint.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.373228999960702,
+      "name": "case_086_test_model_fingerprint"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_087_test_membership_inference_signal.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 15.966326299996581,
+      "name": "case_087_test_membership_inference_signal"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_088_test_distillation_leak_budget.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 30.413505900010932,
+      "name": "case_088_test_distillation_leak_budget"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_089_test_prefix_pool_tenant_isolation.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.251650399994105,
+      "name": "case_089_test_prefix_pool_tenant_isolation"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_090_test_score_stream_leak_budget.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.1213844000012614,
+      "name": "case_090_test_score_stream_leak_budget"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_091_test_harness_memory_sqlite_fs_repair.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.123550400021486,
+      "name": "case_091_test_harness_memory_sqlite_fs_repair"
+    },
+    {
+      "timeout_seconds": 180,
+      "log": "case_092_test_import_smoke.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.153102000011131,
+      "name": "case_092_test_import_smoke"
+    },
+    {
+      "timeout_seconds": 1800,
+      "log": "pytest.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 658.7262648000033,
+      "name": "pytest"
+    },
+    {
+      "timeout_seconds": 1800,
+      "log": "pytest_mid.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 27.404765799990855,
+      "name": "pytest_mid"
+    },
+    {
+      "timeout_seconds": 1800,
+      "log": "integration.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 6.150735299976077,
+      "name": "integration"
+    },
+    {
+      "timeout_seconds": 600,
+      "log": "cuda_benchmark.log",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 7.739710400055628,
+      "name": "cuda_benchmark"
+    }
+  ],
+  "cuda_checks_passed": true,
+  "full_regression_passed": true,
+  "scope": "single GPU; original regression fixtures mostly CPU",
+  "unverified": [
+    "multi-GPU/NCCL (one GPU, Windows)",
+    "native FP8 product GEMM (implementation is simulated FP8)",
+    "large-model throughput / exhaustive architecture matrix"
+  ],
+  "uploaded_archive_sha256": "f0e80d7aa742c65a6ebe32d26dd843cb8f78d7aad0f030967936f32bd5a6b705",
+  "xml_verified_counts": {
+    "pytest.xml": 421,
+    "pytest_mid.xml": 4
+  },
+  "provenance": "Returned ZIP logs and JUnit XML cross-checked. source_revision is a base marker, not a hash of the tested dirty tree. Returned runner split mid acceptance into a fresh process; exact modified runner source was not included in this ZIP.",
+  "regression_commands": {
+    "pytest": [
+      "python",
+      "-u",
+      "-m",
+      "pytest",
+      "helioslm_v5/tests/",
+      "-vv",
+      "-rA",
+      "--tb=short",
+      "--junitxml=<bundle>/extended_results\\20261018_164030_416582\\pytest.xml",
+      "--ignore=helioslm_v5/tests/test_v5.py",
+      "--ignore=helioslm_v5/tests/test_v533_mid.py"
+    ],
+    "pytest_mid": [
+      "python",
+      "-u",
+      "-m",
+      "pytest",
+      "helioslm_v5/tests/test_v533_mid.py",
+      "-vv",
+      "-rA",
+      "--tb=short",
+      "--junitxml=<bundle>/extended_results\\20261018_164030_416582\\pytest_mid.xml"
+    ],
+    "integration": [
+      "python",
+      "-u",
+      "integration_test_v51.py"
+    ]
+  }
+}

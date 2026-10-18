@@ -11,8 +11,10 @@ contains the FP8 placement fix and verification harness described below.
 
 The separate development environment is CPU-only. Its earlier blocked-CUDA
 report is retained as a negative-path check, not the current hardware result.
-The Windows run did **not** request `--run-regression` (`regression=[]`), so it
-provides no full Windows regression result.
+The initial 15:00 Windows run did not request regression. The later 16:40
+extended run verified 93 isolated cases, 425 pytest cases and integration 9/9;
+see [extended Windows evidence](CUDA_WINDOWS_EXTENDED.md) for the exact process
+split, benchmark slowdown findings and provenance limitations.
 
 Base source: a0f09332f1fc6633615d48397dda77e629ac6cf6 (v5.72 plus balancing-state tests).
 The historical `docs/V5.5_FEATURES_REPORT.md` referenced in the issue is not
@@ -160,3 +162,11 @@ assert nonzero GRPO update magnitude or learning improvement. Single-process
 DualPipe passed with loss 0.950670. Neither its result nor FP8's two decreasing
 loss values proves convergence, multi-GPU operation, throughput or tensor-core
 acceleration. No additional GPU fix was needed after this returned run.
+
+## Extended Windows run
+
+See [CUDA_WINDOWS_EXTENDED.md](CUDA_WINDOWS_EXTENDED.md) and the three
+`benchmarks/cuda_windows_extended_2026-10-18_*.json` evidence files. The later
+run covers the two previously blocked CPU multiprocess tests on Windows.
+Fused quantized Linear execution was slower for all three methods on the
+measured CUDA shape; successful benchmark status is not a speedup claim.
