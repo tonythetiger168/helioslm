@@ -14,9 +14,10 @@ Pins:
    test), and finished (EOS) rows are not advanced;
 4. truncate_thinking / random_truncation keep the prompt and the answer
    and cut the span to b tokens; effort_to_budget; validation;
-5. the committed A/B artifact: with truncation training, accuracy rises
-   with the budget (non-decreasing up to a small tolerance, end well above
-   start); the full-trace-only arm collapses at small budgets; hash.
+5. the committed A/B artifact: both arms solve the task at the full
+   budget; with truncation training accuracy is non-decreasing in the
+   budget (small tolerance) and, closed one step early, far above the
+   full-trace-only arm; hash.
 
 Run from repo root: python3 helioslm_v5/tests/test_thinking_budget.py
 """
@@ -137,10 +138,12 @@ def test_ab_artifact():
     tr = [res["truncation"][str(b)] for b in range(n + 1)]
     full = [res["full"][str(b)] for b in range(n + 1)]
     assert all(b2 >= b1 - 0.03 for b1, b2 in zip(tr, tr[1:])), tr
-    assert tr[-1] - tr[0] > 0.3, tr
     assert tr[0] < 0.4 and tr[-1] > 0.9, tr
-    # full-trace training: the forced close lands off-distribution
-    assert min(full[:n // 2]) < min(tr[:n // 2]) or full[0] < 0.2, full
+    # both arms learned the task (the comparison is meaningless otherwise)
+    assert full[-1] > 0.9, full
+    # closed one step early: only truncation training can still answer
+    # (full-trace training never saw a forced close)
+    assert tr[n - 1] - full[n - 1] > 0.5, (tr, full)
     assert art["results_sha256"] == hashlib.sha256(
         json.dumps(art["results"], sort_keys=True).encode()).hexdigest()
     print("PASS test_ab_artifact " + json.dumps({"truncation": tr, "full": full}))

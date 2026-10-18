@@ -317,6 +317,7 @@ python helioslm_v5/tests/test_global_prope_kv.py    # T108 U4 Gemma 4 p-RoPE + g
 python helioslm_v5/tests/test_kv_share.py           # T109 U6 cross-layer KV sharing: defaults identical, manual-attention oracle, aliased cache (L-N)/L, decode == full, ppl A/B artifact
 python helioslm_v5/tests/test_option_matrix.py      # T110 option matrix: every pair of 28 feature options builds with decode == full or is rejected by OPTION_RULES; core modules read config fields directly
 python helioslm_v5/tests/test_smebu_sandwich.py     # T111 U7 Arcee Trinity: SMEBU oracle, bounded steps, sandwich-norm gain 1/sqrt(L) + layer oracle, A/B artifact
+python helioslm_v5/tests/test_thinking_budget.py    # T112 U2 thinking budget: forced close at exactly b tokens (greedy + sampled), no reopen, truncation helpers, A/B artifact
 python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite (396 tests)
 ```
 
@@ -436,6 +437,7 @@ Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/hel
 - **v5.70** — U4: Gemma 4 p-RoPE (partial rotary) and K=V on global attention layers; `kv_b_proj` halves and the expanded cache shares one K/V tensor, defaults bit-identical — T108
 - **v5.71** — U6: cross-layer KV sharing (Gemma 3n/4); with the last 4 of 8 MLA layers sharing KV, the cache halves exactly and val ppl stays 14.71 vs 14.94 (toy char LM, single seed) — T109
 - **v5.72** — U7 (Arcee Trinity): SMEBU soft-clamped momentum expert-bias updates (fewer bias reversals at every step size; MaxVio variance 0.0067 → 0.0041 at λ=1e-2) and depth-scaled sandwich norm (post-norm gain 1/√L), both off by default — T111
+- **v5.73** — U2: thinking-budget control (forced close after b thinking tokens) + truncated-trace training; closed one step early, accuracy 0.12 → 0.88 with truncation training — T112
 - **v5.68** — U5: gpt-oss clamped SwiGLU option for MoE experts (pre-w2 activation bounded to [-42, 56] with gpt-oss settings), defaults bit-identical — T106
 - **v5.67** — B2-5: MiMo-style light MTP head (sliding-window attention + narrow FFN): -20% head parameters, -39% head step latency, acceptance 0.813 vs 0.822 — T105
 - **v5.66** — B2-4: learnable doubly stochastic mHC read matrices (Sinkhorn), identity at init; fixes the v5.7 HC branch fold that scrambled sequence positions across branches (decode != full once B != 0) — T104

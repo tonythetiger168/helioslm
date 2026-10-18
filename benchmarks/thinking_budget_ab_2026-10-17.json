@@ -1,0 +1,50 @@
+{
+  "experiment": "U2 thinking-budget control: accuracy vs forced budget on running-sum mod 10",
+  "task": {
+    "digits": 8,
+    "chance": 0.1,
+    "train_seed": 1000,
+    "eval_seed": 0
+  },
+  "train": {
+    "steps": 4000,
+    "batch": 64,
+    "lr": 0.001,
+    "seed": 0,
+    "n_eval": 512
+  },
+  "results": [
+    {
+      "arm": "full",
+      "p_truncate": 0.0,
+      "acc_by_budget": {
+        "0": 0.0898,
+        "1": 0.1191,
+        "2": 0.0977,
+        "3": 0.0918,
+        "4": 0.084,
+        "5": 0.0781,
+        "6": 0.1191,
+        "7": 0.1211,
+        "8": 1.0
+      }
+    },
+    {
+      "arm": "truncation",
+      "p_truncate": 0.5,
+      "acc_by_budget": {
+        "0": 0.0781,
+        "1": 0.0762,
+        "2": 0.0898,
+        "3": 0.0801,
+        "4": 0.0801,
+        "5": 0.0801,
+        "6": 0.0859,
+        "7": 0.8848,
+        "8": 1.0
+      }
+    }
+  ],
+  "results_sha256": "ae2fb4d2cad2163b63755946a6def182eba9056974987c3ca602b94d9d753b82",
+  "wall_seconds": 1166.7
+}

@@ -125,9 +125,9 @@ def evaluate(model, budget, n_eval):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--steps", type=int, default=1500)
+    ap.add_argument("--steps", type=int, default=4000)
     ap.add_argument("--batch", type=int, default=64)
-    ap.add_argument("--lr", type=float, default=2e-3)
+    ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--n-eval", type=int, default=512)
     ap.add_argument("--output")
