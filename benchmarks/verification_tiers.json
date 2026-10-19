@@ -7,6 +7,7 @@
     "unverified": "plans, drafts, or numbers not yet reproduced"
   },
   "artifacts": {
+    "windows_rtx4060_prefill_2026-10-19.json": {"tier": "measured", "basis": "RTX 4060 Windows mid-360M batch-1 128-token synchronized interleaved A/B against the pre-optimization token schedule; fixed weights/inputs and exact logits/hidden/cache gate; shared desktop, three timed samples per mode, no production-throughput or convergence claim"},
     "alignbench_bpe_results.json": {"tier": "measured", "basis": "supervised DecisionHead BPE readout on RLCDAlignBench; no oracle gate on AUROC"},
     "alignbench_char_results.json": {"tier": "measured", "basis": "supervised char-level readout on RLCDAlignBench"},
     "alignbench_jev_zero_shot_auroc.json": {"tier": "measured", "basis": "offline recompute of the vendor's cached zero-shot metrics"},

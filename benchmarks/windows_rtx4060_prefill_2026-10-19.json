@@ -1,0 +1,62 @@
+{
+  "schema": "windows-cuda-prefill-ab/1",
+  "verification_tier": "measured",
+  "gpu": "NVIDIA GeForce RTX 4060",
+  "torch": "2.14.1+cu126",
+  "size": "mid",
+  "batch": 1,
+  "tokens": 128,
+  "warmup": 1,
+  "repeats": 3,
+  "rows": [
+    {
+      "dtype": "torch.float16",
+      "samples_ms": {
+        "reference": [
+          2131.75250000495,
+          2274.909999992815,
+          2126.7707999941194
+        ],
+        "optimized": [
+          1912.9992999951355,
+          1800.3664999996545,
+          1768.4227999998257
+        ]
+      },
+      "median_ms": {
+        "reference": 2131.75250000495,
+        "optimized": 1800.3664999996545
+      },
+      "latency_reduction_percent": 15.545238014475228,
+      "bit_identical_logits_hidden_cache": true
+    },
+    {
+      "dtype": "torch.bfloat16",
+      "samples_ms": {
+        "reference": [
+          2220.08640000422,
+          2482.4791999999434,
+          2410.733299999265
+        ],
+        "optimized": [
+          1936.0002000030363,
+          1845.1154999929713,
+          1933.633499997086
+        ]
+      },
+      "median_ms": {
+        "reference": 2410.733299999265,
+        "optimized": 1933.633499997086
+      },
+      "latency_reduction_percent": 19.790650421692213,
+      "bit_identical_logits_hidden_cache": true
+    }
+  ],
+  "source_sha256": {
+    "helioslm_v5/src/model_v5.py": "698e9e25664a00cf18e209b48b24b98cf5b9d5dc06ab87041cb75d788676c9c8",
+    "helioslm_v5/src/attention/mla.py": "c4b0c1732155a68bb2b957d776b4c102a6b90062eb0acc5f7942dedc2773f707",
+    "helioslm_v5/src/moe/sigmoid_moe.py": "da3dd6e01a86deb7525db67e2ae9406c021223afddccb151a06cdab3855b45c7",
+    "scripts/bench_stable_prefill_ab.py": "4425546bbe94aa2545323830a6e834f2cb1372707708a804e3ded037d30ceac7"
+  },
+  "scope": "Untrained model; interleaved synchronized wall clock on a shared desktop. No isolated throughput, convergence, or original parallel-prefill claim."
+}

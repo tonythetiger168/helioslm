@@ -87,9 +87,16 @@ def test_parse_reply():
 def test_sandbox_limits():
     with tempfile.TemporaryDirectory() as root:
         real = str(Path(root).resolve())
-        code, out = tb.run_command("pwd; echo $HOME", root)
-        assert code == 0 and out.split() == [real, root], out
+        command = ('pwd -W; cygpath -w "$HOME"' if os.name == "nt"
+                   else "pwd; echo $HOME")
+        code, out = tb.run_command(command, root)
+        assert code == 0, out
+        assert [Path(line).resolve() for line in out.splitlines()] == [
+            Path(real), Path(root)], out
         assert tb.run_command("sleep 5", root, timeout=1)[0] == 124
+        # A Python grandchild must also terminate and release captured pipes.
+        assert tb.run_command('python3 -c "while True: pass"',
+                              root, timeout=1)[0] == 124
         code, out = tb.run_command("yes | head -c 5000", root)
         assert len(out) < 2200 and "truncated" in out
         if os.name == "posix":

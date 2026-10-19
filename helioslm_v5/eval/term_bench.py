@@ -27,6 +27,8 @@ limits. Nothing stops a command from touching paths outside the sandbox
 import json
 import os
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -272,7 +274,7 @@ def seed_sandbox(task, root):
         if not p.resolve().is_relative_to(Path(root).resolve()):
             raise TermBenchError(f"{task['id']}: setup path escapes: {rel}")
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(content, encoding="utf-8")
+        p.write_text(content, encoding="utf-8", newline="\n")
 
 
 def _limit_resources():   # pragma: no cover - runs in the child process
@@ -286,17 +288,54 @@ def run_command(cmd, root, timeout=CMD_TIMEOUT_S):
     """Run one shell command in the sandbox -> (exit code, output)."""
     env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": str(root),
            "LC_ALL": "C", "LANG": "C"}
+    shell = "bash"
+    if os.name == "nt":
+        # WindowsApps bash is a WSL launcher, not a native sandbox shell.
+        git = shutil.which("git")
+        candidates = ([Path(git).resolve().parent.parent / "bin/bash.exe"]
+                      if git else [])
+        candidates += [Path(os.environ.get("ProgramFiles", "C:/Program Files"))
+                       / "Git/bin/bash.exe"]
+        shell = next((str(p) for p in candidates if p.is_file()), None)
+        if shell is None:
+            raise TermBenchError("Windows terminal tasks require Git for Windows Bash")
+        git_root = Path(shell).parent.parent
+        env["PATH"] = ";".join([str(git_root / "usr/bin"),
+                                   str(git_root / "bin"),
+                                   str(Path(sys.executable).parent)])
+        for key in ("SystemRoot", "WINDIR", "TEMP", "TMP"):
+            if key in os.environ:
+                env[key] = os.environ[key]
+        env["MSYS_NO_PATHCONV"] = "1"
+        # Use the same interpreter, avoiding Windows Store python3 aliases.
+        cmd = "python3() { " + shlex.quote(Path(sys.executable).as_posix()) + ' "$@"; }; ' + cmd
     kwargs = {"preexec_fn": _limit_resources} if os.name == "posix" else {}
-    try:
-        r = subprocess.run(["bash", "-c", cmd], cwd=root, env=env,
-                           capture_output=True, text=True, timeout=timeout,
-                           **kwargs)
-    except subprocess.TimeoutExpired:
-        return 124, f"[timed out after {timeout}s]"
-    out = (r.stdout + r.stderr)
+    if os.name == "nt":
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        kwargs["start_new_session"] = True
+    with subprocess.Popen([shell, "-c", cmd], cwd=root, env=env,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                          text=True, encoding="utf-8", **kwargs) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            # Killing Bash alone leaves Python grandchildren holding the pipes.
+            if os.name == "nt":
+                subprocess.run([str(Path(os.environ["SystemRoot"]) / "System32/taskkill.exe"),
+                                "/PID", str(process.pid), "/T", "/F"],
+                               capture_output=True, timeout=30)
+            else:
+                import signal
+                os.killpg(process.pid, signal.SIGKILL)
+            process.kill()
+            process.communicate(timeout=30)
+            return 124, f"[timed out after {timeout}s]"
+        code = process.returncode
+    out = stdout + stderr
     if len(out) > OUTPUT_CHARS:
         out = out[:OUTPUT_CHARS] + f"\n[... {len(out) - OUTPUT_CHARS} chars truncated]"
-    return r.returncode, out
+    return code, out
 
 
 # ---------------------------------------------------------------- protocol

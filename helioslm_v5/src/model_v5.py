@@ -491,6 +491,68 @@ class HeliosLMv5(nn.Module):
     def forward(self, input_ids, attention_mask=None, position_ids=None,
                 past_key_values=None, use_cache=False, images=None,
                 audio_features=None):
+        """Forward; ordinary low-precision text inference uses stable prefill.
+
+        FP16/BF16 matrix rounding can change top-k MoE routes between a
+        parallel prefill and one-token decode. In eval/no-grad mode, use
+        the decode schedule for monotonic text prefill, preserving the
+        requested compute, output and cache dtypes. This costs prefill
+        throughput. Config ``stable_low_precision_prefill=False`` opts
+        back into the parallel path. Training, packed/custom positions
+        and multimodal inputs retain their existing path.
+        """
+        stable = (self.config.stable_low_precision_prefill
+                  and not self.training and not torch.is_grad_enabled()
+                  and self.embed_tokens.weight.dtype in (torch.float16, torch.bfloat16)
+                  and input_ids.shape[1] > 1
+                  and images is None and audio_features is None)
+        if stable and past_key_values is not None and len(past_key_values) != len(self.layers):
+            stable = False  # Preserve the original cache-validation error.
+        if stable:
+            past_len = past_seq_len(past_key_values) if past_key_values is not None else 0
+            if position_ids is not None:
+                positions = position_ids
+                if positions.dim() == 1:
+                    positions = positions.unsqueeze(0).expand(input_ids.shape[0], -1)
+                expected = torch.arange(past_len, past_len + input_ids.shape[1],
+                                        device=positions.device).unsqueeze(0).expand_as(input_ids)
+                stable = (positions.dtype in (torch.int32, torch.int64)
+                          and torch.equal(positions, expected))
+            if attention_mask is not None:
+                stable = (stable and attention_mask.dim() == 2
+                          and attention_mask.shape[0] == input_ids.shape[0]
+                          and attention_mask.shape[1] <= past_len + input_ids.shape[1])
+            if past_key_values is not None:
+                # The fast default-position lookup assumes every MLA cache
+                # covers the same prefix. Keep malformed cache inputs on
+                # the original validation path.
+                stable = stable and all(
+                    not isinstance(layer.attention, MLA)
+                    or past_seq_len([cache]) == past_len
+                    for layer, cache in zip(self.layers, past_key_values))
+        if stable:
+            mask = attention_mask
+            total_len = past_len + input_ids.shape[1]
+            if mask is not None and mask.shape[1] < total_len:
+                mask = F.pad(mask, (total_len - mask.shape[1], 0), value=1)
+            logits, hidden = [], []
+            past = past_key_values
+            for i in range(input_ids.shape[1]):
+                token_mask = mask[:, :past_len + i + 1] if mask is not None else None
+                out, state, past = self._forward_impl(
+                    input_ids[:, i:i + 1], attention_mask=token_mask,
+                    past_key_values=past, use_cache=True,
+                    _contiguous_positions=True)
+                logits.append(out)
+                hidden.append(state)
+            return (torch.cat(logits, dim=1), torch.cat(hidden, dim=1),
+                    past if use_cache else None)
+        return self._forward_impl(input_ids, attention_mask, position_ids,
+                                  past_key_values, use_cache, images, audio_features)
+
+    def _forward_impl(self, input_ids, attention_mask=None, position_ids=None,
+                      past_key_values=None, use_cache=False, images=None,
+                      audio_features=None, _contiguous_positions=False):
         """See module docstring for the (logits, hidden_states, past) contract.
 
         attention_mask: [B, L] with 1 = real token, 0 = pad. When decoding it
@@ -544,11 +606,11 @@ class HeliosLMv5(nn.Module):
 
         total_len = hidden_states.shape[1]
 
-        if position_ids is None:
+        if position_ids is None and not _contiguous_positions:
             position_ids = torch.arange(
                 past_len, past_len + total_len, device=hidden_states.device
             ).unsqueeze(0).expand(B, total_len)
-        elif prefix_len > 0 and position_ids.shape[-1] != total_len:
+        elif position_ids is not None and prefix_len > 0 and position_ids.shape[-1] != total_len:
             # Multimodal prefixes prepend tokens the caller's text-length
             # position_ids cannot cover — without this guard the layers
             # later fail with a cryptic broadcast RuntimeError.

@@ -40,6 +40,96 @@ A from-scratch PyTorch reference implementation of a modern LLM stack: MLA atten
 
 **Honest positioning:** this is a correctness-focused reference implementation, not a throughput-optimized production engine (see [Known Limitations](#known-limitations)).
 
+## Windows RTX 4060: CUDA validation and stable low-precision inference
+
+Use an existing CUDA-enabled PyTorch installation, `pytest`, and Git Bash
+for the terminal/SWE oracles. `requirements-ci.txt` installs the CPU CI
+environment; it is not the GPU setup command. These launchers do not install
+packages or stop other applications.
+
+From the repository root in PowerShell:
+
+```powershell
+.\Run-Extended.cmd
+```
+
+The runner executes the original cases in separate processes, pytest
+(with mid-model acceptance isolated), integration, explicit CUDA checks,
+native FP8 lite training, and synchronized CUDA microbenchmarks. Per-job logs
+and JSON/JUnit reports go to `extended_results/<timestamp>/`; the result ZIP
+is written beside the runner. CPU fixture passes are not CUDA evidence, and
+missing GPU capabilities are reported separately.
+
+For bounded mid-model FP32/FP16/BF16 cache checks and a ten-minute soak:
+
+```powershell
+python -u scripts/verify_cuda_extended.py --soak-seconds 600 --out extended_results/cuda_extended_latest.json
+```
+
+`stable_low_precision_prefill=True` is the default for FP16/BF16 text
+inference in eval/no-grad mode. It retains the single-token compute schedule
+to prevent rounding from changing MoE top-k routes between prefill and
+decode. Query/key RoPE lookups are shared, and internally known contiguous
+positions avoid repeated GPU-to-CPU bounds reads. Weights, logits and caches
+keep the requested dtype; tolerance thresholds are unchanged. Custom/packed
+positions and training retain their existing execution paths.
+This is still sequential prefill, with a substantial latency cost. Setting
+the flag to `False` selects the original parallel path, whose low-precision
+mid-model cache parity has not been established.
+
+Measure a low-precision prefill on your own machine (`bfloat16` is also supported):
+
+```powershell
+python -u scripts/bench_cuda_mid.py --dtype float16 --lengths 128 --warmup 1 --repeats 3 --skip-generation --out extended_results/prefill_fp16.json
+```
+
+For a reproducible, interleaved comparison against the previous token
+schedule (with exact logits/hidden/cache checks):
+
+```powershell
+python -u scripts/bench_stable_prefill_ab.py --out extended_results/prefill_ab.json
+```
+
+The [recorded RTX 4060 A/B samples](benchmarks/windows_rtx4060_prefill_2026-10-19.json)
+are measurements on a shared desktop, not a portable speed guarantee.
+With one warmup and three timed samples per mode, the recorded medians were:
+
+| Precision | Previous stable schedule | Optimized stable schedule | Latency reduction |
+|---|---:|---:|---:|
+| FP16 | 2131.75 ms | 1800.37 ms | 15.5% |
+| BF16 | 2410.73 ms | 1933.63 ms | 19.8% |
+
+These numbers compare two sequential schedules, not the original parallel
+prefill. Results vary with desktop load and memory pressure.
+
+Native FP8 **mixed-precision** training is explicitly enabled with
+`FP8Trainer(model, config, backend="native")`: Linear forward GEMMs use
+E4M3, input/weight gradient GEMMs use E5M2×E4M3, and accumulation, master
+parameters and AdamW state remain FP32. Unsupported native operators raise;
+there is no silent simulated fallback. The CPU-compatible simulated backend
+remains the default.
+
+```powershell
+python -u scripts/train_native_fp8.py --steps 10 --out extended_results/native_fp8_training.json
+```
+
+The distributed entry point uses synchronous data-parallel gradient
+averaging, including rank-local unused parameters and collective skipping
+of non-finite updates. On Linux with NCCL and two FP8-capable GPUs:
+
+```bash
+torchrun --standalone --nproc_per_node=2 scripts/train_native_fp8.py --steps 10 --out extended_results/native_fp8_nccl.json
+```
+
+**Multi-GPU/NCCL remains unverified on hardware.** The available machine is
+a single RTX 4060 on Windows; two-process CPU/Gloo tests verify collective
+logic only. Synthetic lite training does not establish mid-model training,
+convergence, or production throughput.
+
+See [CUDA evidence and limits](docs/CUDA_VERIFICATION.md),
+[low-precision prefill details](docs/LOW_PRECISION_PREFILL_zh-TW.md), and
+[native FP8/NCCL usage](docs/NATIVE_FP8_NCCL_zh-TW.md).
+
 ## Harness Plugins (v1.0-v1.22, 23 releases)
 
 All plugins register as `ctx.<name>.<op>` with per-call audit effects.
@@ -349,7 +439,7 @@ print(out)
 | **Disaggregation** | v5.25 Mooncake-style prefill/decode module behind a monotonicity gate; v5.28 three-axis **Pareto sweep** (makespan / workers / worker-seconds) with latency-cost curves per workload — cache-aware anti-monotonicity recorded as a structural finding, not hidden |
 | **Speculative decoding** | DeepSeek-style MTP with **strict verification** (residual (p−q)₊ resampling), batch support, O(1) cache-truncation rollback; hybrid recurrent-state rollback via restore+replay. |
 | **Serving** | vLLM-style engine: paged KV accounting, copy-on-write forks, watermark-aligned continuous batching. |
-| **Training** | FP8 trainer (native float8 + STE, E5M2 gradient hooks, AdamW master weights), DualPipe schedule simulation (recompute-based, gradient-exact), GRPO (real sampling, k3 KL, answer-extraction rewards), Muon optimizer (Newton–Schulz orthogonalized momentum, optional per-head blocks), QAT straight-through fake-quant training. |
+| **Training** | FP8 trainer (CPU-compatible simulated default; optional native CUDA FP8 forward/backward GEMMs; FP32 AdamW master weights), DualPipe schedule simulation (recompute-based, gradient-exact), GRPO (real sampling, k3 KL, answer-extraction rewards), Muon optimizer (Newton–Schulz orthogonalized momentum, optional per-head blocks), QAT straight-through fake-quant training. |
 | **Adaptation** | `AdaptationLoop`: transferred harnesses must be re-accepted under the target workload's gate or dropped; cold/prefix-free targets shed draft+pool, matching the v5.16 break-even data |
 | **Harness evolution** | `inference/harness_evolver.py`: ModularRSI-style module-wise search over draft/pool/tier configs; the temp-0 bitwise gate makes 'latency evolves, answers never change' an enforced invariant (1.41x modeled speedup, 0 gate rejects) |
 | **Prefix pool** | `inference/prefix_pool.py`: blake2b(token-block + config fingerprint) keyed KV snapshots, LRU, exact-length past; pooled greedy == from-scratch bitwise |
@@ -415,7 +505,7 @@ See the [GitHub Project board](https://github.com/tonythetiger168/helioslm/proje
 - [x] Pre-trained toy checkpoints (v5.13 text, v5.27 tool-tuned) — `load` and `generate()` / agent-loop immediately
 - [ ] Epoch-2 + scaled tool-tuning (T17 parse 0.15 → target 0.4+; trainer resume-ready)
 - [ ] Fused quantization kernels
-- [ ] CUDA end-to-end verification (paths are currently static-checked; CPU-verified)
+- [ ] Broader CUDA verification (bounded Windows RTX 4060 checks measured; Linux and multi-GPU/NCCL hardware validation remain open)
 - [x] Hugging Face Hub: `chienhsinlin/helioslm-agent` hosts the agent layer + tool-tuned artifacts
 - [ ] Example notebooks: "Train a tiny HeliosLM on your laptop" / "Add a new attention variant in 30 lines"
 
@@ -425,9 +515,13 @@ Contributions are very welcome — see [CONTRIBUTING.md](https://github.com/tony
 
 ## Known Limitations
 
-All five previously known limitations are resolved as of v5.14. Remaining
-hardware-dependent item: CUDA end-to-end verification (CPU-verified paths
-are static-checked) — tracked as a community issue.
+Windows RTX 4060 CUDA checks now cover bounded lite/mid inference, real
+weight updates, native FP8 lite training and local stability tests. They do
+not establish every architecture option, large-scale training, convergence,
+or Linux/multi-GPU/NCCL behavior. Stable FP16/BF16 prefill remains sequential
+and slow; the original parallel path still lacks low-precision mid cache
+parity. See [the evidence scope](docs/CUDA_VERIFICATION.md) before interpreting
+test counts or benchmark timings as broader claims.
 
 ## Version history
 

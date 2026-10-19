@@ -10,6 +10,7 @@ or, when the runtime lacks float8 support, by an explicit round-to-nearest
 grid simulation with a straight-through gradient.
 """
 import inspect
+import sys
 import warnings
 
 import torch
@@ -48,9 +49,13 @@ def _round_to_fp8_grid(v: torch.Tensor, max_val: float, mantissa_bits: int,
 
 
 class FP8Linear(nn.Module):
-    """FP8 quantized linear layer with dynamic (delayed) scaling."""
+    """Simulated delayed-scaling or strict native dynamically scaled FP8.
 
-    def __init__(self, in_features, out_features, bias=False, fp8_format="e4m3"):
+    Native mode uses E4M3 forward and E5M2 gradient GEMMs on CUDA.
+    """
+
+    def __init__(self, in_features, out_features, bias=False, fp8_format="e4m3",
+                 backend="simulated"):
         super().__init__()
         if fp8_format not in _FP8_RANGES:
             raise ValueError(f"fp8_format must be one of {list(_FP8_RANGES)}, "
@@ -58,6 +63,11 @@ class FP8Linear(nn.Module):
         self.in_features = in_features
         self.out_features = out_features
         self.fp8_format = fp8_format  # "e4m3" or "e5m2" — controls forward format
+        if backend not in ("simulated", "native"):
+            raise ValueError("backend must be simulated or native")
+        if backend == "native" and fp8_format != "e4m3":
+            raise ValueError("native forward requires e4m3; backward uses e5m2")
+        self.backend = backend
 
         # High precision master weights
         self.weight = nn.Parameter(torch.randn(out_features, in_features) * 0.02)
@@ -140,6 +150,9 @@ class FP8Linear(nn.Module):
 
     def forward(self, x):
         """FP8 forward with high-precision output."""
+        if self.backend == "native":
+            from .native_fp8 import NativeFP8Function
+            return NativeFP8Function.apply(x, self.weight, self.bias)
         # Update scales (input scale from activation amax history, weight
         # scale refreshed from the weight amax every step).
         self.input_scale.copy_(self._update_scale(
@@ -160,7 +173,13 @@ class FP8Linear(nn.Module):
                 w_fp8.register_hook(self._grad_hook)
 
         # Matmul on the quantized values (production: torch._scaled_mm).
-        output = torch.matmul(x_fp8, w_fp8.t())
+        if sys.platform == 'win32' and x.device.type == 'cpu' and x.dtype in (
+                torch.float16, torch.bfloat16):
+            # Avoid Windows CPU low-precision GEMM access violations;
+            # simulated mode keeps quantized values and the output dtype.
+            output = torch.matmul(x_fp8.float(), w_fp8.float().t()).to(x.dtype)
+        else:
+            output = torch.matmul(x_fp8, w_fp8.t())
 
         if self.bias is not None:
             output = output + self.bias
@@ -178,10 +197,19 @@ class FP8Trainer:
     """
 
     def __init__(self, model, config, weight_decay: float = 0.01,
-                 max_grad_norm: float = 1.0):
+                 max_grad_norm: float = 1.0, backend="simulated",
+                 distributed=False):
         self.model = model
         self.config = config
         self.fp8_format = getattr(config, "fp8_format", "e4m3")
+        self.backend = backend
+        self.distributed = distributed
+        if backend not in ("simulated", "native"):
+            raise ValueError("backend must be simulated or native")
+        if distributed:
+            import torch.distributed as dist
+            if not dist.is_initialized():
+                raise RuntimeError("Initialize torch.distributed before FP8Trainer")
         # Optimizer hyperparameters are explicit constructor parameters
         # (previously hard-coded); defaults preserve the old behavior.
         self.weight_decay = weight_decay
@@ -193,6 +221,10 @@ class FP8Trainer:
 
         # Convert applicable layers to FP8
         self._convert_to_fp8()
+        if distributed:
+            # All replicas and FP32 optimizer masters start identically.
+            for param in self.model.parameters():
+                dist.broadcast(param.data, src=0)
 
         # fp32 master weights managed by AdamW, on the same device as the
         # model parameters (re-checked every train_step, see _sync_master_devices).
@@ -232,7 +264,11 @@ class FP8Trainer:
                     module.out_features,
                     bias=module.bias is not None,
                     fp8_format=self.fp8_format,
-                )
+                    backend=self.backend,
+                ).to(device=module.weight.device, dtype=module.weight.dtype)
+                # Conversion can happen after model.to(cuda/bf16/etc.).
+                # Preserve placement before copying values and constructing
+                # the fp32 optimizer masters; CPU defaults would split the model.
                 # Copy weights
                 fp8_module.weight.data.copy_(module.weight.data)
                 if module.bias is not None:
@@ -362,7 +398,8 @@ class FP8Trainer:
         else:
             loss = self._token_cross_entropy(batch, labels)
 
-        if not torch.isfinite(loss):
+        loss_finite = self._all_finite(bool(torch.isfinite(loss)), loss.device)
+        if not loss_finite:
             self.skipped_steps += 1
             warnings.warn(
                 f"FP8Trainer: non-finite loss ({loss.item()}); skipping "
@@ -383,6 +420,7 @@ class FP8Trainer:
                 grads_finite = False
             master.grad = param.grad.detach().to(torch.float32).clone()
 
+        grads_finite = self._all_finite(grads_finite, loss.device)
         if not grads_finite:
             self.skipped_steps += 1
             warnings.warn(
@@ -392,6 +430,17 @@ class FP8Trainer:
             self.model.zero_grad(set_to_none=True)
             self.optimizer.zero_grad(set_to_none=True)
             return loss.item()
+
+        if self.distributed:
+            self._average_master_gradients()
+            # A sum can overflow even when every local gradient was finite.
+            averaged_finite = all(m.grad is None or bool(torch.isfinite(m.grad).all())
+                                  for _, m in self.param_map)
+            if not self._all_finite(averaged_finite, loss.device):
+                self.skipped_steps += 1
+                self.model.zero_grad(set_to_none=True)
+                self.optimizer.zero_grad(set_to_none=True)
+                return loss.item()
 
         # Clip and step on master weights
         torch.nn.utils.clip_grad_norm_(
@@ -404,3 +453,28 @@ class FP8Trainer:
                 param.copy_(master.to(param.dtype))
 
         return loss.item()
+
+    def _all_finite(self, finite, device):
+        if not self.distributed:
+            return finite
+        import torch.distributed as dist
+        flag = torch.tensor(int(finite), device=device, dtype=torch.int32)
+        dist.all_reduce(flag, op=dist.ReduceOp.MIN)
+        return bool(flag.item())
+
+    def _average_master_gradients(self):
+        """Average even rank-local unused MoE parameters in a fixed order.
+
+        Each rank must call train_step equally often with equal local batch
+        and valid-token counts. All ranks skip a poisoned step together.
+        """
+        import torch.distributed as dist
+        world = dist.get_world_size()
+        for _, master in self.param_map:
+            present = torch.tensor(int(master.grad is not None), device=master.device)
+            dist.all_reduce(present)
+            if present.item() == 0:
+                continue
+            grad = master.grad if master.grad is not None else torch.zeros_like(master)
+            dist.all_reduce(grad)
+            master.grad = grad / world

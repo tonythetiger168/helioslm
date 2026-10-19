@@ -26,6 +26,10 @@ models/
 *.log
 logs/
 
+# Local CUDA validation output (reports are generated, not source).
+extended_results/
+results/
+
 # Zip packages (keep source)
 *.zip
 

@@ -26,6 +26,7 @@ Patches are lists of ``(path, old, new)`` exact replacements, applied
 through ``patch_command`` so references and traps run through the same
 shell path as an agent's commands.
 """
+import base64
 import json
 import shutil
 import tempfile
@@ -45,9 +46,10 @@ class SweBenchError(ValueError):
 def patch_command(edits):
     """Shell command applying exact ``(path, old, new)`` replacements; it
     exits non-zero (and changes nothing further) if an ``old`` is absent."""
-    payload = json.dumps(edits)
-    script = ("import json,sys\n"
-              "for p, o, n in json.loads(sys.argv[1]):\n"
+    # Native Windows argv quoting can collapse JSON regex backslashes.
+    payload = base64.b64encode(json.dumps(edits).encode("utf-8")).decode("ascii")
+    script = ("import base64,json,sys\n"
+              "for p, o, n in json.loads(base64.b64decode(sys.argv[1])):\n"
               "    s = open(p).read()\n"
               "    if o not in s: sys.exit('not found in ' + p)\n"
               "    open(p, 'w').write(s.replace(o, n, 1))\n")

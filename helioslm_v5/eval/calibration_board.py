@@ -146,7 +146,7 @@ def build_board(paths, created, repo_root=None):
     inputs, seen = {}, {}
     for p in paths:
         p = Path(p)
-        key = str(p.relative_to(root)) if root else p.name
+        key = p.relative_to(root).as_posix() if root else p.name
         digest = sha256_file(p)
         if digest in seen:
             # a byte-identical copy would count one run twice

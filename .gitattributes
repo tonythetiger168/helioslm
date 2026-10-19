@@ -1,0 +1,4 @@
+# Keep provenance hashes and Git Bash scripts identical across checkouts.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf

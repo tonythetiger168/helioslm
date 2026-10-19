@@ -211,7 +211,7 @@ def test_core_modules_read_config_directly():
                    if dataclasses.is_dataclass(getattr(lite, f.name))}
     problems = []
     for rel in _CORE:
-        tree = ast.parse((_REPO / rel).read_text())
+        tree = ast.parse((_REPO / rel).read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                     and node.func.id == "getattr" and node.args

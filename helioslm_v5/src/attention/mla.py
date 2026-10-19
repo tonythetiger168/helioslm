@@ -239,6 +239,19 @@ class RotaryEmbedding(nn.Module):
         sin = self.sin_cached[0, 0][position_ids].unsqueeze(1)
         return cos, sin
 
+    def contiguous(self, start, length, batch):
+        """Internal default-position lookup; bounds are known Python sizes.
+
+        Explicit caller positions still use forward's tensor validation.
+        """
+        if start < 0 or length < 1:
+            raise ValueError('contiguous RoPE positions require start >= 0 and length >= 1')
+        self._ensure_capacity(start + length)
+        shape = (batch, 1, length, -1)
+        cos = self.cos_cached[:, :, start:start + length].expand(shape)
+        sin = self.sin_cached[:, :, start:start + length].expand(shape)
+        return cos, sin
+
 
 def apply_rotary(x, cos, sin):
     """Apply RoPE. x: [B, H, L, D], cos/sin: [B, 1, L, D].
@@ -577,7 +590,7 @@ class MLA(nn.Module):
             position_ids = position_ids.unsqueeze(0).expand(B, seq)
         return position_ids, custom
 
-    def _project_new_tokens(self, hidden_states, position_ids):
+    def _project_new_tokens(self, hidden_states, position_ids, position_start=None):
         """Project only the NEW tokens (O(1) per decode step).
 
         Returns:
@@ -586,11 +599,18 @@ class MLA(nn.Module):
             c_kv:   [B, seq, kv_latent_dim]      (post-norm latent)
             k_rope: [B, 1, seq, rope_head_dim]   (post-RoPE, shared)
         """
-        q_nope, q_rope = self._project_queries(hidden_states, position_ids)
-        c_kv, k_rope = self._project_kv(hidden_states, position_ids)
+        # Queries and new keys rotate at the same positions. Reuse the
+        # lookup and its validation (including GPU-to-host bounds checks).
+        rotary = None
+        if not self.nope:
+            rotary = (self.rope(position_ids) if position_start is None else
+                      self.rope.contiguous(position_start, hidden_states.shape[1],
+                                           hidden_states.shape[0]))
+        q_nope, q_rope = self._project_queries(hidden_states, position_ids, rotary)
+        c_kv, k_rope = self._project_kv(hidden_states, position_ids, rotary)
         return q_nope, q_rope, c_kv, k_rope
 
-    def _project_kv(self, hidden_states, position_ids):
+    def _project_kv(self, hidden_states, position_ids, rotary=None):
         """c_kv [B, seq, d_c] (post-norm latent) and k_rope [B, 1, seq, r]
         (post-RoPE) for the new tokens."""
         B, seq, _ = hidden_states.shape
@@ -606,11 +626,11 @@ class MLA(nn.Module):
             k_rope = self.norm_k_rope(k_rope)
         # RoPE on the shared key only; skipped entirely under NoPE.
         if not self.nope:
-            cos, sin = self.rope(position_ids)
+            cos, sin = rotary if rotary is not None else self.rope(position_ids)
             k_rope = apply_rotary(k_rope, cos, sin)
         return c_kv, k_rope
 
-    def _project_queries(self, hidden_states, position_ids):
+    def _project_queries(self, hidden_states, position_ids, rotary=None):
         """q_nope [B, H, seq, d_nope] and q_rope [B, H, seq, r] (post-RoPE)."""
         B, seq, _ = hidden_states.shape
 
@@ -632,7 +652,7 @@ class MLA(nn.Module):
         # entirely (Kimi-K3 direction); q_rope/k_rope pass through
         # unrotated and the rope cache registers stay untouched.
         if not self.nope:
-            cos, sin = self.rope(position_ids)
+            cos, sin = rotary if rotary is not None else self.rope(position_ids)
             q_rope = apply_rotary(q_rope, cos, sin)
         elif self.nope_temp:
             # Llama 4 NoPE temperature: per-position query scale (exactly
@@ -777,7 +797,8 @@ class MLA(nn.Module):
                 hidden_states, past_len, position_ids
             )
             q_nope, q_rope, c_kv, k_rope = self._project_new_tokens(
-                hidden_states, position_ids
+                hidden_states, position_ids,
+                position_start=past_len if not custom_positions else None
             )
             k_nope, k_rope, v = self._expand_kv(c_kv, k_rope, past_key_value)
         if not use_cache:
@@ -913,7 +934,8 @@ class MLA(nn.Module):
         )
 
         q_nope, q_rope, c_kv, k_rope = self._project_new_tokens(
-            hidden_states, position_ids
+            hidden_states, position_ids,
+            position_start=past_len if not custom_positions else None
         )
         c_kv = c_kv.unsqueeze(1)  # [B, 1, seq, d_c] — shared across heads
 

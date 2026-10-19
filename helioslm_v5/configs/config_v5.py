@@ -566,6 +566,10 @@ class HeliosLMv5Config:
     # Default source for MoE expert hidden size and MTP feed-forward dim.
     intermediate_size: Optional[int] = None  # full: 14336
     rms_norm_eps: float = 1e-6
+    # Eval/no-grad FP16/BF16 text prefill follows the same token schedule
+    # as cached decode, avoiding MoE route changes from shape-dependent
+    # rounding. Slower prefill; False restores the parallel fast path.
+    stable_low_precision_prefill: bool = True
     eos_token_id: int = 2
     bos_token_id: int = 1
     pad_token_id: int = 0
@@ -761,6 +765,8 @@ class HeliosLMv5Config:
                 raise ValueError(f"{name} must be a positive integer, got {value}")
         if self.rms_norm_eps <= 0:
             raise ValueError(f"rms_norm_eps must be positive, got {self.rms_norm_eps}")
+        if not isinstance(self.stable_low_precision_prefill, bool):
+            raise ValueError("stable_low_precision_prefill must be a bool")
         if m.bias_update_rate <= 0:
             raise ValueError(
                 f"moe.bias_update_rate must be positive, got {m.bias_update_rate}"
