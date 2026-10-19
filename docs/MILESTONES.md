@@ -95,7 +95,7 @@ renumbered.
 | AC | AC1 mini SWE task set (20 small repos, hidden tests, trap gates) | ✅ Done (v5.62, T97) |
 | AC | AC2 agent RL on the SWE sandbox — SFT warm start + rejection-sampling fine-tuning with a verified-DONE reward: 0.367 → 1.0 on train and held-out (GRPO eroded the policy; see `benchmarks/swe_agent_rl_notes_2026-10-16.md`) | ✅ Done (v5.63, T100) |
 | AC | AC3 tool-call recovery layer (7 named repairs, fuzz-tested) | ✅ Done (v5.62, T99) |
-| AC | AC4 repo-scale long-context probe (dense vs hybrid vs CSA) | ⬜ Not started |
+| AC | AC4 repo-scale long-context probe (dense vs hybrid vs CSA) — hybrid 1.00 at 1x/2x/4x files; dense 0.29 (0.91 at 2x steps), CSA mean 0.54 | ✅ Done (v5.74, T113) |
 | AC | AC5 知止: stop-decision metrics (false DONE, tested-before-done) on terminal/SWE runs | ✅ Done (v5.62, T98) — frontier rows need an API key |
 | C | CUDA verification (#1), fused quant benchmark (#2), BPE tokenizer (#5), HF Hub (#4), ~1B GPU run | ⬜ Not started |
 | D | DecisionHead at 1B, multi-env GRPO training at real scale (tooling exists since Phase 2.1), TrustGate CLARIFY threshold calibration | ⬜ Not started |

@@ -74,5 +74,19 @@
     }
   ],
   "results_sha256": "16aed28eb2bb41cc9c5a743816be964b56639fe48f18d93642431dd0cdc86ed4",
-  "wall_seconds": 4785.6
+  "wall_seconds": 4785.6,
+  "supplement": {
+    "dense_4000_steps": {
+      "arm": "dense",
+      "params": 842624,
+      "acc_by_files": {
+        "8": 0.9102,
+        "16": 0.6221,
+        "32": 0.375
+      },
+      "steps": 4000
+    },
+    "note": "same settings except --steps 4000 (the OneCycle schedule spans the run, so its step-2000 state is not the 2000-step row); added because dense had not learned the task at 2000 steps",
+    "sha256": "a0d0847a376c6a7b6904867f65e7f3ed6ff3d2afd93dda674e8816a52d32bf0d"
+  }
 }
