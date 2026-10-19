@@ -35,6 +35,8 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Install pinned CPU torch + test deps
         run: pip install -r requirements-ci.txt
+      - name: Install optional BPE tokenizer dependency
+        run: pip install tokenizers==0.22.1
       - name: Unit + regression suite (test_v5.py)
         run: python helioslm_v5/tests/test_v5.py
       - name: Pytest suite (harness/agent/inference)

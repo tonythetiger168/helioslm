@@ -1,0 +1,48 @@
+name: HeliosLM Feature Acceptance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'helioslm_v5/hub.py'
+      - 'helioslm_v5/tests/test_hub.py'
+      - 'helioslm_v5/tests/test_toy_bpe.py'
+      - 'helioslm_v5/tests/test_bench_quant.py'
+      - 'helioslm_v5/tests/test_custom_attention_notebook.py'
+      - 'examples/train_toy_bpe.py'
+      - 'examples/notebooks/custom_attention.ipynb'
+      - 'benchmarks/bench_quant.py'
+      - '.github/workflows/feature-acceptance.yml'
+  workflow_dispatch:
+
+jobs:
+  feature-tests:
+    name: Issues 2-5 CPU acceptance (Python 3.11)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install CPU test dependencies
+        run: |
+          python -m pip install -r requirements-ci.txt
+          python -m pip install tokenizers==0.22.1
+      - name: Run focused regression tests
+        run: |
+          python -m pytest -q -x \
+            helioslm_v5/tests/test_bench_quant.py \
+            helioslm_v5/tests/test_custom_attention_notebook.py \
+            helioslm_v5/tests/test_hub.py \
+            helioslm_v5/tests/test_toy_bpe.py
+      - name: Capture runtime environment
+        if: always()
+        run: |
+          python --version
+          python -m pip freeze > feature-acceptance-packages.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: feature-acceptance-environment
+          path: feature-acceptance-packages.txt

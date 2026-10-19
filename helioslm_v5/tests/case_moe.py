@@ -325,3 +325,99 @@ def test_situ_glu():
     _pass("test_situ_glu",
           f"|t(x)| < {softcap} (max {t.abs().max():.3f} @|x|=1000), "
           f"finite output, grads OK, MoE wiring OK, bad activation raises")
+
+
+# ----------------------------------------------------------------------
+def test_balance_state_resume():
+    """Checkpoint-resume contract for the aux-free balancing state.
+
+    ``route_bias`` (a Parameter with requires_grad=False), ``expert_load``
+    and the per-strategy buffers (quantile: ``margin_buffer`` /
+    ``margin_count``; smebu: ``bias_momentum``, v5.72) carry the WHOLE
+    balancing history — gradients never touch them. If a checkpoint
+    save/load dropped or reset any of them, resumed training would
+    silently balance differently: SMEBU without its momentum reverts
+    toward the sign update's overshoot, and quantile without its margin
+    window restarts from a cold estimate. Nothing else pins this
+    contract (T111 oracles the update rule itself, not the roundtrip).
+
+    Here: a fresh instance that strict-loads a mid-run state and is
+    driven with the same updates must stay bitwise identical to the
+    uninterrupted run, for all three strategies; a cold-start SMEBU
+    continuation must diverge (the test is not vacuous); and the buffer
+    must roundtrip end to end at the full-model level.
+    """
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+    from helioslm_v5.src.moe.sigmoid_moe import DeviceLimitedMoE
+
+    def make(strategy):
+        config = HeliosLMv5Config(size="lite")
+        config.moe.balance_strategy = strategy
+        torch.manual_seed(0)
+        return DeviceLimitedMoE(config)
+
+    def drive(moe, strategy, steps, start):
+        # Deterministic per-step inputs. Quantile advances its margin
+        # window only through TRAINING forwards (its update_bias ignores
+        # the load argument); the other two take the load directly.
+        for i in range(start, start + steps):
+            g = torch.Generator().manual_seed(100 + i)
+            if strategy == "quantile":
+                moe.train()
+                moe(torch.randn(1, 16, moe.hidden_size, generator=g))
+                moe.update_bias()
+            else:
+                load = torch.randint(0, 40, (moe.num_experts,), generator=g)
+                moe.update_bias(load.float())
+
+    def assert_bitwise_same(a, b):
+        assert list(a) == list(b), "state-dict key order drifted"
+        for k in a:
+            assert torch.equal(a[k], b[k]), f"resume changed {k}"
+
+    for strategy in ("heuristic", "quantile", "smebu"):
+        moe = make(strategy)
+        drive(moe, strategy, 5, 0)
+        saved = {k: v.clone() for k, v in moe.state_dict().items()}
+        drive(moe, strategy, 7, 5)                   # uninterrupted run
+        resumed = make(strategy)
+        resumed.load_state_dict(saved, strict=True)  # no missing/extra keys
+        drive(resumed, strategy, 7, 5)
+        assert_bitwise_same(moe.state_dict(), resumed.state_dict())
+
+        keys = set(saved)
+        assert "route_bias" in keys and "expert_load" in keys
+        assert ("bias_momentum" in keys) == (strategy == "smebu"), strategy
+        assert ("margin_buffer" in keys) == (strategy == "quantile"), strategy
+        assert ("margin_count" in keys) == (strategy == "quantile"), strategy
+
+    # Non-vacuity: in this regime SMEBU's momentum really steers the
+    # bias — a zero-momentum (cold) instance given the same continued
+    # loads lands on a different route_bias.
+    warm, cold = make("smebu"), make("smebu")
+    drive(warm, "smebu", 5, 0)
+    drive(warm, "smebu", 7, 5)
+    drive(cold, "smebu", 7, 5)
+    assert not torch.equal(warm.route_bias, cold.route_bias)
+
+    # Full model: the buffer lives under layers.*.moe, strict-loads end
+    # to end, and the roundtripped model's eval forward is bitwise equal.
+    config = HeliosLMv5Config(size="lite")
+    config.moe.balance_strategy = "smebu"
+    torch.manual_seed(0)
+    model = HeliosLMv5(config).eval()
+    sd = model.state_dict()
+    expected = {f"layers.{i}.moe.bias_momentum"
+                for i in range(config.num_hidden_layers)}
+    assert expected <= set(sd), expected - set(sd)
+    torch.manual_seed(1)
+    model2 = HeliosLMv5(config).eval()
+    model2.load_state_dict(sd, strict=True)
+    g = torch.Generator().manual_seed(5)
+    ids = torch.randint(3, 1000, (2, 9), generator=g)
+    with torch.no_grad():
+        assert torch.equal(model(ids)[0], model2(ids)[0])
+    _pass("test_balance_state_resume",
+          "heuristic/quantile/smebu resume bitwise (strict=True), "
+          "cold-start SMEBU diverges (non-vacuous), model-level "
+          "roundtrip bitwise")
