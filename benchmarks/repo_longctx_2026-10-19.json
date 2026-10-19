@@ -1,0 +1,78 @@
+{
+  "experiment": "AC4 repo-scale long-context probe: definition look-up across files, dense vs hybrid vs CSA",
+  "task": {
+    "chance": 0.0625,
+    "filler": 6,
+    "queries": 4,
+    "train_files": 8,
+    "max_query_distance": {
+      "8": 136,
+      "16": 272,
+      "32": 544
+    },
+    "train_seed": 1000,
+    "eval_seed": 0
+  },
+  "train": {
+    "train_files": 8,
+    "filler": 6,
+    "queries": 4,
+    "window": 16,
+    "global_every": 2,
+    "ratio": 4,
+    "topk": 8,
+    "steps": 2000,
+    "batch": 32,
+    "lr": 0.001,
+    "seed": 0
+  },
+  "results": [
+    {
+      "arm": "dense",
+      "params": 842624,
+      "acc_by_files": {
+        "8": 0.292,
+        "16": 0.1963,
+        "32": 0.1201
+      }
+    },
+    {
+      "arm": "all_swa",
+      "params": 842624,
+      "acc_by_files": {
+        "8": 0.2705,
+        "16": 0.166,
+        "32": 0.1084
+      }
+    },
+    {
+      "arm": "hybrid",
+      "params": 842624,
+      "acc_by_files": {
+        "8": 1.0,
+        "16": 1.0,
+        "32": 1.0
+      }
+    },
+    {
+      "arm": "csa_mean",
+      "params": 908672,
+      "acc_by_files": {
+        "8": 0.5391,
+        "16": 0.3799,
+        "32": 0.2822
+      }
+    },
+    {
+      "arm": "csa_learned",
+      "params": 976848,
+      "acc_by_files": {
+        "8": 0.1992,
+        "16": 0.1572,
+        "32": 0.084
+      }
+    }
+  ],
+  "results_sha256": "16aed28eb2bb41cc9c5a743816be964b56639fe48f18d93642431dd0cdc86ed4",
+  "wall_seconds": 4785.6
+}
