@@ -246,12 +246,17 @@ ctx.robot.move_base(1.0, 0.0, 0.0)   # TrustGate-gated, effect-audited
 **Gating policy.** Side-effecting ops (`terminal.run`, `github.create_issue`,
 `robot.*`) fail **closed**: with no `decision.trust` registered they return a
 `refused` error instead of running, and they execute only when the gate
-returns `Route.DIRECT` — `CLARIFY` and `ESCALATE` both block. The `full`
-preset wires a TrustGate; with a bare `Context`, register one yourself
-(`ctx.register("decision.trust", gate)`), or pass `terminal.run(cmd,
-gated=False)` to opt out explicitly. The web UI (`helioslm_v5/harness/web_ui_v2.py`)
-binds to 127.0.0.1 and rejects requests with a non-loopback `Host`
-(DNS rebinding) or, on POST/PATCH/DELETE, a non-loopback `Origin`.
+returns `Route.DIRECT` — `CLARIFY` and `ESCALATE` both block. With a bare
+`Context`, register a gate yourself (`ctx.register("decision.trust", gate)`),
+or pass `terminal.run(cmd, gated=False)` to opt out explicitly.
+**Caveat:** the `full` preset wires a TrustGate around an *untrained*
+DecisionHead, which routes these ops `DIRECT` — it satisfies the wiring check
+but is not a real trust decision. For anything with real side effects,
+register a trained TrustGate or an explicit policy gate (e.g.
+`FixedGate(Route.ESCALATE)` plus an oracle) after applying the preset.
+Both harness web UIs (`helioslm_v5/harness/web_ui_v2.py` and the v1
+`web_ui.py`) bind to 127.0.0.1 and reject requests with a non-loopback `Host`
+(DNS rebinding) or, on state-changing requests, a non-loopback `Origin`.
 
 ## Deployment tiers
 

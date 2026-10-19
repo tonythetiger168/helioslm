@@ -28,6 +28,11 @@ def _trust_check(ctx, tool, args, task, label):
       not silently run ungated;
     - only Route.DIRECT executes. ESCALATE and CLARIFY (v5.53) both
       stop here — an ambiguous call must not fall through to execution.
+
+    This checks that A gate exists, not that it is meaningful: the `full`
+    preset's default TrustGate wraps an untrained DecisionHead and routes
+    these ops DIRECT. Register a trained or explicit policy gate for real
+    gating.
     """
     decision = ctx._services.get("decision.trust")
     if decision is None:

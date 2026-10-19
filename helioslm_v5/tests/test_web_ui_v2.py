@@ -163,6 +163,13 @@ def test_origin_and_host_checks():
                    "http://127.0.0.1.evil.example"):
         assert not allowed({**ok_host, "Origin": origin},
                            state_changing=True), origin
+    # browsers that omit Origin still send Sec-Fetch-Site on cross-site POSTs
+    assert not allowed({**ok_host, "Sec-Fetch-Site": "cross-site"},
+                       state_changing=True)
+    assert allowed({**ok_host, "Sec-Fetch-Site": "same-origin"},
+                   state_changing=True)
+    assert allowed({**ok_host, "Sec-Fetch-Site": "cross-site"},
+                   state_changing=False)    # GETs: Host check only
 
     server, port = _boot()
     base = f"http://127.0.0.1:{port}"
@@ -191,9 +198,37 @@ def test_origin_and_host_checks():
     print("PASS test_origin_and_host_checks")
 
 
+def test_local_backend_loads_repo_checkpoint():
+    """LocalHeliosBackend must really load checkpoints/toy_v5.13.pt.
+
+    Regression: it imported HeliosLMv5Config from the wrong module and read
+    a "model" key the repo checkpoints don't have; a bare except plus
+    strict=False hid both, so the UI reported "checkpoint loaded" with no
+    weights (or never loaded at all)."""
+    ck = Path(__file__).resolve().parents[2] / "checkpoints" / "toy_v5.13.pt"
+    if not ck.exists():
+        print("SKIP test_local_backend_loads_repo_checkpoint (no checkpoint)")
+        return
+    import torch
+    backend = web_ui_v2.LocalHeliosBackend(str(ck))
+    model = backend._load()
+    assert model is not None, "local backend failed to load toy checkpoint"
+    ref = torch.load(str(ck), map_location="cpu", weights_only=True)
+    name, want = next(iter(ref["state_dict"].items()))
+    assert torch.equal(model.state_dict()[name], want), name
+    # a mismatched checkpoint fails loudly (None), never a silent empty load
+    with tempfile.TemporaryDirectory() as d:
+        bad = os.path.join(d, "bad.pt")
+        torch.save({"state_dict": {"nope": torch.zeros(1)},
+                    "config_size": "lite"}, bad)
+        assert web_ui_v2.LocalHeliosBackend(bad)._load() is None
+    print("PASS test_local_backend_loads_repo_checkpoint")
+
+
 if __name__ == "__main__":
     test_safe_media_path()
     test_session_store()
     test_http_endpoints()
     test_origin_and_host_checks()
-    print("\n4/4 web UI v2 tests passed")
+    test_local_backend_loads_repo_checkpoint()
+    print("\n5/5 web UI v2 tests passed")

@@ -33,6 +33,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import threading
 import time
 import urllib.error
@@ -66,37 +67,15 @@ def _safe_media_path(root, name):
     return None
 
 # ------------------------------------------------------- request origin --
-
-_LOCAL_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
-
-
-def _host_name(value):
-    """Hostname part of a Host header / origin authority, lowercased."""
-    v = (value or "").strip().lower()
-    if v.startswith("["):                      # [::1]:8990
-        end = v.find("]")
-        return v[:end + 1] if end != -1 else v
-    return v.rsplit(":", 1)[0] if ":" in v else v
-
-
-def _request_allowed(headers, state_changing):
-    """Reject DNS-rebinding and cross-site requests to the local UI.
-
-    Binding to 127.0.0.1 keeps remote hosts out, but any page open in the
-    user's browser can still reach it: a rebinding page arrives with a
-    foreign Host header, and a cross-site form/fetch POST carries a
-    foreign Origin. Host must be loopback on every request; Origin, when
-    present, must be loopback on state-changing ones.
-    """
-    if _host_name(headers.get("Host")) not in _LOCAL_HOSTS:
-        return False
-    origin = headers.get("Origin")
-    if state_changing and origin is not None:
-        scheme, _, authority = origin.partition("://")
-        if scheme not in ("http", "https") or \
-                _host_name(authority) not in _LOCAL_HOSTS:
-            return False
-    return True
+# Shared with the v1 UI; see _origin.py for the threat model.
+try:
+    from ._origin import LOCAL_HOSTS as _LOCAL_HOSTS  # noqa: F401
+    from ._origin import host_name as _host_name  # noqa: F401
+    from ._origin import request_allowed as _request_allowed
+except ImportError:                     # run as a script from this dir
+    from _origin import LOCAL_HOSTS as _LOCAL_HOSTS  # noqa: F401
+    from _origin import host_name as _host_name  # noqa: F401
+    from _origin import request_allowed as _request_allowed
 
 # ------------------------------------------------------------ session store
 
@@ -298,16 +277,29 @@ class LocalHeliosBackend:
         self._tried = True
         try:
             import torch  # noqa: F401
-            src = os.path.join(_SCRIPT_DIR, "..", "src")
-            if os.path.isdir(src):
-                import sys
-                sys.path.insert(0, os.path.abspath(os.path.join(_SCRIPT_DIR, "..")))
-            from helioslm_v5.src.model_v5 import HeliosLMv5, HeliosLMv5Config  # type: ignore
-            cfg = HeliosLMv5Config()
+            # `helioslm_v5.*` imports need the REPO ROOT on sys.path (two
+            # levels up), not helioslm_v5/ itself — the old insert only
+            # worked when the UI happened to be started from the repo root.
+            root = os.path.abspath(os.path.join(_SCRIPT_DIR, "..", ".."))
+            if os.path.isdir(os.path.join(root, "helioslm_v5")) \
+                    and root not in sys.path:
+                sys.path.insert(0, root)
+            from helioslm_v5.configs.config_v5 import HeliosLMv5Config  # type: ignore
+            from helioslm_v5.src.model_v5 import HeliosLMv5  # type: ignore
+            ckpt = torch.load(self.ckpt_path, map_location="cpu",
+                              weights_only=True)
+            # Repo checkpoints (e.g. toy_v5.13.pt) wrap the weights as
+            # {"state_dict": ..., "config_size": ...}; a bare state dict is
+            # also accepted. strict=True: a size/config mismatch must fail
+            # here, not "load" zero weights and report success.
+            if isinstance(ckpt, dict) and "state_dict" in ckpt:
+                state = ckpt["state_dict"]
+                size = ckpt.get("config_size")
+            else:
+                state, size = ckpt, None
+            cfg = HeliosLMv5Config(size=size) if size else HeliosLMv5Config()
             model = HeliosLMv5(cfg)
-            state = torch.load(self.ckpt_path, map_location="cpu",
-                               weights_only=True)
-            model.load_state_dict(state.get("model", state), strict=False)
+            model.load_state_dict(state, strict=True)
             model.eval()
             self._engine = model
         except Exception:

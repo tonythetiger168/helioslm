@@ -10,6 +10,11 @@ import sys
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+try:
+    from ._origin import request_allowed as _request_allowed
+except ImportError:                     # run as a script from this dir
+    from _origin import request_allowed as _request_allowed
+
 _HERE = __file__.rsplit("/", 2)[0]
 sys.path.insert(0, _HERE)
 sys.path.insert(0, _HERE + "/agent")
@@ -363,7 +368,14 @@ class HarnessHandler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length", 0))
         return json.loads(self.rfile.read(n)) if n else {}
 
+    def _forbid_origin(self):
+        # Unread request body: drop the connection instead of reusing it.
+        self.close_connection = True
+        self._json({"error": "forbidden origin"}, 403)
+
     def do_GET(self):
+        if not _request_allowed(self.headers, state_changing=False):
+            return self._forbid_origin()
         if self.path == "/chat":
             self._html(_CHAT_HTML)
         elif self.path == "/backend":
@@ -422,6 +434,8 @@ h1{{color:#0ff}}</style></head><body>
             self._json({"error": "not found"}, 404)
 
     def do_POST(self):
+        if not _request_allowed(self.headers, state_changing=True):
+            return self._forbid_origin()
         if self.path == "/chat":
             try:
                 body = self._read_body()
@@ -576,8 +590,10 @@ def main(ctx=None, port=8990, preset="full"):
     name, fn = _resolve_backend(ctx)
     _backend["name"], _backend["fn"] = name, fn
     print(f"chat backend: {name}")
-    server = HTTPServer(("0.0.0.0", port), HarnessHandler)
-    print(f"helios-harness UI on http://localhost:{port}")
+    # Loopback only: the UI drives the model and writes effects, and has
+    # no auth. (Was 0.0.0.0, which exposed POST /chat to the whole LAN.)
+    server = HTTPServer(("127.0.0.1", port), HarnessHandler)
+    print(f"helios-harness UI on http://127.0.0.1:{port}")
     print(f"  /       dashboard")
     print(f"  /chat   calibrated chat")
     server.serve_forever()
