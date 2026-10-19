@@ -56,11 +56,8 @@ There is no hardware-isolation or production-throughput claim. Main-memory
 pressure changed substantially during this session; cross-run absolute
 times must not be compared as if they were a controlled experiment.
 
-The MoE candidate that evaluated all experts to avoid routing readbacks was
-rejected: it matched the bounded numerical oracles but regressed BF16
-latency. It is not enabled in the model. The accepted optimization still
-uses the conservative token schedule; the original roughly 20 ms parallel
-prefill is not restored.
+The accepted optimization still uses the conservative token schedule;
+the original roughly 20 ms parallel prefill is not restored.
 
 `scripts/bench_stable_prefill_ab.py` reconstructs the prior stable token
 schedule with separate query/key RoPE lookups, while retaining the same
@@ -79,6 +76,8 @@ not a training-quality or universal speed claim.
   accumulation/optimizer masters. Norms, embeddings, softmax and optimizer
   state are not all FP8. The operator is PyTorch's private `_scaled_mm`;
   revalidate when changing the runtime.
+  Absorbed MLA projections that read weight views and attention matrix
+  products also retain higher precision.
 - Native training acceptance uses synthetic lite batches, not a convergence
   result or a mid-model training memory/quality certification.
 - Stable low-precision prefill does not promise invariance under changing
@@ -87,3 +86,24 @@ not a training-quality or universal speed claim.
 - The root cause of earlier Windows access-violation diagnostics has not
   been established. Successful runs without those messages do not prove a
   runtime-wide fix.
+
+## Validation of the submitted checkout
+
+The code in `f061237468126c78ba29ec3149035faa066a1c36` was tested on the Windows RTX 4060
+host after porting onto upstream `bad5fbb` (including thinking-budget control):
+
+- Original monolithic runner: **93/93 PASS** (not an excluded subset).
+- General pytest: **449 passed, 1 skipped**; mid acceptance: **4 passed**.
+  The single skip requires two FP8-capable GPUs and NCCL.
+- Integration: **9/9 PASS**; syntax/flake8 gates passed.
+- Explicit CUDA extended checks passed, including FP16/BF16 cache error 0,
+  FP32 backward/update, native FP8 probe and lite training. The additional
+  mixed FP32 soak completed 120.60 seconds.
+- Standalone native FP8 lite acceptance: **10 steps passed**, real LM-head
+  parameter update observed.
+- Six mid GPU old/new parity cases and both bounded greedy-generation
+  checks passed; runner success/failure/timeout self-check passed.
+- Jobs emitting Windows access-violation diagnostics: `[]`.
+
+These are local results. Linux CI and actual multi-GPU/NCCL hardware are
+separate checks; the skipped hardware path is not counted as passed.

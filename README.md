@@ -73,6 +73,8 @@ decode. Query/key RoPE lookups are shared, and internally known contiguous
 positions avoid repeated GPU-to-CPU bounds reads. Weights, logits and caches
 keep the requested dtype; tolerance thresholds are unchanged. Custom/packed
 positions and training retain their existing execution paths.
+The guard uses model weight dtype; FP32 weights under autocast are outside
+this stable-prefill guarantee.
 This is still sequential prefill, with a substantial latency cost. Setting
 the flag to `False` selects the original parallel path, whose low-precision
 mid-model cache parity has not been established.
@@ -108,6 +110,8 @@ E4M3, input/weight gradient GEMMs use E5M2×E4M3, and accumulation, master
 parameters and AdamW state remain FP32. Unsupported native operators raise;
 there is no silent simulated fallback. The CPU-compatible simulated backend
 remains the default.
+Absorbed MLA projections that read weight views directly, attention matrix
+products, norms, embeddings and softmax retain higher precision.
 
 ```powershell
 python -u scripts/train_native_fp8.py --steps 10 --out extended_results/native_fp8_training.json
@@ -125,6 +129,11 @@ torchrun --standalone --nproc_per_node=2 scripts/train_native_fp8.py --steps 10 
 a single RTX 4060 on Windows; two-process CPU/Gloo tests verify collective
 logic only. Synthetic lite training does not establish mid-model training,
 convergence, or production throughput.
+
+The submitted code passed the original **93/93** monolithic cases,
+**453 pytest tests** (one additional hardware-dependent NCCL skip),
+**9/9 integration** checks and the bounded GPU/native-FP8 validation.
+See the detailed scope before interpreting these as broader hardware claims.
 
 See [CUDA evidence and limits](docs/CUDA_VERIFICATION.md),
 [low-precision prefill details](docs/LOW_PRECISION_PREFILL_zh-TW.md), and

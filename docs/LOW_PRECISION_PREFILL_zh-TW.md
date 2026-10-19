@@ -4,6 +4,8 @@
 FP16／BF16 一般文字推論中，依序使用單 token 路徑處理 prefill。
 這讓相同 batch 與位置配置的整段／分段 prefill 與 KV cache decode
 使用相同計算形狀，避免低精度誤差在 MoE top-k 邊界改變專家選擇。
+啟用條件依 embedding 權重 dtype 判斷；FP32 權重搭配 autocast 不在這項
+穩定 prefill 的保證範圍。
 
 權重、輸出與自動 KV cache 保留指定的 FP16／BF16 dtype；沒有將模型
 改成 FP32，也沒有放寬檢查門檻。呼叫端不要求 cache 時仍回傳 `None`。

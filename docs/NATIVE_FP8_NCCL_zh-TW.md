@@ -6,6 +6,8 @@
 `torch._scaled_mm`，FP32 累加。FP32 主權重與 AdamW 狀態保留，
 正規化、softmax、embedding 等仍為較高精度；這是完整訓練步驟的 FP8
 混合精度路徑，不是所有運算及 optimizer 都使用 FP8。
+吸收式 MLA 直接讀取權重視圖的投影、注意力矩陣乘法仍保留較高精度；
+原生 FP8 kernel 的範圍是透過 FP8Linear.forward 執行的 Linear 前後向。
 
 任意 Linear 尺寸會補齊到 16 再裁切；空的 MoE 路由不呼叫 GEMM。
 目前採每個張量即時計算 amax 的縮放，不是 block scaling 或 fused kernel。
