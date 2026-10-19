@@ -53,7 +53,21 @@ def run_arm(arm, args):
         opt, max_lr=args.lr, total_steps=args.steps, pct_start=0.1)
     rng = seed_rng(1000 + args.seed)
     t0 = time.time()
-    for step in range(args.steps):
+    start, ckpt = 0, None
+    if args.ckpt_dir:
+        # Resume after a container restart: model, optimizer, schedule and
+        # the data stream's RNG state are restored exactly, so a resumed
+        # run equals an uninterrupted one.
+        ckpt = Path(args.ckpt_dir) / f"{arm}.pt"
+        if ckpt.exists():
+            st = torch.load(ckpt, weights_only=False)
+            model.load_state_dict(st["model"])
+            opt.load_state_dict(st["opt"])
+            sched.load_state_dict(st["sched"])
+            rng.setstate(st["rng"])
+            start = st["step"]
+            print(f"{arm}: resumed at step {start}", flush=True)
+    for step in range(start, args.steps):
         ids, pos, ans = make_batch(args.batch, args.train_files, args.queries,
                                    args.filler, rng)
         loss, acc = query_loss_and_acc(model, ids, pos, ans)
@@ -65,6 +79,12 @@ def run_arm(arm, args):
         if (step + 1) % 250 == 0:
             print(f"{arm} step {step + 1}: loss {loss.item():.3f} acc {acc:.3f}",
                   flush=True)
+        if ckpt is not None and (step + 1) % 100 == 0:
+            tmp = ckpt.with_suffix(".tmp")
+            torch.save({"model": model.state_dict(), "opt": opt.state_dict(),
+                        "sched": sched.state_dict(), "rng": rng.getstate(),
+                        "step": step + 1}, tmp)
+            tmp.replace(ckpt)
     sizes = [args.train_files * m for m in (1, 2, 4)]
     return {"arm": arm,
             "params": sum(p.numel() for p in model.parameters()),
@@ -87,6 +107,7 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--threads", type=int)
+    ap.add_argument("--ckpt-dir", help="save every 100 steps and resume")
     ap.add_argument("--merge", nargs="+")
     ap.add_argument("--output")
     args = ap.parse_args()
@@ -123,7 +144,8 @@ def main():
                         for m in (1, 2, 4)},
                     "train_seed": 1000 + args.seed, "eval_seed": 0},
            "train": {k: v for k, v in vars(args).items()
-                     if k not in ("output", "arms", "threads", "merge")},
+                     if k not in ("output", "arms", "threads", "merge",
+                                  "ckpt_dir")},
            "results": results,
            "results_sha256": hashlib.sha256(
                json.dumps(results, sort_keys=True).encode()).hexdigest(),
