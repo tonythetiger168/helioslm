@@ -82,7 +82,7 @@ renumbered.
 | B3 | Q4 `qwen_next_config()` preset | ✅ Done (v5.63, T101) |
 | B3 | Q5 MTP acceptance + greedy-equivalence gate (toy acceptance 0.824) | ✅ Done (v5.63, T101) |
 | B4 | U1 GRPO DAPO/OlmoRL options (token-level loss, clip-higher, no-std advantages, zero-gradient filtering, TIS) — defaults bit-identical; on AC2 the options alone do not stop GRPO eroding SFT, a KL anchor to the SFT model does (0.367 → 0.733) | ✅ Done (v5.64, T102) |
-| B4 | U2 thinking-budget control (Nemotron 3 / gpt-oss reasoning effort) | ⬜ Not started |
+| B4 | U2 thinking-budget control (Nemotron 3 / gpt-oss reasoning effort) — forced close at the budget; truncation training lifts early-close accuracy 0.12 → 0.88 | ✅ Done (v5.73, T112) |
 | B4 | U3 NoPE-layer attention temperature scaling (Llama 4) — 4x-length recall 0.267 → 0.317 on the same weights | ✅ Done (v5.69, T107) |
 | B4 | U4 p-RoPE + global-layer K=V (Gemma 4) — kv_b_proj halved, expanded cache shares K/V, p=1 bit-identical | ✅ Done (v5.70, T108) |
 | B4 | U5 clamped SwiGLU (gpt-oss) — defaults bit-identical, matches gpt-oss reference, activation bounded | ✅ Done (v5.68, T106) |

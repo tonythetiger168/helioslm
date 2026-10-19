@@ -1,5 +1,48 @@
 # HeliosLM v5 Changelog
 
+## v5.73 (2026-10-18) - Roadmap U2: thinking-budget control (Nemotron 3 / gpt-oss reasoning effort)
+
+- `inference/thinking_budget.py`:
+  - `ThinkingBudget(open_id, close_id, budget)` is a per-row state
+    machine for `HeliosLMv5.generate(thinking_budget=...)`. Once a row
+    has spent `budget` tokens inside a thinking span, it masks every
+    other logit, so the close marker is forced. The masking happens
+    before temperature and top-p, so sampling cannot undo it.
+  - A span opened in the prompt counts. After a close, the open marker
+    is masked unless `allow_reopen=True`, and a close marker is never
+    emitted outside a span.
+  - Finished (EOS) rows are frozen.
+  - The default `thinking_budget=None` leaves `generate` unchanged.
+    Combining it with `use_mtp=True` raises.
+- Training side: `truncate_thinking(ids, open, close, b)` and
+  `random_truncation(..., p)` cut the first thinking span to b tokens
+  and close it there, keeping the answer. This is Nemotron-style
+  truncated-trace training, so a forced close at inference is not
+  off-distribution.
+- `effort_to_budget("low" | "medium" | "high", max_budget)` maps to
+  0.25 / 0.5 / 1.0 of the maximum.
+- A/B (`examples/thinking_budget_ab.py` ->
+  `benchmarks/thinking_budget_ab_2026-10-17.json`): the task is 8 digits
+  -> their sum mod 10, with the running sums as the thinking trace. The
+  two arms share the same init and batches, train for 4000 steps, and
+  are evaluated greedily on a held-out stream with a forced budget b:
+
+  | budget b | 0-6 | 7 | 8 (full) |
+  |---|---|---|---|
+  | full traces only | 0.08-0.12 (chance) | 0.12 | 1.00 |
+  | truncation training (p = 0.5) | 0.08-0.09 (chance) | 0.88 | 1.00 |
+
+  - Accuracy is non-decreasing in the budget, and every sample stayed
+    within it.
+  - Closed one step early, only the truncation-trained model can still
+    answer (0.12 -> 0.88).
+  - With two or more additions left, both arms are at chance. This
+    4-layer toy model completes at most one addition without writing it
+    out, so the curve is a step, not a ramp. Single seed.
+  - A first run (1500 steps, lr 2e-3) was discarded: the full-trace arm
+    had not learned the task.
+- T112 (`test_thinking_budget.py`, 5 tests).
+
 ## v5.72 (2026-10-16) - Roadmap U7: Arcee Trinity SMEBU and depth-scaled sandwich norm
 
 - `moe.balance_strategy="smebu"`: soft-clamped momentum expert-bias

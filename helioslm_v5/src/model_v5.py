@@ -648,7 +648,7 @@ class HeliosLMv5(nn.Module):
 
     @torch.no_grad()
     def generate(self, input_ids, max_new_tokens=100, temperature=0.7, top_p=0.9,
-                 attention_mask=None, use_mtp=False):
+                 attention_mask=None, use_mtp=False, thinking_budget=None):
         """Batch-safe generation.
 
         - temperature == 0 -> greedy argmax; temperature > 0 -> sampling
@@ -661,7 +661,13 @@ class HeliosLMv5(nn.Module):
           obtain ``past_key_values`` covering the modality prefix, then
           continue with your own decode loop (the per-layer cache tuples are
           directly usable).
+        - thinking_budget (v5.73, roadmap U2): an optional
+          ``inference.thinking_budget.ThinkingBudget``; each row's thinking
+          span is forced closed after ``budget`` tokens. None (default) =
+          unchanged decoding. Plain path only.
         """
+        if use_mtp and thinking_budget is not None:
+            raise ValueError("thinking_budget is not supported with use_mtp=True")
         if use_mtp:
             if self.mtp_modules is None:
                 raise ValueError(
@@ -702,13 +708,14 @@ class HeliosLMv5(nn.Module):
         self.eval()
         try:
             return self._generate_impl(
-                input_ids, max_new_tokens, temperature, top_p, attention_mask
+                input_ids, max_new_tokens, temperature, top_p, attention_mask,
+                thinking_budget,
             )
         finally:
             self.train(was_training)
 
     def _generate_impl(self, input_ids, max_new_tokens, temperature, top_p,
-                       attention_mask):
+                       attention_mask, thinking_budget=None):
         device = input_ids.device
         B = input_ids.shape[0]
         generated = input_ids.clone()
@@ -716,6 +723,8 @@ class HeliosLMv5(nn.Module):
             attention_mask = torch.ones_like(generated)
         finished = torch.zeros(B, dtype=torch.bool, device=device)
         past_key_values = None
+        if thinking_budget is not None:
+            thinking_budget.start(input_ids)
 
         for _ in range(max_new_tokens):
             if past_key_values is None:
@@ -731,6 +740,10 @@ class HeliosLMv5(nn.Module):
                 )
 
             next_logits = logits[:, -1, :].float()
+            if thinking_budget is not None:
+                # Masks with -inf before temperature / top-p, so a forced
+                # close survives sampling (it is the only finite logit).
+                next_logits = thinking_budget.process(next_logits)
 
             if temperature is not None and temperature > 0:
                 next_logits = next_logits / temperature
@@ -760,6 +773,8 @@ class HeliosLMv5(nn.Module):
                 [attention_mask, torch.ones(B, 1, dtype=attention_mask.dtype, device=device)],
                 dim=1,
             )
+            if thinking_budget is not None:
+                thinking_budget.update(next_token, active=~finished)
             finished = finished | (next_token.squeeze(1) == self.config.eos_token_id)
             if bool(finished.all()):
                 break
