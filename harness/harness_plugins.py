@@ -39,6 +39,13 @@ def _trust_check(ctx, tool, args, task, label):
         return {"error": f"{label} refused: no TrustGate wired "
                          "(register decision.trust)"}
     from schema import ToolCall
+    # Harness ops are not ToolRegistry tools, so a TrustGateClarify's schema
+    # check would call every one of them "unknown tool" -> ESCALATE forever.
+    # There is no parameter schema to clarify here; ask its trust gate. A
+    # marker attribute, not isinstance: the agent modules can be loaded both
+    # bare (via _AGENT on sys.path) and dotted, giving two class objects.
+    while getattr(decision, "schema_only_wrapper", False):
+        decision = decision.inner
     route = decision.decide(ToolCall(tool, args), {"task": task})
     if route.value != "DIRECT":
         return {"error": f"{label} blocked by TrustGate ({route.value})"}
@@ -515,7 +522,7 @@ class TimePlugin:
             return datetime.datetime.now().isoformat()
         def utc():
             return datetime.datetime.now(datetime.timezone.utc) \
-                .replace(tzinfo=None).isoformat() + "Z"
+                .isoformat().replace("+00:00", "Z")
         ctx.register("time.now", now)
         ctx.register("time.utc", utc)
 
@@ -1129,17 +1136,25 @@ class NanoVideoPlugin:
     The 'nano-pdf' analog for video -- minimal local generation."""
 
     def apply(self, ctx):
-        import subprocess, os
+        import subprocess, os, tempfile
         def from_images(image_paths, audio_path=None, out_path="out.mp4",
                         duration_per_image=2):
+            list_file = None
             try:
                 if not image_paths:
                     return {"error": "no images"}
-                # ffmpeg concat demuxer
-                list_file = "/tmp/ffmpeg_list.txt"
-                with open(list_file, "w") as f:
+                if any("\n" in str(p) or "\r" in str(p) for p in image_paths):
+                    return {"error": "image path contains a newline"}
+                # ffmpeg concat demuxer. Per-call temp file: a fixed
+                # /tmp/ffmpeg_list.txt let concurrent calls overwrite each
+                # other's list. In concat syntax a quote inside '...' is
+                # written as '\'' (close, escaped quote, reopen).
+                fd, list_file = tempfile.mkstemp(suffix=".txt",
+                                                 prefix="ffmpeg_list_")
+                with os.fdopen(fd, "w") as f:
                     for img in image_paths:
-                        f.write(f"file '{img}'\n")
+                        quoted = str(img).replace("'", "'\\''")
+                        f.write(f"file '{quoted}'\n")
                         f.write(f"duration {duration_per_image}\n")
                 cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
                        "-i", list_file, "-vsync", "vfr", "-pix_fmt", "yuv420p"]
@@ -1158,6 +1173,12 @@ class NanoVideoPlugin:
                 return {"error": "ffmpeg not installed"}
             except Exception as e:
                 return {"error": str(e)[:200]}
+            finally:
+                if list_file:
+                    try:
+                        os.remove(list_file)
+                    except OSError:
+                        pass
         ctx.register("nanovideo.from_images", from_images)
 
 class BlenderPlugin:

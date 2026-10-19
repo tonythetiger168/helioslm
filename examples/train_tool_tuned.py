@@ -114,7 +114,7 @@ def main():
     ckpt = out_dir / "tool_tuned_v5.27.pt"
     start_step = 0
     if ckpt.exists():
-        model.load_state_dict(torch.load(ckpt, map_location="cpu"))
+        model.load_state_dict(torch.load(ckpt, map_location="cpu", weights_only=True))
         start_step = int((out_dir / "tool_tuned_v5.27.step").read_text().strip()) \
             if (out_dir / "tool_tuned_v5.27.step").exists() else 0
         print(f"resumed from {ckpt} at step {start_step}", flush=True)

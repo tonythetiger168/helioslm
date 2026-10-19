@@ -112,7 +112,7 @@ def test_t17_tool_tuned_checkpoint_end_to_end():
     torch.set_num_threads(2)
     cfg = HeliosLMv5Config(size="lite")
     model = HeliosLMv5(cfg).eval()
-    model.load_state_dict(torch.load(ckpt, map_location="cpu"))
+    model.load_state_dict(torch.load(ckpt, map_location="cpu", weights_only=True))
 
     import os
     dense = {"parse": 0.15, "finish": 1/9, "correct": 0.0}
@@ -130,7 +130,7 @@ def test_t17_tool_tuned_checkpoint_end_to_end():
         cfg_s.attention.use_absorption = True
         cfg_s.attention.sparse_top_k = 4
         model_s = HeliosLMv5(cfg_s).eval()
-        model_s.load_state_dict(torch.load(ckpt, map_location="cpu"))
+        model_s.load_state_dict(torch.load(ckpt, map_location="cpu", weights_only=True))
         sparse = _run_eval(model_s, "sparse_k4")
         assert sparse["parse"] >= dense["parse"] - 0.15, \
             f"sparse decode collapsed the tool protocol: " \

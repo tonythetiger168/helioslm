@@ -46,7 +46,7 @@ DEFAULT_OUT = "benchmarks/cost_per_completed_task_2026-10-13.json"
 
 def load_toy_scorer(checkpoint_path: Path):
     ckpt = torch.load(checkpoint_path, map_location="cpu",
-                      weights_only=False)
+                      weights_only=True)
     model = HeliosLMv5(HeliosLMv5Config(size="lite"))
     model.load_state_dict(ckpt["state_dict"])
     model.eval()

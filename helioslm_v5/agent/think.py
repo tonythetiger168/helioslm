@@ -194,6 +194,7 @@ class ThinkSession(ChatSession):
                 ctx = {"step": i, "task": user_text,
                        "confidence": (self.confidence_fn(prompt, i)
                                       if self.confidence_fn else None)}
+                exec_failed = False
                 route = self.gate.decide(call, ctx)
                 route_s = route.value
                 if route == Route.ESCALATE:
@@ -202,9 +203,11 @@ class ThinkSession(ChatSession):
                     obs = self.gate.clarify(call, ctx)
                 else:
                     try:
-                        obs = execute(call, self.registry, self.impls)
+                        obs = execute(call, self.registry, self.impls,
+                                      validated=not self.defer_validation)
                     except ToolCallError as e:
                         obs = f"TOOL_ERROR: {e}"
+                        exec_failed = True
             self.turns.append(ChatTurn(ROLE_ASSISTANT, gen_text.strip()))
             self.turns.append(ChatTurn(ROLE_TOOL, obs))
             self.steps.append(ChatStep(
@@ -212,8 +215,8 @@ class ThinkSession(ChatSession):
                 call, perr, route_s, obs))
             if call is not None and route == Route.CLARIFY:
                 return obs
-            if (call is not None and call.name == "finish"
-                    and not obs.startswith("TOOL_ERROR")):
+            if call is not None and call.name == "finish" \
+                    and not exec_failed:
                 final = (call.args["answer"] if route_s == "DIRECT"
                          else obs.removeprefix("FINISH: "))
                 if last_thought is not None:

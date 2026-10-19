@@ -123,7 +123,7 @@ def test_indexer_distill_learned_sweep():
 
     corpus = build_corpus_ids(1024)
     ckpt = torch.load(str(_REPO_ROOT / "checkpoints" / "toy_v5.13.pt"),
-                      map_location="cpu", weights_only=False)
+                      map_location="cpu", weights_only=True)
     cfg = HeliosLMv5Config(size="lite")
     cfg.attention.sparse_top_k = 4
     cfg.attention.sparse_indexer = "learned"

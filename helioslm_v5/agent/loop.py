@@ -54,6 +54,7 @@ class AgentLoop:
                 ctx = {"step": i, "task": task_text,
                        "confidence": (self.confidence_fn(prompt, i)
                                       if self.confidence_fn else None)}
+                exec_failed = False
                 route = self.gate.decide(call, ctx)
                 route_s = route.value
                 if route == Route.ESCALATE:
@@ -62,17 +63,19 @@ class AgentLoop:
                     obs = self.gate.clarify(call, ctx)
                 else:
                     try:
-                        obs = execute(call, self.registry, self.impls)
+                        obs = execute(call, self.registry, self.impls,
+                                      validated=not self.defer_validation)
                     except ToolCallError as e:
                         obs = f"TOOL_ERROR: {e}"  # recovery, not crash
+                        exec_failed = True
             traj.steps.append(Step(i, text_to_ids(prompt),
                                    text_to_ids(gen_text), call, perr,
                                    route_s, obs))
             if call is not None and route == Route.CLARIFY:
                 # Ambiguity is terminal for this turn: ask, do not guess.
                 break
-            if (call is not None and call.name == "finish"
-                    and not obs.startswith("TOOL_ERROR")):
+            if call is not None and call.name == "finish" \
+                    and not exec_failed:
                 traj.final_answer = (
                     call.args["answer"] if route_s == "DIRECT"
                     else obs.removeprefix("FINISH: "))

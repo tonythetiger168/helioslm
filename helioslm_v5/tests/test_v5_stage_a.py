@@ -167,7 +167,7 @@ def test_t15c_agent_loop_real_checkpoint_smoke():
     cfg = HeliosLMv5Config(size="lite")
     model = HeliosLMv5(cfg).eval()
     try:
-        model.load_state_dict(torch.load(ckpt, map_location="cpu"),
+        model.load_state_dict(torch.load(ckpt, map_location="cpu", weights_only=True),
                               strict=False)
     except Exception as e:
         print(f"SKIP test_t15c: checkpoint load failed "

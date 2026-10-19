@@ -194,6 +194,7 @@ class DecisionHead(nn.Module):
                 print(f"  ep{ep} loss {float(loss):.4f}", flush=True)
         return self
 
+    @torch.no_grad()   # metrics only: no autograd graph, no grad warnings
     def evaluate(self, records):
         """Returns (accuracy_per_question, ece_per_question)."""
         zs, labels = self._targets(records)

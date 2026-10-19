@@ -346,7 +346,7 @@ def main():
             f"source checkpoint not found: {args.checkpoint}"
         )
     ckpt = torch.load(args.checkpoint, map_location="cpu",
-                      weights_only=False)
+                      weights_only=True)
     cfg = HeliosLMv5Config(size="lite")
     cfg.attention.sparse_top_k = args.sparse_top_k
     cfg.attention.sparse_indexer = "learned"

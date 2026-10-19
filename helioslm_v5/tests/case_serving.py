@@ -49,7 +49,7 @@ def test_spec_breakeven():
     if ck.exists():
         from helioslm_v5.src.inference.mtp import MTPDecoder
         from helioslm_v5.src.model_v5 import HeliosLMv5
-        ckpt = torch.load(ck, map_location="cpu", weights_only=False)
+        ckpt = torch.load(ck, map_location="cpu", weights_only=True)
         model = HeliosLMv5(HeliosLMv5Config(size="lite"))
         model.load_state_dict(ckpt["state_dict"])
         model.eval()
@@ -72,7 +72,7 @@ def test_score_stream():
     if not ck.exists():
         _pass("test_score_stream", "skipped (checkpoint not built)")
         return
-    ckpt = torch.load(ck, map_location="cpu", weights_only=False)
+    ckpt = torch.load(ck, map_location="cpu", weights_only=True)
     model = HeliosLMv5(HeliosLMv5Config(size="lite"))
     model.load_state_dict(ckpt["state_dict"])
     model.eval()
@@ -110,7 +110,7 @@ def test_prefix_pool():
     if not ck.exists():
         _pass("test_prefix_pool", "skipped (checkpoint not built)")
         return
-    ckpt = torch.load(ck, map_location="cpu", weights_only=False)
+    ckpt = torch.load(ck, map_location="cpu", weights_only=True)
     model = HeliosLMv5(HeliosLMv5Config(size="lite"))
     model.load_state_dict(ckpt["state_dict"])
     model.eval()
@@ -190,7 +190,7 @@ def test_harness_evolver():
     if not ck.exists():
         _pass("test_harness_evolver", "skipped (checkpoint not built)")
         return
-    ckpt = torch.load(ck, map_location="cpu", weights_only=False)
+    ckpt = torch.load(ck, map_location="cpu", weights_only=True)
     model = HeliosLMv5(HeliosLMv5Config(size="lite"))
     model.load_state_dict(ckpt["state_dict"])
     model.eval()
@@ -235,7 +235,7 @@ def test_evolver_pareto_adaptation():
     if not ck.exists():
         _pass("test_evolver_pareto_adaptation", "skipped (checkpoint not built)")
         return
-    ckpt = torch.load(ck, map_location="cpu", weights_only=False)
+    ckpt = torch.load(ck, map_location="cpu", weights_only=True)
     model = HeliosLMv5(HeliosLMv5Config(size="lite"))
     model.load_state_dict(ckpt["state_dict"])
     model.eval()
@@ -346,7 +346,7 @@ def test_toy_checkpoint():
     if not ckpt_path.exists():
         _pass("test_toy_checkpoint", "skipped (checkpoint not built)")
         return
-    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=True)
     assert ckpt["tokenizer"] == "char-ascii"
     model = HeliosLMv5(HeliosLMv5Config(size="lite"))
     model.load_state_dict(ckpt["state_dict"])

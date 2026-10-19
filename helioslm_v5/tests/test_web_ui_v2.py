@@ -20,6 +20,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))  # repo root: harness/, helioslm_v5.*
 
 _TMP = tempfile.TemporaryDirectory()
 # module creates ~/.helios_ui at import — redirect HOME just for the import,

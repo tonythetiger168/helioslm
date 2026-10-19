@@ -122,10 +122,17 @@ def build_default_registry(root="/tmp/helioslm_agent"):
     return ToolRegistry(specs), impls
 
 
-def execute(call, registry: ToolRegistry, impls: dict) -> str:
-    # Validate here, not only in the parser: with defer_validation=True
-    # (v5.53) the parser skips arg checks, and a gate other than
-    # TrustGateClarify would otherwise hand an incomplete or wrong-typed
-    # call straight to the impl (TypeError crash / silent wrong-type exec).
-    registry.spec(call.name).validate_args(call.args)
+def execute(call, registry: ToolRegistry, impls: dict,
+            validated: bool = False) -> str:
+    """Run a tool call. Args are validated against the ToolSpec unless the
+    caller says the parser already did (``validated=True``).
+
+    With defer_validation=True (v5.53) the parser skips arg checks, and a
+    gate other than TrustGateClarify would otherwise hand an incomplete or
+    wrong-typed call straight to the impl (TypeError crash / silent
+    wrong-type exec) — so the default is to validate here.
+    """
+    spec = registry.spec(call.name)
+    if not validated:
+        spec.validate_args(call.args)
     return str(impls[call.name](**call.args))

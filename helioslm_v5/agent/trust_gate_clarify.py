@@ -101,6 +101,10 @@ class TrustGateClarify(Gate):
     inner gate: a complete call still routes exactly as the inner gate says.
     """
 
+    # Callers gating non-registry actions (harness plugins) skip the schema
+    # layer and consult `.inner` directly — see harness _trust_check.
+    schema_only_wrapper = True
+
     def __init__(self, inner: Gate, registry: ToolRegistry):
         if inner is None:
             raise ClarifySchemaError("TrustGateClarify requires an inner gate")

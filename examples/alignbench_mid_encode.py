@@ -37,7 +37,7 @@ tok = HeliosBPE.load("checkpoints/mid_sft_v5.33.tok.json")
 cfg = HeliosLMv5Config(size="mid")
 model = HeliosLMv5(cfg)
 model.load_state_dict(torch.load("checkpoints/mid_sft_v5.33.pt",
-                                 map_location="cpu"))
+                                 map_location="cpu", weights_only=True))
 model.eval()
 
 captured = {}

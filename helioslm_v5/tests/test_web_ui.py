@@ -2,6 +2,7 @@
 import sys, threading, time, urllib.request
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))  # repo root: harness/, helioslm_v5.*
 from harness.web_ui import _boot_context, HarnessHandler
 from http.server import HTTPServer
 

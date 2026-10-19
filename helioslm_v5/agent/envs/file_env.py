@@ -27,7 +27,7 @@ try:
     from .. import task_grammar as _G
 except ImportError:
     import task_grammar as _G
-from dataclasses import dataclass
+
 
 @dataclass(frozen=True)
 class FileTask:
