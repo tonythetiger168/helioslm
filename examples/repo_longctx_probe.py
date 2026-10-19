@@ -58,6 +58,7 @@ def run_arm(arm, args):
         # Resume after a container restart: model, optimizer, schedule and
         # the data stream's RNG state are restored exactly, so a resumed
         # run equals an uninterrupted one.
+        Path(args.ckpt_dir).mkdir(parents=True, exist_ok=True)
         ckpt = Path(args.ckpt_dir) / f"{arm}.pt"
         if ckpt.exists():
             st = torch.load(ckpt, weights_only=False)
