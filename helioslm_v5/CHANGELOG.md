@@ -1,5 +1,44 @@
 # HeliosLM v5 Changelog
 
+## v5.75 (2026-10-20) - Roadmap TW4: zh-TW tokenizer coverage report
+
+- `eval/zh_tokenizer_coverage.py`: how many tokens each tokenizer spends
+  per Traditional-Chinese character, and how many characters it can
+  represent at all.
+  - Text: the repo's own zh-TW documents. Hugging Face is not reachable
+    from the dev / CI containers, so no download is needed.
+  - `docs/TW_DATASETS_2026Q4.md` and `docs/V5.4_FIXES_REPORT.md` are held
+    out for evaluation (79 zh lines, 1216 CJK characters, 430 distinct).
+    They are removed from every training corpus, and `assert_no_leak`
+    raises if any of their zh lines is still there.
+  - Tokenizers: the toy char vocabulary (1024), raw UTF-8 bytes, and a
+    byte-level BPE (`tokenizers`, as in `examples/train_toy_bpe.py`)
+    trained on the repo corpus with CJK stripped ("code only") or as is
+    ("repo").
+- Report (`examples/zh_tokenizer_coverage.py` ->
+  `benchmarks/zh_tokenizer_coverage_2026-10-20.json`, deterministic):
+
+  | tokenizer | vocab | tokens / CJK char | single-token CJK coverage | CJK lost |
+  |---|---|---|---|---|
+  | char toy | 1024 | — | 0 | **100%** |
+  | UTF-8 bytes | 256 | 3.00 | 0 | 0 |
+  | BPE, code only | 8000 | 3.00 | 0 | 0 |
+  | BPE, code only | 17300 (32000 requested) | 3.00 | 0 | 0 |
+  | BPE, repo | 8000 | 1.32 | 0.49 | 0 |
+  | BPE, repo | 20011 (32000 requested) | **0.86** | **0.78** | 0 |
+
+  - The toy char tokenizer drops every Chinese character; its low tokens
+    per character on zh lines is loss, not efficiency.
+  - A tokenizer that never saw Chinese falls back to 3 bytes per
+    character, whatever its vocabulary size.
+  - The repo's ~6.6k CJK characters of training text already cut that to
+    0.86 tokens per character. The corpus is small (the vocabulary stops
+    short of 32000), so production numbers need the TW2 data.
+- T114 (`tests/test_zh_tokenizer_coverage.py`): the eval text is
+  Traditional (no Simplified forms), the leak check catches an injected
+  line, the UTF-8 / char-toy oracles, the report's ordering, recomputed
+  cheap rows, and the hash.
+
 ## v5.74 (2026-10-19) - Roadmap AC4: repo-scale long-context probe (dense vs sliding/global hybrid vs CSA)
 
 - `eval/repo_longctx.py`: a synthetic repository. Each file is
