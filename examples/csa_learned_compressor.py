@@ -89,10 +89,24 @@ def compressor_state(m):
             if k.startswith(COMPRESSOR_KEYS)}
 
 
-def train(args, ratio):
-    """Train the compressor only, end-to-end on the readout loss."""
+def transfer_state(state, ratio, heads):
+    """A compressor state for another ratio: the MLP scores each token on
+    its own, so it carries over unchanged; the per-position bias belongs
+    to the old chunk size and restarts at zero."""
+    out = dict(state)
+    out["compressor_pos"] = torch.zeros(ratio, heads)
+    return out
+
+
+def train(args, ratio, init_state=None):
+    """Train the compressor only, end-to-end on the readout loss.
+    ``init_state`` (v5.78): start from another ratio's trained compressor
+    (see transfer_state) instead of the zero init (= mean pooling)."""
     torch.manual_seed(args.seed)
     m = make_csa(args, ratio, args.train_topk).train()
+    if init_state is not None:
+        m.load_state_dict(transfer_state(init_state, ratio, args.heads),
+                          strict=False)
     params = [p for n, p in m.named_parameters()
               if n.startswith(COMPRESSOR_KEYS)]
     for n, p in m.named_parameters():
@@ -183,6 +197,9 @@ def main():
                     help="also record the oracle-pooling ceiling")
     ap.add_argument("--selection-note", default=V1_SELECTION,
                     help="how the training settings were chosen")
+    ap.add_argument("--init-from", default=None,
+                    help="v5.78 curriculum: start every ratio from the "
+                         "ratio-4 compressor stored in this artifact")
     args = ap.parse_args()
 
     if args.check:
@@ -199,24 +216,42 @@ def main():
         print("learned-compressor evaluation matches the committed artifact")
         return
 
+    init = None
+    if args.init_from:
+        src = json.loads((_REPO / args.init_from).read_text())
+        init = _from_json(next(r for r in src["results"]
+                               if r["ratio"] == 4)["compressor_state"])
+        if src["params"]["hidden"] != args.hidden \
+                or src["params"].get("act", "gelu") != args.act:
+            sys.exit("--init-from artifact has a different hidden / act")
     results = []
     for ratio in args.ratios:
         t0 = time.time()
-        state, losses = train(args, ratio)
+        zero_shot = None
+        if init is not None:
+            zero_shot = evaluate(args, ratio,
+                                 transfer_state(init, ratio, args.heads))
+        state, losses = train(args, ratio, init)
         ev = evaluate(args, ratio, state)
         print(f"ratio {ratio}: loss {losses[0]:.3f} -> {losses[-1]:.3f} "
               f"({time.time() - t0:.0f}s)")
         for key, row in ev.items():
             print(f"  {key}: acc {row['accuracy']:.3f} "
                   f"hit {row['selection_hit_rate']:.3f}")
+        if zero_shot is not None:
+            for key, row in zero_shot.items():
+                print(f"  zero-shot {key}: acc {row['accuracy']:.3f}")
         results.append({"ratio": ratio,
+                        **({"zero_shot_eval": zero_shot} if zero_shot else {}),
                         "loss_first": round(losses[0], 4),
                         "loss_last": round(losses[-1], 4),
                         "eval": ev,
                         "compressor_state": _to_json(state)})
     params = {k: v for k, v in vars(args).items()
               if k not in ("output", "check", "artifact", "oracle_ceiling",
-                           "selection_note")}
+                           "selection_note", "init_from")}
+    if args.init_from:
+        params["init_from"] = args.init_from
     blob = json.dumps([{k: r[k] for k in ("ratio", "eval")}
                        for r in results], sort_keys=True)
     payload = {

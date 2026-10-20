@@ -68,7 +68,7 @@ renumbered.
 | B | `v4_csa`: learned compressor — 4× passkey recall 0.13 → 0.67; 16× does not learn | ✅ Done (v5.59, T93) |
 | B | `v4_csa`: compressor round 2 + oracle ceiling — 16× 0.13 → 0.39, 4× mixed; perfect pooling would reach 0.86–0.90 (dense 0.91) | ✅ Done (v5.60, T94) |
 | B | `v4_csa`: compressor round 3 — 4× 0.825/0.800, about 92% of the ceiling | ✅ Done (v5.61, T95) |
-| B | `v4_csa`: 16× compressor (0.375/0.390 vs a 0.86/0.845 ceiling; more training does not help) | ⬜ Not started |
+| B | `v4_csa`: 16× compressor by 4×→16× curriculum — 0.375/0.390 → 0.790/0.740, 92%/88% of the 0.86/0.845 ceiling | ✅ Done (v5.78, T117) |
 | B | Stable LatentMoE study — K3 Quantile Balancing: fastest from a skewed start and after a drift, no bias drift; SMEBU lower in steady state | ✅ Done (v5.77, T116) |
 | B2 | B2-1 per-layer sliding-window / global interleave + `mimo_hybrid_config()` (MiMo) — 5:1 hybrid 0.424 vs dense 0.428 at 39% of the keys | ✅ Done (v5.62, T96) |
 | B2 | B2-2 learnable attention sink bias (MiMo) — no effect at this scale (0.424 vs 0.424) | ✅ Done (v5.62, T96) |
