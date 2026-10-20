@@ -1,5 +1,62 @@
 # HeliosLM v5 Changelog
 
+## v5.77 (2026-10-21) - Stable LatentMoE study: Kimi K3 Quantile Balancing
+
+- `moe.balance_strategy="quantile_balancing"`: K3's Quantile Balancing
+  router bias. Source: the K3 report as implemented in torchtitan (PR
+  #4412 and its successor #4577); the report itself is not reachable from
+  the containers.
+  - Every training token records, per expert, the margin `cutoff -
+    score`. The cutoff is the token's (K+1)-th largest biased score; the
+    score is the bias-free sigmoid. Margins go into a per-expert
+    histogram (`moe.quantile_bins`, default 1000).
+  - `update_bias()` solves the bias instead of stepping it: each
+    expert's `K / E` quantile of every margin since the last update,
+    then mean-centred.
+  - Histograms are summed across ranks, so the quantile is the global
+    one.
+- Compared with the v5.5 `"quantile"` rule: the target is the same, since
+  `b - q_{1-f}(s + b - c) = q_f(c - s)`. What differs:
+  - every token since the last update instead of the last 512 margins;
+  - mean-centring (a common shift never changes a top-k ranking, so
+    centring only stops drift);
+  - a global quantile instead of an average of per-rank quantiles.
+- Not reproduced: K3's other Stable LatentMoE parts (its RMSNorm
+  placement and SiTU-GLU details beyond the v5.5 simplified version).
+- Study (`examples/quantile_balancing_ab.py` ->
+  `benchmarks/quantile_balancing_ab_2026-10-21.json`): one LatentMoE
+  layer (32 experts, top 4), skewed token stream, 300 updates, single
+  seed. MaxVio = the largest expert's excess load over the mean.
+
+  | scenario | rule | MaxVio, first 20 | MaxVio, 2nd half | mean bias at end |
+  |---|---|---|---|---|
+  | stationary | sign (heuristic) | 0.412 | 0.298 | 0.014 |
+  | stationary | SMEBU | 0.451 | **0.261** | 0.001 |
+  | stationary | v5.5 quantile | 0.377 | 0.313 | 0.715 |
+  | stationary | Quantile Balancing | **0.370** | 0.313 | **0.000** |
+  | 1024 tokens / update | SMEBU | 0.375 | **0.184** | 0.000 |
+  | 1024 tokens / update | v5.5 quantile | 0.309 | 0.246 | 0.719 |
+  | 1024 tokens / update | Quantile Balancing | **0.268** | 0.212 | **0.000** |
+
+  - Quantile Balancing is the fastest from a skewed start in every
+    scenario.
+  - It recovers fastest after the skew direction changes: 0.375 over the
+    next 20 updates, vs 0.439 for sign and 0.496 for SMEBU.
+  - Its bias never drifts; the uncentred v5.5 rule drifts to 0.72.
+  - Negative: in steady state SMEBU is lower. Its momentum averages out
+    the per-batch sampling noise that a per-step solve inherits. More
+    tokens per update narrow the gap (0.184 vs 0.212).
+- T116 (`tests/test_quantile_balancing.py`, 6 tests):
+  - the histogram quantile is within one bin of `torch.quantile`;
+  - on a fixed batch the first solve halves the largest imbalance, and
+    eight solves get within 15% of K / E (325 -> 56 tokens). The v5.5
+    rule plateaus at 96 and the sign rule is still at 245.
+  - centring never changes routing;
+  - summed rank histograms equal the single-process histogram exactly.
+    Averaging per-rank quantiles is off by about 0.006 with very
+    different ranks: small, but above the bin width.
+  - guards, state-dict hygiene, config validation, and the artifact.
+
 ## v5.76 (2026-10-20) - Roadmap B2-6: multi-teacher on-policy distillation (MOPD)
 
 - Definition confirmed first, as the roadmap asked. MiMo-V2-Flash (arXiv
