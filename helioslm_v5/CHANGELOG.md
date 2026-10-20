@@ -1,5 +1,49 @@
 # HeliosLM v5 Changelog
 
+## v5.74 (2026-10-19) - Roadmap AC4: repo-scale long-context probe (dense vs sliding/global hybrid vs CSA)
+
+- `eval/repo_longctx.py`: a synthetic repository. Each file is
+  `FILE filler DEF name = value filler`, with a distinct name per file;
+  after the last file come `USE name` look-ups that must produce that
+  file's value (chance 1/16). Lengths grow only by adding files, so the
+  distance back to a definition grows with the repository.
+- `RepoProbeLM` is the same 4-layer stack for every arm, and only the
+  attention differs: dense, all-SWA (window 16), the sliding/global
+  hybrid (a global layer every 2), and CSA (ratio 4, top-8) with a mean
+  or a learned compressor.
+  - No arm has a position embedding (NoPE), so longer repositories add
+    no unseen positions.
+  - A fixed token shift at the input (each position also sees the
+    previous token) lets one layer read "the value after the matching
+    name" in every arm alike.
+- A/B (`examples/repo_longctx_probe.py` ->
+  `benchmarks/repo_longctx_2026-10-19.json`): 2000 steps, trained at 8
+  files, evaluated at 8 / 16 / 32 files on a held-out stream. Single
+  seed.
+
+  | arm | 8 files | 16 | 32 |
+  |---|---|---|---|
+  | dense | 0.29 | 0.20 | 0.12 |
+  | all-SWA (negative control) | 0.27 | 0.17 | 0.11 |
+  | sliding/global hybrid | **1.00** | **1.00** | **1.00** |
+  | CSA, mean compressor | 0.54 | 0.38 | 0.28 |
+  | CSA, learned compressor | 0.20 | 0.16 | 0.08 |
+  | dense, 4000 steps (supplement) | 0.91 | 0.62 | 0.38 |
+
+  - The hybrid solves the look-up and keeps it at 4x the training size.
+  - Dense needs about twice the steps to learn it at the training size,
+    and it still loses much of it on longer repositories.
+  - All-SWA only reaches the last few files (its window covers about 60
+    tokens back), so it falls with the file count.
+  - Mean-pooled CSA keeps part of the far look-ups. The learned
+    compressor did worse here, the reverse of the passkey probe in
+    v5.61; with a single seed this is not evidence that it is worse in
+    general.
+- The probe script has `--threads`, `--merge`, and `--ckpt-dir`
+  (checkpoint every 100 steps and resume after a container restart; a
+  resumed run was verified identical to an uninterrupted one).
+- T113 (`test_repo_longctx.py`, 5 tests).
+
 ## v5.73 (2026-10-18) - Roadmap U2: thinking-budget control (Nemotron 3 / gpt-oss reasoning effort)
 
 - `inference/thinking_budget.py`:
