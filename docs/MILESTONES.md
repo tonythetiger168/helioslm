@@ -91,7 +91,7 @@ renumbered.
 | TW | TW1 dataset license audit (HF card license + gated status) | ⬜ Not started |
 | TW | TW2 zh-TW pretraining pipeline (Wikipedia s2twp + FineWeb-2 + data.gov.tw, ~100M tokens) | ⬜ Not started |
 | TW | TW3 Traditional-Chinese evals in the harness (TMMLU+, TMLU, TW-JusticeBench) | ⬜ Not started |
-| TW | TW4 zh-TW tokenizer coverage report | ⬜ Not started |
+| TW | TW4 zh-TW tokenizer coverage report — toy char vocab loses 100% of CJK; BPE without Chinese 3.00 tokens/char; repo BPE 0.86 with 78% single-token coverage | ✅ Done (v5.75, T114) |
 | AC | AC1 mini SWE task set (20 small repos, hidden tests, trap gates) | ✅ Done (v5.62, T97) |
 | AC | AC2 agent RL on the SWE sandbox — SFT warm start + rejection-sampling fine-tuning with a verified-DONE reward: 0.367 → 1.0 on train and held-out (GRPO eroded the policy; see `benchmarks/swe_agent_rl_notes_2026-10-16.md`) | ✅ Done (v5.63, T100) |
 | AC | AC3 tool-call recovery layer (7 named repairs, fuzz-tested) | ✅ Done (v5.62, T99) |
