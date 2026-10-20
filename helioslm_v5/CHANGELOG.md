@@ -1,5 +1,34 @@
 # HeliosLM v5 Changelog
 
+## Maintenance (2026-10-21) - tech-debt Phase 3: parallel CI
+
+- CI runs one pytest invocation on 4 workers (`pytest-xdist==3.8.0`,
+  pinned in `requirements-ci.txt`) instead of `test_v5.py` and pytest one
+  after the other.
+  - `tests/test_v5_cases.py` parametrizes over `test_v5.TESTS`, so
+    `test_v5.py`'s 93 cases run as pytest cases and spread over the
+    workers. `python helioslm_v5/tests/test_v5.py` still works unchanged
+    as a script. A guard test pins the case list (unique, 93).
+  - `tests/conftest.py` pins every xdist worker to one torch thread.
+    Four workers with the default thread count oversubscribe a 4-vCPU
+    runner, which is how the suite once died on CI (PR #16). Runs without
+    xdist are untouched.
+  - Locally the whole suite (pytest + the 93 cases) went from about
+    12 minutes serial to 4.5 minutes.
+- Race fix: the custom-attention notebook test wrote
+  `benchmarks/custom_attention_cpu_results.json` into the repository. In
+  a parallel run, `test_artifact_tiers` could see the unregistered file
+  and fail. The notebook now honours `HELIOS_NOTEBOOK_OUT` (default
+  unchanged: `benchmarks/`), and the test points it at its temporary
+  directory and checks the file written there.
+- Not done from the Phase 3 list:
+  - archiving older `eval_mid_agent` / `web_ui` versions:
+    `test_web_ui.py` still imports the v1 UI, and `eval_mid_agent`
+    v2/v4/v5 share `_mid_common.py` and are cited by committed artifacts;
+  - converting `test_v5.py` itself: the parametrized wrapper gives the
+    parallelism without rewriting 93 cases;
+  - `--seeds` for the A/B scripts.
+
 ## v5.78 (2026-10-21) - Roadmap Phase B: 16x CSA compressor by curriculum
 
 - The learned compressor scores each token on its own (`MLP(x_j)` plus a
