@@ -320,6 +320,7 @@ python helioslm_v5/tests/test_smebu_sandwich.py     # T111 U7 Arcee Trinity: SME
 python helioslm_v5/tests/test_thinking_budget.py    # T112 U2 thinking budget: forced close at exactly b tokens (greedy + sampled), no reopen, truncation helpers, A/B artifact
 python helioslm_v5/tests/test_repo_longctx.py       # T113 AC4 repo-scale probe: task generator, causality of every arm, all-SWA receptive-field oracle, A/B artifact
 python helioslm_v5/tests/test_zh_tokenizer_coverage.py  # T114 TW4 zh-TW tokenizer coverage: held-out split and leak check, UTF-8 / char-toy oracles, report artifact
+python helioslm_v5/tests/test_mopd.py               # T115 B2-6 MOPD: expected gradient = reverse-KL gradient, self-distillation zero, TROPD bound, routing, action mask, probe artifact
 python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite (396 tests)
 ```
 
@@ -442,6 +443,7 @@ Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/hel
 - **v5.73** — U2: thinking-budget control (forced close after b thinking tokens) + truncated-trace training; closed one step early, accuracy 0.12 → 0.88 with truncation training — T112
 - **v5.74** — AC4: repo-scale long-context probe; the sliding/global hybrid finds definitions across files at 1.00 even at 4x the training size, dense needs 2x the steps and still drops to 0.38 at 4x — T113
 - **v5.75** — TW4: zh-TW tokenizer coverage report; the toy char tokenizer loses every CJK character, a BPE without Chinese pays 3 tokens per character, the repo BPE 0.86 with 78% single-token coverage — T114
+- **v5.76** — B2-6: multi-teacher on-policy distillation (MOPD); routed teachers keep the student's inc skill (1.00) and halve its KL to the rev teacher, one teacher for everything erases inc — T115
 - **v5.68** — U5: gpt-oss clamped SwiGLU option for MoE experts (pre-w2 activation bounded to [-42, 56] with gpt-oss settings), defaults bit-identical — T106
 - **v5.67** — B2-5: MiMo-style light MTP head (sliding-window attention + narrow FFN): -20% head parameters, -39% head step latency, acceptance 0.813 vs 0.822 — T105
 - **v5.66** — B2-4: learnable doubly stochastic mHC read matrices (Sinkhorn), identity at init; fixes the v5.7 HC branch fold that scrambled sequence positions across branches (decode != full once B != 0) — T104

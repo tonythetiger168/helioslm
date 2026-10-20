@@ -1,0 +1,283 @@
+{
+  "experiment": "B2-6 MOPD probe: two toy domains (reverse / +1), one CE-trained teacher per domain, student distilled from its own samples only",
+  "teachers": {
+    "rev": {
+      "exact_match": {
+        "rev": 1.0,
+        "inc": 0.0
+      }
+    },
+    "inc": {
+      "exact_match": {
+        "rev": 0.0,
+        "inc": 1.0
+      }
+    }
+  },
+  "warm_start": {
+    "exact_match": {
+      "rev": 0.0,
+      "inc": 1.0
+    },
+    "reverse_kl": {
+      "rev": 5.4933,
+      "inc": 0.3363
+    }
+  },
+  "train": {
+    "steps": 600,
+    "warm_steps": 100,
+    "teacher_steps": 400,
+    "batch": 32,
+    "lr": 0.0003,
+    "seed": 0
+  },
+  "results": [
+    {
+      "arm": "mopd",
+      "exact_match": {
+        "rev": 0.0,
+        "inc": 1.0
+      },
+      "reverse_kl": {
+        "rev": 3.0542,
+        "inc": 0.0853
+      },
+      "gap_curve": [
+        {
+          "step": 50,
+          "gap_mean": -1.9002
+        },
+        {
+          "step": 100,
+          "gap_mean": -1.5737
+        },
+        {
+          "step": 150,
+          "gap_mean": -2.1502
+        },
+        {
+          "step": 200,
+          "gap_mean": -2.5454
+        },
+        {
+          "step": 250,
+          "gap_mean": -2.3119
+        },
+        {
+          "step": 300,
+          "gap_mean": -1.8851
+        },
+        {
+          "step": 350,
+          "gap_mean": -2.6819
+        },
+        {
+          "step": 400,
+          "gap_mean": -2.1495
+        },
+        {
+          "step": 450,
+          "gap_mean": -2.2405
+        },
+        {
+          "step": 500,
+          "gap_mean": -2.568
+        },
+        {
+          "step": 550,
+          "gap_mean": -1.7308
+        },
+        {
+          "step": 600,
+          "gap_mean": -2.3625
+        }
+      ]
+    },
+    {
+      "arm": "tropd",
+      "exact_match": {
+        "rev": 0.0234375,
+        "inc": 1.0
+      },
+      "reverse_kl": {
+        "rev": 2.7725,
+        "inc": 0.0404
+      },
+      "gap_curve": [
+        {
+          "step": 50,
+          "gap_mean": -1.9311
+        },
+        {
+          "step": 100,
+          "gap_mean": -1.4652
+        },
+        {
+          "step": 150,
+          "gap_mean": -1.8759
+        },
+        {
+          "step": 200,
+          "gap_mean": -2.4325
+        },
+        {
+          "step": 250,
+          "gap_mean": -1.5949
+        },
+        {
+          "step": 300,
+          "gap_mean": -1.19
+        },
+        {
+          "step": 350,
+          "gap_mean": -1.8374
+        },
+        {
+          "step": 400,
+          "gap_mean": -1.1664
+        },
+        {
+          "step": 450,
+          "gap_mean": -1.176
+        },
+        {
+          "step": 500,
+          "gap_mean": -1.7449
+        },
+        {
+          "step": 550,
+          "gap_mean": -1.5346
+        },
+        {
+          "step": 600,
+          "gap_mean": -1.8639
+        }
+      ]
+    },
+    {
+      "arm": "full_vocab",
+      "exact_match": {
+        "rev": 0.01171875,
+        "inc": 1.0
+      },
+      "reverse_kl": {
+        "rev": 2.6387,
+        "inc": 0.0025
+      },
+      "gap_curve": [
+        {
+          "step": 50,
+          "gap_mean": -1.7878
+        },
+        {
+          "step": 100,
+          "gap_mean": -0.9862
+        },
+        {
+          "step": 150,
+          "gap_mean": -1.1149
+        },
+        {
+          "step": 200,
+          "gap_mean": -1.4507
+        },
+        {
+          "step": 250,
+          "gap_mean": -1.3877
+        },
+        {
+          "step": 300,
+          "gap_mean": -1.1576
+        },
+        {
+          "step": 350,
+          "gap_mean": -1.6773
+        },
+        {
+          "step": 400,
+          "gap_mean": -1.3688
+        },
+        {
+          "step": 450,
+          "gap_mean": -1.0909
+        },
+        {
+          "step": 500,
+          "gap_mean": -1.9566
+        },
+        {
+          "step": 550,
+          "gap_mean": -1.6173
+        },
+        {
+          "step": 600,
+          "gap_mean": -2.0514
+        }
+      ]
+    },
+    {
+      "arm": "single_teacher",
+      "exact_match": {
+        "rev": 0.00390625,
+        "inc": 0.0
+      },
+      "reverse_kl": {
+        "rev": 4.7306,
+        "inc": 7.0929
+      },
+      "gap_curve": [
+        {
+          "step": 50,
+          "gap_mean": -4.4306
+        },
+        {
+          "step": 100,
+          "gap_mean": -3.8827
+        },
+        {
+          "step": 150,
+          "gap_mean": -4.272
+        },
+        {
+          "step": 200,
+          "gap_mean": -4.1465
+        },
+        {
+          "step": 250,
+          "gap_mean": -4.4353
+        },
+        {
+          "step": 300,
+          "gap_mean": -3.6423
+        },
+        {
+          "step": 350,
+          "gap_mean": -4.6267
+        },
+        {
+          "step": 400,
+          "gap_mean": -4.2244
+        },
+        {
+          "step": 450,
+          "gap_mean": -4.2324
+        },
+        {
+          "step": 500,
+          "gap_mean": -4.2945
+        },
+        {
+          "step": 550,
+          "gap_mean": -3.4212
+        },
+        {
+          "step": 600,
+          "gap_mean": -4.5597
+        }
+      ]
+    }
+  ],
+  "results_sha256": "696141fefb86f3bb1c2fcec848b412ba31249d3be2f5f8cde84d21e891f49a6e",
+  "wall_seconds": 580.8
+}

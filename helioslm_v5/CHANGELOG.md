@@ -1,5 +1,52 @@
 # HeliosLM v5 Changelog
 
+## v5.76 (2026-10-20) - Roadmap B2-6: multi-teacher on-policy distillation (MOPD)
+
+- Definition confirmed first, as the roadmap asked. MiMo-V2-Flash (arXiv
+  2601.02780) itself is not reachable from the containers; the
+  implementation follows NVIDIA NeMo RL's MOPD docs, which cite it:
+  - advantage `A_t = sg[log pi_teacher(y_t) - log pi_student(y_t)]` on
+    the student's own sampled tokens (policy tokens only);
+  - REINFORCE update (no PPO ratio clipping), no reference KL; maximising
+    A is reverse-KL(student || teacher) minimisation;
+  - each sample is scored by exactly one teacher, chosen by its domain;
+  - optional TROPD proximal teacher (`alpha`, bounded below by
+    `log(1 - alpha)`), global-baseline subtraction, and the exact
+    full-vocabulary reverse KL.
+- `training/mopd.py`: `MOPDTrainer` wraps a `GRPOTrainer` (student,
+  optimizer, `_token_logprobs`, the GRPO sample dicts and action masks).
+  Not implemented: mixing in outcome rewards, async collection.
+- Probe (`eval/mopd_probe.py`, `examples/mopd_probe.py` ->
+  `benchmarks/mopd_probe_2026-10-20.json`): two toy domains, reverse four
+  digits (rev) and add one to each (inc). One teacher per domain, trained
+  with cross-entropy on that domain only. The student gets a short CE warm
+  start on both (it solves inc, not rev), then 600 steps of distillation
+  from its own samples. Single seed.
+
+  | arm | rev exact | rev KL | inc exact | inc KL |
+  |---|---|---|---|---|
+  | warm start | 0.00 | 5.49 | 1.00 | 0.336 |
+  | routed MOPD | 0.00 | 3.05 | **1.00** | 0.085 |
+  | routed TROPD (alpha 0.2) | 0.02 | 2.77 | **1.00** | 0.040 |
+  | routed full-vocabulary KL | 0.01 | **2.64** | **1.00** | **0.003** |
+  | one teacher (rev) for all | 0.00 | 4.73 | **0.00** | 7.09 |
+
+  - Routing keeps and sharpens the skill the student has and roughly
+    halves its KL to the rev teacher.
+  - Sending everything to one teacher erases inc and is worse on rev too.
+  - Negative: 600 on-policy steps (1500 in a supplementary run) do not
+    teach this 2-layer student exact reversal.
+  - Fine-tuning rate matters: at the warm start's 3e-3, one noisy
+    distillation step erased inc. Adam moves every weight by about lr on
+    its first steps; the probe uses 3e-4.
+- T115 (`tests/test_mopd.py`, 6 tests):
+  - the sampled-token loss's expected gradient (exact enumeration over
+    the vocabulary) equals the gradient of the exact reverse KL, and the
+    full-vocabulary loss has it directly;
+  - self-distillation gives zero advantage and zero gradient;
+  - the TROPD bound and baseline, routing and validation, the action
+    mask, and the artifact.
+
 ## v5.75 (2026-10-20) - Roadmap TW4: zh-TW tokenizer coverage report
 
 - `eval/zh_tokenizer_coverage.py`: how many tokens each tokenizer spends
