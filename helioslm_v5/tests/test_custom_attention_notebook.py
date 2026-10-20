@@ -19,6 +19,7 @@ def test_notebook_has_executable_oracles():
 def test_notebook_runs_top_to_bottom_cpu(tmp_path, monkeypatch):
     """Execute every code cell as a single notebook kernel would."""
     monkeypatch.chdir(NOTEBOOK.parents[2])
+    monkeypatch.setenv("HELIOSLM_NOTEBOOK_OUT", str(tmp_path))
     notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
     namespace = {"__name__": "__main__"}
     for index, cell in enumerate(notebook["cells"]):
@@ -29,3 +30,5 @@ def test_notebook_runs_top_to_bottom_cpu(tmp_path, monkeypatch):
     assert metrics["mla_median_ms"] > 0
     assert metrics["gain_mla_median_ms"] > 0
     assert metrics["ratio_variant_to_mla"] > 0
+    saved = tmp_path / "custom_attention_cpu_results.json"
+    assert json.loads(saved.read_text(encoding="utf-8")) == metrics
