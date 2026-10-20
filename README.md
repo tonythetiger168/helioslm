@@ -418,7 +418,7 @@ See the [GitHub Project board](https://github.com/tonythetiger168/helioslm/proje
 - [ ] Epoch-2 + scaled tool-tuning (T17 parse 0.15 → target 0.4+; trainer resume-ready)
 - [ ] Fused quantization kernels
 - [ ] CUDA end-to-end verification (paths are currently static-checked; CPU-verified)
-- [x] Hugging Face Hub: `chienhsinlin/helioslm-agent` hosts the agent layer + tool-tuned artifacts
+- [x] Hugging Face Hub: [`chienhsinlin/helioslm`](https://huggingface.co/chienhsinlin/helioslm) hosts the tool-/chat-tuned and mid-SFT checkpoints and the paper; [`chienhsinlin/helioslm-toy`](https://huggingface.co/chienhsinlin/helioslm-toy) hosts the toy_v5.13 checkpoint and its GGUF exports
 - [ ] Example notebooks: "Train a tiny HeliosLM on your laptop" / "Add a new attention variant in 30 lines"
 
 ## Contributing
