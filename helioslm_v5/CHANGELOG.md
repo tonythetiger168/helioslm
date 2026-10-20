@@ -1,5 +1,43 @@
 # HeliosLM v5 Changelog
 
+## v5.78 (2026-10-21) - Roadmap Phase B: 16x CSA compressor by curriculum
+
+- The learned compressor scores each token on its own (`MLP(x_j)` plus a
+  per-position bias), so a detector trained at 4x should carry over to
+  16x chunks. Only the position bias depends on the chunk size.
+- `examples/csa_learned_compressor.py --init-from ARTIFACT`: start every
+  ratio from that artifact's ratio-4 compressor (`transfer_state`: MLP
+  copied, position bias reset to zero). The artifact also records the
+  zero-shot evaluation of the transferred weights before any 16x
+  training.
+- Round 4 (`benchmarks/csa_learned_16x_2026-10-21.json`): v5.61's 4x
+  compressor, fine-tuned at 16x with lr 3e-3 for 4800 steps. Settings were
+  chosen on the separate validation stream (seed 2000) at L=128 / 512 and
+  never on the evaluation stream:
+
+  | setting | L=128 | L=512 |
+  |---|---|---|
+  | zero-shot | 0.560 | 0.667 |
+  | lr 3e-3, 4800 steps (chosen) | 0.607 | 0.753 |
+  | lr 3e-3, 9600 / 19200 steps | 0.620 / 0.600 | 0.720 / 0.720 |
+  | v5.60, trained at 16x from the zero init | 0.387 | 0.380 |
+
+- Evaluation stream, 16x passkey recall (top-8 and top-32 identical):
+
+  | 16x compressor | L=512 | L=1024 |
+  |---|---|---|
+  | v5.60 | 0.375 | 0.390 |
+  | 4x weights, zero-shot | 0.735 | 0.665 |
+  | **4x weights, fine-tuned at 16x** | **0.790** | **0.740** |
+  | oracle ceiling (perfect pooling) | 0.860 | 0.845 |
+
+  92% and 88% of the ceiling. Selection hit rate 0.89 / 0.84 (top-8).
+  Single seed. The stored weights re-evaluate exactly (`--check`).
+- T117 (`tests/test_csa_learned_16x.py`, 2 tests): `transfer_state`
+  carries the MLP and resets the bias; the fine-tuned and zero-shot
+  slices re-evaluate to the recorded accuracy; v5.60 < zero-shot <
+  fine-tuned <= ceiling at both lengths.
+
 ## v5.77 (2026-10-21) - Stable LatentMoE study: Kimi K3 Quantile Balancing
 
 - `moe.balance_strategy="quantile_balancing"`: K3's Quantile Balancing
