@@ -1,5 +1,46 @@
 # HeliosLM v5 Changelog
 
+## v5.83 (2026-10-21) - ~100M single-GPU pilot run (Phase C gate)
+
+- The last gate before renting a GPU cluster: one complete small run on a
+  single GPU (an RTX 4060 8 GB is enough) with a sane loss curve, measured
+  throughput, a held-out metric, and a run that survives being killed.
+  This release is the code for that run; the run itself happens on a GPU.
+- `src/training/pretrain.py`:
+  - `pilot_config(arch)` for four architectures at one width (hidden 640,
+    8 layers, vocabulary 32768): `dense`, `moe` (4 routed experts, top 2,
+    at half the dense FFN width), `k3_block` (3:1 KDA : Gated MLA,
+    attention residuals, LatentMoE) and `mimo_hybrid` (5:1 sliding window
+    128 : global MLA with sinks). MTP is off.
+  - Parameters (`count_params`): dense 93.0M; moe 134.3M total / 106.8M
+    active; k3_block 104.2M / 90.4M; mimo_hybrid 134.3M / 106.8M.
+  - `write_shards` / `TokenShard`: uint16 token shards. Batch positions
+    come from a generator seeded by (seed, micro-step).
+  - `pretrain`: AdamW, warmup then cosine decay, gradient accumulation and
+    clipping, bf16 autocast on CUDA, held-out bits per UTF-8 byte
+    (comparable across tokenizers), tokens/s and an MFU estimate, atomic
+    checkpoints, a JSONL log. It calls the routers' aux-loss-free bias
+    update after every optimizer step; the repo's other training loops
+    never did.
+  - Exact resume: a killed run restarts from `ckpt.pt`, drops log lines
+    written after it, and reads the same batches, so it continues bit for
+    bit on CPU.
+- `examples/pilot_prepare_data.py`: text files, JSONL or Hugging Face
+  datasets -> a byte-level BPE (32768, Big5 + GB2312 seed from v5.80 by
+  default) and train / val shards, with the bytes-per-token figure the
+  bits-per-byte metric needs.
+- `examples/pilot_100m.py`: the run, with `--dry-run` to print the
+  parameter counts and an RTX 4060 starting point in its docstring
+  (`--batch 8 --seq 1024 --grad-accum 8`, bf16).
+- T122 (`tests/test_pretrain_pilot.py`), tiny and on CPU: every
+  architecture builds and the 100M counts hold; shards round-trip and
+  uint16 overflow is refused; the learning-rate schedule; 3 + 3 steps
+  resumed equal 6 straight steps bit for bit (weights and log) for dense
+  and MoE; the MoE router biases move; the loss falls; the data script end
+  to end.
+- Not done here: the GPU run itself. Its log is the evidence the gate
+  needs.
+
 ## v5.82 (2026-10-21) - Distillation from API teachers; teacher licence audit
 
 - Which teachers may be used: `eval/teacher_license_audit.py` +
