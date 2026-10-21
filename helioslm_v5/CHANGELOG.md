@@ -1,5 +1,30 @@
 # HeliosLM v5 Changelog
 
+## v5.90 (2026-10-21) - Issue #1: first CUDA run; two CUDA bugs fixed
+
+- The full suite (574 passed) and integration (9/9) pass on an RTX 6000
+  Ada with torch 2.14.1+cu130. No test moves a model to the GPU, though,
+  so that run checks the environment, not CUDA.
+- `examples/cuda_smoke.py` (#64) runs the code on the GPU:
+  11/13 passed on the first run. The two failures were real CUDA bugs:
+  - `FP8Trainer._convert_to_fp8` built `FP8Linear` on the default (CPU)
+    device, so a model already on CUDA failed in its first matmul. The
+    layer is now created on the replaced layer's device.
+  - `GPUMonitor.collect` raised without NVML (`nvidia-ml-py`), because
+    `torch.cuda.utilization` needs it. It now records memory, skips
+    utilization, and the replica recommendation uses memory alone.
+  - `tests/test_cuda_device_paths.py` reproduces both on the CPU (a
+    `meta`-device model; a mocked CUDA without NVML). Both fail on the old
+    code.
+- `tests/test_cuda_smoke.py`: CI runs the script's fast checks with
+  `--device cpu`, so the script does not rot between GPU sessions. This
+  checks its logic, not CUDA.
+- First GPU pilot (93M dense, FineWeb-Edu, 16.4M tokens, bf16): val bits
+  per byte 2.77 -> 1.79 over 500 steps at ~29.8k tokens/s, 9.1% MFU. The
+  whole run was learning-rate warmup (`--warmup` defaults to 500). The
+  KDA block trains ~10x and the MoE arms ~2.5x slower than dense at a
+  tiny width. Details and implications: `docs/CUDA_VERIFICATION_2026-10-21.md`.
+
 ## v5.89 (2026-10-21) - Issue #5: BPE toy model vs the char baseline, measured
 
 - `examples/train_toy_bpe.py --tokenizer char` trains the character

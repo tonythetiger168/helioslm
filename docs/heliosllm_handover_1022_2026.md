@@ -21,32 +21,24 @@
 
 另外手動關閉了 #3（custom attention notebook）、#4（HF Hub），驗證說明留在各 issue。
 
-## 2. 進行中，尚未合併
+## 2. 後續合併（2026-10-21 晚）與進行中
 
-| 項目 | 狀態 | 位置 |
-|---|---|---|
-| **#1 CUDA 驗證** | 在 RunPod RTX 6000 Ada（torch 2.14.1+cu130）跑完整測試：574 passed、integration 9/9。**但測試套件全部釘在 CPU，這不算 CUDA 驗證。** 所以寫了 `examples/cuda_smoke.py`（13 項真正上 GPU 的檢查），已 push 到工作分支，等 pod 上的結果 | 分支 commit `d0e5aa4` |
-| **#5 BPE vs char 對照** | 配對實驗，3 seeds × 2 arms，每組 1000 steps，同一份 held-out 文字，比較每 byte NLL。已完成 2 seeds，見表一 | scratchpad worktree `issue5`，`examples/toy_tokenizer_compare.py` |
-| **評測計劃 + E2 + E5** | v5.88 PR 已開（見 §1 之後的 PR），三部分見下方 | 工作分支 |
-| **100M 試跑（GPU）** | 指令已交給負責人在 pod 上跑，見 §4 | — |
+| PR | 版本 | 內容 | 關閉的 issue |
+|---|---|---|---|
+| #64 | — | `examples/cuda_smoke.py`（13 項真正上 GPU 的檢查）與本交接文件 | — |
+| #65 | v5.88 | 評測計劃（GPU 需求、排行榜檢視、E1–E8）；E2 訓練／評測 13-gram 重疊檢查；E5 預先登記評測 | — |
+| #66 | v5.89 | #5 實測：BPE 在 3 個 seed 的每 byte NLL 都優於 char（1.635／1.645／1.534 vs 1.884／2.013／2.359） | #5 |
+| （下一個 PR） | v5.90 | #1 首次 CUDA 執行：cuda_smoke 11/13，修好兩個真正的 CUDA bug（FP8Trainer 把層建在 CPU、GPUMonitor 缺 NVML 就崩潰）；首次 GPU 100M 試跑 | （#1 待重跑 13/13） |
 
-**表一：#5 已完成的 seed（每 byte NLL，越低越好）**
+**#1 CUDA 驗證**（詳見 `docs/CUDA_VERIFICATION_2026-10-21.md`）：
+- RTX 6000 Ada（torch 2.14.1+cu130）上完整測試 574 passed、integration 9/9。但測試全部釘在 CPU，不算 CUDA 驗證。
+- `cuda_smoke.py` 第一次跑是 11/13，兩個失敗都已在 v5.90 修好，並加了能在 CPU 上重現的測試。
+- 剩下：v5.90 合併後在 pod 上 `git pull` 重跑，得到 13/13 即可關閉 #1。
 
-| seed | char | BPE |
-|---|---|---|
-| 13 | 1.884 | **1.635** |
-| 14 | 2.013 | **1.645** |
-
-- 兩個 seed 都是 BPE 較好。
-- seed 14 的 BPE 生成樣本，真實單字率是 0。需要看樣本內容才能判斷原因；char 模型則常輸出重複字（例如「steps steps…」）。所以除了真實單字率，也要報告相異字比例。
-
-**評測計劃 PR 的三部分：**
-
-- `docs/GPU_AND_EVAL_PLAN_2026-10.md`：每一代需要的 GPU 與成本、全球排行榜現況、改進計劃 E1–E8。
-- E2 `eval/decontam.py`：訓練與評測資料的 13-gram 重疊檢查，加上 `pilot_prepare_data.py --decontaminate`。
-- E5 `eval/prereg.py`：預先登記評測計劃，以 hash 鎖定；門檻事後改了，舊結果就失效。
-
-> scratchpad worktrees 在容器重啟後可能消失。PR 合併前若遺失，從本文件與 session 紀錄重建。
+**首次 GPU 100M 試跑**（93M dense，FineWeb-Edu 16.4M tokens，bf16）：
+- val bits/byte 2.77 → 1.79，每秒約 29.8k tokens，MFU 9.1%。
+- 整段都在 warmup：`--warmup` 預設 500，下次請設為總步數的約 5%。
+- 在小寬度下，KDA block 比 dense 慢約 10 倍，MoE 慢約 2.5 倍。擴大規模前要先做吞吐量優化（`--compile`、fused kernel）。
 
 ## 3. 需要負責人決定
 
@@ -77,16 +69,13 @@ python examples/pilot_100m.py --data data/pilot --out runs/dense --arch dense --
 
 ## 5. 下一步（建議順序）
 
-1. 收到 cuda_smoke 結果：
-   - 若有 FAIL，修正後開 PR，關閉 #1；
-   - 若全過，把結果寫成 `benchmarks/cuda_smoke_<date>.json` 並開 PR，關閉 #1。
-2. 收到 100M 試跑 log：記錄 bits/byte、tokens/s、MFU，判斷是否值得租 8×H100 跑 #40。
-3. 開「評測計劃 + E2 + E5」的 PR（v5.88）。
-4. #5 三個 seed 完成後，開 PR 並關閉 #5。PR 內容：
-   - artifact；
-   - `docs/TOY_BPE.md` 的實測結果；
-   - 測試（加入相異字比例）。
-5. 若負責人同意安裝套件，做 E1，接著做 E4（同條件 baseline：SmolLM3-3B、Qwen3.5-2B、Gemma 4 E2B）。
+1. v5.90 合併後，在 pod 上重跑：
+   `cd /workspace/helioslm && git pull origin main && python examples/cuda_smoke.py --out gpu_smoke.json`。
+   得到 13/13 就關閉 #1。
+2. 吞吐量：同一張卡用 `--compile`、較大 batch、`--warmup 50` 再跑一次 pilot，比較 tokens/s 與 MFU。
+3. 若負責人同意安裝套件，做 E1，接著做 E4（同條件 baseline：SmolLM3-3B、Qwen3.5-2B、Gemma 4 E2B）。
+4. 決定 v1.0 的評測門檻（E5），再考慮租 8×H100 跑 #40。
+5. #42 之前：把 KDA 與 MoE 的 Python 迴圈改成向量化或 fused 實作。
 
 ## 6. 規則與注意事項（沿用）
 
