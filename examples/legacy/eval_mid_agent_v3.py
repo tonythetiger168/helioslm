@@ -16,7 +16,7 @@ missed. This oracle finds it mechanically:
    prompt-diff indicts the harness.
 3. Runs the ChatSession drive with raw-output capture.
 
-Usage: python examples/eval_mid_agent_v3.py
+Usage: python examples/legacy/eval_mid_agent_v3.py
 """
 import difflib
 import json
@@ -26,8 +26,8 @@ from pathlib import Path
 
 import torch
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "helioslm_v5" / "agent"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "helioslm_v5" / "agent"))
 
 import random
 

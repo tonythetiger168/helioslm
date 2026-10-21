@@ -5,7 +5,7 @@ question (copy-observation failure vs arithmetic confabulation) needs
 the raw finish answers. v4 captures everything: task text, expected
 answer, per-step generated text, final answer, transcript tail.
 
-Usage: python examples/eval_mid_agent_v4.py
+Usage: python examples/legacy/eval_mid_agent_v4.py
 Writes checkpoints/mid_agent_eval_v4.json -- upload THAT for autopsy.
 """
 import json
@@ -17,8 +17,8 @@ from pathlib import Path
 
 import torch
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "helioslm_v5" / "agent"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "helioslm_v5" / "agent"))
 
 from chat import ChatSession
 from envs import make_envs, make_long_envs
