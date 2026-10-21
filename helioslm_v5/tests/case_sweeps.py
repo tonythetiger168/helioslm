@@ -149,20 +149,32 @@ def test_indexer_distill_learned_sweep():
                                    indexer="learned")
 
     stats = distill_indexer(model, corpus, steps=400, top_k=4, seed=1234)
-    # Measured on this fixture: loss 5.13 -> 3.81 (ratio 0.74), teacher
-    # top-4 overlap 0.165 -> 0.377 (gain +0.21), ~9 s CPU total. Bounds
-    # below sit well inside the measurements. The residual overlap is
-    # honest: near-tied teacher scores cap fidelity (same phenomenon as
-    # the 09-21 unit-level distill).
     assert stats["layers"] == 2 and stats["steps"] == 400
-    assert stats["loss_final"] < 0.85 * stats["loss_initial"], (
-        f"distill loss did not drop: {stats['loss_initial']} -> "
-        f"{stats['loss_final']}")
-    assert (stats["teacher_overlap_final"]
-            > stats["teacher_overlap_initial"] + 0.10), (
-        f"teacher overlap did not rise: "
-        f"{stats['teacher_overlap_initial']} -> "
-        f"{stats['teacher_overlap_final']}")
+    # The corpus is every .py/.md in the repo, so the sampled windows (and
+    # one run's gain) move whenever a file is added: on the v5.75 tree
+    # seeds 1234/1/2/3/4/5 gave overlap gains +0.09/.22/.21/.12/.16/.23
+    # and loss ratios 0.60-0.82. The bounds are therefore checked on the
+    # mean of three seeds (fresh indexers for seeds 1 and 2; the seed-1234
+    # model is the one the rest of this test uses). The residual overlap
+    # is honest: near-tied teacher scores cap fidelity (same phenomenon as
+    # the 09-21 unit-level distill).
+    runs = [stats]
+    for seed in (1, 2):
+        torch.manual_seed(1234)
+        extra = HeliosLMv5(cfg).eval()
+        load_with_new_indexer(extra, ckpt["state_dict"])
+        runs.append(distill_indexer(extra, corpus, steps=400, top_k=4,
+                                    seed=seed))
+
+    def _mean(key):
+        return sum(r[key] for r in runs) / len(runs)
+    loss0, loss1 = _mean("loss_initial"), _mean("loss_final")
+    ov0, ov1 = (_mean("teacher_overlap_initial"),
+                _mean("teacher_overlap_final"))
+    assert loss1 < 0.85 * loss0, (
+        f"distill loss did not drop (3-seed mean): {loss0} -> {loss1}")
+    assert ov1 > ov0 + 0.10, (
+        f"teacher overlap did not rise (3-seed mean): {ov0} -> {ov1}")
 
     with torch.no_grad():
         out_post = model(ids)[0]
@@ -207,9 +219,8 @@ def test_indexer_distill_learned_sweep():
                    lambda: load_with_new_indexer(model, corrupted),
                    "trunk-mismatched checkpoint")
     _pass("test_indexer_distill_learned_sweep",
-          f"distill loss {stats['loss_initial']}->{stats['loss_final']}, "
-          f"teacher overlap {stats['teacher_overlap_initial']}->"
-          f"{stats['teacher_overlap_final']}, trunk bit-preserved, "
+          f"3-seed mean distill loss {loss0:.3f}->{loss1:.3f}, "
+          f"teacher overlap {ov0:.3f}->{ov1:.3f}, trunk bit-preserved, "
           f"learned sweep acc {learned['acceptance']} overlap "
           f"{learned['output_overlap_vs_dense']}, k>=L bitwise, guards ok")
 

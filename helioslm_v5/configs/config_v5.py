@@ -263,8 +263,15 @@ class MoEConfig:
     #                bias <- bias + bias_update_rate * m (Trinity: rate 5e-4,
     #                beta 0.5, kappa 2). Magnitude-aware, so steps shrink
     #                near balance instead of oscillating by +-rate.
+    #   "quantile_balancing": v5.77 (roadmap: Stable LatentMoE, Kimi K3
+    #                Quantile Balancing): every training token's margin
+    #                cutoff - score per expert goes into a histogram; at
+    #                update_bias the bias is SOLVED as each expert's
+    #                top_k / num_experts quantile of all margins since the
+    #                last update (summed across ranks), then mean-centred.
     # None -> size default (full: "quantile", lite: "heuristic", i.e. v5.4).
     balance_strategy: Optional[str] = None
+    quantile_bins: int = 1000  # histogram bins for "quantile_balancing"
     smebu_beta: float = 0.5
     smebu_kappa: float = 2.0
     # Expert MLP activation: "swiglu" (SiLU-gated GLU) or "situ"
@@ -907,11 +914,16 @@ class HeliosLMv5Config:
         # normalizes a non-positive latent_dim to None (the documented
         # explicit full-width opt-out), so by validation time latent_dim is
         # either None or a positive int.
-        if m.balance_strategy not in ("heuristic", "quantile", "smebu"):
+        if m.balance_strategy not in ("heuristic", "quantile", "smebu",
+                                      "quantile_balancing"):
             raise ValueError(
-                f"moe.balance_strategy must be 'heuristic', 'quantile' or "
-                f"'smebu', got {m.balance_strategy!r}"
+                f"moe.balance_strategy must be 'heuristic', 'quantile', "
+                f"'smebu' or 'quantile_balancing', got {m.balance_strategy!r}"
             )
+        if isinstance(m.quantile_bins, bool) or not isinstance(
+                m.quantile_bins, int) or m.quantile_bins < 2:
+            raise ValueError(
+                f"moe.quantile_bins must be an int >= 2, got {m.quantile_bins!r}")
         if isinstance(m.smebu_beta, bool) or not isinstance(
                 m.smebu_beta, (int, float)) or not 0.0 <= m.smebu_beta < 1.0:
             raise ValueError(

@@ -1,0 +1,81 @@
+{
+  "experiment": "TW4 zh-TW tokenizer coverage on held-out repo Traditional-Chinese documents",
+  "held_out": [
+    "docs/TW_DATASETS_2026Q4.md",
+    "docs/V5.4_FIXES_REPORT.md"
+  ],
+  "eval": {
+    "zh_lines": 79,
+    "zh_chars": 5026,
+    "cjk_chars": 1216,
+    "distinct_cjk": 430,
+    "en_lines": 9,
+    "en_chars": 489
+  },
+  "train_chars": {
+    "bpe_code_only": 2638901,
+    "bpe_repo": 2651859
+  },
+  "results": [
+    {
+      "tokenizer": "char_toy",
+      "vocab": 1024,
+      "tokens_per_char_zh_lines": 0.7286,
+      "tokens_per_cjk_char": 0.0,
+      "cjk_single_token_coverage": 0.0,
+      "cjk_lost_fraction": 1.0,
+      "tokens_per_char_en_lines": 0.9857
+    },
+    {
+      "tokenizer": "utf8_bytes",
+      "vocab": 256,
+      "tokens_per_char_zh_lines": 1.5428,
+      "tokens_per_cjk_char": 3.0,
+      "cjk_single_token_coverage": 0.0,
+      "cjk_lost_fraction": 0.0,
+      "tokens_per_char_en_lines": 1.0286
+    },
+    {
+      "tokenizer": "bpe_code_only",
+      "vocab": 8000,
+      "vocab_requested": 8000,
+      "tokens_per_char_zh_lines": 1.1271,
+      "tokens_per_cjk_char": 2.9992,
+      "cjk_single_token_coverage": 0.0,
+      "cjk_lost_fraction": 0.0,
+      "tokens_per_char_en_lines": 0.4438
+    },
+    {
+      "tokenizer": "bpe_code_only",
+      "vocab": 17301,
+      "vocab_requested": 32000,
+      "tokens_per_char_zh_lines": 1.0977,
+      "tokens_per_cjk_char": 2.9992,
+      "cjk_single_token_coverage": 0.0,
+      "cjk_lost_fraction": 0.0,
+      "tokens_per_char_en_lines": 0.3742
+    },
+    {
+      "tokenizer": "bpe_repo",
+      "vocab": 8000,
+      "vocab_requested": 8000,
+      "tokens_per_char_zh_lines": 0.7113,
+      "tokens_per_cjk_char": 1.3248,
+      "cjk_single_token_coverage": 0.4907,
+      "cjk_lost_fraction": 0.0,
+      "tokens_per_char_en_lines": 0.4479
+    },
+    {
+      "tokenizer": "bpe_repo",
+      "vocab": 20012,
+      "vocab_requested": 32000,
+      "tokens_per_char_zh_lines": 0.5519,
+      "tokens_per_cjk_char": 0.8635,
+      "cjk_single_token_coverage": 0.7791,
+      "cjk_lost_fraction": 0.0,
+      "tokens_per_char_en_lines": 0.3742
+    }
+  ],
+  "results_sha256": "af5752c3e96b0ec596bae00806690e11571143808e5a4595139853df35b7d5bc",
+  "wall_seconds": 7.2
+}

@@ -131,8 +131,9 @@ def main():
                 run('pytest', [sys.executable, '-u', '-m', 'pytest', 'helioslm_v5/tests/', '-vv', '-rA',
                                '--tb=short', '--junitxml=' + str(output / 'pytest.xml'),
                                '--ignore=helioslm_v5/tests/test_v5.py',
+                               '--ignore=helioslm_v5/tests/test_v5_cases.py',
                                '--ignore=helioslm_v5/tests/test_v533_mid.py'],
-                    args.suite_timeout, 'pytest excluding separately executed mid acceptance tests')
+                    args.suite_timeout, 'pytest excluding separately executed original cases and mid acceptance tests')
                 run('pytest_mid', [sys.executable, '-u', '-m', 'pytest',
                                   'helioslm_v5/tests/test_v533_mid.py', '-vv', '-rA', '--tb=short',
                                   '--junitxml=' + str(output / 'pytest_mid.xml')],

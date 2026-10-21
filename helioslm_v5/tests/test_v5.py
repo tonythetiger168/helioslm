@@ -121,6 +121,7 @@ TESTS = [
     case_model_mtp.test_mtp_hybrid_rollback,
     case_moe.test_quantile_margin_boundary,
     case_moe.test_balance_state_resume,
+    case_moe.test_balance_state_resume_qb,
     case_hybrid.test_hybrid_packed_positions,
     case_dualpipe.test_attention_residuals_dualpipe,
     case_hybrid.test_linear_attention_guards,
@@ -170,10 +171,11 @@ TESTS = [
     case_harness_repair.test_import_smoke,
 ]
 
-# CI resource guard (2026-10-13): on GitHub's 4-vCPU ubuntu runners the
-# full suite died mid-run under torch's default thread count (bisected in
-# PR #16: each half of the suite passes alone; the full suite passes with
-# threads pinned to 2). Pin on CI only; local runs keep machine defaults.
+# CI thread guard (2026-10-13): PR #16's full-suite probe passes with
+# threads pinned to 2; PR #15 preserves this setting and test order.
+# The observed py3.11 failure was a distillation-loss assertion, not a
+# confirmed resource exhaustion (see docs/PR16_CI_RESOLUTION.md).
+# Pin on CI only; local runs keep machine defaults.
 if os.environ.get("GITHUB_ACTIONS") == "true":
     import torch as _torch
     _torch.set_num_threads(2)

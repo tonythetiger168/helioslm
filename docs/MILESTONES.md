@@ -68,14 +68,14 @@ renumbered.
 | B | `v4_csa`: learned compressor — 4× passkey recall 0.13 → 0.67; 16× does not learn | ✅ Done (v5.59, T93) |
 | B | `v4_csa`: compressor round 2 + oracle ceiling — 16× 0.13 → 0.39, 4× mixed; perfect pooling would reach 0.86–0.90 (dense 0.91) | ✅ Done (v5.60, T94) |
 | B | `v4_csa`: compressor round 3 — 4× 0.825/0.800, about 92% of the ceiling | ✅ Done (v5.61, T95) |
-| B | `v4_csa`: 16× compressor (0.375/0.390 vs a 0.86/0.845 ceiling; more training does not help) | ⬜ Not started |
-| B | Stable LatentMoE study | ⬜ Not started |
+| B | `v4_csa`: 16× compressor by 4×→16× curriculum — 0.375/0.390 → 0.790/0.740, 92%/88% of the 0.86/0.845 ceiling | ✅ Done (v5.78, T117) |
+| B | Stable LatentMoE study — K3 Quantile Balancing: fastest from a skewed start and after a drift, no bias drift; SMEBU lower in steady state | ✅ Done (v5.77, T116) |
 | B2 | B2-1 per-layer sliding-window / global interleave + `mimo_hybrid_config()` (MiMo) — 5:1 hybrid 0.424 vs dense 0.428 at 39% of the keys | ✅ Done (v5.62, T96) |
 | B2 | B2-2 learnable attention sink bias (MiMo) — no effect at this scale (0.424 vs 0.424) | ✅ Done (v5.62, T96) |
 | B2 | B2-3 `moe.first_k_dense` (GLM-5.3, MiMo) — default unchanged (state dict and output), routing stats and balance loss exclude dense layers | ✅ Done (v5.65, T103) |
 | B2 | B2-4 learnable mHC with Sinkhorn projection (GLM-5.3-Flash) — identity at init, doubly stochastic always; also fixes the v5.7 HC branch-fold bug | ✅ Done (v5.66, T104) |
 | B2 | B2-5 MiMo-style light MTP head — -20% params, -39% head latency, acceptance 0.813 vs 0.822 | ✅ Done (v5.67, T105) |
-| B2 | B2-6 on-policy distillation trainer (MiMo MOPD; confirm the definition first) | ⬜ Not started |
+| B2 | B2-6 on-policy distillation trainer (MiMo MOPD) — routed teachers keep inc 1.00 and halve the rev KL; one teacher erases inc; exact reversal not learned in 600 steps | ✅ Done (v5.76, T115) |
 | B3 | Q1 short conv in GDA linear-attention layers (Qwen3-Next) — no recall benefit at toy scale (0.420 vs 0.426) | ✅ Done (v5.63, T101) |
 | B3 | Q2 zero-centered RMSNorm + `decay_param_groups` (Qwen3-Next) | ✅ Done (v5.63, T101) |
 | B3 | Q3 global-batch load-balancing loss (Qwen3 MoE) — equals the full-batch loss over micro-batches | ✅ Done (v5.63, T101) |
@@ -91,11 +91,11 @@ renumbered.
 | TW | TW1 dataset license audit (HF card license + gated status) | ⬜ Not started |
 | TW | TW2 zh-TW pretraining pipeline (Wikipedia s2twp + FineWeb-2 + data.gov.tw, ~100M tokens) | ⬜ Not started |
 | TW | TW3 Traditional-Chinese evals in the harness (TMMLU+, TMLU, TW-JusticeBench) | ⬜ Not started |
-| TW | TW4 zh-TW tokenizer coverage report | ⬜ Not started |
+| TW | TW4 zh-TW tokenizer coverage report — toy char vocab loses 100% of CJK; BPE without Chinese 3.00 tokens/char; repo BPE 0.86 with 78% single-token coverage | ✅ Done (v5.75, T114) |
 | AC | AC1 mini SWE task set (20 small repos, hidden tests, trap gates) | ✅ Done (v5.62, T97) |
 | AC | AC2 agent RL on the SWE sandbox — SFT warm start + rejection-sampling fine-tuning with a verified-DONE reward: 0.367 → 1.0 on train and held-out (GRPO eroded the policy; see `benchmarks/swe_agent_rl_notes_2026-10-16.md`) | ✅ Done (v5.63, T100) |
 | AC | AC3 tool-call recovery layer (7 named repairs, fuzz-tested) | ✅ Done (v5.62, T99) |
-| AC | AC4 repo-scale long-context probe (dense vs hybrid vs CSA) | ⬜ Not started |
+| AC | AC4 repo-scale long-context probe (dense vs hybrid vs CSA) — hybrid 1.00 at 1x/2x/4x files; dense 0.29 (0.91 at 2x steps), CSA mean 0.54 | ✅ Done (v5.74, T113) |
 | AC | AC5 知止: stop-decision metrics (false DONE, tested-before-done) on terminal/SWE runs | ✅ Done (v5.62, T98) — frontier rows need an API key |
 | C | CUDA verification (#1), fused quant benchmark (#2), BPE tokenizer (#5), HF Hub (#4), ~1B GPU run | ⬜ Not started |
 | D | DecisionHead at 1B, multi-env GRPO training at real scale (tooling exists since Phase 2.1), TrustGate CLARIFY threshold calibration | ⬜ Not started |

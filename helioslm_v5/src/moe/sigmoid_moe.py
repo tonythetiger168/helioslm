@@ -24,6 +24,25 @@ Key properties:
         ``v = (mean - load) / mean``,
         ``m <- beta m + (1 - beta) tanh(kappa v)``,
         ``bias += bias_update_rate * m``.
+    "quantile_balancing" (v5.77, Kimi K3 Quantile Balancing, after the
+        K3 report as implemented in torchtitan): every TRAINING token
+        records, per expert, the margin ``cutoff - score`` (cutoff = the
+        token's (K+1)-th largest biased score, score = the bias-free
+        sigmoid) into a per-expert histogram over
+        ``[min(bias) - 1, max(bias) + 1]``. ``update_bias`` solves the bias
+        instead of stepping it: expert e is selected iff
+        ``score + bias_e > cutoff``, i.e. iff ``margin < bias_e``, so
+        ``bias_e = quantile(margins_e, K / E)`` would give it selection
+        rate K / E over every token since the last update if the cutoffs
+        stayed put (they move with the biases, so repeated solves are a
+        fixed-point iteration; on a fixed batch the first one halves the
+        largest imbalance, see T116); the result is then
+        mean-centred (a common shift never changes a top-k ranking, so
+        centring only stops drift). Histograms are SUMMED across ranks, so
+        the quantile is the global one, exact up to the bin width.
+        Compared with "quantile": same target (b - q_{1-f}(s + b - c) =
+        q_f(c - s)), but all tokens instead of the last 512, centred, and
+        a global instead of a rank-averaged quantile.
 - Device-limited routing: experts are partitioned across
   ``config.moe.device_group_size`` devices; under torch.distributed each rank
   only routes to and computes its local experts.
@@ -155,10 +174,12 @@ class DeviceLimitedMoE(nn.Module):
         # configs built before the fields existed.
         self.latent_dim = config.moe.latent_dim
         self.balance_strategy = config.moe.balance_strategy
-        if self.balance_strategy not in ("heuristic", "quantile", "smebu"):
+        if self.balance_strategy not in ("heuristic", "quantile", "smebu",
+                                         "quantile_balancing"):
             raise ValueError(
-                f"moe.balance_strategy must be 'heuristic', 'quantile' or "
-                f"'smebu', got {self.balance_strategy!r}"
+                f"moe.balance_strategy must be 'heuristic', 'quantile', "
+                f"'smebu' or 'quantile_balancing', got "
+                f"{self.balance_strategy!r}"
             )
 
         # Device mapping: expert_id -> device_id (uses device_group_size).
@@ -191,6 +212,15 @@ class DeviceLimitedMoE(nn.Module):
                 torch.zeros(self.num_experts, self._MARGIN_BUF),
             )
             self.register_buffer("margin_count", torch.zeros((), dtype=torch.long))
+        if self.balance_strategy == "quantile_balancing":
+            # Per-expert margin histogram since the last update_bias(), and
+            # its range (fixed between updates because the bias is).
+            self.quantile_bins = int(config.moe.quantile_bins)
+            self.register_buffer(
+                "margin_hist",
+                torch.zeros(self.num_experts, self.quantile_bins,
+                            dtype=torch.float64))
+            self.register_buffer("hist_range", torch.tensor([-1.0, 2.0]))
         if self.balance_strategy == "smebu":
             # SMEBU momentum of the soft-clamped load violation (one per
             # expert); only registered for "smebu", so other strategies'
@@ -280,6 +310,11 @@ class DeviceLimitedMoE(nn.Module):
                 # selection boundary is -inf (all margins positive).
                 kth = torch.full_like(scores_for_select[..., :1], float("-inf"))
             self._record_margins(scores_for_select - kth)
+        if self.balance_strategy == "quantile_balancing" and self.training \
+                and torch.is_grad_enabled() and self.top_k < self.num_experts:
+            cutoff = scores_for_select.kthvalue(
+                self.num_experts - self.top_k, dim=-1, keepdim=True).values
+            self._record_histogram(cutoff - scores)
 
         if torch.distributed.is_available() and torch.distributed.is_initialized():
             # Device-limited path: route only among this rank's local experts.
@@ -321,6 +356,38 @@ class DeviceLimitedMoE(nn.Module):
                 torch.cat([self.margin_buffer[:, N:], m], dim=1)
             )
             self.margin_count.fill_(min(int(self.margin_count) + N, buf))
+
+    @torch.no_grad()
+    def _record_histogram(self, margins):
+        """Add [N, E] margins (cutoff - score) to the per-expert histogram.
+        The range is set from the current bias when the histogram is empty;
+        margins lie inside it because cutoff and score are both a sigmoid
+        (0..1) plus a bias."""
+        if self.margin_hist.sum() == 0:
+            b = self.route_bias.detach().float()
+            self.hist_range.copy_(torch.stack([b.min() - 1.0, b.max() + 1.0]))
+        lo, hi = self.hist_range.tolist()
+        nb = self.quantile_bins
+        idx = ((margins.detach().float() - lo) / (hi - lo) * nb).floor() \
+            .clamp_(0, nb - 1).long().t()                       # [E, N]
+        self.margin_hist.scatter_add_(
+            1, idx, torch.ones_like(idx, dtype=self.margin_hist.dtype))
+
+    @staticmethod
+    def histogram_quantile(hist, lo, hi, q):
+        """Per-row q-quantile of a [E, bins] histogram over [lo, hi],
+        linearly interpolated inside the bin where the CDF crosses q."""
+        nb = hist.shape[1]
+        width = (hi - lo) / nb
+        total = hist.sum(1, keepdim=True).clamp(min=1e-12)
+        cdf = hist.cumsum(1) / total
+        i = torch.searchsorted(cdf, torch.full_like(cdf[:, :1], q)) \
+            .clamp(max=nb - 1)
+        prev = torch.where(i > 0, cdf.gather(1, (i - 1).clamp(min=0)),
+                           torch.zeros_like(cdf[:, :1]))
+        mass = (cdf.gather(1, i) - prev).clamp(min=1e-12)
+        frac = ((q - prev) / mass).clamp(0.0, 1.0)
+        return (lo + width * (i.double() + frac)).squeeze(1)
 
     def forward(self, hidden_states):
         """
@@ -455,6 +522,22 @@ class DeviceLimitedMoE(nn.Module):
         identical under DDP broadcast). Single-process behaviour is
         unchanged.
         """
+        if self.balance_strategy == "quantile_balancing":
+            hist = self.margin_hist
+            if torch.distributed.is_available() \
+                    and torch.distributed.is_initialized():
+                # exact global histogram: the quantile of all ranks' tokens
+                torch.distributed.all_reduce(
+                    hist, op=torch.distributed.ReduceOp.SUM)
+            if hist.sum() > 0:
+                lo, hi = self.hist_range.tolist()
+                q = self.histogram_quantile(
+                    hist, lo, hi, self.top_k / self.num_experts)
+                self.route_bias.copy_((q - q.mean()).to(self.route_bias.dtype))
+            hist.zero_()
+            self.expert_load.zero_()
+            return self.route_bias
+
         if self.balance_strategy == "quantile":
             n = int(self.margin_count)
             if n > 0:

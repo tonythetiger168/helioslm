@@ -107,3 +107,20 @@ host after porting onto upstream `bad5fbb` (including thinking-budget control):
 
 These are local results. Linux CI and actual multi-GPU/NCCL hardware are
 separate checks; the skipped hardware path is not counted as passed.
+
+## Upstream compatibility revalidation: 2026-10-21
+
+After merging upstream `c27fe74` (v5.79 parallel CI) into the Windows branch:
+
+- Original monolithic runner: **94/94 PASS**, including the new quantile-balancing resume case.
+- General pytest: **471 passed, 1 skipped**; isolated mid acceptance: **4 passed**.
+- The new pytest case-list guard passes after correcting its stale 93-case count to 94.
+- Integration: **9/9 PASS**; flake8 passed.
+- FP32/FP16/BF16 CUDA checks, 120-second mixed FP32 soak, native FP8 lite training
+  (10 steps), six old/new GPU parity cases, both greedy-generation checks and runner
+  success/failure/timeout self-check passed.
+- Windows extended runner excludes `test_v5_cases.py` because it already runs all
+  original cases in isolated processes. Linux CI retains upstream's four-worker run.
+
+The earlier benchmark timings remain historical measurements; they were not
+remeasured in this synchronization. Multi-GPU/NCCL remains unverified hardware scope.

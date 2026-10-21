@@ -346,6 +346,9 @@ def test_balance_state_resume():
     uninterrupted run, for all three strategies; a cold-start SMEBU
     continuation must diverge (the test is not vacuous); and the buffer
     must roundtrip end to end at the full-model level.
+
+    quantile_balancing (v5.77, histogram state) is covered by the
+    sibling test test_balance_state_resume_qb below.
     """
     from helioslm_v5.src.model_v5 import HeliosLMv5
     from helioslm_v5.src.moe.sigmoid_moe import DeviceLimitedMoE
@@ -421,3 +424,95 @@ def test_balance_state_resume():
           "heuristic/quantile/smebu resume bitwise (strict=True), "
           "cold-start SMEBU diverges (non-vacuous), model-level "
           "roundtrip bitwise")
+
+
+# ----------------------------------------------------------------------
+def test_balance_state_resume_qb():
+    """Checkpoint-resume contract for v5.77 Quantile Balancing state.
+
+    Sibling of test_balance_state_resume for the fourth strategy
+    (``balance_strategy="quantile_balancing"``, Kimi K3). Its balancing
+    history lives in ``route_bias`` plus the margin histogram buffers
+    ``margin_hist`` / ``hist_range``; T116 oracles the update rule and
+    pins the buffers' ABSENCE from the other strategies' state dicts,
+    but not the roundtrip continuation. Two regimes are pinned here:
+
+    1. mid-run resume (histogram empty at save time, right after an
+       update): a strict-loaded fresh instance driven with the same
+       training forwards stays bitwise identical to the uninterrupted
+       run;
+    2. mid-cycle resume (saved AFTER a training forward, BEFORE
+       update_bias): the non-zero histogram survives the roundtrip and
+       the resumed instance solves from exactly it, while a cold
+       instance's empty histogram makes update_bias a no-op (loud
+       divergence — the test is not vacuous).
+
+    Model level: layers.*.moe.margin_hist / hist_range keys exist.
+    """
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+    from helioslm_v5.src.moe.sigmoid_moe import DeviceLimitedMoE
+
+    def make():
+        config = HeliosLMv5Config(size="lite")
+        config.moe.balance_strategy = "quantile_balancing"
+        torch.manual_seed(0)
+        return DeviceLimitedMoE(config)
+
+    def drive(moe, steps, start):
+        # Deterministic per-step inputs; the histogram advances only
+        # through TRAINING forwards with grad enabled.
+        for i in range(start, start + steps):
+            g = torch.Generator().manual_seed(100 + i)
+            moe.train()
+            moe(torch.randn(1, 16, moe.hidden_size, generator=g))
+            moe.update_bias()
+
+    def assert_bitwise_same(a, b):
+        assert list(a) == list(b), "state-dict key order drifted"
+        for k in a:
+            assert torch.equal(a[k], b[k]), f"resume changed {k}"
+
+    # 1) mid-run resume, bitwise
+    moe = make()
+    drive(moe, 5, 0)
+    saved = {k: v.clone() for k, v in moe.state_dict().items()}
+    keys = set(saved)
+    assert {"route_bias", "expert_load", "margin_hist", "hist_range"} <= keys
+    drive(moe, 7, 5)
+    resumed = make()
+    resumed.load_state_dict(saved, strict=True)
+    drive(resumed, 7, 5)
+    assert_bitwise_same(moe.state_dict(), resumed.state_dict())
+
+    # 2) mid-cycle resume: the histogram itself crosses the roundtrip
+    warm = make()
+    drive(warm, 5, 0)
+    g = torch.Generator().manual_seed(200)
+    warm.train()
+    warm(torch.randn(1, 16, warm.hidden_size, generator=g))
+    assert warm.margin_hist.sum() > 0
+    saved = {k: v.clone() for k, v in warm.state_dict().items()}
+    warm.update_bias()                           # solves from the histogram
+    drive(warm, 5, 6)
+    resumed = make()
+    resumed.load_state_dict(saved, strict=True)
+    resumed.update_bias()
+    drive(resumed, 5, 6)
+    assert_bitwise_same(warm.state_dict(), resumed.state_dict())
+    cold = make()
+    cold.update_bias()                           # empty histogram: no-op
+    assert torch.equal(cold.route_bias, torch.zeros_like(cold.route_bias))
+    assert not torch.equal(warm.route_bias, cold.route_bias)
+
+    # Model level: the buffers live under layers.*.moe
+    config = HeliosLMv5Config(size="lite")
+    config.moe.balance_strategy = "quantile_balancing"
+    torch.manual_seed(0)
+    sd = HeliosLMv5(config).state_dict()
+    layers = range(config.num_hidden_layers)
+    assert {f"layers.{i}.moe.margin_hist" for i in layers} <= set(sd)
+    assert {f"layers.{i}.moe.hist_range" for i in layers} <= set(sd)
+    _pass("test_balance_state_resume_qb",
+          "quantile_balancing mid-run + mid-cycle resume bitwise "
+          "(strict=True), cold empty-histogram update is a no-op "
+          "(non-vacuous), model-level buffer keys present")

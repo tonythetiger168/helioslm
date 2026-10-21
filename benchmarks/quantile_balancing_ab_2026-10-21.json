@@ -1,0 +1,141 @@
+{
+  "experiment": "Stable LatentMoE: K3 Quantile Balancing vs sign / SMEBU / v5.5 quantile bias rules, one LatentMoE layer, skewed token stream",
+  "setup": {
+    "experts": 32,
+    "top_k": 4,
+    "latent_dim": 64,
+    "scenarios": {
+      "stationary": {
+        "micro_batches": 1,
+        "tokens_per_micro": 512,
+        "drift_at_half": false
+      },
+      "drift": {
+        "micro_batches": 1,
+        "tokens_per_micro": 512,
+        "drift_at_half": true
+      },
+      "micro": {
+        "micro_batches": 4,
+        "tokens_per_micro": 256,
+        "drift_at_half": false
+      }
+    },
+    "lam": 0.003,
+    "updates": 300,
+    "skew": 3.0,
+    "seed": 0
+  },
+  "results": [
+    {
+      "scenario": "stationary",
+      "strategy": "heuristic",
+      "maxvio_first20_mean": 0.4125,
+      "maxvio_tail_mean": 0.2985,
+      "maxvio_tail_var": 0.004193,
+      "maxvio_after_drift20_mean": 0.293,
+      "bias_abs_mean_end": 0.014438
+    },
+    {
+      "scenario": "stationary",
+      "strategy": "smebu",
+      "maxvio_first20_mean": 0.4508,
+      "maxvio_tail_mean": 0.2614,
+      "maxvio_tail_var": 0.003229,
+      "maxvio_after_drift20_mean": 0.2625,
+      "bias_abs_mean_end": 0.000668
+    },
+    {
+      "scenario": "stationary",
+      "strategy": "quantile",
+      "maxvio_first20_mean": 0.3773,
+      "maxvio_tail_mean": 0.313,
+      "maxvio_tail_var": 0.004546,
+      "maxvio_after_drift20_mean": 0.3312,
+      "bias_abs_mean_end": 0.715407
+    },
+    {
+      "scenario": "stationary",
+      "strategy": "quantile_balancing",
+      "maxvio_first20_mean": 0.3703,
+      "maxvio_tail_mean": 0.3128,
+      "maxvio_tail_var": 0.004992,
+      "maxvio_after_drift20_mean": 0.3266,
+      "bias_abs_mean_end": 0.0
+    },
+    {
+      "scenario": "drift",
+      "strategy": "heuristic",
+      "maxvio_first20_mean": 0.4125,
+      "maxvio_tail_mean": 0.3172,
+      "maxvio_tail_var": 0.012359,
+      "maxvio_after_drift20_mean": 0.4391,
+      "bias_abs_mean_end": 0.014625
+    },
+    {
+      "scenario": "drift",
+      "strategy": "smebu",
+      "maxvio_first20_mean": 0.4508,
+      "maxvio_tail_mean": 0.2931,
+      "maxvio_tail_var": 0.017196,
+      "maxvio_after_drift20_mean": 0.4961,
+      "bias_abs_mean_end": 0.001391
+    },
+    {
+      "scenario": "drift",
+      "strategy": "quantile",
+      "maxvio_first20_mean": 0.3773,
+      "maxvio_tail_mean": 0.3212,
+      "maxvio_tail_var": 0.009028,
+      "maxvio_after_drift20_mean": 0.3766,
+      "bias_abs_mean_end": 0.716178
+    },
+    {
+      "scenario": "drift",
+      "strategy": "quantile_balancing",
+      "maxvio_first20_mean": 0.3703,
+      "maxvio_tail_mean": 0.3189,
+      "maxvio_tail_var": 0.009675,
+      "maxvio_after_drift20_mean": 0.375,
+      "bias_abs_mean_end": 0.0
+    },
+    {
+      "scenario": "micro",
+      "strategy": "heuristic",
+      "maxvio_first20_mean": 0.3391,
+      "maxvio_tail_mean": 0.2238,
+      "maxvio_tail_var": 0.002801,
+      "maxvio_after_drift20_mean": 0.209,
+      "bias_abs_mean_end": 0.00525
+    },
+    {
+      "scenario": "micro",
+      "strategy": "smebu",
+      "maxvio_first20_mean": 0.3746,
+      "maxvio_tail_mean": 0.1844,
+      "maxvio_tail_var": 0.001619,
+      "maxvio_after_drift20_mean": 0.1805,
+      "bias_abs_mean_end": 0.000403
+    },
+    {
+      "scenario": "micro",
+      "strategy": "quantile",
+      "maxvio_first20_mean": 0.3094,
+      "maxvio_tail_mean": 0.2457,
+      "maxvio_tail_var": 0.003792,
+      "maxvio_after_drift20_mean": 0.2375,
+      "bias_abs_mean_end": 0.718862
+    },
+    {
+      "scenario": "micro",
+      "strategy": "quantile_balancing",
+      "maxvio_first20_mean": 0.268,
+      "maxvio_tail_mean": 0.2118,
+      "maxvio_tail_var": 0.002116,
+      "maxvio_after_drift20_mean": 0.1934,
+      "bias_abs_mean_end": 0.0
+    }
+  ],
+  "results_sha256": "665f34422a6661f7e4c21d0b59aab8896b965acbe547d8518975bcf20e6f9efd",
+  "wall_seconds": 83.0
+}

@@ -130,8 +130,9 @@ a single RTX 4060 on Windows; two-process CPU/Gloo tests verify collective
 logic only. Synthetic lite training does not establish mid-model training,
 convergence, or production throughput.
 
-The submitted code passed the original **93/93** monolithic cases,
-**453 pytest tests** (one additional hardware-dependent NCCL skip),
+After synchronizing with upstream `c27fe74` on 2026-10-21, the checkout passed
+**94/94** monolithic cases and **475 pytest tests**
+(one additional hardware-dependent NCCL skip),
 **9/9 integration** checks and the bounded GPU/native-FP8 validation.
 See the detailed scope before interpreting these as broader hardware claims.
 
@@ -417,7 +418,13 @@ python helioslm_v5/tests/test_kv_share.py           # T109 U6 cross-layer KV sha
 python helioslm_v5/tests/test_option_matrix.py      # T110 option matrix: every pair of 28 feature options builds with decode == full or is rejected by OPTION_RULES; core modules read config fields directly
 python helioslm_v5/tests/test_smebu_sandwich.py     # T111 U7 Arcee Trinity: SMEBU oracle, bounded steps, sandwich-norm gain 1/sqrt(L) + layer oracle, A/B artifact
 python helioslm_v5/tests/test_thinking_budget.py    # T112 U2 thinking budget: forced close at exactly b tokens (greedy + sampled), no reopen, truncation helpers, A/B artifact
-python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite (396 tests)
+python helioslm_v5/tests/test_repo_longctx.py       # T113 AC4 repo-scale probe: task generator, causality of every arm, all-SWA receptive-field oracle, A/B artifact
+python helioslm_v5/tests/test_zh_tokenizer_coverage.py  # T114 TW4 zh-TW tokenizer coverage: held-out split and leak check, UTF-8 / char-toy oracles, report artifact
+python helioslm_v5/tests/test_mopd.py               # T115 B2-6 MOPD: expected gradient = reverse-KL gradient, self-distillation zero, TROPD bound, routing, action mask, probe artifact
+python helioslm_v5/tests/test_quantile_balancing.py  # T116 Stable LatentMoE: K3 Quantile Balancing — histogram quantile, fixed-batch convergence, centring, summed-rank histograms, A/B artifact
+python helioslm_v5/tests/test_csa_learned_16x.py   # T117 16x CSA compressor by 4x->16x curriculum: state transfer, fine-tuned and zero-shot slices, ordering up to the oracle ceiling
+python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite
+python -m pytest helioslm_v5/tests/ -q -n 4 --ignore=helioslm_v5/tests/test_v5.py  # what CI runs: pytest + test_v5.py's 94 cases (test_v5_cases.py) on 4 workers, about 4 min
 ```
 
 ```python
@@ -541,6 +548,11 @@ Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/hel
 - **v5.71** — U6: cross-layer KV sharing (Gemma 3n/4); with the last 4 of 8 MLA layers sharing KV, the cache halves exactly and val ppl stays 14.71 vs 14.94 (toy char LM, single seed) — T109
 - **v5.72** — U7 (Arcee Trinity): SMEBU soft-clamped momentum expert-bias updates (fewer bias reversals at every step size; MaxVio variance 0.0067 → 0.0041 at λ=1e-2) and depth-scaled sandwich norm (post-norm gain 1/√L), both off by default — T111
 - **v5.73** — U2: thinking-budget control (forced close after b thinking tokens) + truncated-trace training; closed one step early, accuracy 0.12 → 0.88 with truncation training — T112
+- **v5.74** — AC4: repo-scale long-context probe; the sliding/global hybrid finds definitions across files at 1.00 even at 4x the training size, dense needs 2x the steps and still drops to 0.38 at 4x — T113
+- **v5.75** — TW4: zh-TW tokenizer coverage report; the toy char tokenizer loses every CJK character, a BPE without Chinese pays 3 tokens per character, the repo BPE 0.86 with 78% single-token coverage — T114
+- **v5.76** — B2-6: multi-teacher on-policy distillation (MOPD); routed teachers keep the student's inc skill (1.00) and halve its KL to the rev teacher, one teacher for everything erases inc — T115
+- **v5.77** — Stable LatentMoE: Kimi K3 Quantile Balancing router bias; fastest from a skewed start and after a drift, no bias drift; SMEBU stays lower in steady state — T116
+- **v5.78** — Phase B: 16x CSA compressor by curriculum (4x weights, fine-tuned at 16x): passkey recall 0.375/0.390 -> 0.790/0.740, 92%/88% of the oracle ceiling — T117
 - **v5.68** — U5: gpt-oss clamped SwiGLU option for MoE experts (pre-w2 activation bounded to [-42, 56] with gpt-oss settings), defaults bit-identical — T106
 - **v5.67** — B2-5: MiMo-style light MTP head (sliding-window attention + narrow FFN): -20% head parameters, -39% head step latency, acceptance 0.813 vs 0.822 — T105
 - **v5.66** — B2-4: learnable doubly stochastic mHC read matrices (Sinkhorn), identity at init; fixes the v5.7 HC branch fold that scrambled sequence positions across branches (decode != full once B != 0) — T104

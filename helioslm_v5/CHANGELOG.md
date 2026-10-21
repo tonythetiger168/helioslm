@@ -1,5 +1,259 @@
 # HeliosLM v5 Changelog
 
+## Maintenance (2026-10-21) - tech-debt Phase 3: parallel CI
+
+- CI runs one pytest invocation on 4 workers (`pytest-xdist==3.8.0`,
+  pinned in `requirements-ci.txt`) instead of `test_v5.py` and pytest one
+  after the other.
+  - `tests/test_v5_cases.py` parametrizes over `test_v5.TESTS`, so
+    `test_v5.py`'s 93 cases run as pytest cases and spread over the
+    workers. `python helioslm_v5/tests/test_v5.py` still works unchanged
+    as a script. A guard test pins the case list (unique, 93).
+  - `tests/conftest.py` pins every xdist worker to one torch thread.
+    Four workers with the default thread count oversubscribe a 4-vCPU
+    runner, which is how the suite once died on CI (PR #16). Runs without
+    xdist are untouched.
+  - Locally the whole suite (pytest + the 93 cases) went from about
+    12 minutes serial to 4.5 minutes.
+- Race fix: the custom-attention notebook test wrote
+  `benchmarks/custom_attention_cpu_results.json` into the repository. In
+  a parallel run, `test_artifact_tiers` could see the unregistered file
+  and fail. The notebook now honours `HELIOS_NOTEBOOK_OUT` (default
+  unchanged: `benchmarks/`), and the test points it at its temporary
+  directory and checks the file written there.
+- Not done from the Phase 3 list:
+  - archiving older `eval_mid_agent` / `web_ui` versions:
+    `test_web_ui.py` still imports the v1 UI, and `eval_mid_agent`
+    v2/v4/v5 share `_mid_common.py` and are cited by committed artifacts;
+  - converting `test_v5.py` itself: the parametrized wrapper gives the
+    parallelism without rewriting 93 cases;
+  - `--seeds` for the A/B scripts.
+
+## v5.78 (2026-10-21) - Roadmap Phase B: 16x CSA compressor by curriculum
+
+- The learned compressor scores each token on its own (`MLP(x_j)` plus a
+  per-position bias), so a detector trained at 4x should carry over to
+  16x chunks. Only the position bias depends on the chunk size.
+- `examples/csa_learned_compressor.py --init-from ARTIFACT`: start every
+  ratio from that artifact's ratio-4 compressor (`transfer_state`: MLP
+  copied, position bias reset to zero). The artifact also records the
+  zero-shot evaluation of the transferred weights before any 16x
+  training.
+- Round 4 (`benchmarks/csa_learned_16x_2026-10-21.json`): v5.61's 4x
+  compressor, fine-tuned at 16x with lr 3e-3 for 4800 steps. Settings were
+  chosen on the separate validation stream (seed 2000) at L=128 / 512 and
+  never on the evaluation stream:
+
+  | setting | L=128 | L=512 |
+  |---|---|---|
+  | zero-shot | 0.560 | 0.667 |
+  | lr 3e-3, 4800 steps (chosen) | 0.607 | 0.753 |
+  | lr 3e-3, 9600 / 19200 steps | 0.620 / 0.600 | 0.720 / 0.720 |
+  | v5.60, trained at 16x from the zero init | 0.387 | 0.380 |
+
+- Evaluation stream, 16x passkey recall (top-8 and top-32 identical):
+
+  | 16x compressor | L=512 | L=1024 |
+  |---|---|---|
+  | v5.60 | 0.375 | 0.390 |
+  | 4x weights, zero-shot | 0.735 | 0.665 |
+  | **4x weights, fine-tuned at 16x** | **0.790** | **0.740** |
+  | oracle ceiling (perfect pooling) | 0.860 | 0.845 |
+
+  92% and 88% of the ceiling. Selection hit rate 0.89 / 0.84 (top-8).
+  Single seed. The stored weights re-evaluate exactly (`--check`).
+- T117 (`tests/test_csa_learned_16x.py`, 2 tests): `transfer_state`
+  carries the MLP and resets the bias; the fine-tuned and zero-shot
+  slices re-evaluate to the recorded accuracy; v5.60 < zero-shot <
+  fine-tuned <= ceiling at both lengths.
+
+## v5.77 (2026-10-21) - Stable LatentMoE study: Kimi K3 Quantile Balancing
+
+- `moe.balance_strategy="quantile_balancing"`: K3's Quantile Balancing
+  router bias. Source: the K3 report as implemented in torchtitan (PR
+  #4412 and its successor #4577); the report itself is not reachable from
+  the containers.
+  - Every training token records, per expert, the margin `cutoff -
+    score`. The cutoff is the token's (K+1)-th largest biased score; the
+    score is the bias-free sigmoid. Margins go into a per-expert
+    histogram (`moe.quantile_bins`, default 1000).
+  - `update_bias()` solves the bias instead of stepping it: each
+    expert's `K / E` quantile of every margin since the last update,
+    then mean-centred.
+  - Histograms are summed across ranks, so the quantile is the global
+    one.
+- Compared with the v5.5 `"quantile"` rule: the target is the same, since
+  `b - q_{1-f}(s + b - c) = q_f(c - s)`. What differs:
+  - every token since the last update instead of the last 512 margins;
+  - mean-centring (a common shift never changes a top-k ranking, so
+    centring only stops drift);
+  - a global quantile instead of an average of per-rank quantiles.
+- Not reproduced: K3's other Stable LatentMoE parts (its RMSNorm
+  placement and SiTU-GLU details beyond the v5.5 simplified version).
+- Study (`examples/quantile_balancing_ab.py` ->
+  `benchmarks/quantile_balancing_ab_2026-10-21.json`): one LatentMoE
+  layer (32 experts, top 4), skewed token stream, 300 updates, single
+  seed. MaxVio = the largest expert's excess load over the mean.
+
+  | scenario | rule | MaxVio, first 20 | MaxVio, 2nd half | mean bias at end |
+  |---|---|---|---|---|
+  | stationary | sign (heuristic) | 0.412 | 0.298 | 0.014 |
+  | stationary | SMEBU | 0.451 | **0.261** | 0.001 |
+  | stationary | v5.5 quantile | 0.377 | 0.313 | 0.715 |
+  | stationary | Quantile Balancing | **0.370** | 0.313 | **0.000** |
+  | 1024 tokens / update | SMEBU | 0.375 | **0.184** | 0.000 |
+  | 1024 tokens / update | v5.5 quantile | 0.309 | 0.246 | 0.719 |
+  | 1024 tokens / update | Quantile Balancing | **0.268** | 0.212 | **0.000** |
+
+  - Quantile Balancing is the fastest from a skewed start in every
+    scenario.
+  - It recovers fastest after the skew direction changes: 0.375 over the
+    next 20 updates, vs 0.439 for sign and 0.496 for SMEBU.
+  - Its bias never drifts; the uncentred v5.5 rule drifts to 0.72.
+  - Negative: in steady state SMEBU is lower. Its momentum averages out
+    the per-batch sampling noise that a per-step solve inherits. More
+    tokens per update narrow the gap (0.184 vs 0.212).
+- T116 (`tests/test_quantile_balancing.py`, 6 tests):
+  - the histogram quantile is within one bin of `torch.quantile`;
+  - on a fixed batch the first solve halves the largest imbalance, and
+    eight solves get within 15% of K / E (325 -> 56 tokens). The v5.5
+    rule plateaus at 96 and the sign rule is still at 245.
+  - centring never changes routing;
+  - summed rank histograms equal the single-process histogram exactly.
+    Averaging per-rank quantiles is off by about 0.006 with very
+    different ranks: small, but above the bin width.
+  - guards, state-dict hygiene, config validation, and the artifact.
+
+## v5.76 (2026-10-20) - Roadmap B2-6: multi-teacher on-policy distillation (MOPD)
+
+- Definition confirmed first, as the roadmap asked. MiMo-V2-Flash (arXiv
+  2601.02780) itself is not reachable from the containers; the
+  implementation follows NVIDIA NeMo RL's MOPD docs, which cite it:
+  - advantage `A_t = sg[log pi_teacher(y_t) - log pi_student(y_t)]` on
+    the student's own sampled tokens (policy tokens only);
+  - REINFORCE update (no PPO ratio clipping), no reference KL; maximising
+    A is reverse-KL(student || teacher) minimisation;
+  - each sample is scored by exactly one teacher, chosen by its domain;
+  - optional TROPD proximal teacher (`alpha`, bounded below by
+    `log(1 - alpha)`), global-baseline subtraction, and the exact
+    full-vocabulary reverse KL.
+- `training/mopd.py`: `MOPDTrainer` wraps a `GRPOTrainer` (student,
+  optimizer, `_token_logprobs`, the GRPO sample dicts and action masks).
+  Not implemented: mixing in outcome rewards, async collection.
+- Probe (`eval/mopd_probe.py`, `examples/mopd_probe.py` ->
+  `benchmarks/mopd_probe_2026-10-20.json`): two toy domains, reverse four
+  digits (rev) and add one to each (inc). One teacher per domain, trained
+  with cross-entropy on that domain only. The student gets a short CE warm
+  start on both (it solves inc, not rev), then 600 steps of distillation
+  from its own samples. Single seed.
+
+  | arm | rev exact | rev KL | inc exact | inc KL |
+  |---|---|---|---|---|
+  | warm start | 0.00 | 5.49 | 1.00 | 0.336 |
+  | routed MOPD | 0.00 | 3.05 | **1.00** | 0.085 |
+  | routed TROPD (alpha 0.2) | 0.02 | 2.77 | **1.00** | 0.040 |
+  | routed full-vocabulary KL | 0.01 | **2.64** | **1.00** | **0.003** |
+  | one teacher (rev) for all | 0.00 | 4.73 | **0.00** | 7.09 |
+
+  - Routing keeps and sharpens the skill the student has and roughly
+    halves its KL to the rev teacher.
+  - Sending everything to one teacher erases inc and is worse on rev too.
+  - Negative: 600 on-policy steps (1500 in a supplementary run) do not
+    teach this 2-layer student exact reversal.
+  - Fine-tuning rate matters: at the warm start's 3e-3, one noisy
+    distillation step erased inc. Adam moves every weight by about lr on
+    its first steps; the probe uses 3e-4.
+- T115 (`tests/test_mopd.py`, 6 tests):
+  - the sampled-token loss's expected gradient (exact enumeration over
+    the vocabulary) equals the gradient of the exact reverse KL, and the
+    full-vocabulary loss has it directly;
+  - self-distillation gives zero advantage and zero gradient;
+  - the TROPD bound and baseline, routing and validation, the action
+    mask, and the artifact.
+
+## v5.75 (2026-10-20) - Roadmap TW4: zh-TW tokenizer coverage report
+
+- `eval/zh_tokenizer_coverage.py`: how many tokens each tokenizer spends
+  per Traditional-Chinese character, and how many characters it can
+  represent at all.
+  - Text: the repo's own zh-TW documents. Hugging Face is not reachable
+    from the dev / CI containers, so no download is needed.
+  - `docs/TW_DATASETS_2026Q4.md` and `docs/V5.4_FIXES_REPORT.md` are held
+    out for evaluation (79 zh lines, 1216 CJK characters, 430 distinct).
+    They are removed from every training corpus, and `assert_no_leak`
+    raises if any of their zh lines is still there.
+  - Tokenizers: the toy char vocabulary (1024), raw UTF-8 bytes, and a
+    byte-level BPE (`tokenizers`, as in `examples/train_toy_bpe.py`)
+    trained on the repo corpus with CJK stripped ("code only") or as is
+    ("repo").
+- Report (`examples/zh_tokenizer_coverage.py` ->
+  `benchmarks/zh_tokenizer_coverage_2026-10-20.json`, deterministic):
+
+  | tokenizer | vocab | tokens / CJK char | single-token CJK coverage | CJK lost |
+  |---|---|---|---|---|
+  | char toy | 1024 | — | 0 | **100%** |
+  | UTF-8 bytes | 256 | 3.00 | 0 | 0 |
+  | BPE, code only | 8000 | 3.00 | 0 | 0 |
+  | BPE, code only | 17300 (32000 requested) | 3.00 | 0 | 0 |
+  | BPE, repo | 8000 | 1.32 | 0.49 | 0 |
+  | BPE, repo | 20011 (32000 requested) | **0.86** | **0.78** | 0 |
+
+  - The toy char tokenizer drops every Chinese character; its low tokens
+    per character on zh lines is loss, not efficiency.
+  - A tokenizer that never saw Chinese falls back to 3 bytes per
+    character, whatever its vocabulary size.
+  - The repo's ~6.6k CJK characters of training text already cut that to
+    0.86 tokens per character. The corpus is small (the vocabulary stops
+    short of 32000), so production numbers need the TW2 data.
+- T114 (`tests/test_zh_tokenizer_coverage.py`): the eval text is
+  Traditional (no Simplified forms), the leak check catches an injected
+  line, the UTF-8 / char-toy oracles, the report's ordering, recomputed
+  cheap rows, and the hash.
+
+## v5.74 (2026-10-19) - Roadmap AC4: repo-scale long-context probe (dense vs sliding/global hybrid vs CSA)
+
+- `eval/repo_longctx.py`: a synthetic repository. Each file is
+  `FILE filler DEF name = value filler`, with a distinct name per file;
+  after the last file come `USE name` look-ups that must produce that
+  file's value (chance 1/16). Lengths grow only by adding files, so the
+  distance back to a definition grows with the repository.
+- `RepoProbeLM` is the same 4-layer stack for every arm, and only the
+  attention differs: dense, all-SWA (window 16), the sliding/global
+  hybrid (a global layer every 2), and CSA (ratio 4, top-8) with a mean
+  or a learned compressor.
+  - No arm has a position embedding (NoPE), so longer repositories add
+    no unseen positions.
+  - A fixed token shift at the input (each position also sees the
+    previous token) lets one layer read "the value after the matching
+    name" in every arm alike.
+- A/B (`examples/repo_longctx_probe.py` ->
+  `benchmarks/repo_longctx_2026-10-19.json`): 2000 steps, trained at 8
+  files, evaluated at 8 / 16 / 32 files on a held-out stream. Single
+  seed.
+
+  | arm | 8 files | 16 | 32 |
+  |---|---|---|---|
+  | dense | 0.29 | 0.20 | 0.12 |
+  | all-SWA (negative control) | 0.27 | 0.17 | 0.11 |
+  | sliding/global hybrid | **1.00** | **1.00** | **1.00** |
+  | CSA, mean compressor | 0.54 | 0.38 | 0.28 |
+  | CSA, learned compressor | 0.20 | 0.16 | 0.08 |
+  | dense, 4000 steps (supplement) | 0.91 | 0.62 | 0.38 |
+
+  - The hybrid solves the look-up and keeps it at 4x the training size.
+  - Dense needs about twice the steps to learn it at the training size,
+    and it still loses much of it on longer repositories.
+  - All-SWA only reaches the last few files (its window covers about 60
+    tokens back), so it falls with the file count.
+  - Mean-pooled CSA keeps part of the far look-ups. The learned
+    compressor did worse here, the reverse of the passkey probe in
+    v5.61; with a single seed this is not evidence that it is worse in
+    general.
+- The probe script has `--threads`, `--merge`, and `--ckpt-dir`
+  (checkpoint every 100 steps and resume after a container restart; a
+  resumed run was verified identical to an uninterrupted one).
+- T113 (`test_repo_longctx.py`, 5 tests).
+
 ## v5.73 (2026-10-18) - Roadmap U2: thinking-budget control (Nemotron 3 / gpt-oss reasoning effort)
 
 - `inference/thinking_budget.py`:
