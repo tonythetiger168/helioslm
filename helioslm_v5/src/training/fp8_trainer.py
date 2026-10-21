@@ -232,7 +232,10 @@ class FP8Trainer:
                     module.out_features,
                     bias=module.bias is not None,
                     fp8_format=self.fp8_format,
-                )
+                ).to(module.weight.device)
+                # ^ on the replaced layer's device: FP8Linear is built on the
+                #   default (CPU) device, so a model already on CUDA got CPU
+                #   layers and failed in the first matmul (#1, cuda_smoke)
                 # Copy weights
                 fp8_module.weight.data.copy_(module.weight.data)
                 if module.bias is not None:

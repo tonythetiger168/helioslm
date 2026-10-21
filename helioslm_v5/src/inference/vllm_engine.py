@@ -580,16 +580,23 @@ class GPUMonitor:
         if not torch.cuda.is_available():
             return
         for i in range(torch.cuda.device_count()):
-            util = float(torch.cuda.utilization(i))
+            # torch.cuda.utilization needs NVML (the nvidia-ml-py package);
+            # without it record memory only instead of failing (#1)
+            try:
+                util = float(torch.cuda.utilization(i))
+            except (ImportError, RuntimeError):
+                util = None
             used = torch.cuda.memory_allocated(i) / 1024 ** 3
             total = torch.cuda.get_device_properties(i).total_memory / 1024 ** 3
             ratio = used / total if total > 0 else 0.0
-            self.metrics["gpu_utilization"].append(util)
+            if util is not None:
+                self.metrics["gpu_utilization"].append(util)
             self.metrics["gpu_memory_used"].append(used)
             self.metrics["gpu_memory_total"].append(total)
             self.metrics["gpu_memory_ratio"].append(ratio)
             if self._prom is not None:
-                self._prom["gpu_utilization"].set(util)
+                if util is not None:
+                    self._prom["gpu_utilization"].set(util)
                 self._prom["gpu_memory_ratio"].set(ratio)
 
     def get_hpa_recommendation(self, current_replicas: int = 2,
@@ -602,12 +609,13 @@ class GPUMonitor:
         ``current_replicas * load / target_utilization``, never from the
         length of the metrics history.
         """
-        if not self.metrics["gpu_utilization"]:
+        if not self.metrics["gpu_memory_ratio"]:
             return {"replicas": current_replicas, "action": "hold",
                     "reason": "no metrics collected"}
 
-        avg_util = (sum(self.metrics["gpu_utilization"])
-                    / len(self.metrics["gpu_utilization"])) / 100.0
+        # utilization is absent when NVML is not installed: memory only
+        util = self.metrics["gpu_utilization"]
+        avg_util = (sum(util) / len(util)) / 100.0 if util else 0.0
         avg_mem = (sum(self.metrics["gpu_memory_ratio"])
                    / len(self.metrics["gpu_memory_ratio"]))
         load = max(avg_util, avg_mem)

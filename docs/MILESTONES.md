@@ -99,10 +99,10 @@ renumbered.
 | AC | AC3 tool-call recovery layer (7 named repairs, fuzz-tested) | ✅ Done (v5.62, T99) |
 | AC | AC4 repo-scale long-context probe (dense vs hybrid vs CSA) — hybrid 1.00 at 1x/2x/4x files; dense 0.29 (0.91 at 2x steps), CSA mean 0.54 | ✅ Done (v5.74, T113) |
 | AC | AC5 知止: stop-decision metrics (false DONE, tested-before-done) on terminal/SWE runs | ✅ Done (v5.62, T98) — frontier rows need an API key |
-| C | CUDA end-to-end verification (#1) | ⬜ Not started (needs a GPU) |
+| C | CUDA end-to-end verification (#1) — RTX 6000 Ada: cuda_smoke 11/13, two CUDA bugs fixed (v5.90); re-run for 13/13 pending | 🟡 In progress |
 | C | Fused vs unfused quant benchmark (#2) — 4096 x 14336 on CPU: AWQ 7.4x / GPTQ 11.9x / MXFP4 2.3x at batch 1, 3.7x / 7.0x / 2.1x at batch 16, parity <= 1.1e-6 | ✅ Done (v5.84) |
 | C | BPE toy tokenizer and checkpoint (#5) — held-out NLL per byte 1.63 / 1.65 / 1.53 vs char 1.88 / 2.01 / 2.36 (3 seeds, same text) | ✅ Done (v5.89) |
 | C | Hugging Face Hub push / pull (#4) — config + tensor-only weights, every preset round-trips exactly; no checkpoint pushed yet (needs the owner's token) | ✅ Done (#4 closed; v5.87 preset test) |
-| C | ~100M single-GPU pilot — pretraining loop, data prep, 4 architectures, exact resume (code; the GPU run is pending) | 🟡 Code done (v5.83, T122); run pending |
+| C | ~100M single-GPU pilot — first GPU run: 93M dense, 16.4M tokens, 2.77 -> 1.79 bits/byte, 29.8k tok/s, 9.1% MFU (all warmup; throughput work before scaling) | 🟡 First run done (v5.90) |
 | C | ~1B GPU run | ⬜ Not started |
 | D | DecisionHead at 1B, multi-env GRPO training at real scale (tooling exists since Phase 2.1), TrustGate CLARIFY threshold calibration | ⬜ Not started |
