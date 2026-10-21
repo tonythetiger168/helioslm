@@ -59,3 +59,17 @@ def test_hub_upload_download_with_mock_backend(tmp_path, monkeypatch):
                             trust_checkpoint=True).eval()
     for key, tensor in model.state_dict().items():
         torch.testing.assert_close(restored.state_dict()[key], tensor, atol=0, rtol=0)
+
+
+def test_hub_config_roundtrip_every_preset():
+    """config.json must rebuild every preset exactly (nested dataclasses,
+    tuples that JSON turns into lists), not just the lite default (#4)."""
+    import json
+    from dataclasses import asdict
+    from helioslm_v5.configs import config_v5 as C
+    from helioslm_v5.hub import _config_from_dict
+    presets = [HeliosLMv5Config(size="lite"), HeliosLMv5Config(size="mid"),
+               C.k3_block_config(), C.mimo_hybrid_config(), C.qwen_next_config()]
+    for cfg in presets:
+        payload = json.loads(json.dumps(asdict(cfg)))
+        assert _config_from_dict(payload) == cfg

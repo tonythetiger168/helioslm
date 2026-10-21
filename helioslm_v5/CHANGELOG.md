@@ -1,5 +1,20 @@
 # HeliosLM v5 Changelog
 
+## v5.87 (2026-10-21) - Issues #3 / #4 verified against their acceptance criteria
+
+- #3 (custom attention notebook): `examples/notebooks/custom_attention.ipynb`
+  loads the lite config, implements a drop-in MLA variant (a learnable
+  output gain, identity at init), checks prefill and cache equivalence at
+  1e-6 / exact, and times it against MLA on CPU. Executed top to bottom by
+  `tests/test_custom_attention_notebook.py`. No change needed.
+- #4 (Hugging Face Hub): `helioslm_v5/hub.py` `push_to_hub` / `from_hub`
+  serialise the config dataclass plus a tensor-only state dict, with a
+  local round-trip test and a mocked Hub round trip. Added: every preset
+  (lite, mid, `k3_block_config`, `mimo_hybrid_config`,
+  `qwen_next_config`) rebuilds exactly from `config.json`, including
+  nested dataclasses. No checkpoint has been pushed to the Hub; that
+  needs the owner's token.
+
 ## v5.86 (2026-10-21) - Issue #55: --seeds for the A/B scripts
 
 - `eval/multiseed.py`: `add_seed_args` adds `--seeds S1 S2 ...` beside
