@@ -103,3 +103,51 @@ MFU is computed as 6 x 92.98M x tokens/s / 182 TFLOPS (dense BF16 peak).
 - **Fix the KDA and MoE paths before #42 (30B-A3B).** At the measured
   10x and 2.5x slowdowns, MoE training cost would be several times the
   plan's estimate.
+
+## 5. Overnight run after the fixes (`examples/gpu_overnight.sh`, v5.90 code)
+
+Same pod and torch build. Times are UTC:
+- 17:38: `cuda_smoke.py`.
+- 17:40: pilot data.
+- 17:44: pilot training.
+- 18:09: finished, and the script stopped the pod with `runpodctl stop pod`. The pod's built-in credentials were enough; no API key was configured.
+
+### `cuda_smoke.py`: 23/23 PASS
+
+| Check | Result |
+|---|---|
+| The 13 original checks | all PASS, including `fp8_trainer` (losses 7.04, 4.66, 3.26) and `gpu_monitor` (47.4 GiB) after the v5.90 fixes |
+| train_parity_fp32 | loss diff vs CPU 4.8e-7, weight diff 8.5e-5 after 5 AdamW steps |
+| grad_accum_equivalence | max grad diff 2.3e-8 (61 tensors) |
+| compile_train | `torch.compile` pilot loop, val loss 3.64 -> 3.08 |
+| checkpoint_portability | GPU-trained weights on the CPU: logits diff 9.1e-7 |
+| mtp_train_step | 16 MTP tensors receive gradients; loss 6.98, MTP loss 6.97 |
+| grpo_train_step | finite, KL 0.0067, gradients on the GPU |
+| real_size_dense | 93.0M active, batch 8 x 1024 bf16 eager: 29.7k tokens/s, peak 15.7 GiB |
+| real_size_moe | 106.8M active: 8.4k tokens/s, peak 17.4 GiB |
+| determinism | two bf16 runs bitwise equal |
+| long_seq_4k | 4096-token step, peak 1.6 GiB |
+
+### Second pilot: 100M dense, `--compile`
+
+Setup:
+- Data: the first 100k FineWeb-Edu documents (`sample-10BT`). That gives 104.3M training tokens and 558k validation tokens, with a 32,768-token BPE.
+- Training: `--steps 3000 --warmup 150`, batch 16 x 1024, grad-accum 2, bf16, `--compile`. That is 98.3M tokens, about 0.94 passes over the training data.
+
+| | First pilot (eager) | Second pilot (`--compile`) |
+|---|---|---|
+| tokens | 16.4M (all warmup) | 98.3M |
+| val bits / byte at the end | 1.794 | **1.350** (step 2900: 1.352) |
+| tokens / s | 29.8k | **67.2k** |
+| MFU (6 N tok/s / 182 TFLOPS) | 9.1% | **20.6%** |
+| wall time | ~10 min | 25 min |
+
+- `torch.compile` alone gave 2.25x throughput. The two runs differ in data and length, so their bits/byte are not directly comparable.
+- Only the last two log lines were read; the full curve is in `/workspace/results/dense_compile/log.jsonl` on the pod.
+- At 67k tokens/s, 1B tokens takes about 4.1 hours on this card, about $4.
+
+### Issue #1: done
+
+Every CUDA path that `cuda_smoke.py` covers runs on a real GPU and matches the CPU where a reference exists. The two bugs it found are fixed and regression-tested.
+
+**Still open (performance, not correctness):** KDA and MoE remain slow. The MoE real-size step is 3.5x slower than dense in eager mode.

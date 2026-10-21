@@ -1,5 +1,23 @@
 # HeliosLM v5 Changelog
 
+## v5.91 (2026-10-21) - Issue #1 closed: CUDA smoke 23/23; compiled 100M pilot
+
+- Overnight run on the RTX 6000 Ada after the v5.90 fixes
+  (`examples/gpu_overnight.sh`): `cuda_smoke.py` 23/23 PASS.
+  - The 13 original checks pass, including the two fixed in v5.90.
+  - The 10 training checks pass: CUDA vs CPU training parity (loss 4.8e-7),
+    grad-accumulation equivalence (2.3e-8), the `torch.compile` loop,
+    GPU -> CPU checkpoint (9.1e-7), MTP and GRPO steps, real-size dense
+    and MoE steps (29.7k / 8.4k tokens/s, 15.7 / 17.4 GiB), bitwise bf16
+    determinism, and a 4096-token step.
+- Second 100M dense pilot with `--compile` (98.3M FineWeb-Edu tokens,
+  3000 steps): val 1.350 bits/byte, 67.2k tokens/s, 20.6% MFU.
+  `torch.compile` alone gave 2.25x the eager throughput.
+- The script stopped the pod itself with `runpodctl stop pod`: the pod's
+  built-in credentials were enough.
+- `docs/CUDA_VERIFICATION_2026-10-21.md` section 5; MILESTONES, README and
+  the handover updated.
+
 ## v5.90 (2026-10-21) - Issue #1: first CUDA run; two CUDA bugs fixed
 
 - The full suite (574 passed) and integration (9/9) pass on an RTX 6000
