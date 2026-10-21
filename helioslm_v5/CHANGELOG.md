@@ -16,8 +16,9 @@
     `twinkle-ai/fineweb-zhtw-filtered`); `miulab/tmlu` not found, dropped.
   - Card metadata only, not legal advice: a card can carry the wrong
     licence (the doc lists the known suspicious ones).
-- `docs/TW_DATASETS_2026Q4.md`: 2026-10-20 section with the verified
-  results and every difference from the search-based table.
+- `docs/TW_DATASETS_2026-10-20.md`: the verified results and every
+  difference from the search-based table in `docs/TW_DATASETS_2026Q4.md`.
+  That file is left unchanged: it is TW4 / TW5's frozen held-out text.
 - `docs/K3_V4_COMPARISON.md`: Phase B's comparison document. Each
   measured row names its artifact and test.
 - `docs/MILESTONES.md`: TW1 done; Phase C split into one row per issue

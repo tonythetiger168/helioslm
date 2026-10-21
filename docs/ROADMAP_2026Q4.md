@@ -133,7 +133,7 @@ HeliosLM 不應追排行榜，它的優勢在別處：
 
 ### Phase TW：台灣繁體中文資料（2026-10-16 新增）
 
-詳見 [`TW_DATASETS_2026Q4.md`](TW_DATASETS_2026Q4.md)。
+詳見 [`TW_DATASETS_2026Q4.md`](TW_DATASETS_2026Q4.md)；2026-10-20 HF 卡片查核結果見 [`TW_DATASETS_2026-10-20.md`](TW_DATASETS_2026-10-20.md)。
 
 | ID | 項目 | 完成標準 |
 |---|---|---|

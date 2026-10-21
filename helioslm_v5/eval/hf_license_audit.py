@@ -25,7 +25,7 @@ the report is a screening list, not legal advice.
 import re
 
 # The datasets the TW / Chinese plan names (docs/TW_DATASETS_2026Q4.md and
-# its 2026-10-20 update). Ids marked in DATASETS_UNVERIFIED were found by
+# docs/TW_DATASETS_2026-10-20.md). Ids marked in DATASETS_UNVERIFIED were found by
 # search but not opened; the audit is how they get verified.
 TRADITIONAL = (
     "wikimedia/wikipedia",
