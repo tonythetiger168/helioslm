@@ -16,6 +16,13 @@ Sources (any mix):
 The validation split is chosen per document by a hash of its index, so it
 is fixed for a given source order (--val-fraction, default 0.005).
 
+Decontamination (plan E2): --decontaminate PATH ... reads evaluation sets
+(.txt one item each, .jsonl one item per line in field --eval-field,
+default "text", or directories) and drops every TRAIN document that shares
+a 13-word n-gram with any item (helioslm_v5/eval/decontam.py); the
+validation split is never trained on and is left as is. The counts
+go into meta.json; --decontam-report PATH writes the per-item report.
+
 Tokenizer: --tokenizer PATH loads an existing tokenizer.json; otherwise a
 byte-level BPE (--vocab, default 32768) is trained on the TRAIN documents
 only, seeded with the common Chinese characters (--zh-seed both|tw|cn|none,
@@ -108,6 +115,12 @@ def main():
     ap.add_argument("--vocab", type=int, default=32768)
     ap.add_argument("--zh-seed", choices=["both", "tw", "cn", "none"],
                     default="both")
+    ap.add_argument("--decontaminate", nargs="*", default=[],
+                    help="evaluation sets whose n-grams must not occur in "
+                         "the training split")
+    ap.add_argument("--eval-field", default="text")
+    ap.add_argument("--decontam-n", type=int, default=13)
+    ap.add_argument("--decontam-report")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     if args.vocab > 65536:
@@ -122,6 +135,24 @@ def main():
         split["val" if is_val(i, args.val_fraction) else "train"].append(d)
     if not split["val"]:                    # tiny corpora: keep one doc
         split["val"].append(split["train"].pop())
+    decontam = None
+    if args.decontaminate:
+        from helioslm_v5.eval.decontam import EvalIndex, decontaminate
+        items = {f"e{i}": t for i, t in enumerate(
+            iter_text_sources(args.decontaminate, args.eval_field))}
+        if not items:
+            sys.exit("--decontaminate: no evaluation items read")
+        index = EvalIndex(items, n=args.decontam_n)
+        split["train"], rep = decontaminate(split["train"], index)
+        if not split["train"]:
+            sys.exit("--decontaminate removed every training document")
+        if args.decontam_report:
+            Path(args.decontam_report).write_text(json.dumps(rep, indent=2) + "\n")
+        decontam = {k: rep[k] for k in ("n", "eval_items", "contaminated_items",
+                                        "training_docs", "overlapping_docs")}
+        decontam.update(sources=args.decontaminate,
+                        unchecked_items=len(rep["unchecked_items"]),
+                        dropped_train_docs=rep["overlapping_docs"])
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     if args.tokenizer:
@@ -139,7 +170,7 @@ def main():
             "zh_seed": None if args.tokenizer else args.zh_seed,
             "sources": {"text": args.text, "hf": args.hf,
                         "split": args.split, "max_docs": args.max_docs},
-            "splits": {}}
+            "splits": {}, "decontamination": decontam}
     for name, ds in split.items():
         ids = (tok.encode(d).ids + [eot] for d in ds)
         n_tok = write_shards(ids, out, name)

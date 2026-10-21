@@ -1,5 +1,50 @@
 # HeliosLM v5 Changelog
 
+## v5.88 (2026-10-21) - GPU sizing and evaluation plan; E2 overlap check; E5 pre-registration
+
+- `docs/GPU_AND_EVAL_PLAN_2026-10.md` (Traditional Chinese):
+  - GPU type, GPU-hours and cost for each roadmap generation (#40-#45),
+    scaled from two public runs (SmolLM3-3B for dense, DeepSeek-V3 for
+    MoE): e.g. 3B dense at 1T tokens ~20k H100-hours; 30B-A3B at 2T tokens
+    30-45k; 1T-A40B at 15T tokens ~2.9M.
+  - The state of the public leaderboards and benchmarks in October 2026:
+    which are retired, contaminated, saturated or still trusted, and the
+    Traditional-Chinese ones.
+  - An evaluation plan, E1-E8. Prices and rankings come from search
+    summaries, not the original pages; the document says so.
+- E2, `eval/decontam.py`: the GPT-3 / Llama overlap test. An evaluation
+  item is contaminated when any of its 13-word n-grams occurs in a
+  training document.
+  - Words are lowercased letter / digit runs, and every CJK / kana /
+    hangul character is a word, so Chinese text is checked too.
+    Punctuation and whitespace are ignored.
+  - n-grams are stored as 8-byte BLAKE2b digests, stable across processes.
+  - Items shorter than 13 words are matched whole. Items under 8 words
+    would match common phrases, so they are reported as unchecked instead
+    of silently passing.
+- `examples/pilot_prepare_data.py --decontaminate EVAL ...`: drops every
+  training document that overlaps an evaluation item (`--eval-field`,
+  `--decontam-n`, `--decontam-report`) and records the counts in
+  `meta.json`. The validation split is never trained on and is left as is.
+- `tests/test_decontam.py`: word splitting; planted English and Chinese
+  leaks found through reformatting, clean text passes, 12 of 13 words do
+  not trigger; short and unchecked items; digests stable under different
+  `PYTHONHASHSEED`; the report; the data script dropping exactly the
+  leaking document.
+- E5, `eval/prereg.py`: pre-registered evaluation plans. Before a
+  generation is trained, its tasks (dataset revision, split, few-shot
+  count, metric), harness version, seeds, baselines and pass / fail gates
+  are written down, and `lock(plan)` hashes the canonical JSON.
+  - `check_gates(plan, results)` gives per-gate verdicts. It refuses
+    results that cite a different lock (so gates edited after seeing the
+    scores invalidate the old results) and results that omit a registered
+    task.
+  - No real plan is committed yet: the v1.0 gates and thresholds are the
+    owner's decision. The thresholds in the tests are illustrative.
+- `tests/test_prereg.py` (16 tests): canonical lock, 13 malformed plans
+  rejected, gate verdicts with inclusive thresholds, relaxed gates and
+  incomplete results refused.
+
 ## v5.87 (2026-10-21) - Issues #3 / #4 verified against their acceptance criteria
 
 - #3 (custom attention notebook): `examples/notebooks/custom_attention.ipynb`

@@ -27,7 +27,7 @@
 |---|---|---|
 | **#1 CUDA 驗證** | 在 RunPod RTX 6000 Ada（torch 2.14.1+cu130）跑完整測試：574 passed、integration 9/9。**但測試套件全部釘在 CPU，這不算 CUDA 驗證。** 所以寫了 `examples/cuda_smoke.py`（13 項真正上 GPU 的檢查），已 push 到工作分支，等 pod 上的結果 | 分支 commit `d0e5aa4` |
 | **#5 BPE vs char 對照** | 配對實驗，3 seeds × 2 arms，每組 1000 steps，同一份 held-out 文字，比較每 byte NLL。已完成 2 seeds，見表一 | scratchpad worktree `issue5`，`examples/toy_tokenizer_compare.py` |
-| **評測計劃 + E2 + E5** | 程式與測試完成，等開 PR（v5.88）。三部分見下方 | worktrees `docs_plan`、`e2`、`e5` |
+| **評測計劃 + E2 + E5** | v5.88 PR 已開（見 §1 之後的 PR），三部分見下方 | 工作分支 |
 | **100M 試跑（GPU）** | 指令已交給負責人在 pod 上跑，見 §4 | — |
 
 **表一：#5 已完成的 seed（每 byte NLL，越低越好）**
