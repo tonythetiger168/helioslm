@@ -1,6 +1,6 @@
 """The test_v5.py suite as pytest cases (tech-debt Phase 3, v5.79).
 
-test_v5.py runs its 93 case functions one after another in one process,
+test_v5.py runs its case functions one after another in one process,
 which pytest-xdist cannot spread over workers. This module parametrizes
 over the SAME list (test_v5.TESTS), so ``pytest -n 4`` runs them in
 parallel with the rest of the suite. Every case raises on failure (none
@@ -26,8 +26,11 @@ if os.environ.get("PYTEST_XDIST_WORKER"):
 
 
 def test_case_list_is_unique():
+    # unique names (pytest ids) and none lost; a floor, not an exact count,
+    # so adding a case to test_v5.TESTS needs no edit here
     names = [t.__name__ for t in test_v5.TESTS]
-    assert len(names) == len(set(names)) == 93
+    assert len(names) == len(set(names))
+    assert len(names) >= 93
 
 
 @pytest.mark.parametrize("case", test_v5.TESTS,

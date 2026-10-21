@@ -81,6 +81,68 @@ def assert_no_leak(corpus, held_texts):
                     f"held-out text leaked into the corpus: {line[:40]!r}")
 
 
+def big5_common_chars():
+    """The 5401 frequently used Traditional characters (常用字): Big5 level 1,
+    0xA440..0xC67E, decoded with Python's built-in big5 codec (no download).
+    Stroke order, as Big5 stores them."""
+    chars = []
+    for hi in range(0xA4, 0xC7):
+        for lo in list(range(0x40, 0x7F)) + list(range(0xA1, 0xFF)):
+            if (hi, lo) > (0xC6, 0x7E):
+                break
+            try:
+                chars.append(bytes([hi, lo]).decode("big5"))
+            except UnicodeDecodeError:
+                pass
+    return chars
+
+
+def gb2312_common_chars():
+    """The 3755 level-1 common Simplified characters (一级汉字): GB2312
+    0xB0A1..0xD7F9, decoded with Python's built-in gb2312 codec (no
+    download). Pinyin order, as GB2312 stores them. 2434 of them are also
+    Big5 common characters (shared forms such as 一, 人, 大)."""
+    chars = []
+    for hi in range(0xB0, 0xD8):
+        for lo in range(0xA1, 0xFF):
+            if (hi, lo) > (0xD7, 0xF9):
+                break
+            try:
+                chars.append(bytes([hi, lo]).decode("gb2312"))
+            except UnicodeDecodeError:
+                pass
+    return chars
+
+
+SEED_SCRIPTS = ("tw", "cn", "both")
+
+
+def zh_seed_chars(scripts="tw"):
+    """Common characters to seed: "tw" = Big5 (Traditional, 5401), "cn" =
+    GB2312 (Simplified, 3755), "both" = their union (6722), in a fixed
+    order (Big5 first, then the Simplified-only ones)."""
+    if scripts not in SEED_SCRIPTS:
+        raise ValueError(f"scripts must be one of {SEED_SCRIPTS}, got {scripts!r}")
+    tw = big5_common_chars() if scripts in ("tw", "both") else []
+    cn = gb2312_common_chars() if scripts in ("cn", "both") else []
+    seen = set(tw)
+    return tw + [c for c in cn if c not in seen]
+
+
+def zh_seed_text(scripts="tw", repeats=2):
+    """Seed lines for BPE training (v5.80): every common character on its
+    own line ``repeats`` times. With repeats >= min_frequency (2) each
+    character's byte merges are learned, so it becomes ONE token when the
+    vocabulary has room (~32k); multi-character merges from the corpus are
+    still learned on top."""
+    return ("\n".join(zh_seed_chars(scripts)) + "\n") * repeats
+
+
+def big5_seed_text(repeats=2):
+    """The Traditional-only seed (``zh_seed_text("tw")``)."""
+    return zh_seed_text("tw", repeats)
+
+
 def train_bpe(text, vocab_size):
     from tokenizers import Tokenizer, decoders, models, pre_tokenizers, trainers
     tok = Tokenizer(models.BPE(unk_token="[UNK]"))

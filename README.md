@@ -323,6 +323,7 @@ python helioslm_v5/tests/test_zh_tokenizer_coverage.py  # T114 TW4 zh-TW tokeniz
 python helioslm_v5/tests/test_mopd.py               # T115 B2-6 MOPD: expected gradient = reverse-KL gradient, self-distillation zero, TROPD bound, routing, action mask, probe artifact
 python helioslm_v5/tests/test_quantile_balancing.py  # T116 Stable LatentMoE: K3 Quantile Balancing — histogram quantile, fixed-batch convergence, centring, summed-rank histograms, A/B artifact
 python helioslm_v5/tests/test_csa_learned_16x.py   # T117 16x CSA compressor by 4x->16x curriculum: state transfer, fine-tuned and zero-shot slices, ordering up to the oracle ceiling
+python helioslm_v5/tests/test_zh_train_speed.py    # T118 Chinese training speed: Big5/GB2312 seed lists, seeded BPE single tokens, bits-per-char metric, speed artifact
 python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite (396 tests)
 python -m pytest helioslm_v5/tests/ -q -n 4 --ignore=helioslm_v5/tests/test_v5.py  # what CI runs: pytest + test_v5.py's 93 cases (test_v5_cases.py) on 4 workers, about 4 min
 ```
@@ -449,6 +450,7 @@ Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/hel
 - **v5.76** — B2-6: multi-teacher on-policy distillation (MOPD); routed teachers keep the student's inc skill (1.00) and halve its KL to the rev teacher, one teacher for everything erases inc — T115
 - **v5.77** — Stable LatentMoE: Kimi K3 Quantile Balancing router bias; fastest from a skewed start and after a drift, no bias drift; SMEBU stays lower in steady state — T116
 - **v5.78** — Phase B: 16x CSA compressor by curriculum (4x weights, fine-tuned at 16x): passkey recall 0.375/0.390 -> 0.790/0.740, 92%/88% of the oracle ceiling — T117
+- **v5.80** — Chinese training speed: Big5 + GB2312 common characters as BPE seeds (`train_toy_bpe.py --zh-seed both`); a tokenizer that never saw Chinese goes from 3.00 to 1.00 tokens per character, 1.82x the Chinese text per training step — T118
 - **v5.68** — U5: gpt-oss clamped SwiGLU option for MoE experts (pre-w2 activation bounded to [-42, 56] with gpt-oss settings), defaults bit-identical — T106
 - **v5.67** — B2-5: MiMo-style light MTP head (sliding-window attention + narrow FFN): -20% head parameters, -39% head step latency, acceptance 0.813 vs 0.822 — T105
 - **v5.66** — B2-4: learnable doubly stochastic mHC read matrices (Sinkhorn), identity at init; fixes the v5.7 HC branch fold that scrambled sequence positions across branches (decode != full once B != 0) — T104
