@@ -1,0 +1,81 @@
+{
+  "experiment": "API-teacher distillation probe: imperfect teacher, text-only vs top-k API, verifier filtering",
+  "teacher": {
+    "steps": 100,
+    "greedy_exact_match": 0.59765625,
+    "sample_accept_rate": 0.366,
+    "greedy_path_accept_rate": 0.629,
+    "topk_mass_first_token": 0.9421
+  },
+  "train": {
+    "prompts": 1000,
+    "teacher_steps": 100,
+    "steps": 600,
+    "k": 5,
+    "seed": 0,
+    "student_seeds": [
+      0,
+      1,
+      2
+    ]
+  },
+  "results": [
+    {
+      "arm": "ground_truth",
+      "examples": 1000,
+      "teacher_queries": 0,
+      "exact_match_by_seed": [
+        0.73046875,
+        0.80859375,
+        1.0
+      ],
+      "exact_match_mean": 0.8464
+    },
+    {
+      "arm": "seq_kd",
+      "examples": 1000,
+      "teacher_queries": 1000,
+      "exact_match_by_seed": [
+        0.5546875,
+        0.5,
+        0.55859375
+      ],
+      "exact_match_mean": 0.5378
+    },
+    {
+      "arm": "seq_kd_verified",
+      "examples": 366,
+      "teacher_queries": 1000,
+      "exact_match_by_seed": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "exact_match_mean": 1.0
+    },
+    {
+      "arm": "topk_kd",
+      "examples": 1000,
+      "teacher_queries": 3000,
+      "exact_match_by_seed": [
+        0.68359375,
+        0.58203125,
+        0.5859375
+      ],
+      "exact_match_mean": 0.6172
+    },
+    {
+      "arm": "topk_kd_verified",
+      "examples": 629,
+      "teacher_queries": 3000,
+      "exact_match_by_seed": [
+        0.69921875,
+        0.859375,
+        0.828125
+      ],
+      "exact_match_mean": 0.7956
+    }
+  ],
+  "results_sha256": "bda7b5e8e6c9541a709798087d5ebafad3c0741b3396d4e1569de0e368f2d06a",
+  "wall_seconds": 824.3
+}

@@ -1,5 +1,65 @@
 # HeliosLM v5 Changelog
 
+## v5.82 (2026-10-21) - Distillation from API teachers; teacher licence audit
+
+- Which teachers may be used: `eval/teacher_license_audit.py` +
+  `examples/teacher_license_audit.py` ->
+  `benchmarks/teacher_license_audit_2026-10-20.json`. For ten open-weight
+  frontier models the audit records the governing weight licence, the
+  sha256 of the LICENSE text read, and a reviewed reading (`REVIEWS`, in
+  the repo, not inferred by code). A licence whose hash no longer matches
+  its review is refused.
+  - allowed: DeepSeek V4.1-Flash and V4-Pro (MIT), MiMo-V2.6-Pro-MOPD (MIT
+    model card, no LICENSE file), gpt-oss-120b (Apache 2.0), Gemma 4 31B
+    (Apache 2.0 model card).
+  - allowed with conditions: Kimi K3, Qwen3.8-2.4T, GLM-5.3, MiniMax-M3
+    (attribution, revenue / MAU thresholds, MiniMax's prohibited uses).
+  - unclear: Nemotron-3-Ultra (OpenMDW-1.1; the licence text was not
+    readable from here).
+  - Scope: weight licences only. Outputs from a vendor's own API follow
+    that API's terms; closed models (Claude, GPT, Gemini) forbid training
+    competing models and are not candidates. A distilled student is
+    treated as a derivative work (the conservative reading). Not legal
+    advice.
+- How to distil from an API: `src/training/api_distill.py`.
+  - Text-only APIs: sequence-level KD, optionally keeping only answers a
+    verifier accepts (`collect_sequences`, rejection sampling).
+  - Top-k log-prob APIs, where the teacher's tokenizer differs from the
+    student's: `first_char_targets` / `next_char_targets` turn the
+    teacher's multi-character top-k tokens into character targets
+    (exact when k covers the vocabulary), and `sparse_kd_loss` trains on
+    them.
+- Measured (`eval/api_distill_probe.py`, `examples/api_distill_probe.py`
+  -> `benchmarks/api_distill_probe_2026-10-20.json`): the MOPD probe's
+  reverse-4-digits task; an imperfect char teacher (greedy exact match
+  0.60) behind a simulated text API and a simulated top-5 API whose
+  tokens are two characters; a fresh student per arm, 600 steps, three
+  student seeds.
+
+  | Arm | exact match by seed | mean |
+  |---|---|---|
+  | ground truth (ceiling) | 0.73 / 0.81 / 1.00 | 0.85 |
+  | sequence KD, every teacher sample | 0.55 / 0.50 / 0.56 | 0.54 |
+  | sequence KD, verified samples only | **1.00 / 1.00 / 1.00** | **1.00** |
+  | top-k KD on the greedy path | 0.68 / 0.58 / 0.59 | 0.62 |
+  | top-k KD, verified paths only | 0.70 / 0.86 / 0.83 | 0.80 |
+
+  - Robust in every seed: a verifier lifts sequence KD by more than 0.3,
+    and filtering top-k paths never hurts.
+  - On average soft top-k targets beat raw samples (0.62 vs 0.54).
+  - Verified sequence KD beat ground truth here because the from-scratch
+    ground-truth arm is unstable across seeds (0.73 to 1.00); that is
+    recorded, not generalised.
+  - Toy task, simulated APIs, CPU; it says which recipe works on a
+    controlled problem, not how much a real teacher helps.
+- T120 (`tests/test_teacher_license_audit.py`): every teacher reviewed, a
+  changed or unreviewed licence refused, the committed audit.
+- T121 (`tests/test_api_distill.py`): the alignment oracles (exact with
+  full top-k, renormalised with partial top-k), `sparse_kd_loss` against
+  cross-entropy and the hand-written soft loss (value and gradient),
+  `collect_sequences`, the simulated top-k API against the exact joint
+  probability on a real model, and the artifact's per-seed claims and hash.
+
 ## v5.81 (2026-10-21) - Roadmap TW1: dataset licence audit; K3 / V4 comparison
 
 - `eval/hf_license_audit.py` + `examples/hf_license_audit.py`: reads each
