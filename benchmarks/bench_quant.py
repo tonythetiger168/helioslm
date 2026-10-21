@@ -1,4 +1,4 @@
-"""Reproducible fused vs unfused AWQ/GPTQ quantization benchmark (Issue #2).
+"""Reproducible fused vs unfused AWQ/GPTQ/MXFP4 quantization benchmark (Issue #2).
 
 Example:
     python benchmarks/bench_quant.py --in-features 4096 --out-features 14336 --group-size 128 --repeats 7 --out benchmarks/quant_results.json
@@ -17,16 +17,23 @@ import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
+METHODS = ("awq", "gptq", "mxfp4")
 sys.path.insert(0, str(ROOT))
 
 
 def _run_case(kind, fused, args):
     import torch
-    from helioslm_v5.src.quantization.standard_quant import AWQLinear, GPTQLinear
+    from helioslm_v5.src.quantization.standard_quant import (
+        AWQLinear, GPTQLinear, MXFP4Linear)
     torch.manual_seed(args.seed)
     linear = torch.nn.Linear(args.in_features, args.out_features, bias=False)
-    cls = {"awq": AWQLinear, "gptq": GPTQLinear}[kind]
-    quant = cls.from_linear(linear, group_size=args.group_size)
+    if kind == "mxfp4":
+        # MXFP4 blocks are fixed at 32 by the OCP MX spec; --group-size is
+        # the AWQ/GPTQ group only
+        quant = MXFP4Linear.from_linear(linear, block_size=32)
+    else:
+        cls = {"awq": AWQLinear, "gptq": GPTQLinear}[kind]
+        quant = cls.from_linear(linear, group_size=args.group_size)
     del linear
     quant.fused = fused
     quant.eval()
@@ -109,10 +116,10 @@ def main():
     ap.add_argument("--warmup", type=int, default=2)
     ap.add_argument("--repeats", type=int, default=7)
     ap.add_argument("--seed", type=int, default=2026)
-    ap.add_argument("--methods", nargs="+", choices=["awq", "gptq"], default=["awq", "gptq"])
+    ap.add_argument("--methods", nargs="+", choices=METHODS, default=list(METHODS))
     ap.add_argument("--out", default="benchmarks/quant_results.json")
     ap.add_argument("--child", action="store_true", help=argparse.SUPPRESS)
-    ap.add_argument("--method", choices=["awq", "gptq"], default="awq", help=argparse.SUPPRESS)
+    ap.add_argument("--method", choices=METHODS, default="awq", help=argparse.SUPPRESS)
     ap.add_argument("--fused", choices=["yes", "no"], default="yes", help=argparse.SUPPRESS)
     args = ap.parse_args()
     if min(args.in_features, args.out_features, args.group_size, args.batch, args.repeats) <= 0 or args.warmup < 0:

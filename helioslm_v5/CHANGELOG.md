@@ -1,5 +1,33 @@
 # HeliosLM v5 Changelog
 
+## v5.84 (2026-10-21) - Issue #2: fused vs unfused quantization, measured
+
+- `benchmarks/bench_quant.py` now covers MXFP4 too (`--methods awq gptq
+  mxfp4`; MXFP4 blocks fixed at 32).
+- Measured on a 4096 x 14336 projection (AWQ / GPTQ group 128), 4-vCPU
+  Xeon, torch 2.14 CPU, median of 11 runs, each method and setting in its
+  own process; artifacts `benchmarks/quant_fused_b{1,16}_2026-10-21.json`:
+
+  | Method | Batch 1: unfused -> fused (ms) | Speedup | Batch 16: unfused -> fused (ms) | Speedup |
+  |---|---|---|---|---|
+  | AWQ | 926 -> 125 | **7.4x** | 722 -> 194 | **3.7x** |
+  | GPTQ | 1245 -> 104 | **11.9x** | 1112 -> 159 | **7.0x** |
+  | MXFP4 | 1604 -> 708 | **2.3x** | 1534 -> 738 | **2.1x** |
+
+  - Every fused output matches unfused on the same quantized weights to
+    <= 1.1e-6 (checked before timing).
+  - The unfused path rebuilds the whole fp32 weight on every call; the
+    fused path dequantizes one group at a time.
+  - Peak RSS is about the same for both paths: the process peak comes
+    from building the quantized layer, not from the forward pass.
+  - Noise: the batch-1 unfused AWQ samples range 705-2674 ms on a shared
+    container; even its fastest sample is 4.6x the slowest fused one.
+  - CPU / PyTorch only: nothing about GPU kernels or FP8.
+- `docs/BENCHMARKS.md`: the section now carries the measured table.
+- `tests/test_bench_quant.py`: an MXFP4 smoke run, and the committed
+  artifacts (shape, medians recomputed from samples, parity <= 1e-4,
+  every speedup > 1.5).
+
 ## v5.83 (2026-10-21) - ~100M single-GPU pilot run (Phase C gate)
 
 - The last gate before renting a GPU cluster: one complete small run on a

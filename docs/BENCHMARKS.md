@@ -50,17 +50,54 @@ represent the full config (which cannot run wall-clock benchmarks on CPU).
   bf16 — the design MLA replaces.
 
 
-## Fused vs unfused AWQ/GPTQ benchmark (Issue #2)
+## Fused vs unfused AWQ/GPTQ/MXFP4 benchmark (Issue #2)
 
-A reproducible benchmark driver is available at `benchmarks/bench_quant.py`.
-It runs each quantization method and fused flag in a **separate process**, reporting median forward latency (milliseconds), individual samples, and process peak RSS when supported by the operating system. Quantization setup and model initialization are excluded from forward timings. Results are saved as JSON; **no measured speedup is claimed until an actual run is attached**.
+`benchmarks/bench_quant.py` times one quantized linear layer with the fused
+group-wise dequant x matmul (`mod.fused = True`, v5.11) against the
+unfused path that dequantizes the whole weight first (`mod.fused = False`).
+Each method and setting runs in its **own process**. Before timing, the
+fused output is checked against the unfused output on the same quantized
+weights (`atol = rtol = 1e-4`); a mismatch aborts the run.
 
 ```bash
 # Laptop-sized CPU smoke run
-python benchmarks/bench_quant.py --in-features 256 --out-features 512 --repeats 3 --out benchmarks/quant_smoke.json
+python benchmarks/bench_quant.py --in-features 256 --out-features 512 --repeats 3 --out /tmp/quant_smoke.json
 
-# Requested representative projection size (high CPU RAM/time cost)
-python benchmarks/bench_quant.py --in-features 4096 --out-features 14336 --group-size 128 --repeats 7 --out benchmarks/quant_results.json
+# The measured runs below
+python benchmarks/bench_quant.py --in-features 4096 --out-features 14336 --group-size 128 \
+    --batch 1 --warmup 3 --repeats 11 --out benchmarks/quant_fused_b1_2026-10-21.json
 ```
 
-The reported speedup is `unfused_median_ms / fused_median_ms`; values below 1 indicate a regression. Peak RSS is per-process high-water memory, not isolated kernel allocation, and may be unavailable on Windows. Both paths use the same deterministic seed and quantization recipe. The benchmark does **not** claim a GPU kernel speedup or cover FP8/MXFP4 yet; add separate hardware-specific runs before generalizing. Follow up with correctness comparisons and actual measured results before closing Issue #2.
+**Measured 2026-10-21** (4096 x 14336 projection, AWQ / GPTQ group 128,
+MXFP4 block 32; 4-vCPU Intel Xeon @ 2.80GHz, Python 3.13, torch 2.14 CPU;
+median of 11 runs after 3 warm-up runs; artifacts
+`benchmarks/quant_fused_b{1,16}_2026-10-21.json`):
+
+| Method | Batch | Unfused (ms) | Fused (ms) | Speedup | Max abs error vs unfused |
+|---|---|---|---|---|---|
+| AWQ | 1 | 926 | 125 | **7.4x** | 7.7e-7 |
+| GPTQ | 1 | 1245 | 104 | **11.9x** | 8.3e-7 |
+| MXFP4 | 1 | 1604 | 708 | **2.3x** | 1.1e-6 |
+| AWQ | 16 | 722 | 194 | **3.7x** | 7.7e-7 |
+| GPTQ | 16 | 1112 | 159 | **7.0x** | 8.3e-7 |
+| MXFP4 | 16 | 1534 | 738 | **2.1x** | 1.1e-6 |
+
+- The fused path is faster for every method at both batch sizes. It
+  dequantizes one group at a time and never materialises the full
+  weight; the unfused path builds the whole fp32 weight on every call.
+- The gain shrinks at batch 16: the matmul does more work per call, so
+  the dequantization cost the fused path saves is a smaller share.
+- MXFP4 gains least. Its fused path takes 4096 / 32 = 128 block steps
+  per call, each a code lookup plus a 32-column matmul; AWQ and GPTQ
+  take 32 steps of 128 columns.
+- Noise: the container is shared. The batch-1 unfused AWQ samples range
+  from 705 to 2674 ms (see `samples_ms`); the medians are robust to this,
+  and the fastest unfused sample is still 4.6x the slowest fused one.
+- Peak RSS is about the same for both paths (AWQ / GPTQ ~1.4-1.5 GiB,
+  MXFP4 ~3.6 GiB): the process peak is set by building the quantized layer
+  from an fp32 weight, not by the forward pass.
+- Scope: CPU and PyTorch only. This says nothing about GPU kernels
+  (auto-gptq / exllama / Marlin) or FP8.
+- Checked by `helioslm_v5/tests/test_bench_quant.py`: each median follows
+  from its samples, every parity error is <= 1e-4, and every speedup > 1.5.
+
