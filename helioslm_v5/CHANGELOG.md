@@ -1,5 +1,31 @@
 # HeliosLM v5 Changelog
 
+## v5.81 (2026-10-21) - Roadmap TW1: dataset licence audit; K3 / V4 comparison
+
+- `eval/hf_license_audit.py` + `examples/hf_license_audit.py`: reads each
+  Hugging Face dataset card's `license` field, gated status and revision
+  sha, and classifies it for training a model that may be used
+  commercially: commercial / noncommercial / no_derivatives / unknown.
+  No network on import; the fetch function is injectable.
+- `benchmarks/hf_license_audit_2026-10-20.json`: 45 ids (Traditional and
+  Simplified Chinese, Spanish, Japanese, Korean, eval sets), all resolved:
+  21 commercial, 11 noncommercial, 1 no_derivatives, 12 unknown.
+  - Wrong ids in the plan replaced: `yentinglin/zh_TW_c4` ->
+    `botp/yentinglin-zh_TW_c4` / `liswei/c4-zhtw`; FineWeb-zhtw found
+    (`lianghsun/fineweb-zhtw`, `lianghsun/fineweb-2-zhtw`,
+    `twinkle-ai/fineweb-zhtw-filtered`); `miulab/tmlu` not found, dropped.
+  - Card metadata only, not legal advice: a card can carry the wrong
+    licence (the doc lists the known suspicious ones).
+- `docs/TW_DATASETS_2026Q4.md`: 2026-10-20 section with the verified
+  results and every difference from the search-based table.
+- `docs/K3_V4_COMPARISON.md`: Phase B's comparison document. Each
+  measured row names its artifact and test.
+- `docs/MILESTONES.md`: TW1 done; Phase C split into one row per issue
+  (#1, #2, #4, #5) and the pilot / 1B runs.
+- T119 (`tests/test_hf_license_audit.py`): the classifier on every licence
+  family, the audit with a fake fetch (errors and gated cards), every
+  committed row's class follows from its recorded licence, and the hash.
+
 ## v5.80 (2026-10-21) - Chinese training speed: Big5 / GB2312-seeded tokenizer
 
 - TW4 measured that a byte-level BPE which never saw Chinese spends 3
