@@ -43,7 +43,7 @@
 
 ## 3. 需要負責人決定
 
-1. **E1（接 lm-evaluation-harness）**：需要安裝 `lm-eval` 與 `transformers`。依負責人規定，未經同意不裝套件。
+1. ~~E1 安裝套件~~：負責人已同意，E1 已完成（v5.92，`lm-eval` 0.4.13、`transformers` 5.20.2）。
 2. **v1.0（#40，0.5B）的評測門檻**：例如 ARC-Easy、TMMLU+ 要多少分才算過。E5 工具已就緒，門檻由負責人決定。
 3. **RunPod MCP／agent 設定**：要讓 Claude 直接操作 RunPod，需要兩件事：
    - 在環境設定的 Allowed domains 加入 `agents.runpod.io`、`runpod.io`、`api.runpod.io`、`rest.runpod.io`；

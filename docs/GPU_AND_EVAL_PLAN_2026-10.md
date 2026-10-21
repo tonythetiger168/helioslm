@@ -88,7 +88,7 @@ GPU 小時是用兩個公開的實際訓練紀錄等比推算的：
 
 | 編號 | 項目 | 需要的資源 | 驗收標準 |
 |---|---|---|---|
-| **E1** | lm-evaluation-harness 介接（HF 相容 wrapper，加 `pilot_100m` checkpoint 載入） | CPU | toy checkpoint 跑得完 ARC-Easy 和 TMMLU+ 子集；分數與 harness 自帶的參考實作一致 |
+| **E1** ✅ | lm-evaluation-harness 介接（`--model helioslm`） | CPU | 已完成（v5.92）：`eval/lm_harness.py`、`examples/eval_harness.py`；離線測試以 lm-eval 自己的 `simple_evaluate` 驗證 |
 | **E2** ✅ | 污染檢查：13-gram 比對訓練 shard 與評測集，報告重疊比例 | CPU | 已完成（v5.88）：`eval/decontam.py`、`pilot_prepare_data.py --decontaminate`；人造洩漏（英、中）能被抓到 |
 | **E3** | 繁中評測包（TW3）：TMMLU+ v1.1、TMLU、TW-JusticeBench，加 C-Eval / CMMLU 對照 | CPU 或 GPU | 授權照 TW1 審核結果；只在本地評測，不再散布題目 |
 | **E4** | 同條件 baseline 表：SmolLM3-3B、Qwen3.5-0.8B / 2B、Gemma 4 E2B 用同一個 harness 重跑 | 1 張 GPU，約 10–30 美元 | `benchmarks/baseline_eval_*.json` 附 harness 版本與 few-shot 設定 |
@@ -103,4 +103,4 @@ GPU 小時是用兩個公開的實際訓練紀錄等比推算的：
 2. **可驗證：** 每項宣稱都附 bit-exact oracle 和 artifact hash，結果可重現。
 3. **小而可重現：** 3B 等級做到 SmolLM3 式的完全開放，並附多 seed 結果。
 
-**下一步：** E2、E5 已完成；E1 需要安裝 `lm-eval` 與 `transformers`（待負責人同意），E3 接在 TW3 之後。第一次租 GPU 就同時跑 v5.83 試跑和 E4 baseline。
+**下一步：** E1、E2、E5 已完成。下次開 GPU pod 時，同時跑 E4（同條件 baseline）與 pilot checkpoint 的評測；E3 接在 TW3 之後。

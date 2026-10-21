@@ -1,5 +1,36 @@
 # HeliosLM v5 Changelog
 
+## v5.92 (2026-10-22) - Plan E1: lm-evaluation-harness adapter
+
+- `eval/lm_harness.py` registers the model type `helioslm` with
+  lm-evaluation-harness (0.4.13), so any harness task can score a pilot
+  checkpoint. Run it from the command line:
+  `lm_eval --model helioslm --model_args run=...,data=...`.
+  - `load_pilot` rebuilds the config from a `pilot_100m.py` run directory
+    (`run.json` + `ckpt.pt`). It refuses a data directory whose tokenizer
+    hash differs from the run's.
+  - `loglikelihood`: exact float32 log-softmax, the greedy flag, left
+    truncation to the run's sequence length, and a trailing context space
+    moved to the continuation (as lm-eval's HF model does).
+  - `loglikelihood_rolling`: lm-eval's disjoint rolling windows.
+  - `generate_until`: greedy decoding with stop strings.
+- `examples/eval_harness.py --run --data --tasks [--limit]`: runs
+  `simple_evaluate` and writes the results with the run metadata and the
+  checkpoint step. Harness datasets come from the Hugging Face Hub, so run
+  it on the GPU pod; the development sandbox cannot reach the Hub's file
+  hosts.
+- `tests/test_lm_harness.py` (6 tests, offline):
+  - loglikelihood equals the logits' log-softmax, the greedy flag holds,
+    and left truncation is correct;
+  - the rolling score equals one pass when the text fits, and scores each
+    token exactly once when it is split into windows;
+  - stop strings work;
+  - lm-eval's own `simple_evaluate` on a local multiple-choice task gives
+    the accuracy implied by the adapter's scores;
+  - a pilot run directory loads, and a mismatched tokenizer is refused.
+- The feature-acceptance workflow installs `lm-eval==0.4.13` and runs the
+  test; the main CI skips it, since lm-eval is not in `requirements-ci.txt`.
+
 ## v5.91 (2026-10-21) - Issue #1 closed: CUDA smoke 23/23; compiled 100M pilot
 
 - Overnight run on the RTX 6000 Ada after the v5.90 fixes
