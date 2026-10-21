@@ -121,6 +121,7 @@ TESTS = [
     case_model_mtp.test_mtp_hybrid_rollback,
     case_moe.test_quantile_margin_boundary,
     case_moe.test_balance_state_resume,
+    case_moe.test_balance_state_resume_qb,
     case_hybrid.test_hybrid_packed_positions,
     case_dualpipe.test_attention_residuals_dualpipe,
     case_hybrid.test_linear_attention_guards,
