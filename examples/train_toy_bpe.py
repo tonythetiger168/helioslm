@@ -8,12 +8,19 @@ Artifacts: checkpoints/toy_bpe.pt, checkpoints/toy_bpe.tokenizer.json,
 Tokenizer is trained on the training split only. Held-out text is not
 included in vocabulary learning. Char and BPE token losses are NOT directly
 comparable; report per-byte NLL for an apples-to-apples text likelihood.
+
+--tokenizer char trains the character baseline through the same split,
+loop and evaluation (token id == ord(char)); the char vocabulary only
+holds characters below the model vocabulary, so --max-ord drops the rest
+from BOTH splits. Pass the same --max-ord to the BPE run to compare the two
+on identical text (examples/toy_tokenizer_compare.py does this).
 """
 import argparse
 import hashlib
 import json
 from pathlib import Path
 import random
+import re
 import sys
 import time
 
@@ -33,7 +40,9 @@ def corpus_files():
                   and p.is_file())
 
 
-def split_corpus(seed):
+def split_corpus(seed, max_ord=None):
+    """File-level train / validation split. max_ord drops every character
+    with ord >= max_ord from both splits (the char baseline's vocabulary)."""
     paths = corpus_files()
     if len(paths) < 3:
         raise ValueError("Need at least three source files for train/validation split")
@@ -42,7 +51,10 @@ def split_corpus(seed):
     n_val = max(1, len(paths) // 10)
     train_paths, val_paths = paths[n_val:], paths[:n_val]
     def read(items):
-        return "\n\n".join(p.read_text(encoding="utf-8", errors="replace") for p in items)
+        text = "\n\n".join(p.read_text(encoding="utf-8", errors="replace") for p in items)
+        if max_ord is not None:
+            text = "".join(c for c in text if ord(c) < max_ord)
+        return text
     return read(train_paths), read(val_paths), [str(p.relative_to(ROOT)) for p in val_paths]
 
 
@@ -82,6 +94,48 @@ def train_tokenizer(train_text, vocab_size, zh_seed=None):
     if tokenizer.get_vocab_size() > vocab_size:
         raise ValueError("Tokenizer exceeds model embedding budget")
     return tokenizer
+
+
+class CharTokenizer:
+    """The toy checkpoint's char vocabulary (id == ord(char)) behind the
+    tokenizers.Tokenizer calls this script uses."""
+
+    class _Encoding:
+        def __init__(self, ids):
+            self.ids = ids
+
+    def __init__(self, vocab_size):
+        self.vocab_size = vocab_size
+
+    def encode(self, text):
+        bad = next((c for c in text if ord(c) >= self.vocab_size), None)
+        if bad is not None:
+            raise ValueError(f"character {bad!r} is outside the char vocabulary "
+                             f"(ord >= {self.vocab_size}); filter with max_ord")
+        return self._Encoding([ord(c) for c in text])
+
+    def decode(self, ids, skip_special_tokens=False):
+        return "".join(chr(int(i)) for i in ids)
+
+    def get_vocab_size(self):
+        return self.vocab_size
+
+    def save(self, path):
+        Path(path).write_text(json.dumps({"type": "char", "vocab_size": self.vocab_size}),
+                              encoding="utf-8")
+
+
+WORD = re.compile(r"[A-Za-z]{3,}")
+
+
+def real_word_rate(sample, train_text):
+    """Fraction of the sample's alphabetic words (3+ letters) that occur as
+    words in the training text: 0 for gibberish, 1 if every word is real."""
+    words = WORD.findall(sample)
+    if not words:
+        return 0.0
+    vocab = set(WORD.findall(train_text))
+    return sum(w in vocab for w in words) / len(words)
 
 
 def train_model(ids, val_ids, cfg, steps, batch, seq, lr, seed):
@@ -131,17 +185,37 @@ def main():
     ap.add_argument("--out", default="checkpoints/toy_bpe.pt")
     ap.add_argument("--vocab-size", type=int, default=None,
                     help="tokenizer/model vocabulary (default: lite config)")
+    ap.add_argument("--tokenizer", choices=["bpe", "char"], default="bpe")
+    ap.add_argument("--max-ord", type=int, default=None,
+                    help="drop characters with ord >= N from both splits "
+                         "(char: defaults to the model vocabulary)")
     ap.add_argument("--zh-seed", choices=["tw", "cn", "both"],
                     help="v5.80: common Chinese characters as single tokens "
                          "(tw = Big5 Traditional, cn = GB2312 Simplified)")
     args = ap.parse_args()
     if min(args.steps, args.batch, args.seq, args.lr) <= 0:
         ap.error("steps, batch, seq and lr must be positive")
+    if args.tokenizer == "char" and args.zh_seed:
+        ap.error("--zh-seed applies to the BPE tokenizer only")
+    print(json.dumps(run(args), indent=2))
+
+
+def run(args):
+    """One training run; returns the metrics (also written next to --out)."""
     cfg = HeliosLMv5Config(size="lite")
     if args.vocab_size is not None:
         cfg.vocab_size = args.vocab_size
-    train_text, val_text, val_paths = split_corpus(args.seed)
-    tok = train_tokenizer(train_text, cfg.vocab_size, args.zh_seed)
+    max_ord = args.max_ord
+    if args.tokenizer == "char":
+        if max_ord is None:
+            max_ord = cfg.vocab_size
+        if max_ord > cfg.vocab_size:
+            raise ValueError("--max-ord cannot exceed the char vocabulary")
+    train_text, val_text, val_paths = split_corpus(args.seed, max_ord)
+    if args.tokenizer == "char":
+        tok = CharTokenizer(cfg.vocab_size)
+    else:
+        tok = train_tokenizer(train_text, cfg.vocab_size, args.zh_seed)
     train_ids = torch.tensor(tok.encode(train_text).ids, dtype=torch.long)
     val_ids = torch.tensor(tok.encode(val_text).ids, dtype=torch.long)
     model, metrics = train_model(train_ids, val_ids, cfg, args.steps,
@@ -153,7 +227,11 @@ def main():
         metrics["zh_seed"] = args.zh_seed
         metrics["zh_seed_single_token_coverage"] = round(
             sum(bpe.covers(c) for c in chars) / len(chars), 4)
-    metrics.update({"tokenizer": "bytelevel-bpe", "seed": args.seed, "steps": args.steps,
+    kind = "char" if args.tokenizer == "char" else "bytelevel-bpe"
+    metrics.update({"tokenizer": kind, "seed": args.seed, "steps": args.steps,
+                    "batch": args.batch, "seq": args.seq, "lr": args.lr, "max_ord": max_ord,
+                    "train_utf8_bytes": len(train_text.encode("utf-8")),
+                    "train_tokens": len(train_ids),
                     "vocab_size": tok.get_vocab_size(),
                     "val_utf8_bytes": len(val_text.encode("utf-8")),
                     "val_nll_per_utf8_byte": metrics["val_nll"] / len(val_text.encode("utf-8")),
@@ -164,15 +242,17 @@ def main():
         pids = torch.tensor([tok.encode(prompt).ids])
         generated = model.generate(pids, max_new_tokens=80, temperature=0)[0].tolist()
         metrics["sample"] = tok.decode(generated, skip_special_tokens=False)
+        metrics["sample_real_word_rate"] = round(
+            real_word_rate(metrics["sample"][len(prompt):], train_text), 4)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     tokenizer_path = out.with_suffix(".tokenizer.json")
     tok.save(str(tokenizer_path))
     torch.save({"state_dict": model.state_dict(), "config_size": cfg.size,
-                "tokenizer": "bytelevel-bpe", "tokenizer_file": tokenizer_path.name,
+                "tokenizer": kind, "tokenizer_file": tokenizer_path.name,
                 "vocab_size": cfg.vocab_size, "meta": metrics}, out)
     out.with_suffix(".metrics.json").write_text(json.dumps(metrics, indent=2)+"\n", encoding="utf-8")
-    print(json.dumps(metrics, indent=2))
+    return metrics
 
 
 if __name__ == "__main__":

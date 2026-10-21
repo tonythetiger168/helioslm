@@ -1,5 +1,42 @@
 # HeliosLM v5 Changelog
 
+## v5.89 (2026-10-21) - Issue #5: BPE toy model vs the char baseline, measured
+
+- `examples/train_toy_bpe.py --tokenizer char` trains the character
+  baseline through the same split, loop and evaluation as the BPE run.
+  `--max-ord N` drops characters outside the char vocabulary from both
+  splits, so the two arms are scored on identical text.
+  `sample_real_word_rate` reports the fraction of generated words that
+  occur in the training text.
+- `examples/toy_tokenizer_compare.py`: paired runs (each seed picks the
+  file-level split; both arms share it). It reuses finished runs, so an
+  interrupted comparison resumes.
+- Measured (`benchmarks/toy_bpe_vs_char_2026-10-21.json`): lite model,
+  1000 steps, batch 8 x 64 tokens, lr 3e-3; held-out NLL per UTF-8 byte
+  on the same text per seed, lower is better.
+
+  | seed | char | BPE (vocab 1024) | BPE - char |
+  |---|---|---|---|
+  | 13 | 1.884 | **1.635** | -0.249 |
+  | 14 | 2.013 | **1.645** | -0.368 |
+  | 15 | 2.359 | **1.534** | -0.826 |
+
+  - BPE is better in all three seeds (mean -0.48 nats/byte). The arms
+    get the same number of training tokens; a BPE token carries ~2.35
+    bytes, so BPE also sees more text. That is the point of a
+    tokenizer, but it is part of the gain.
+  - Greedy samples loop in both arms at this scale. BPE samples contain
+    real identifiers from the corpus (`HeliosLMv5Config(self.s,
+    config.hidden_dim`, `json.dumps`, `assert`); char samples repeat
+    single words or letters ("steps steps", "MMMM"). The real-word rate
+    (0.67 BPE vs 0.64 char) counts repeats, so it does not separate them;
+    the samples are in the artifact.
+  - The checkpoint is not committed (34 MB per run); the command
+    regenerates it, and `helioslm_v5/hub.py` can publish it.
+- `tests/test_toy_bpe.py`: the char tokenizer and the filtered split,
+  the real-word metric, and the committed comparison (same held-out text
+  per seed, BPE lower in every seed, hash).
+
 ## v5.88 (2026-10-21) - GPU sizing and evaluation plan; E2 overlap check; E5 pre-registration
 
 - `docs/GPU_AND_EVAL_PLAN_2026-10.md` (Traditional Chinese):
