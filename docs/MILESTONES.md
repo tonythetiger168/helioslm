@@ -100,7 +100,7 @@ renumbered.
 | AC | AC4 repo-scale long-context probe (dense vs hybrid vs CSA) — hybrid 1.00 at 1x/2x/4x files; dense 0.29 (0.91 at 2x steps), CSA mean 0.54 | ✅ Done (v5.74, T113) |
 | AC | AC5 知止: stop-decision metrics (false DONE, tested-before-done) on terminal/SWE runs | ✅ Done (v5.62, T98) — frontier rows need an API key |
 | C | CUDA end-to-end verification (#1) | ⬜ Not started (needs a GPU) |
-| C | Fused vs unfused quant benchmark (#2) | 🟡 Driver committed; measured run pending |
+| C | Fused vs unfused quant benchmark (#2) — 4096 x 14336 on CPU: AWQ 7.4x / GPTQ 11.9x / MXFP4 2.3x at batch 1, 3.7x / 7.0x / 2.1x at batch 16, parity <= 1.1e-6 | ✅ Done (v5.84) |
 | C | BPE toy tokenizer and checkpoint (#5) | 🟡 Script committed; matched char baseline pending |
 | C | Hugging Face Hub push / pull (#4) | 🟡 Code and round-trip test committed |
 | C | ~100M single-GPU pilot — pretraining loop, data prep, 4 architectures, exact resume (code; the GPU run is pending) | 🟡 Code done (v5.83, T122); run pending |
