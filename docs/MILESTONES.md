@@ -103,5 +103,6 @@ renumbered.
 | C | Fused vs unfused quant benchmark (#2) | 🟡 Driver committed; measured run pending |
 | C | BPE toy tokenizer and checkpoint (#5) | 🟡 Script committed; matched char baseline pending |
 | C | Hugging Face Hub push / pull (#4) | 🟡 Code and round-trip test committed |
-| C | ~100M single-GPU pilot, then ~1B GPU run | ⬜ Not started |
+| C | ~100M single-GPU pilot — pretraining loop, data prep, 4 architectures, exact resume (code; the GPU run is pending) | 🟡 Code done (v5.83, T122); run pending |
+| C | ~1B GPU run | ⬜ Not started |
 | D | DecisionHead at 1B, multi-env GRPO training at real scale (tooling exists since Phase 2.1), TrustGate CLARIFY threshold calibration | ⬜ Not started |
