@@ -1,0 +1,245 @@
+{
+  "experiment": "zh-TW training speed: Big5-seeded vs plain byte-level BPE, same model / steps / batch / seq",
+  "train_text_chars": 56932,
+  "train": {
+    "vocab": 32000,
+    "steps": 300,
+    "seq": 128,
+    "batch": 16,
+    "lr": 0.003,
+    "eval_every": 50,
+    "seed": 0
+  },
+  "results": [
+    {
+      "arm": "code_only",
+      "coverage": {
+        "tokens_per_char_zh_lines": 1.0979,
+        "tokens_per_cjk_char": 2.9992,
+        "cjk_single_token_coverage": 0.0,
+        "cjk_lost_fraction": 0.0,
+        "tokens_per_char_en_lines": 0.3783
+      },
+      "vocab": 17455,
+      "train_tokens": 57849,
+      "chars_per_token": 0.9841,
+      "chars_per_step": 2015.5,
+      "bits_per_char_curve": [
+        {
+          "step": 50,
+          "bits_per_char": 7.6019
+        },
+        {
+          "step": 100,
+          "bits_per_char": 7.0705
+        },
+        {
+          "step": 150,
+          "bits_per_char": 6.7864
+        },
+        {
+          "step": 200,
+          "bits_per_char": 6.5878
+        },
+        {
+          "step": 250,
+          "bits_per_char": 6.4604
+        },
+        {
+          "step": 300,
+          "bits_per_char": 6.3329
+        }
+      ]
+    },
+    {
+      "arm": "code_only_big5",
+      "coverage": {
+        "tokens_per_char_zh_lines": 0.6142,
+        "tokens_per_cjk_char": 1.0,
+        "cjk_single_token_coverage": 1.0,
+        "cjk_lost_fraction": 0.0,
+        "tokens_per_char_en_lines": 0.3783
+      },
+      "vocab": 23177,
+      "train_tokens": 31859,
+      "chars_per_token": 1.787,
+      "chars_per_step": 3659.8,
+      "bits_per_char_curve": [
+        {
+          "step": 50,
+          "bits_per_char": 6.1552
+        },
+        {
+          "step": 100,
+          "bits_per_char": 5.8547
+        },
+        {
+          "step": 150,
+          "bits_per_char": 5.7591
+        },
+        {
+          "step": 200,
+          "bits_per_char": 5.6423
+        },
+        {
+          "step": 250,
+          "bits_per_char": 5.5946
+        },
+        {
+          "step": 300,
+          "bits_per_char": 5.8572
+        }
+      ]
+    },
+    {
+      "arm": "code_only_both",
+      "coverage": {
+        "tokens_per_char_zh_lines": 0.6142,
+        "tokens_per_cjk_char": 1.0,
+        "cjk_single_token_coverage": 1.0,
+        "cjk_lost_fraction": 0.0,
+        "tokens_per_char_en_lines": 0.3783
+      },
+      "vocab": 24504,
+      "train_tokens": 31778,
+      "chars_per_token": 1.7916,
+      "chars_per_step": 3669.1,
+      "bits_per_char_curve": [
+        {
+          "step": 50,
+          "bits_per_char": 5.8343
+        },
+        {
+          "step": 100,
+          "bits_per_char": 5.4042
+        },
+        {
+          "step": 150,
+          "bits_per_char": 5.3816
+        },
+        {
+          "step": 200,
+          "bits_per_char": 5.4721
+        },
+        {
+          "step": 250,
+          "bits_per_char": 5.7096
+        },
+        {
+          "step": 300,
+          "bits_per_char": 5.9708
+        }
+      ]
+    },
+    {
+      "arm": "repo",
+      "coverage": {
+        "tokens_per_char_zh_lines": 0.5521,
+        "tokens_per_cjk_char": 0.8627,
+        "cjk_single_token_coverage": 0.7767,
+        "cjk_lost_fraction": 0.0,
+        "tokens_per_char_en_lines": 0.3783
+      },
+      "vocab": 20207,
+      "train_tokens": 24945,
+      "chars_per_token": 2.2823,
+      "chars_per_step": 4674.2,
+      "bits_per_char_curve": [
+        {
+          "step": 50,
+          "bits_per_char": 5.8629
+        },
+        {
+          "step": 100,
+          "bits_per_char": 5.8559
+        },
+        {
+          "step": 150,
+          "bits_per_char": 6.1361
+        },
+        {
+          "step": 200,
+          "bits_per_char": 6.5393
+        },
+        {
+          "step": 250,
+          "bits_per_char": 7.0147
+        },
+        {
+          "step": 300,
+          "bits_per_char": 7.3438
+        }
+      ]
+    },
+    {
+      "arm": "repo_big5",
+      "coverage": {
+        "tokens_per_char_zh_lines": 0.5336,
+        "tokens_per_cjk_char": 0.7525,
+        "cjk_single_token_coverage": 1.0,
+        "cjk_lost_fraction": 0.0,
+        "tokens_per_char_en_lines": 0.3783
+      },
+      "vocab": 24972,
+      "train_tokens": 24689,
+      "chars_per_token": 2.306,
+      "chars_per_step": 4722.6,
+      "bits_per_char_curve": [
+        {
+          "step": 50,
+          "bits_per_char": 5.7746
+        },
+        {
+          "step": 100,
+          "bits_per_char": 5.6379
+        },
+        {
+          "step": 150,
+          "bits_per_char": 5.9975
+        },
+        {
+          "step": 200,
+          "bits_per_char": 6.3777
+        },
+        {
+          "step": 250,
+          "bits_per_char": 6.774
+        },
+        {
+          "step": 300,
+          "bits_per_char": 7.078
+        }
+      ]
+    }
+  ],
+  "results_sha256": "fd4b2286e6986395e4e724099c70f95cd11ae52a7f0d5f1b20a67edd93b289dd",
+  "timing_not_hashed": {
+    "threads": 4,
+    "code_only": {
+      "train_seconds": 130.9,
+      "tokens_per_second": 4693.6,
+      "chars_per_second": 4619.2
+    },
+    "code_only_big5": {
+      "train_seconds": 164.8,
+      "tokens_per_second": 3728.9,
+      "chars_per_second": 6663.6
+    },
+    "code_only_both": {
+      "train_seconds": 160.8,
+      "tokens_per_second": 3820.7,
+      "chars_per_second": 6844.9
+    },
+    "repo": {
+      "train_seconds": 148.0,
+      "tokens_per_second": 4150.6,
+      "chars_per_second": 9472.8
+    },
+    "repo_big5": {
+      "train_seconds": 166.9,
+      "tokens_per_second": 3681.2,
+      "chars_per_second": 8488.6
+    }
+  },
+  "wall_seconds": 798.6
+}

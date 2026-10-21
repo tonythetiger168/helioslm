@@ -46,8 +46,32 @@ def split_corpus(seed):
     return read(train_paths), read(val_paths), [str(p.relative_to(ROOT)) for p in val_paths]
 
 
-def train_tokenizer(train_text, vocab_size):
+# Smallest vocabulary that can hold the seed at all (measured: seed alone
+# plus a little English needs 6030 / 4359 / 7357 tokens). The seed's merges
+# have the lowest frequency, so next to a real corpus they are learned last
+# and need room beyond the corpus's own merges; the reported
+# zh_seed_single_token_coverage says whether they fit (~32k does for the
+# repo corpus).
+ZH_SEED_MIN_VOCAB = {"tw": 6100, "cn": 4400, "both": 7400}
+
+
+def train_tokenizer(train_text, vocab_size, zh_seed=None):
+    """zh_seed (v5.80): also learn the common Chinese characters as single
+    tokens (helioslm_v5/eval/zh_tokenizer_coverage.py; 3 -> 1 token per
+    character for text the corpus barely covers): "tw" = 5401 Big5
+    Traditional, "cn" = 3755 GB2312 Simplified, "both" = their 6722-
+    character union. A vocabulary too small to hold the seed is refused.
+    """
     from tokenizers import Tokenizer, models, pre_tokenizers, decoders, trainers
+    if zh_seed:
+        need = ZH_SEED_MIN_VOCAB.get(zh_seed)
+        if need is None:
+            raise ValueError(f"--zh-seed must be tw, cn or both, got {zh_seed!r}")
+        if vocab_size < need:
+            raise ValueError(f"--zh-seed {zh_seed} needs --vocab-size >= "
+                             f"{need} (the characters plus their byte merges)")
+        from helioslm_v5.eval.zh_tokenizer_coverage import zh_seed_text
+        train_text = train_text + "\n" + zh_seed_text(zh_seed)
     tokenizer = Tokenizer(models.BPE(unk_token="[UNK]"))
     tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
     tokenizer.decoder = decoders.ByteLevel()
@@ -105,16 +129,30 @@ def main():
     ap.add_argument("--lr", type=float, default=3e-3)
     ap.add_argument("--seed", type=int, default=13)
     ap.add_argument("--out", default="checkpoints/toy_bpe.pt")
+    ap.add_argument("--vocab-size", type=int, default=None,
+                    help="tokenizer/model vocabulary (default: lite config)")
+    ap.add_argument("--zh-seed", choices=["tw", "cn", "both"],
+                    help="v5.80: common Chinese characters as single tokens "
+                         "(tw = Big5 Traditional, cn = GB2312 Simplified)")
     args = ap.parse_args()
     if min(args.steps, args.batch, args.seq, args.lr) <= 0:
         ap.error("steps, batch, seq and lr must be positive")
     cfg = HeliosLMv5Config(size="lite")
+    if args.vocab_size is not None:
+        cfg.vocab_size = args.vocab_size
     train_text, val_text, val_paths = split_corpus(args.seed)
-    tok = train_tokenizer(train_text, cfg.vocab_size)
+    tok = train_tokenizer(train_text, cfg.vocab_size, args.zh_seed)
     train_ids = torch.tensor(tok.encode(train_text).ids, dtype=torch.long)
     val_ids = torch.tensor(tok.encode(val_text).ids, dtype=torch.long)
     model, metrics = train_model(train_ids, val_ids, cfg, args.steps,
                                  args.batch, args.seq, args.lr, args.seed)
+    if args.zh_seed:
+        from helioslm_v5.eval.zh_tokenizer_coverage import Bpe, zh_seed_chars
+        bpe = Bpe(tok)
+        chars = zh_seed_chars(args.zh_seed)
+        metrics["zh_seed"] = args.zh_seed
+        metrics["zh_seed_single_token_coverage"] = round(
+            sum(bpe.covers(c) for c in chars) / len(chars), 4)
     metrics.update({"tokenizer": "bytelevel-bpe", "seed": args.seed, "steps": args.steps,
                     "vocab_size": tok.get_vocab_size(),
                     "val_utf8_bytes": len(val_text.encode("utf-8")),

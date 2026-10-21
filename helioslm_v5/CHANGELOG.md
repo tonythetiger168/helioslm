@@ -1,5 +1,57 @@
 # HeliosLM v5 Changelog
 
+## v5.80 (2026-10-21) - Chinese training speed: Big5 / GB2312-seeded tokenizer
+
+- TW4 measured that a byte-level BPE which never saw Chinese spends 3
+  tokens per Chinese character. Training then spends three times the
+  compute per character of Chinese text.
+- `eval/zh_tokenizer_coverage.py`, no download needed (Python's built-in
+  codecs):
+  - `big5_common_chars()`: the 5401 Big5 level-1 Traditional characters.
+  - `gb2312_common_chars()`: the 3755 GB2312 level-1 Simplified
+    characters, 2434 of them shared with Big5.
+  - `zh_seed_chars(scripts)` / `zh_seed_text(scripts)` for "tw", "cn" or
+    "both" (6722 characters). Each character is added to the BPE training
+    text twice, so its byte merges are learned and it becomes one token
+    when the vocabulary has room.
+- `examples/train_toy_bpe.py --zh-seed tw|cn|both`: refuses a vocabulary
+  too small to hold the seed (6100 / 4400 / 7400). The seed's merges have
+  the lowest frequency and are learned last, so the run reports the
+  coverage it actually reached (`zh_seed_single_token_coverage`).
+- Measurement (`eval/zh_train_speed.py`, `examples/zh_train_speed.py` ->
+  `benchmarks/zh_train_speed_2026-10-20.json`): the same tiny model,
+  steps, batch and sequence length on the repo's 57k characters of zh-TW
+  training lines; held-out text is TW4's.
+
+  | BPE corpus (32k requested) | vocab | tokens / CJK char (held-out) | single-token coverage | chars / training token | best held-out bits/char |
+  |---|---|---|---|---|---|
+  | code only (no Chinese) | 17.5k | 3.00 | 0% | 0.98 | 6.33 |
+  | code only + Big5 seed | 23.2k | **1.00** | **100%** | **1.79** | 5.59 |
+  | code only + Big5 + GB2312 seed | 24.5k | **1.00** | **100%** | **1.79** | **5.38** |
+  | repo (has zh docs) | 20.2k | 0.86 | 78% | 2.28 | 5.86 |
+  | repo + Big5 seed | 25.0k | **0.75** | **100%** | 2.31 | 5.64 |
+
+  - A tokenizer whose corpus lacks Chinese gains most. Each training
+    step covers 1.82x the Chinese text, and the model reaches a better
+    held-out score (best of the curve).
+  - Adding the Simplified seed costs Traditional nothing.
+  - English costs the same everywhere (0.378 tokens/char).
+  - With Chinese already in the corpus, the seed mostly completes
+    coverage (78% -> 100% single-token).
+  - Wall clock: measured while other jobs shared the CPU (not hashed).
+    Characters per second rose 1.44x for the seeded code-only tokenizer;
+    the tiny model's larger output layer eats part of the 1.82x.
+  - Caveats: 57k characters of training text, so the seeded arms overfit
+    after about 150 steps; single seed.
+- T118 (`tests/test_zh_train_speed.py`, 5 tests):
+  - both character lists: sizes, Traditional / Simplified forms, overlap,
+    coverage of the held-out text;
+  - seeding makes all 6722 characters single tokens in Traditional and
+    Simplified text alike, and the training tool refuses a vocabulary
+    that cannot hold the seed;
+  - the bits-per-character metric against uniform and oracle models;
+  - the artifact's claims and hash.
+
 ## Maintenance (2026-10-21) - tech-debt Phase 3: parallel CI
 
 - CI runs one pytest invocation on 4 workers (`pytest-xdist==3.8.0`,
