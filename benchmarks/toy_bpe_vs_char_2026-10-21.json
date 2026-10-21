@@ -1,0 +1,147 @@
+{
+  "experiment": "issue5_toy_bpe_vs_char",
+  "config": {
+    "model": "lite",
+    "steps": 1000,
+    "batch": 8,
+    "seq": 64,
+    "lr": 0.003,
+    "max_ord": 1024,
+    "seeds": [
+      13,
+      14,
+      15
+    ]
+  },
+  "environment": {
+    "python": "3.13.16",
+    "torch": "2.14.1+cu130",
+    "platform": "Linux-6.18.44-fc-v139-x86_64-with-glibc2.39"
+  },
+  "runs": [
+    {
+      "tokenizer": "char",
+      "seed": 13,
+      "vocab_size": 1024,
+      "train_tokens": 2615988,
+      "train_utf8_bytes": 2616214,
+      "val_tokens": 249611,
+      "val_utf8_bytes": 249647,
+      "val_loss_per_token": 1.8842066792764258,
+      "val_nll_per_utf8_byte": 1.8839349698609154,
+      "val_text_sha256": "ece7abaf87372bed5f1fad9c9bcc8b24dfeb4f76d41ef9600553c32b2a93496d",
+      "train_seconds": 1144.31,
+      "sample": "HeliosLMv5Context steps steps steps steps steps steps steps steps steps steps steps step",
+      "sample_real_word_rate": 1.0
+    },
+    {
+      "tokenizer": "bytelevel-bpe",
+      "seed": 13,
+      "vocab_size": 1024,
+      "train_tokens": 1110085,
+      "train_utf8_bytes": 2616786,
+      "val_tokens": 106374,
+      "val_utf8_bytes": 249647,
+      "val_loss_per_token": 3.8364048080445055,
+      "val_nll_per_utf8_byte": 1.6346830727023605,
+      "val_text_sha256": "ece7abaf87372bed5f1fad9c9bcc8b24dfeb4f76d41ef9600553c32b2a93496d",
+      "train_seconds": 3877.5,
+      "sample": "HeliosLM v5.2.json.json.json.json.json.json.json.json.json.json.json.json.json.json.json.json.json.json.json.dumps(',',', \"assert can\": \"assert>\",\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+      "sample_real_word_rate": 1.0
+    },
+    {
+      "tokenizer": "char",
+      "seed": 14,
+      "vocab_size": 1024,
+      "train_tokens": 2484220,
+      "train_utf8_bytes": 2484454,
+      "val_tokens": 381951,
+      "val_utf8_bytes": 381979,
+      "val_loss_per_token": 2.0131432479339693,
+      "val_nll_per_utf8_byte": 2.0129956795835047,
+      "val_text_sha256": "376bc89098b44be1086c91c6f0636a896fac638f32ae63c299a8997e38bf706c",
+      "train_seconds": 357.67,
+      "sample": "HeliosLMv5Config(self.attention the the torch.nnext_token the the the the the the t the ",
+      "sample_real_word_rate": 0.9333
+    },
+    {
+      "tokenizer": "bytelevel-bpe",
+      "seed": 14,
+      "vocab_size": 1024,
+      "train_tokens": 1058246,
+      "train_utf8_bytes": 2484454,
+      "val_tokens": 158704,
+      "val_utf8_bytes": 381979,
+      "val_loss_per_token": 3.9599553839984183,
+      "val_nll_per_utf8_byte": 1.6452756807627775,
+      "val_text_sha256": "376bc89098b44be1086c91c6f0636a896fac638f32ae63c299a8997e38bf706c",
+      "train_seconds": 754.52,
+      "sample": "HeliosLM                   |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 0.0]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+      "sample_real_word_rate": 0.0
+    },
+    {
+      "tokenizer": "char",
+      "seed": 15,
+      "vocab_size": 1024,
+      "train_tokens": 2563675,
+      "train_utf8_bytes": 2563922,
+      "val_tokens": 302496,
+      "val_utf8_bytes": 302511,
+      "val_loss_per_token": 2.359530248599911,
+      "val_nll_per_utf8_byte": 2.3594132513544257,
+      "val_text_sha256": "ae6a7659b16e15692265fd8731b786f2cd8a8d76ce0fe875cdb8e7b3afe105b4",
+      "train_seconds": 336.87,
+      "sample": "HeliosLMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMASS S                         ",
+      "sample_real_word_rate": 0.0
+    },
+    {
+      "tokenizer": "bytelevel-bpe",
+      "seed": 15,
+      "vocab_size": 1024,
+      "train_tokens": 1094373,
+      "train_utf8_bytes": 2563922,
+      "val_tokens": 122571,
+      "val_utf8_bytes": 302511,
+      "val_loss_per_token": 3.784852255685309,
+      "val_nll_per_utf8_byte": 1.5335413450473008,
+      "val_text_sha256": "ae6a7659b16e15692265fd8731b786f2cd8a8d76ce0fe875cdb8e7b3afe105b4",
+      "train_seconds": 323.02,
+      "sample": "HeliosLMv5.src.s import HeliosLMv5Config(self.s, config.hidden_dim, args.s, args.s, args.s, args.s, args.s, args.s, args.s, args.s, args.s, args.s, args.s, args.s, args.s, args.s, args.s",
+      "sample_real_word_rate": 1.0
+    }
+  ],
+  "paired": [
+    {
+      "seed": 13,
+      "char_nll_per_byte": 1.8839349698609154,
+      "bpe_nll_per_byte": 1.6346830727023605,
+      "bpe_minus_char": -0.2492518971585549,
+      "char_real_word_rate": 1.0,
+      "bpe_real_word_rate": 1.0
+    },
+    {
+      "seed": 14,
+      "char_nll_per_byte": 2.0129956795835047,
+      "bpe_nll_per_byte": 1.6452756807627775,
+      "bpe_minus_char": -0.36771999882072715,
+      "char_real_word_rate": 0.9333,
+      "bpe_real_word_rate": 0.0
+    },
+    {
+      "seed": 15,
+      "char_nll_per_byte": 2.3594132513544257,
+      "bpe_nll_per_byte": 1.5335413450473008,
+      "bpe_minus_char": -0.8258719063071249,
+      "char_real_word_rate": 0.0,
+      "bpe_real_word_rate": 1.0
+    }
+  ],
+  "summary": {
+    "mean_bpe_minus_char_nll_per_byte": -0.480947934095469,
+    "bpe_better_in_seeds": 3,
+    "seeds": 3,
+    "mean_char_real_word_rate": 0.6444333333333333,
+    "mean_bpe_real_word_rate": 0.6666666666666666
+  },
+  "runs_sha256": "7c23de669bfad3067b5666b677a0dcb7b002cd9ad36602d5852b2ac3053bc6da"
+}
