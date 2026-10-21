@@ -28,12 +28,13 @@
 | #64 | — | `examples/cuda_smoke.py`（13 項真正上 GPU 的檢查）與本交接文件 | — |
 | #65 | v5.88 | 評測計劃（GPU 需求、排行榜檢視、E1–E8）；E2 訓練／評測 13-gram 重疊檢查；E5 預先登記評測 | — |
 | #66 | v5.89 | #5 實測：BPE 在 3 個 seed 的每 byte NLL 都優於 char（1.635／1.645／1.534 vs 1.884／2.013／2.359） | #5 |
-| （下一個 PR） | v5.90 | #1 首次 CUDA 執行：cuda_smoke 11/13，修好兩個真正的 CUDA bug（FP8Trainer 把層建在 CPU、GPUMonitor 缺 NVML 就崩潰）；首次 GPU 100M 試跑 | （#1 待重跑 13/13） |
+| #67 | v5.90 | #1 首次 CUDA 執行：cuda_smoke 11/13，修好兩個真正的 CUDA bug（FP8Trainer 把層建在 CPU、GPUMonitor 缺 NVML 就崩潰）；新增 10 項 CUDA 訓練檢查與 `gpu_overnight.sh` | — |
+| （下一個 PR） | v5.91 | 夜間 GPU 執行：cuda_smoke **23/23**；`--compile` 的 100M 試跑達 1.35 bits/byte、67.2k tokens/s、MFU 20.6%；腳本自動停止 pod | #1 |
 
 **#1 CUDA 驗證**（詳見 `docs/CUDA_VERIFICATION_2026-10-21.md`）：
 - RTX 6000 Ada（torch 2.14.1+cu130）上完整測試 574 passed、integration 9/9。但測試全部釘在 CPU，不算 CUDA 驗證。
 - `cuda_smoke.py` 第一次跑是 11/13，兩個失敗都已在 v5.90 修好，並加了能在 CPU 上重現的測試。
-- 剩下：v5.90 合併後在 pod 上 `git pull` 重跑，得到 13/13 即可關閉 #1。
+- 夜間重跑（v5.91）：**23/23 PASS**，#1 完成。
 
 **首次 GPU 100M 試跑**（93M dense，FineWeb-Edu 16.4M tokens，bf16）：
 - val bits/byte 2.77 → 1.79，每秒約 29.8k tokens，MFU 9.1%。
