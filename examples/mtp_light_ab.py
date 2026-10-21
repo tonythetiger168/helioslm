@@ -29,6 +29,7 @@ _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 sys.path.insert(0, str(_REPO / "examples"))
 
+from helioslm_v5.eval import multiseed  # noqa: E402
 from helioslm_v5.configs.config_v5 import HeliosLMv5Config, MTPConfig  # noqa: E402
 from helioslm_v5.src.inference.mtp import MTPDecoder, MTPModule  # noqa: E402
 from helioslm_v5.src.model_v5 import HeliosLMv5  # noqa: E402
@@ -118,17 +119,8 @@ def evaluate(model, head, cfg, max_new):
         statistics.median(times) * 1e6
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--steps", type=int, default=600)
-    ap.add_argument("--batch", type=int, default=16)
-    ap.add_argument("--seq", type=int, default=64)
-    ap.add_argument("--lr", type=float, default=1e-3)
-    ap.add_argument("--window", type=int, default=16)
-    ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--max-new", type=int, default=32)
-    ap.add_argument("--output")
-    args = ap.parse_args()
+def experiment(args):
+    """One run at args.seed; returns the payload (not written)."""
     torch.set_num_threads(1)
 
     from train_toy_checkpoint import build_corpus, encode
@@ -150,11 +142,26 @@ def main():
         latency[style] = round(us, 1)
         print(json.dumps(row), f"latency {us:.0f}us", flush=True)
     out = {"experiment": "B2-5 light MTP head A/B (frozen toy main model)",
-           "train": {k: v for k, v in vars(args).items() if k != "output"},
+           "train": {k: v for k, v in vars(args).items() if k not in ("output", "seeds")},
            "results": results,
            "results_sha256": hashlib.sha256(
                json.dumps(results, sort_keys=True).encode()).hexdigest(),
            "head_step_latency_us_median": latency}
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--steps", type=int, default=600)
+    ap.add_argument("--batch", type=int, default=16)
+    ap.add_argument("--seq", type=int, default=64)
+    ap.add_argument("--lr", type=float, default=1e-3)
+    ap.add_argument("--window", type=int, default=16)
+    multiseed.add_seed_args(ap, default=0)
+    ap.add_argument("--max-new", type=int, default=32)
+    ap.add_argument("--output")
+    args = ap.parse_args()
+    out = multiseed.run(args, experiment)
     if args.output:
         Path(args.output).write_text(json.dumps(out, indent=2) + "\n")
         print("wrote", args.output)

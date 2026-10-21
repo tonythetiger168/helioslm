@@ -101,3 +101,28 @@ median of 11 runs after 3 warm-up runs; artifacts
 - Checked by `helioslm_v5/tests/test_bench_quant.py`: each median follows
   from its samples, every parity error is <= 1e-4, and every speedup > 1.5.
 
+## Multi-seed A/B runs (Issue #55)
+
+Every `examples/*_ab*.py` script accepts `--seeds` in place of `--seed`:
+
+```bash
+# legacy single-seed payload (unchanged)
+python examples/smebu_balance_ab.py --seed 0 --output /tmp/smebu_s0.json
+
+# paired multi-seed run: every arm runs once per seed
+python examples/smebu_balance_ab.py --seeds 0 1 2 --output /tmp/smebu_3seeds.json
+```
+
+- `--seed` and `--seeds` are mutually exclusive; seeds must be distinct
+  non-negative integers.
+- The multi-seed payload holds `per_seed` (each seed's full single-seed
+  payload, bit-identical to a `--seed` run), `aggregate` (numbers that
+  differ across seeds as mean / sample std / min / max / n),
+  `environment` and `per_seed_results_sha256`.
+- Paired differences between arms are taken within a seed from
+  `per_seed`.
+- `csa_ab_passkey.py --check` stays single-seed (it compares the
+  committed artifact).
+- The committed A/B artifacts are single-seed. A multi-seed claim needs
+  its own `--seeds` artifact.
+

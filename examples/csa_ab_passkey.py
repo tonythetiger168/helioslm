@@ -30,6 +30,7 @@ sys.path.insert(0, str(_REPO / "examples"))
 from hca_ab_passkey import (  # noqa: E402
     SCORING_TAG, DenseCausalAttention, _trial, _wire_identity,
     probe_accuracy)
+from helioslm_v5.eval import multiseed  # noqa: E402
 from helioslm_v5.src.attention.kv_compress import (  # noqa: E402
     CompressedSparseAttention)
 
@@ -110,13 +111,23 @@ def main():
     ap.add_argument("--heads", type=int, default=2)
     ap.add_argument("--amp", type=float, default=24.0)
     ap.add_argument("--boost", type=float, default=1.6)
-    ap.add_argument("--seed", type=int, default=0)
+    multiseed.add_seed_args(ap, default=0)
     ap.add_argument("--date", default="2026-10-15")
     ap.add_argument("--output", default=None)
     ap.add_argument("--check", action="store_true",
                     help="recompute and compare with the committed results")
     args = ap.parse_args()
-    payload = run(args)
+    if args.check and args.seeds is not None:
+        ap.error("--check compares the committed single-seed artifact; "
+                 "drop --seeds")
+    payload = multiseed.run(args, run)
+    if args.seeds is not None:
+        print(json.dumps(payload["aggregate"], indent=2))
+        if args.output:
+            Path(args.output).write_text(json.dumps(payload, indent=2) + "\n",
+                                         encoding="utf-8")
+            print(f"wrote {args.output}")
+        return
 
     names = list(payload["results"][0]["accuracy"])
     print(f"{'arm':<16}" + "".join(f"L={b['seq_len']:>6}"

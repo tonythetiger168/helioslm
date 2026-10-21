@@ -42,6 +42,7 @@ import torch
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
+from helioslm_v5.eval import multiseed  # noqa: E402
 from helioslm_v5.configs.config_v5 import HeliosLMv5Config, MoEConfig  # noqa: E402
 from helioslm_v5.src.moe.sigmoid_moe import DeviceLimitedMoE  # noqa: E402
 
@@ -94,14 +95,8 @@ def run(strategy, scenario, lam, updates, skew, seed):
             "bias_abs_mean_end": round(moe.route_bias.mean().abs().item(), 6)}
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--lam", type=float, default=3e-3)
-    ap.add_argument("--updates", type=int, default=300)
-    ap.add_argument("--skew", type=float, default=3.0)
-    ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--output")
-    args = ap.parse_args()
+def experiment(args):
+    """One run at args.seed; returns the payload (not written)."""
     t0 = time.time()
     results = []
     for scenario in SCENARIOS:
@@ -118,11 +113,23 @@ def main():
                                        "tokens_per_micro": v[1],
                                        "drift_at_half": v[2]}
                                    for k, v in SCENARIOS.items()},
-                     **{k: v for k, v in vars(args).items() if k != "output"}},
+                     **{k: v for k, v in vars(args).items() if k not in ("output", "seeds")}},
            "results": results,
            "results_sha256": hashlib.sha256(
                json.dumps(results, sort_keys=True).encode()).hexdigest(),
            "wall_seconds": round(time.time() - t0, 1)}
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--lam", type=float, default=3e-3)
+    ap.add_argument("--updates", type=int, default=300)
+    ap.add_argument("--skew", type=float, default=3.0)
+    multiseed.add_seed_args(ap, default=0)
+    ap.add_argument("--output")
+    args = ap.parse_args()
+    out = multiseed.run(args, experiment)
     if args.output:
         Path(args.output).write_text(json.dumps(out, indent=2) + "\n")
         print("wrote", args.output)
