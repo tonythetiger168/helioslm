@@ -1,0 +1,476 @@
+{
+  "experiment": "TW1 Hugging Face dataset licence audit",
+  "audited_at": "2026-10-20T13:11:00Z",
+  "rows": [
+    {
+      "id": "wikimedia/wikipedia",
+      "verified_id": true,
+      "license": [
+        "cc-by-sa-3.0",
+        "gfdl"
+      ],
+      "gated": false,
+      "sha": "b04c8d1ceb2f5cd4588862100d08de323dccfbaa",
+      "class": "commercial",
+      "error": null
+    },
+    {
+      "id": "HuggingFaceFW/fineweb-2",
+      "verified_id": true,
+      "license": "odc-by",
+      "gated": false,
+      "sha": "af9c13333eb981300149d5ca60a8e9d659b276b9",
+      "class": "commercial",
+      "error": null
+    },
+    {
+      "id": "lianghsun/fineweb-zhtw",
+      "verified_id": true,
+      "license": "mit",
+      "gated": "manual",
+      "sha": "7574753d8ec13dd630a1fb62310220faf1ed9209",
+      "class": "commercial",
+      "error": null
+    },
+    {
+      "id": "lianghsun/fineweb-2-zhtw",
+      "verified_id": true,
+      "license": "odc-by",
+      "gated": "manual",
+      "sha": "83732a289b8523c0ae7596324607b49227e728ef",
+      "class": "commercial",
+      "error": null
+    },
+    {
+      "id": "twinkle-ai/fineweb-zhtw-filtered",
+      "verified_id": true,
+      "license": "odc-by",
+      "gated": false,
+      "sha": "17de1a47ef31680f2a4735a3c83568a6c0ed528b",
+      "class": "commercial",
+      "error": null
+    },
+    {
+      "id": "liswei/Taiwan-Text-Excellence-2B",
+      "verified_id": true,
+      "license": "cc-by-nc-sa-4.0",
+      "gated": "auto",
+      "sha": "211652a3e9f5d33011e95fbb96d528f6b07ad684",
+      "class": "noncommercial",
+      "error": null
+    },
+    {
+      "id": "lianghsun/tw-news-551M",
+      "verified_id": true,
+      "license": "cc-by-nc-sa-4.0",
+      "gated": "manual",
+      "sha": "3cff0182261c367bb2232d224880a21226d04275",
+      "class": "noncommercial",
+      "error": null
+    },
+    {
+      "id": "lianghsun/tw-science-24M",
+      "verified_id": true,
+      "license": "cc-by-nc-sa-4.0",
+      "gated": "manual",
+      "sha": "9bf94568324144672841a1a1871594282623b8c0",
+      "class": "noncommercial",
+      "error": null
+    },
+    {
+      "id": "lianghsun/Taiwan_c4",
+      "verified_id": true,
+      "license": "cc-by-nc-nd-4.0",
+      "gated": "auto",
+      "sha": "42cc18cdffcf5140e172bd9bd6a3b7b113afbc7c",
+      "class": "noncommercial",
+      "error": null
+    },
+    {
+      "id": "botp/yentinglin-zh_TW_c4",
+      "verified_id": true,
+      "license": "odc-by",
+      "gated": false,
+      "sha": "aaff3487e9bfd614c00564697061e5e3af6fac12",
+      "class": "commercial",
+      "error": null
+    },
+    {
+      "id": "liswei/c4-zhtw",
+      "verified_id": true,
+      "license": null,
+      "gated": false,
+      "sha": "cf132cd2ee2c2d17d7d0b45fb910f5442d199f80",
+      "class": "unknown",
+      "error": null
+    },
+    {
+      "id": "lianghsun/cosmopedia-zhtw",
+      "verified_id": true,
+      "license": "apache-2.0",
+      "gated": "manual",
+      "sha": "b9ed21a2d7bb930c89d96c4bee7eb62b4f354cf4",
+      "class": "commercial",
+      "error": null
+    },
+    {
+      "id": "yentinglin/TaiwanChat",
+      "verified_id": true,
+      "license": "cc-by-nc-4.0",
+      "gated": false,
+      "sha": "d766aa2cf5743aebfe3d91bbf141b3724de21a9b",
+      "class": "noncommercial",
+      "error": null
+    },
+    {
+      "id": "lianghsun/tw-instruct-500k",
+      "verified_id": true,
+      "license": "cc-by-nc-sa-4.0",
+      "gated": false,
+      "sha": "6ccf638af64dc78fb840c970f2ea9509948f1378",
+      "class": "noncommercial",
+      "error": null
+    },
+    {
+      "id": "lianghsun/tw-instruct-pro",
+      "verified_id": true,
+      "license": "cc-by-nc-nd-4.0",
+      "gated": "manual",
+      "sha": "f3c35fc6cc80fcaf3724461766f63683dc91ca51",
+      "class": "noncommercial",
+      "error": null
+    },
+    {
+      "id": "lianghsun/tw-reasoning-instruct",
+      "verified_id": true,
+      "license": "cc-by-nc-sa-4.0",
+      "gated": "manual",
+      "sha": "84220a04efe37aceaf3a41ee31c16757c5e6bbb3",
+      "class": "noncommercial",
+      "error": null
+    },
+    {
+      "id": "lianghsun/wikipedia-pretrain-zh-tw-chat",
+      "verified_id": true,
+      "license": "mit",
+      "gated": "manual",
+      "sha": "11a6047f0ca2b0f249060bcb6bc1be6c3bf6c86b",
+      "class": "commercial",
+      "error": null
+    },
+    {
+      "id": "raptorkwok/cantonese-traditional-chinese-parallel-corpus",
+      "verified_id": true,
+      "license": "cc0-1.0",
+      "gated": false,
+      "sha": "5e047fe1764e50868b22ae6f1c191ede448f4f26",
+      "class": "commercial",
+      "error": null
+    },
+    {
+      "id": "opencsg/chinese-fineweb-edu-v2",
+      "verified_id": true,
+      "license": "apache-2.0",
+      "gated": false,
+      "sha": "7e42b3de2c11c50510b28ebc3377fd6554c2009b",
+      "class": "commercial",
+      "error": null
+    },
+    {
+      "id": "Skywork/SkyPile-150B",
+      "verified_id": true,
+      "license": null,
+      "gated": false,
+      "sha": "d6395caa3005bcbf21dd80585c15f60004f77ccb",
+      "class": "unknown",
+      "error": null
+    },
+    {
+      "id": "BAAI/CCI3-HQ",
+      "verified_id": true,
+      "license": null,
+      "gated": "auto",
+      "sha": "d6f3aa30cebfef497e822ff968ed68a18bf90b8f",
+      "class": "unknown",
+      "error": null
+    },
+    {
+      "id": "m-a-p/MAP-CC",
+      "verified_id": true,
+      "license": "cc-by-nc-nd-4.0",
+      "gated": false,
+      "sha": "a000603906c4a4495a297646f7cba1e6e61fd5e7",
+      "class": "noncommercial",
+      "error": null
+    },
+    {
+      "id": "uonlp/CulturaX",
+      "verified_id": true,
+      "license": null,
+      "gated": "auto",
+      "sha": "6a8734bc69fefcbb7735f4f9250f43e4cd7a442e",
+      "class": "unknown",
+      "error": null
+    },
+    {
+      "id": "josecannete/large_spanish_corpus",
+      "verified_id": true,
+      "license": [
+        "mit"
+      ],
+      "gated": false,
+      "sha": "b140e17cb4a8f2721083f7e6517c24441e67662a",
+      "class": "commercial",
+      "error": null
+    },
+    {
+      "id": "spanish-ir/eswiki_20240401_corpus",
+      "verified_id": true,
+      "license": null,
+      "gated": false,
+      "sha": "fe9f26a420825289ac86e77eb924443b489f0dbf",
+      "class": "unknown",
+      "error": null
+    },
+    {
+      "id": "FreedomIntelligence/evol-instruct-spanish",
+      "verified_id": true,
+      "license": null,
+      "gated": false,
+      "sha": "280a7556a669446e84707b239b323715d36ed065",
+      "class": "unknown",
+      "error": null
+    },
+    {
+      "id": "FreedomIntelligence/MMLU_Spanish",
+      "verified_id": true,
+      "license": "mit",
+      "gated": false,
+      "sha": "1a70c4272d49d942164d3ad62d90b9d4773e65bb",
+      "class": "commercial",
+      "error": null
+    },
+    {
+      "id": "amias-mx/mmlu-redux-2.0-spanish",
+      "verified_id": true,
+      "license": "cc-by-4.0",
+      "gated": false,
+      "sha": "fd89d99600684da66c6873ec5007653bd1ba7699",
+      "class": "commercial",
+      "error": null
+    },
+    {
+      "id": "llm-book/japanese-wikipedia",
+      "verified_id": true,
+      "license": null,
+      "gated": false,
+      "sha": "33596dcc687c2658d2a1adf32c49283a597c3251",
+      "class": "unknown",
+      "error": null
+    },
+    {
+      "id": "Podtech/llm-jp-corpus-v4-ja_wiki",
+      "verified_id": true,
+      "license": "cc-by-sa-3.0",
+      "gated": false,
+      "sha": "2ee89fb39e886c49b73023dfef9331a6e271ac42",
+      "class": "commercial",
+      "error": null
+    },
+    {
+      "id": "kanhatakeyama/japanese-corpus-categorized",
+      "verified_id": true,
+      "license": "odbl",
+      "gated": false,
+      "sha": "42846d8e445493c647f7972e200a8f3632969fff",
+      "class": "commercial",
+      "error": null
+    },
+    {
+      "id": "llm-jp/llm-jp-4.1-thinking-sft-data",
+      "verified_id": true,
+      "license": null,
+      "gated": false,
+      "sha": "cb4210190af6a0000fd91cb5bb8361ad6d6ade01",
+      "class": "unknown",
+      "error": null
+    },
+    {
+      "id": "Kendamarron/cosmopedia-japanese-instruction-mistral-nemo",
+      "verified_id": true,
+      "license": null,
+      "gated": false,
+      "sha": "829d08732eb4d6f444b1e062df9c2a585a24cd31",
+      "class": "unknown",
+      "error": null
+    },
+    {
+      "id": "nlp-waseda/JMMLU",
+      "verified_id": true,
+      "license": "cc-by-nc-nd-4.0",
+      "gated": false,
+      "sha": "3637b25e444ccfdcde4d23a783cbe8e674faa01b",
+      "class": "noncommercial",
+      "error": null
+    },
+    {
+      "id": "nlp-waseda/JMMLU_CC-BY-SA",
+      "verified_id": true,
+      "license": null,
+      "gated": false,
+      "sha": "1fef4fc20bf8a5bab0bf63952dd78a3f47ec9920",
+      "class": "unknown",
+      "error": null
+    },
+    {
+      "id": "lcw99/wikipedia-korean-20240501",
+      "verified_id": true,
+      "license": "apache-2.0",
+      "gated": false,
+      "sha": "8e9d21864e0dbe3e31fe8e82699477db38393788",
+      "class": "commercial",
+      "error": null
+    },
+    {
+      "id": "korean-corpus/namu_wiki_512_char_seg",
+      "verified_id": true,
+      "license": null,
+      "gated": false,
+      "sha": "d3fbbaea6471aaf8f102feaf368e60d9cab5f833",
+      "class": "unknown",
+      "error": null
+    },
+    {
+      "id": "heegyu/open-korean-instructions",
+      "verified_id": true,
+      "license": "mit",
+      "gated": false,
+      "sha": "7844cb80b3c7f9ab0ed7a3946490ae4a337a8d5e",
+      "class": "commercial",
+      "error": null
+    },
+    {
+      "id": "devngho/korean-instruction-mix",
+      "verified_id": true,
+      "license": "cc-by-sa-4.0",
+      "gated": "auto",
+      "sha": "1470b11e162c0070cdd455fb7143e9cf3787b6bc",
+      "class": "commercial",
+      "error": null
+    },
+    {
+      "id": "HAERAE-HUB/KMMLU",
+      "verified_id": true,
+      "license": "cc-by-nd-4.0",
+      "gated": false,
+      "sha": "d61b3f19e552c576bf5960dd24289763edc36a88",
+      "class": "no_derivatives",
+      "error": null
+    },
+    {
+      "id": "LGAI-EXAONE/KMMLU-Redux",
+      "verified_id": true,
+      "license": "cc-by-nc-nd-4.0",
+      "gated": "auto",
+      "sha": "5ae54a2048e4e2754ef3fb3b0c19c8ebe8111eb4",
+      "class": "noncommercial",
+      "error": null
+    },
+    {
+      "id": "skt/kobest_v1",
+      "verified_id": true,
+      "license": [
+        "cc-by-sa-4.0"
+      ],
+      "gated": false,
+      "sha": "a5ea15e3ac77ed694b79f6204eb31889a2ba989f",
+      "class": "commercial",
+      "error": null
+    },
+    {
+      "id": "ikala/tmmluplus",
+      "verified_id": true,
+      "license": "mit",
+      "gated": false,
+      "sha": "639a64db464b4661feb91817b9edfe43932bdf18",
+      "class": "commercial",
+      "error": null
+    },
+    {
+      "id": "MediaTek-Research/TCEval-v2",
+      "verified_id": true,
+      "license": null,
+      "gated": false,
+      "sha": "93ae26a94572907f6d33f9844abd9d074bcc3723",
+      "class": "unknown",
+      "error": null
+    },
+    {
+      "id": "JerryWu/TW-JusticeBench",
+      "verified_id": true,
+      "license": "cc-by-4.0",
+      "gated": "manual",
+      "sha": "97c63ede2b0a65d4afb74887023cf4470d0df7d4",
+      "class": "commercial",
+      "error": null
+    }
+  ],
+  "summary": {
+    "commercial": [
+      "wikimedia/wikipedia",
+      "HuggingFaceFW/fineweb-2",
+      "lianghsun/fineweb-zhtw",
+      "lianghsun/fineweb-2-zhtw",
+      "twinkle-ai/fineweb-zhtw-filtered",
+      "botp/yentinglin-zh_TW_c4",
+      "lianghsun/cosmopedia-zhtw",
+      "lianghsun/wikipedia-pretrain-zh-tw-chat",
+      "raptorkwok/cantonese-traditional-chinese-parallel-corpus",
+      "opencsg/chinese-fineweb-edu-v2",
+      "josecannete/large_spanish_corpus",
+      "FreedomIntelligence/MMLU_Spanish",
+      "amias-mx/mmlu-redux-2.0-spanish",
+      "Podtech/llm-jp-corpus-v4-ja_wiki",
+      "kanhatakeyama/japanese-corpus-categorized",
+      "lcw99/wikipedia-korean-20240501",
+      "heegyu/open-korean-instructions",
+      "devngho/korean-instruction-mix",
+      "skt/kobest_v1",
+      "ikala/tmmluplus",
+      "JerryWu/TW-JusticeBench"
+    ],
+    "noncommercial": [
+      "liswei/Taiwan-Text-Excellence-2B",
+      "lianghsun/tw-news-551M",
+      "lianghsun/tw-science-24M",
+      "lianghsun/Taiwan_c4",
+      "yentinglin/TaiwanChat",
+      "lianghsun/tw-instruct-500k",
+      "lianghsun/tw-instruct-pro",
+      "lianghsun/tw-reasoning-instruct",
+      "m-a-p/MAP-CC",
+      "nlp-waseda/JMMLU",
+      "LGAI-EXAONE/KMMLU-Redux"
+    ],
+    "no_derivatives": [
+      "HAERAE-HUB/KMMLU"
+    ],
+    "unknown": [
+      "liswei/c4-zhtw",
+      "Skywork/SkyPile-150B",
+      "BAAI/CCI3-HQ",
+      "uonlp/CulturaX",
+      "spanish-ir/eswiki_20240401_corpus",
+      "FreedomIntelligence/evol-instruct-spanish",
+      "llm-book/japanese-wikipedia",
+      "llm-jp/llm-jp-4.1-thinking-sft-data",
+      "Kendamarron/cosmopedia-japanese-instruction-mistral-nemo",
+      "nlp-waseda/JMMLU_CC-BY-SA",
+      "korean-corpus/namu_wiki_512_char_seg",
+      "MediaTek-Research/TCEval-v2"
+    ],
+    "errors": []
+  },
+  "rows_sha256": "5f649e841f3a618ff6ff3b41f73fa2fac7144e87da683e5fa2a0fc8922482c4e",
+  "note": "card metadata only; a screening list, not legal advice"
+}

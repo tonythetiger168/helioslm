@@ -88,7 +88,7 @@ renumbered.
 | B4 | U5 clamped SwiGLU (gpt-oss) — defaults bit-identical, matches gpt-oss reference, activation bounded | ✅ Done (v5.68, T106) |
 | B4 | U6 cross-layer KV sharing (Gemma 3n/4) — KV cache exactly (L−N)/L, N=4 of 8 halves it at val ppl 14.71 vs 14.94 (GMU not done) | ✅ Done (v5.71, T109) |
 | B4 | U7 SMEBU + depth-scaled sandwich norm (Arcee Trinity) — fewer bias reversals at every step size, MaxVio variance −39% at λ=1e-2; sandwich gain 1/√L | ✅ Done (v5.72, T111) |
-| TW | TW1 dataset license audit (HF card license + gated status) | ⬜ Not started |
+| TW | TW1 dataset license audit (HF card license + gated status) — 45 cards read live: 21 commercial, 11 non-commercial, 1 no-derivatives, 12 without a licence field; wrong ids in the plan corrected | ✅ Done (v5.81, T119) |
 | TW | TW2 zh-TW pretraining pipeline (Wikipedia s2twp + FineWeb-2 + data.gov.tw, ~100M tokens) | ⬜ Not started |
 | TW | TW3 Traditional-Chinese evals in the harness (TMMLU+, TMLU, TW-JusticeBench) | ⬜ Not started |
 | TW | TW4 zh-TW tokenizer coverage report — toy char vocab loses 100% of CJK; BPE without Chinese 3.00 tokens/char; repo BPE 0.86 with 78% single-token coverage | ✅ Done (v5.75, T114) |
@@ -98,5 +98,9 @@ renumbered.
 | AC | AC3 tool-call recovery layer (7 named repairs, fuzz-tested) | ✅ Done (v5.62, T99) |
 | AC | AC4 repo-scale long-context probe (dense vs hybrid vs CSA) — hybrid 1.00 at 1x/2x/4x files; dense 0.29 (0.91 at 2x steps), CSA mean 0.54 | ✅ Done (v5.74, T113) |
 | AC | AC5 知止: stop-decision metrics (false DONE, tested-before-done) on terminal/SWE runs | ✅ Done (v5.62, T98) — frontier rows need an API key |
-| C | CUDA verification (#1), fused quant benchmark (#2), BPE tokenizer (#5), HF Hub (#4), ~1B GPU run | ⬜ Not started |
+| C | CUDA end-to-end verification (#1) | ⬜ Not started (needs a GPU) |
+| C | Fused vs unfused quant benchmark (#2) | 🟡 Driver committed; measured run pending |
+| C | BPE toy tokenizer and checkpoint (#5) | 🟡 Script committed; matched char baseline pending |
+| C | Hugging Face Hub push / pull (#4) | 🟡 Code and round-trip test committed |
+| C | ~100M single-GPU pilot, then ~1B GPU run | ⬜ Not started |
 | D | DecisionHead at 1B, multi-env GRPO training at real scale (tooling exists since Phase 2.1), TrustGate CLARIFY threshold calibration | ⬜ Not started |
