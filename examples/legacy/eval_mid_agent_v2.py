@@ -10,7 +10,7 @@ decides capability ownership, not parameter count (recorded finding).
 
 This v2 drives ChatSession -- the harness that matches the training
 distribution -- so the agency question is tested in-format.
-Usage: python examples/eval_mid_agent_v2.py
+Usage: python examples/legacy/eval_mid_agent_v2.py
 """
 import json
 import os
@@ -21,8 +21,8 @@ from pathlib import Path
 
 import torch
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "helioslm_v5" / "agent"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "helioslm_v5" / "agent"))
 
 from chat import ChatSession
 from envs import make_envs, make_long_envs

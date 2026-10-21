@@ -1,5 +1,31 @@
 # HeliosLM v5 Changelog
 
+## v5.85 (2026-10-21) - Issue #54: archive legacy eval / web UI versions; v1 UI path-traversal fix
+
+- Dependency audit first. `eval_mid_agent.py` (v1) to `_v4` have no
+  importers. Contrary to the v5.79 note, v2/v4/v5 do not import
+  `_mid_common.py`; only `eval_mid_trust.py` does, and it stays. The
+  committed `checkpoints/mid_agent_eval*.json` are outputs, cited by name
+  only.
+- Moved to `examples/legacy/` (names kept, paths fixed, still run from the
+  repo root). `examples/eval_mid_agent_v5.py` is the supported mid eval.
+- The v1.36 web UI moved to `helioslm_v5/harness/legacy/web_ui_v1.py`.
+  `harness/web_ui.py` is a shim: imports and `python
+  helioslm_v5/harness/web_ui.py` still work, with a `DeprecationWarning`.
+  `web_ui_v2.py` is the supported UI.
+- `examples/legacy/README.md`: supported versions, what each archived
+  version measured, and how to migrate.
+- **Security fix (v1 UI):** `/video/<name>` and `/audio/<name>` joined the
+  raw URL onto `~/.helios_media`. `GET /video/../../etc/hostname` returned
+  the file (HTTP 200) whenever that directory existed, and v1 binds
+  `0.0.0.0`. The routes now resolve names inside the media directory, as
+  v2 does; `test_web_ui.py` covers it, and the test fails on the old code.
+- v1's entrypoint failed with `ModuleNotFoundError: harness.harness_core`
+  unless run under pytest: the module lives in the top-level `harness/`.
+  v1 now puts the repository root on the path itself.
+- Historical records (changelog, handoff notes, eval JSONs) keep the old
+  paths.
+
 ## v5.84 (2026-10-21) - Issue #2: fused vs unfused quantization, measured
 
 - `benchmarks/bench_quant.py` now covers MXFP4 too (`--methods awq gptq

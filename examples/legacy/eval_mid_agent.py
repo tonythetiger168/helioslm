@@ -5,7 +5,7 @@ loops with observations fed back, replay-verified. Single-prompt SFT
 eval already passed 40/40 -- this measures what that did NOT.
 
 Usage (local, after train_mid_sft.py):
-    python examples/eval_mid_agent.py
+    python examples/legacy/eval_mid_agent.py
 Writes checkpoints/mid_agent_eval.json and prints it.
 """
 import json
@@ -17,8 +17,8 @@ from pathlib import Path
 
 import torch
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "helioslm_v5" / "agent"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "helioslm_v5" / "agent"))
 
 from envs import make_envs, make_long_envs
 from gate import FixedGate, Route
