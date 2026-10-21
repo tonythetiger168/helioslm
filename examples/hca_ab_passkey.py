@@ -62,6 +62,7 @@ import torch.nn as nn
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from helioslm_v5.eval import multiseed  # noqa: E402
 from helioslm_v5.src.attention.kv_compress import HighCompressionAttention
 
 SCORING_TAG = "constructive-oracle-passkey-readout"
@@ -208,13 +209,19 @@ def main():
     ap.add_argument("--window", type=int, default=8)
     ap.add_argument("--amp", type=float, default=24.0)
     ap.add_argument("--boost", type=float, default=1.6)
-    ap.add_argument("--seed", type=int, default=0)
+    multiseed.add_seed_args(ap, default=0)
     ap.add_argument("--date", default="2026-10-12")
     ap.add_argument("--output", default=None)
     args = ap.parse_args()
-    args._blocks = []
 
-    payload = run(args)
+    payload = multiseed.run(args, run)
+    if args.seeds is not None:
+        print(json.dumps(payload["aggregate"], indent=2))
+        if args.output:
+            Path(args.output).write_text(json.dumps(payload, indent=2) + "\n",
+                                         encoding="utf-8")
+            print(f"wrote {args.output}")
+        return payload
 
     # console table
     names = ["dense"] + [f"hca-{c}x" for c in args.chunks] + \

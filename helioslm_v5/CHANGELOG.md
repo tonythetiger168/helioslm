@@ -1,5 +1,33 @@
 # HeliosLM v5 Changelog
 
+## v5.86 (2026-10-21) - Issue #55: --seeds for the A/B scripts
+
+- `eval/multiseed.py`: `add_seed_args` adds `--seeds S1 S2 ...` beside
+  `--seed`, and `run(args, experiment)` calls a script's experiment once
+  per seed.
+  - Precedence: `--seed` and `--seeds` are mutually exclusive. Without
+    `--seeds` a script runs exactly as before and writes the same payload.
+    Seeds must be distinct non-negative integers.
+  - Pairing: within a seed every arm runs with that seed, so the arms of
+    each seed are paired.
+  - Payload: `seeds`, `per_seed` (each seed's full legacy payload),
+    `aggregate` (fields equal in every seed kept; differing numbers ->
+    mean / sample std / min / max / n; dicts and lists merged
+    recursively), `environment` (Python, torch, platform, argv) and
+    `per_seed_results_sha256`.
+- Wired into all eight A/B scripts: `csa_ab_passkey`, `hca_ab_passkey`,
+  `kv_share_ab`, `mtp_light_ab`, `nope_temperature_ab`,
+  `quantile_balancing_ab`, `smebu_balance_ab`, `thinking_budget_ab`. Each
+  `main()` now calls an `experiment(args)` that returns the payload.
+  `csa_ab_passkey --check` refuses `--seeds`, since it compares the
+  committed single-seed artifact.
+- No multi-seed experiment has been run yet: the committed A/B results
+  stay single-seed claims until a `--seeds` artifact is committed.
+- `tests/test_multiseed.py`: the aggregator, CLI validation, both flags in
+  every script, and on two real scripts that a `--seeds 0 1` run's
+  per-seed results equal separate `--seed` runs bit for bit, with the
+  legacy payload unchanged.
+
 ## v5.85 (2026-10-21) - Issue #54: archive legacy eval / web UI versions; v1 UI path-traversal fix
 
 - Dependency audit first. `eval_mid_agent.py` (v1) to `_v4` have no

@@ -33,6 +33,7 @@ import torch
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
+from helioslm_v5.eval import multiseed  # noqa: E402
 from helioslm_v5.configs.config_v5 import HeliosLMv5Config, MoEConfig  # noqa: E402
 from helioslm_v5.src.moe.sigmoid_moe import DeviceLimitedMoE  # noqa: E402
 
@@ -79,16 +80,8 @@ def run(strategy, lam, steps, batch, skew, seed):
             "bias_sign_flips_per_step": round(flips / (steps - 1), 3)}
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--lambdas", type=float, nargs="+",
-                    default=[1e-3, 3e-3, 1e-2])
-    ap.add_argument("--steps", type=int, default=600)
-    ap.add_argument("--batch", type=int, default=512)
-    ap.add_argument("--skew", type=float, default=3.0)
-    ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--output")
-    args = ap.parse_args()
+def experiment(args):
+    """One run at args.seed; returns the payload (not written)."""
     t0 = time.time()
     results = []
     for lam in args.lambdas:
@@ -100,11 +93,25 @@ def main():
                          "skewed token stream, one MoE layer",
            "setup": {"experts": N_EXPERTS, "top_k": TOP_K,
                      "smebu_beta": 0.5, "smebu_kappa": 2.0,
-                     **{k: v for k, v in vars(args).items() if k != "output"}},
+                     **{k: v for k, v in vars(args).items() if k not in ("output", "seeds")}},
            "results": results,
            "results_sha256": hashlib.sha256(
                json.dumps(results, sort_keys=True).encode()).hexdigest(),
            "wall_seconds": round(time.time() - t0, 1)}
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--lambdas", type=float, nargs="+",
+                    default=[1e-3, 3e-3, 1e-2])
+    ap.add_argument("--steps", type=int, default=600)
+    ap.add_argument("--batch", type=int, default=512)
+    ap.add_argument("--skew", type=float, default=3.0)
+    multiseed.add_seed_args(ap, default=0)
+    ap.add_argument("--output")
+    args = ap.parse_args()
+    out = multiseed.run(args, experiment)
     if args.output:
         Path(args.output).write_text(json.dumps(out, indent=2) + "\n")
         print("wrote", args.output)

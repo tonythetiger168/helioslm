@@ -34,6 +34,7 @@ _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 sys.path.insert(0, str(_REPO / "examples"))
 
+from helioslm_v5.eval import multiseed  # noqa: E402
 from helioslm_v5.configs.config_v5 import (  # noqa: E402
     AttentionConfig, HeliosLMv5Config, HybridAttentionConfig, MTPConfig)
 from helioslm_v5.src.model_v5 import HeliosLMv5  # noqa: E402
@@ -61,18 +62,8 @@ def cache_bytes_per_token(model, vocab, seq=64):
     return total / seq
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--layers", type=int, default=8)
-    ap.add_argument("--shares", type=int, nargs="+", default=[0, 2, 4])
-    ap.add_argument("--steps", type=int, default=600)
-    ap.add_argument("--batch", type=int, default=16)
-    ap.add_argument("--seq", type=int, default=128)
-    ap.add_argument("--lr", type=float, default=1e-3)
-    ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--val-windows", type=int, default=16)
-    ap.add_argument("--output")
-    args = ap.parse_args()
+def experiment(args):
+    """One run at args.seed; returns the payload (not written)."""
 
     from train_toy_checkpoint import build_corpus, encode
     vocab = config(0, args.layers).vocab_size
@@ -133,11 +124,27 @@ def main():
            "data": {"corpus": "train_toy_checkpoint.build_corpus (char ids)",
                     "train_tokens": len(train_ids), "val_tokens": len(val_ids),
                     "val_windows": args.val_windows},
-           "train": {k: v for k, v in vars(args).items() if k != "output"},
+           "train": {k: v for k, v in vars(args).items() if k not in ("output", "seeds")},
            "results": results,
            "results_sha256": hashlib.sha256(
                json.dumps(results, sort_keys=True).encode()).hexdigest(),
            "wall_seconds": round(time.time() - t0, 1)}
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--layers", type=int, default=8)
+    ap.add_argument("--shares", type=int, nargs="+", default=[0, 2, 4])
+    ap.add_argument("--steps", type=int, default=600)
+    ap.add_argument("--batch", type=int, default=16)
+    ap.add_argument("--seq", type=int, default=128)
+    ap.add_argument("--lr", type=float, default=1e-3)
+    multiseed.add_seed_args(ap, default=0)
+    ap.add_argument("--val-windows", type=int, default=16)
+    ap.add_argument("--output")
+    args = ap.parse_args()
+    out = multiseed.run(args, experiment)
     if args.output:
         Path(args.output).write_text(json.dumps(out, indent=2) + "\n")
         print("wrote", args.output)
