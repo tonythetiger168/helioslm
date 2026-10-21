@@ -1,0 +1,164 @@
+{
+  "experiment": "distillation teacher licence audit",
+  "audited_at": "2026-10-20T13:22:32Z",
+  "scope_notes": [
+    "weight licences only: outputs from a vendor's own API follow that API's terms of service",
+    "a distilled student is treated as a derivative work (conservative)"
+  ],
+  "rows": [
+    {
+      "id": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "card_license": "mit",
+      "card_license_name": null,
+      "sha": "314113f8a7dadb388215396ba5fbee2c610a04d6",
+      "license_file": "LICENSE",
+      "license_sha256": "f2c6c602815669d292889e5be8c802f2ed950653b77999b1584e8e6aed25d040",
+      "reviewed_sha256": "f2c6c602815669d292889e5be8c802f2ed950653b77999b1584e8e6aed25d040",
+      "license": "MIT",
+      "verdict": "allowed",
+      "conditions": [
+        "keep the copyright and permission notice"
+      ]
+    },
+    {
+      "id": "deepseek-ai/DeepSeek-V4-Pro",
+      "card_license": "mit",
+      "card_license_name": null,
+      "sha": "b5968e9190ef611bbf34a7229255be88a0e937c1",
+      "license_file": "LICENSE",
+      "license_sha256": "f2c6c602815669d292889e5be8c802f2ed950653b77999b1584e8e6aed25d040",
+      "reviewed_sha256": "f2c6c602815669d292889e5be8c802f2ed950653b77999b1584e8e6aed25d040",
+      "license": "MIT",
+      "verdict": "allowed",
+      "conditions": [
+        "keep the copyright and permission notice"
+      ]
+    },
+    {
+      "id": "moonshotai/Kimi-K3",
+      "card_license": "other",
+      "card_license_name": "kimi-k3",
+      "sha": "f831ab66814297da540d832a5235f8e904f29d06",
+      "license_file": "LICENSE",
+      "license_sha256": "20c797ce19af0c17de52c6afb144644768a591c521655f5ebf5712c9850f2887",
+      "reviewed_sha256": "20c797ce19af0c17de52c6afb144644768a591c521655f5ebf5712c9850f2887",
+      "license": "Kimi K3 License",
+      "verdict": "allowed_with_conditions",
+      "conditions": [
+        "keep the copyright and permission notice (s.1)",
+        "commercial products over 100M MAU or US$20M monthly revenue must display 'Kimi K3' (s.3)",
+        "a Model-as-a-Service business over US$20M revenue in 12 months needs a separate agreement before commercial use (s.2)",
+        "internal use (nothing made available to third parties) is exempt from s.2 and s.3 (s.4)"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3.8-2.4T-A95B",
+      "card_license": "other",
+      "card_license_name": "qwen3.8-max",
+      "sha": "207bd685a7e3696cfaff12ded7c6a7ea0f88c996",
+      "license_file": "LICENSE",
+      "license_sha256": "a136bc4137ef3d7a7a54963164a47270f73e497917728ea0f4407a0115db1290",
+      "reviewed_sha256": "a136bc4137ef3d7a7a54963164a47270f73e497917728ea0f4407a0115db1290",
+      "license": "Qwen3.8-Max License",
+      "verdict": "allowed_with_conditions",
+      "conditions": [
+        "keep the copyright and permission notice (s.1)",
+        "commercial products over 100M MAU or US$20M monthly revenue must display the model name (s.1)",
+        "a Model-as-a-Service or AI Work Assistant business over US$50M revenue in 12 months needs a separate licence (s.2)"
+      ]
+    },
+    {
+      "id": "zai-org/GLM-5.3",
+      "card_license": "other",
+      "card_license_name": "glm-5.3",
+      "sha": "ba32f8c19c8738e2c57c71798c601d477a7bf844",
+      "license_file": "LICENSE",
+      "license_sha256": "96e1622099fc9d6b70c9760f007d99e66d7497eec636b63c60fe208401e9170c",
+      "reviewed_sha256": "96e1622099fc9d6b70c9760f007d99e66d7497eec636b63c60fe208401e9170c",
+      "license": "GLM-5.3 License",
+      "verdict": "allowed_with_conditions",
+      "conditions": [
+        "keep the copyright and permission notice (s.1)",
+        "a Model-as-a-Service business over US$10B revenue in 12 months must pass Z.AI's security review before commercial use (s.2)"
+      ]
+    },
+    {
+      "id": "XiaomiMiMo/MiMo-V2.6-Pro-MOPD",
+      "card_license": "mit",
+      "card_license_name": null,
+      "sha": "6a7f202e8dbd0e57b3fe1da03917d08d75abc4b8",
+      "license_file": null,
+      "license_sha256": null,
+      "reviewed_sha256": null,
+      "license": "MIT (model card; no LICENSE file in the repository)",
+      "verdict": "allowed",
+      "conditions": [
+        "keep the copyright and permission notice",
+        "confirm the licence with the MiMo GitHub repository before use: the Hub repo carries no LICENSE file"
+      ]
+    },
+    {
+      "id": "MiniMaxAI/MiniMax-M3",
+      "card_license": "other",
+      "card_license_name": "minimax-community",
+      "sha": "f0e1c1e04d40177e4673a22097036854f536e9c0",
+      "license_file": "LICENSE",
+      "license_sha256": "b53f2fdda3049b0e9013207be51efc2d372cda1fcfdd8bb4bb8b22658ca5db9c",
+      "reviewed_sha256": "b53f2fdda3049b0e9013207be51efc2d372cda1fcfdd8bb4bb8b22658ca5db9c",
+      "license": "MiniMax Community License",
+      "verdict": "allowed_with_conditions",
+      "conditions": [
+        "keep the copyright and permission notice (s.1)",
+        "any commercial use of the Software or a derivative: display 'Built with MiniMax M3' and send a one-time notice to MiniMax (s.2.1, s.2.2)",
+        "commercial products over US$20M yearly revenue need prior written authorization from MiniMax (s.2.2)",
+        "Appendix prohibited uses apply to derivatives (incl. military purposes)"
+      ]
+    },
+    {
+      "id": "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+      "card_license": "other",
+      "card_license_name": "openmdw-1.1",
+      "sha": "77df655d5e9f8362164ed14dd8b48f8bce657498",
+      "license_file": null,
+      "license_sha256": null,
+      "reviewed_sha256": null,
+      "license": "OpenMDW-1.1 (model card; text not readable here)",
+      "verdict": "unclear",
+      "conditions": [
+        "read the OpenMDW-1.1 text before use: openmdw.ai is not reachable from this environment and no licence file is in the repository; secondary reports call it permissive (commercial use and derivatives, keep notices) but none states its terms on outputs"
+      ]
+    },
+    {
+      "id": "openai/gpt-oss-120b",
+      "card_license": "apache-2.0",
+      "card_license_name": null,
+      "sha": "b5c939de8f754692c1647ca79fbf85e8c1e70f8a",
+      "license_file": "LICENSE",
+      "license_sha256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd",
+      "reviewed_sha256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd",
+      "license": "Apache-2.0",
+      "verdict": "allowed",
+      "conditions": [
+        "keep the licence and NOTICE (s.4)",
+        "OpenAI's separate gpt-oss usage policy (not in the repository) should be read before use"
+      ]
+    },
+    {
+      "id": "google/gemma-4-31B-it",
+      "card_license": "apache-2.0",
+      "card_license_name": null,
+      "sha": "842da3794eaa0b77d5f08bae87a17459d91ff475",
+      "license_file": null,
+      "license_sha256": null,
+      "reviewed_sha256": null,
+      "license": "Apache-2.0 (model card; no LICENSE file in the repository)",
+      "verdict": "allowed",
+      "conditions": [
+        "keep the licence notice",
+        "confirm on Google's Gemma 4 licence page: Gemma 1-3n used the Gemma Terms of Use, which constrained derivatives; Gemma 4 is reported to be plain Apache 2.0"
+      ]
+    }
+  ],
+  "rows_sha256": "f5a812d68964c0cab93c868a03c2efebe724a56628ea49293c64106093dbd7ee",
+  "note": "a reviewed reading of the licence text, not legal advice"
+}

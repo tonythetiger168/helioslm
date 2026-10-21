@@ -76,6 +76,7 @@ renumbered.
 | B2 | B2-4 learnable mHC with Sinkhorn projection (GLM-5.3-Flash) — identity at init, doubly stochastic always; also fixes the v5.7 HC branch-fold bug | ✅ Done (v5.66, T104) |
 | B2 | B2-5 MiMo-style light MTP head — -20% params, -39% head latency, acceptance 0.813 vs 0.822 | ✅ Done (v5.67, T105) |
 | B2 | B2-6 on-policy distillation trainer (MiMo MOPD) — routed teachers keep inc 1.00 and halve the rev KL; one teacher erases inc; exact reversal not learned in 600 steps | ✅ Done (v5.76, T115) |
+| B2 | Distillation from API teachers + teacher licence audit — 10 open-weight teachers audited; on a toy task a verifier lifts sequence KD 0.54 → 1.00 in every seed, soft top-k targets across tokenizers 0.62 | ✅ Done (v5.82, T120, T121) |
 | B3 | Q1 short conv in GDA linear-attention layers (Qwen3-Next) — no recall benefit at toy scale (0.420 vs 0.426) | ✅ Done (v5.63, T101) |
 | B3 | Q2 zero-centered RMSNorm + `decay_param_groups` (Qwen3-Next) | ✅ Done (v5.63, T101) |
 | B3 | Q3 global-batch load-balancing loss (Qwen3 MoE) — equals the full-batch loss over micro-batches | ✅ Done (v5.63, T101) |
