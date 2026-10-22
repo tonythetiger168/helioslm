@@ -1,5 +1,24 @@
 # HeliosLM v5 Changelog
 
+## v5.95 (2026-10-22) - hsh H3: scoped tool registry and guarded execution pipeline
+
+- `hsh/schema.py`: the JSON Schema subset tools may declare, refused at
+  registration when anything else appears; a validator for it (bool is
+  not an integer; `oneOf` needs exactly one match).
+- `hsh/tools.py` (`ctx.tools`), after dsh's `core/tools`: parse and
+  validate arguments -> `tools/pre-execute` (allow / deny / ask, with
+  `ctx.approval`; no approval means deny) -> monotonic guards ->
+  `tools/execute` around the body -> `project_content` ->
+  `tools/post-execute` -> `finalize_content` (runs for every outcome) ->
+  `tools/result`. Every failure, including a throwing listener, becomes an
+  error result with a code; nothing escapes to the loop.
+- Scopes: an agent's own tools shadow globals; `restrict(allow, deny)`
+  filters inherited globals (restrictions intersect); a restricted-away
+  tool and a missing one give the same `unknown-tool` result; pipeline
+  events are dispatched scoped. `schemas()` sends only name, description
+  and parameters.
+- `tests/test_hsh_tools.py` (21 tests).
+
 ## v5.94 (2026-10-22) - hsh H2: append-only session log (model-visible means logged); OS1, OS2
 
 - `hsh/session.py`, after dsh's `core/session`:
