@@ -35,6 +35,21 @@
   parameter's gradient match blocked for each expert variant, skewed
   routing with idle experts, identical routing statistics, the fallback,
   a whole model, and bf16 autocast.
+## v5.105 (2026-10-22) - cuda_smoke: train_parity_fp32 gates on the 99.9th percentile
+
+- A fresh pod (RTX 6000 Ada, torch 2.8.0+cu128, main @ v5.92) gave 22/23
+  twice: `train_parity_fp32` failed with "weight drift 2.97e-03" against a
+  1e-3 bound on the max over all ~9M weights, with the loss within 1e-3
+  and every other check passing. v5.91 passed it on torch 2.14.1.
+- Not a device bug. AdamW divides by sqrt(v), so an element whose
+  gradient is ~0 moves by up to lr (1e-3) per step in the direction of its
+  rounding noise; CPU and CUDA round differently. Reproduced on the CPU
+  alone: 1 vs 4 threads gives a max of 2.2e-4 on a few elements while the
+  99.9th percentile stays at 4.6e-7.
+- The check now asserts the loss within 1e-3, the 99.9th percentile of
+  the weight difference below 1e-4 (a real device bug moves many weights),
+  and the max within AdamW's own bound of 2 * lr * steps. It also reports
+  the percentile and how many weights differ by more than 1e-4.
 ## v5.104 (2026-10-22) - OS7: long-context layout probe (RULER-lite)
 
 - `eval/ruler_lite.py`: three synthetic tasks in token-id space after
