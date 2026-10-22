@@ -66,7 +66,11 @@ def keeps_thinking(rec_id, mode, think_ratio=0.7):
 
 
 def format_example(rec, keep_thinking="all", think_ratio=0.7):
-    """(prompt text, target text) for one D1 record."""
+    """(prompt text, target text) for one D1 record. A record that is
+    already text (``prompt_text`` / ``target_text``, the D4 agent steps)
+    is passed through."""
+    if "prompt_text" in rec:
+        return rec["prompt_text"], rec["target_text"]
     parts = []
     for m in rec["messages"]:
         if m["role"] == "user":
