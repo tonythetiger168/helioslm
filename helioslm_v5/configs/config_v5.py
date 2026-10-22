@@ -396,6 +396,9 @@ class GRPOConfig:
     # sample carries them ("sampler_logprob" / "sampler_token_logprobs"):
     # weight = min(exp(old - sampler), tis_cap). None = off.
     tis_cap: Optional[float] = None
+    # v5.99 OS3: abstention-aware accuracy reward (training/abstain.py):
+    # wrong answers cost this much, "I don't know" earns 0. None = off.
+    abstain_penalty: Optional[float] = None
 
     def __post_init__(self):
         self._validate()
@@ -434,6 +437,10 @@ class GRPOConfig:
         if self.tis_cap is not None and not self.tis_cap >= 1.0:
             raise ValueError(
                 f"grpo.tis_cap must be >= 1 or None, got {self.tis_cap!r}")
+        if self.abstain_penalty is not None and not self.abstain_penalty >= 0:
+            raise ValueError(
+                f"grpo.abstain_penalty must be >= 0 or None, got "
+                f"{self.abstain_penalty!r}")
 
 
 class OptionConflictError(ValueError):

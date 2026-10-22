@@ -29,6 +29,28 @@
   behaviour.
 - `case_indexer.test_learned_lightning_indexer` checks both settings.
 
+## v5.100 (2026-10-22) - OS3: abstention-aware GRPO reward ("know when to stop")
+
+- `src/training/abstain.py`, after Hy3's hallucination reduction: a
+  correct answer pays +1, "I don't know" pays 0 and a wrong answer costs
+  `penalty`, so answering only pays above `answer_threshold(penalty) =
+  penalty / (1 + penalty)` confidence. On an unanswerable question,
+  abstaining pays +1 and any answer costs `penalty`.
+- `is_abstention`: `ANSWER: UNKNOWN` or English / Chinese phrases
+  (不知道, 無法確定, 資訊不足 and similar). Hedging that still states a number
+  counts as an answer.
+- `AbstainMathEnv` (`math-abstain`): MathEnv plus constructed
+  unanswerable variants with one operand withheld, so the ground truth is
+  known without a reference model. These tasks teach the abstain action;
+  they do not measure open-domain factual hallucination, which needs a
+  real benchmark. It plugs into `MultiEnvBatch(envs=...)`.
+- `abstain_metrics`: accuracy, abstain_rate (over-caution), wrong_rate,
+  precision and hallucination_rate.
+- `GRPOConfig.abstain_penalty` (default None keeps the old reward):
+  `GRPOTrainer.compute_rewards` uses the abstention payoffs and accepts
+  `None` answers for unanswerable questions.
+- `tests/test_abstain.py` (7 tests).
+
 ## v5.99 (2026-10-22) - OS4: licences of the 2026-10-22 open-model review
 
 - `eval/teacher_license_audit.py`: readings for the review's models not
