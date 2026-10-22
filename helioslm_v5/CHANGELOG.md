@@ -15,6 +15,20 @@
   the weight difference below 1e-4 (a real device bug moves many weights),
   and the max within AdamW's own bound of 2 * lr * steps. It also reports
   the percentile and how many weights differ by more than 1e-4.
+## v5.103 (2026-10-22) - OS5: MTP speculative rollouts for GRPO
+
+- `GRPOConfig.rollout_use_mtp` (default False, unchanged): GRPO rollouts
+  sample through `generate(..., use_mtp=True)`, which is MTPDecoder's exact
+  speculative sampling. The tokens follow the main model's distribution,
+  and `old_logprob` is still the main model's log-prob of what was
+  sampled. Turning it on without MTP modules is refused.
+- `examples/mtp_rollout_bench.py`: GRPO-shaped rollout throughput, plain
+  vs MTP. It reports the speed-up, acceptance and tokens per round, and
+  has two gates: greedy outputs must be identical, and the sampled
+  first-token distribution must agree (TV distance). The GPU run is still
+  to come; CPU numbers are telemetry only.
+- `tests/test_mtp_rollout.py` (3 tests).
+
 ## v5.102 (2026-10-22) - OS6: MoE configuration table for #42 (30B-A3B)
 
 - `eval/moe_config_table.py`: the MoE fields of Hy3, MiMo-V2.5,
@@ -43,6 +57,28 @@
   spikes and short-context regression). Default False keeps the old
   behaviour.
 - `case_indexer.test_learned_lightning_indexer` checks both settings.
+
+## v5.100 (2026-10-22) - OS3: abstention-aware GRPO reward ("know when to stop")
+
+- `src/training/abstain.py`, after Hy3's hallucination reduction: a
+  correct answer pays +1, "I don't know" pays 0 and a wrong answer costs
+  `penalty`, so answering only pays above `answer_threshold(penalty) =
+  penalty / (1 + penalty)` confidence. On an unanswerable question,
+  abstaining pays +1 and any answer costs `penalty`.
+- `is_abstention`: `ANSWER: UNKNOWN` or English / Chinese phrases
+  (不知道, 無法確定, 資訊不足 and similar). Hedging that still states a number
+  counts as an answer.
+- `AbstainMathEnv` (`math-abstain`): MathEnv plus constructed
+  unanswerable variants with one operand withheld, so the ground truth is
+  known without a reference model. These tasks teach the abstain action;
+  they do not measure open-domain factual hallucination, which needs a
+  real benchmark. It plugs into `MultiEnvBatch(envs=...)`.
+- `abstain_metrics`: accuracy, abstain_rate (over-caution), wrong_rate,
+  precision and hallucination_rate.
+- `GRPOConfig.abstain_penalty` (default None keeps the old reward):
+  `GRPOTrainer.compute_rewards` uses the abstention payoffs and accepts
+  `None` answers for unanswerable questions.
+- `tests/test_abstain.py` (7 tests).
 
 ## v5.99 (2026-10-22) - OS4: licences of the 2026-10-22 open-model review
 
