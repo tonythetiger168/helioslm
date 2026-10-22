@@ -1,5 +1,20 @@
 # HeliosLM v5 Changelog
 
+## v5.112 (2026-10-22) - D2: filtering teacher answers for distillation
+
+- `src/training/distill_filter.py`: drops D1 records, counting each reason:
+  not finished with "stop" (truncated), empty or leaked think tag, over the
+  reasoning / answer token caps (4096 each by default, for small students),
+  simplified Chinese above 2% of Han characters in the answer or 5% in the
+  reasoning (fixed simplified-only list, no opencc; characters valid in
+  Taiwan such as 台 and 着 excluded), n-gram overlap with evaluation items
+  (`eval/decontam.EvalIndex`), unparsable ```python blocks, math samples
+  outside the majority final answer (self-consistency), and near-duplicate
+  prompts (8-gram containment >= 0.8; samples of one prompt are kept).
+- Checked against the repo's own Traditional Chinese docs: 9 hits in 10k
+  Han characters, all real simplified leaks (断, 静, ...).
+- `examples/distill_filter.py` writes the kept records and a report.
+
 ## v5.111 (2026-10-22) - D1: DeepSeek teacher data generation for distillation
 
 - `src/training/distill_gen.py`: runs a prompt file through an
@@ -191,6 +206,7 @@ POSIX CI never saw; each fix is locked by a new test in
   parameter's gradient match blocked for each expert variant, skewed
   routing with idle experts, identical routing statistics, the fallback,
   a whole model, and bf16 autocast.
+
 ## v5.105 (2026-10-22) - cuda_smoke: train_parity_fp32 gates on the 99.9th percentile
 
 - A fresh pod (RTX 6000 Ada, torch 2.8.0+cu128, main @ v5.92) gave 22/23
@@ -206,6 +222,7 @@ POSIX CI never saw; each fix is locked by a new test in
   the weight difference below 1e-4 (a real device bug moves many weights),
   and the max within AdamW's own bound of 2 * lr * steps. It also reports
   the percentile and how many weights differ by more than 1e-4.
+
 ## v5.104 (2026-10-22) - OS7: long-context layout probe (RULER-lite)
 
 - `eval/ruler_lite.py`: three synthetic tasks in token-id space after
