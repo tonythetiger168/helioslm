@@ -1,5 +1,23 @@
 # HeliosLM v5 Changelog
 
+## v5.93 (2026-10-22) - hsh H1: plugin kernel after DeepSeek Harness
+
+- New package `helioslm_v5/hsh/`: the harness rebuilt on the design of
+  DeepSeek Harness (dsh, MIT, everything-is-a-plugin). Pure Python, written
+  from dsh's design documents, not its source. Plan and phase map:
+  `docs/HSH_HARNESS.md` (H1-H6).
+- `hsh/kernel.py` (H1), the Cordis layer:
+  - services (`ctx.provide`, `ctx.<key>`), plugins with `inject` that
+    wait for, activate on, and unwind with their services;
+  - reversible effects, unwound last-in first-out exactly once, including
+    nested plugins and the services they provided;
+  - a failing `apply` rolls back and leaves the fork `failed`;
+  - events with a declared dispatch mode (emit, waterfall, parallel,
+    serial, bail); another method or an undeclared event raises;
+  - scoped contexts: a scoped dispatch reaches untagged listeners plus its
+    own scope's.
+- `tests/test_hsh_kernel.py` (16 tests).
+
 ## v5.92 (2026-10-22) - Plan E1: lm-evaluation-harness adapter
 
 - `eval/lm_harness.py` registers the model type `helioslm` with
