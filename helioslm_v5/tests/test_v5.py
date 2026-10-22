@@ -137,6 +137,7 @@ TESTS = [
     case_indexer.test_sparse_prefill_indexer,
     # limitations round 2026-10-13
     case_indexer.test_indexer_share_group_stress,
+    case_indexer.test_indexer_distill_share_detach,
     case_muon.test_per_head_muon,
     case_quant.test_gptq_act_order,
     case_sparse_attention.test_attention_logit_soft_cap,

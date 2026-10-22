@@ -18,6 +18,8 @@ import re
 import torch
 from typing import List, Optional, Tuple
 
+from .abstain import abstain_reward
+
 
 class _ByteLevelTokenizer:
     """Minimal byte-level fallback tokenizer (UTF-8 bytes <-> token ids)."""
@@ -62,6 +64,16 @@ class GRPOTrainer:
         self.filter_zero_adv_groups = getattr(g, "filter_zero_adv_groups", False)
         self.tis_cap = getattr(g, "tis_cap", None)
         self.max_new_tokens = getattr(config.grpo, "max_new_tokens", 16)
+        # v5.99 OS3: None = original accuracy term; a float makes the
+        # accuracy term abstention-aware (training/abstain.py): wrong
+        # answers cost this much, "I don't know" earns 0, and an answer
+        # of None marks an unanswerable question.
+        self.abstain_penalty = getattr(g, "abstain_penalty", None)
+        # v5.103 OS5: speculative rollouts through the model's MTP heads.
+        self.rollout_use_mtp = getattr(g, "rollout_use_mtp", False)
+        if self.rollout_use_mtp and getattr(model, "mtp_modules", None) is None:
+            raise ValueError("grpo.rollout_use_mtp=True needs a model with "
+                             "MTP modules (config.mtp.enabled=True)")
 
         self.device = next(model.parameters()).device
         self.tokenizer = tokenizer if tokenizer is not None else _ByteLevelTokenizer()
@@ -141,7 +153,13 @@ class GRPOTrainer:
             reward = 0.0
 
             # Accuracy reward
-            if self._check_correctness(resp, ans):
+            if self.abstain_penalty is not None:
+                reward += abstain_reward(resp, ans, self._check_correctness,
+                                         self.abstain_penalty)
+                if ans is None:
+                    rewards.append(reward)   # no format/length terms
+                    continue
+            elif self._check_correctness(resp, ans):
                 reward += 1.0
 
             # Format reward
@@ -465,6 +483,10 @@ class GRPOTrainer:
                 # sampling and logprobs disagree (real off-policy bias
                 # whenever the filter binds).
                 top_p=1.0,
+                # OS5: speculative sampling emits tokens from the same
+                # distribution; old_logprob below is the main model's own
+                # log-prob of whatever was sampled, either way.
+                **({"use_mtp": True} if self.rollout_use_mtp else {}),
             )
             if gen.dim() == 1:
                 gen = gen.unsqueeze(0)
