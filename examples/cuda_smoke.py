@@ -19,6 +19,9 @@ GPU and compares it with the CPU where a reference exists:
   quant_<method>   AWQ / GPTQ / MXFP4 fused vs unfused on CUDA
   fp8_trainer      FP8Trainer with labels: finite token CE, gradients flow
   gpu_monitor      vllm_engine.GPUMonitor reads the device
+  moe_batched_dispatch / real_size_moe_batched
+                   v5.94 batched MoE dispatch equals blocked on the GPU,
+                   and its real-size step speed
 
 Training checks (v5.90):
   train_parity_fp32       same init and batches, 5 AdamW steps: CUDA tracks CPU
@@ -379,10 +382,10 @@ def grpo_train_step():
     return {k: round(float(out[k]), 4) for k in ("loss", "policy_loss", "kl_penalty")}
 
 
-def _real_size(arch, batch=8, seq=1024):
+def _real_size(arch, batch=8, seq=1024, moe_dispatch="blocked"):
     """One bf16 optimizer step of the real ~100M pilot model: memory and speed."""
     from helioslm_v5.src.training.pretrain import count_params, pilot_config
-    cfg = pilot_config(arch)
+    cfg = pilot_config(arch, moe_dispatch=moe_dispatch)
     torch.manual_seed(0)
     model = HeliosLMv5(cfg).to(DEV).train()
     opt = torch.optim.AdamW(model.parameters(), lr=1e-4)
@@ -413,6 +416,41 @@ def _real_size(arch, batch=8, seq=1024):
 
 for _arch in ("dense", "moe"):
     _named(f"real_size_{_arch}", lambda a=_arch: _real_size(a))
+# v5.94: the same MoE step with moe.dispatch="batched" (compare tokens/s
+# with real_size_moe)
+_named("real_size_moe_batched", lambda: _real_size("moe", moe_dispatch="batched"))
+
+
+@check
+def moe_batched_dispatch():
+    """v5.94: batched MoE dispatch equals blocked on this device (fp32
+    outputs and gradients), and under bf16 autocast."""
+    import copy
+    from helioslm_v5.configs.config_v5 import MoEConfig
+    from helioslm_v5.src.moe.sigmoid_moe import DeviceLimitedMoE
+    cfg = HeliosLMv5Config(size="lite", moe=MoEConfig(num_experts=16,
+                           num_activated_experts=2, device_group_size=1))
+    torch.manual_seed(15)
+    blocked = DeviceLimitedMoE(cfg).to(DEV).train()
+    batched = copy.deepcopy(blocked)
+    batched.dispatch = "batched"
+    assert batched._batchable()
+    x = torch.randn(4, 256, cfg.hidden_size, device=DEV)
+    outs = []
+    for m in (blocked, batched):
+        y = m(x)
+        y.pow(2).mean().backward()
+        outs.append((y.detach(), [p.grad for p in m.parameters()]))
+    out_diff = (outs[0][0] - outs[1][0]).abs().max().item()
+    grad_diff = max((a - b).abs().max().item()
+                    for a, b in zip(outs[0][1], outs[1][1])
+                    if a is not None and b is not None)
+    assert out_diff < 1e-4 and grad_diff < 1e-4, (out_diff, grad_diff)
+    with torch.no_grad(), torch.autocast(DEV.type, dtype=torch.bfloat16):
+        bf = (blocked(x).float() - batched(x).float()).abs().max().item()
+    assert bf < 5e-2, bf
+    return {"max_abs_diff": out_diff, "grad_max_abs_diff": grad_diff,
+            "bf16_max_abs_diff": bf}
 
 
 @check

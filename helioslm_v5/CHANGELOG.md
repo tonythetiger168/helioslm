@@ -1,5 +1,41 @@
 # HeliosLM v5 Changelog
 
+## v5.94 (2026-10-22) - #42 prep: batched MoE dispatch
+
+- On the RTX 6000 Ada the MoE pilot trained ~2.5x slower than dense at a
+  tiny width and 29.7k vs 8.4k tokens/s at real size (v5.91). The routed
+  experts run one Python-level call per expert and per fixed 64-row
+  block, which costs a kernel launch chain per call.
+- `moe.dispatch` (new, default `"blocked"`, unchanged behaviour):
+  `"batched"` sorts token slots by expert, scatters them into a
+  zero-padded `[A, C, D]` tensor (A = experts that received tokens, C =
+  the largest load) and runs every active expert in two `bmm` calls on
+  stacked weights. One host sync per layer, as before.
+  - SwiGLU, gpt-oss clamped SwiGLU, SiTU (incl. the zero-centred norm),
+    LatentMoE and shared experts are supported.
+  - Only active experts are stacked, so an idle expert's weights get no
+    gradient (None), exactly as in the blocked path, instead of a zero
+    gradient that AdamW would still step and decay.
+  - Not bit-identical to blocked, and a token's output can depend at the
+    float-rounding level on its batchmates (the GEMM shape follows C).
+    That is why it is opt-in: the default keeps the bitwise isolation the
+    packed-sequence tests rely on.
+  - Falls back to blocked when an expert's projections are not plain
+    `nn.Linear` (after quantization or FP8 conversion).
+- `pilot_100m.py --moe-dispatch batched`, `pilot_config(moe_dispatch=)`;
+  `lm_harness.load_pilot` reads it from `run.json`.
+- `examples/moe_dispatch_bench.py`: one MoE layer, forward + backward,
+  blocked vs batched on the same weights. CPU (fp32, 2048 tokens, 16
+  experts, top 2): 0.109 s -> 0.059 s, 1.83x; 64 experts, top 4, 4096
+  tokens: 1.66x. Outputs equal. GPU not measured yet.
+- `cuda_smoke.py`: `moe_batched_dispatch` (batched equals blocked on the
+  device, fp32 and bf16) and `real_size_moe_batched` (tokens/s next to
+  `real_size_moe`). CI runs the first with `--device cpu`.
+- `tests/test_moe_batched_dispatch.py` (11 tests): outputs and every
+  parameter's gradient match blocked for each expert variant, skewed
+  routing with idle experts, identical routing statistics, the fallback,
+  a whole model, and bf16 autocast.
+
 ## v5.92 (2026-10-22) - Plan E1: lm-evaluation-harness adapter
 
 - `eval/lm_harness.py` registers the model type `helioslm` with
