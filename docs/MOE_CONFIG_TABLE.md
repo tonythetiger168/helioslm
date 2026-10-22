@@ -66,6 +66,9 @@ hidden 2048 下總參數約 39B、啟用約 2.4B。要用 256 個 experts，就�
 **驗收：** 驗證 loss，加上每 token 的 FLOPs 與實測吞吐。吞吐要等批次化
 dispatch（#72）合併後再量，否則逐 expert 迴圈會讓細粒度配置吃虧。
 
+腳本：`examples/moe_sweep_100m.py`（v5.109），由 `examples/gpu_batch_run.py`
+一起跑，見 `docs/GPU_BATCH_RUNBOOK.md`。
+
 ## 與其他工作的關係
 
 - #72（MoE 批次化 dispatch）與 #73（chunked KDA）還沒合併。本表只新增文件和

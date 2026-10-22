@@ -241,6 +241,8 @@ class DeviceLimitedMoE(nn.Module):
         # never changes within a process, so the list is built at most once
         # per (rank, device) instead of on every forward.
         self._local_experts_cache = None
+        # v5.106: "blocked" (bit-stable per token) or "batched" (bmm).
+        self.dispatch = config.moe.dispatch
 
         # Routed experts (latent<->expert_hidden under LatentMoE).
         self.experts = nn.ModuleList([
@@ -403,10 +405,8 @@ class DeviceLimitedMoE(nn.Module):
         # LatentMoE: one shared projection into the latent space; routing and
         # routed experts all operate there.
         z = self.down_proj(flat) if self.down_proj is not None else flat
-        D = z.shape[1]
 
         topk_indices, topk_gates = self._route(z)
-        K = topk_indices.shape[1]
 
         # Accumulate routing-load statistics for aux-free bias updates.
         # Training-only (M-C2): eval / inference forwards (e.g. RL rollouts)
@@ -424,6 +424,23 @@ class DeviceLimitedMoE(nn.Module):
                     (counts_all.detach().float(), probs.sum(0), N))
         self._last_scores = None
 
+        if self.dispatch == "batched" and self._batchable():
+            output_z = self._dispatch_batched(z, topk_indices, topk_gates)
+        else:
+            output_z = self._dispatch_blocked(z, topk_indices, topk_gates)
+
+        # Back to hidden width (LatentMoE), then shared experts (always
+        # active, always full-width).
+        output = self.up_proj(output_z) if self.up_proj is not None else output_z
+        for shared in self.shared_experts:
+            output = output + shared(flat)
+
+        return output.view(B, seq, H)
+
+    def _dispatch_blocked(self, z, topk_indices, topk_gates):
+        """Routed-expert output [N, D] (default "blocked" dispatch)."""
+        N, D = z.shape
+        K = topk_indices.shape[1]
         # Dispatch: sort tokens by expert id once, then process contiguous
         # segments — O(num_experts) iterations and a single .tolist() sync,
         # instead of top_k * num_experts masked gathers with per-expert syncs.
@@ -476,13 +493,79 @@ class DeviceLimitedMoE(nn.Module):
                 )
             start += cnt
 
-        # Back to hidden width (LatentMoE), then shared experts (always
-        # active, always full-width).
-        output = self.up_proj(output_z) if self.up_proj is not None else output_z
-        for shared in self.shared_experts:
-            output = output + shared(flat)
+        return output_z
 
-        return output.view(B, seq, H)
+    def _batchable(self):
+        """True when every routed expert is a plain SwiGLU / SiTU expert
+        with nn.Linear projections (not quantized or FP8-converted)."""
+        kinds = {type(e) for e in self.experts}
+        if len(kinds) != 1 or kinds.pop() not in (SwiGLUExpert, SiTUExpert):
+            return False
+        return all(type(e.w13) is nn.Linear and type(e.w2) is nn.Linear
+                   for e in self.experts)
+
+    def _dispatch_batched(self, z, topk_indices, topk_gates):
+        """Routed-expert output [N, D] with all experts in two bmm calls.
+
+        Token slots are sorted by expert and scattered into a zero-padded
+        [A, C, D] tensor (A = experts that received tokens, C = the largest
+        expert load this forward; one host sync, as the blocked path's
+        ``.tolist()``); the stacked weights [A, 2F, D] and [A, D, F] then
+        run every active expert at once.
+        Padding rows are never read back. Each expert's output equals the
+        blocked path to float tolerance; it is not bit-identical, because
+        the GEMM shape depends on C.
+        """
+        N, D = z.shape
+        K = topk_indices.shape[1]
+        E = self.num_experts
+        flat_expert = topk_indices.reshape(-1)                       # [N*K]
+        token_idx = torch.arange(N, device=z.device).repeat_interleave(K)
+        order = flat_expert.argsort(stable=True)
+        sorted_expert = flat_expert[order]
+        sorted_tokens = token_idx[order]
+        sorted_weights = topk_gates.reshape(-1)[order]
+        counts = torch.bincount(flat_expert, minlength=E)
+        starts = counts.cumsum(0) - counts
+        slot = torch.arange(N * K, device=z.device) - starts[sorted_expert]
+        # Only experts that received tokens are stacked, so an idle
+        # expert's weights get no gradient (None, as in the blocked path)
+        # rather than a zero one that AdamW would still step and decay.
+        host_counts = counts.tolist()
+        active = [i for i, c in enumerate(host_counts) if c]
+        C = max(host_counts)
+        compact = torch.full((E,), -1, dtype=torch.long, device=z.device)
+        compact[active] = torch.arange(len(active), device=z.device)
+        row = compact[sorted_expert]
+        x = z.new_zeros(len(active), C, D)
+        x[row, slot] = z[sorted_tokens]
+
+        experts = [self.experts[i] for i in active]
+        w13 = torch.stack([e.w13.weight for e in experts])           # [A, 2F, D]
+        w2 = torch.stack([e.w2.weight for e in experts])             # [A, D, F]
+        a, b = torch.bmm(x, w13.transpose(1, 2)).chunk(2, dim=-1)   # [A, C, F]
+        e0 = self.experts[0]
+        if isinstance(e0, SiTUExpert):
+            h = F.silu(_situ_cap(a, e0.softcap)) * _situ_cap(b, e0.softcap)
+            g = torch.stack([e.norm.weight for e in experts])        # [A, F]
+            if e0.norm.zero_centered:
+                g = 1.0 + g
+            h = h * torch.rsqrt(h.pow(2).mean(-1, keepdim=True)
+                                + e0.norm.eps) * g[:, None, :]
+        elif not e0.clamped:
+            h = F.silu(a) * b
+        else:
+            if e0.limit is not None:
+                a = a.clamp(max=e0.limit)
+                b = b.clamp(-e0.limit, e0.limit)
+            h = a * torch.sigmoid(e0.alpha * a) * (b + e0.up_offset)
+        y = torch.bmm(h, w2.transpose(1, 2))                         # [A, C, D]
+
+        out = y[row, slot] * sorted_weights.unsqueeze(-1)
+        output_z = torch.zeros_like(z)
+        # fp32 accumulation, as in the blocked path (bf16 autocast).
+        output_z.index_add_(0, sorted_tokens, out.to(output_z.dtype))
+        return output_z
 
     @torch.no_grad()
     def update_bias(self, expert_load=None, step=None):

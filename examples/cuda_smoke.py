@@ -19,6 +19,11 @@ GPU and compares it with the CPU where a reference exists:
   quant_<method>   AWQ / GPTQ / MXFP4 fused vs unfused on CUDA
   fp8_trainer      FP8Trainer with labels: finite token CE, gradients flow
   gpu_monitor      vllm_engine.GPUMonitor reads the device
+  moe_batched_dispatch / real_size_moe_batched
+                   v5.106 batched MoE dispatch equals blocked on the GPU,
+                   and its real-size step speed
+  kda_chunked      v5.107 chunked KDA recurrence equals the loop on the GPU,
+                   and its speed
 
 Training checks (v5.90):
   train_parity_fp32       same init and batches, 5 AdamW steps: CUDA tracks CPU
@@ -243,21 +248,37 @@ def _train(model, batches, device, dtype=torch.float32, lr=1e-3):
 
 
 @check
-def train_parity_fp32():
-    """Same init, same batches, 5 AdamW steps: CUDA tracks CPU."""
+def train_parity_fp32(steps=5, lr=1e-3):
+    """Same init, same batches, 5 AdamW steps: CUDA tracks CPU.
+
+    The max weight difference is not a usable gate on its own: AdamW
+    divides by sqrt(v), so an element whose gradient is ~0 moves by up to
+    lr per step in the direction of its rounding noise, and CPU and CUDA
+    round differently. Measured: on the CPU alone, 1 vs 4 threads already
+    gives a max of 2.2e-4 on a handful of elements while the 99.9th
+    percentile stays at 4.6e-7; on CUDA (torch 2.8.0+cu128) the max
+    reached 3.0e-3. So the gate is the 99.9th percentile (a real device
+    bug moves many weights), with the max only bounded by AdamW's own
+    limit of 2 * lr per step.
+    """
     model, cfg = _lite(11)
     init = {k: v.clone() for k, v in model.state_dict().items()}
-    batches = _batches(cfg, 5)
-    ref = _train(model, batches, torch.device("cpu"))
+    batches = _batches(cfg, steps)
+    ref = _train(model, batches, torch.device("cpu"), lr=lr)
     ref_w = {k: v.detach().clone() for k, v in model.state_dict().items()}
     model.load_state_dict(init)
-    got = _train(model, batches, DEV)
+    got = _train(model, batches, DEV, lr=lr)
     diff_l = max(abs(a - b) for a, b in zip(ref, got))
-    diff_w = max((model.state_dict()[k].detach().cpu().float()
-                  - ref_w[k].float()).abs().max().item() for k in ref_w)
+    d = torch.cat([(model.state_dict()[k].detach().cpu().float()
+                    - ref_w[k].float()).abs().flatten() for k in ref_w])
+    p999 = d.kthvalue(max(1, int(0.999 * d.numel()))).values.item()
+    diff_w = d.max().item()
     assert diff_l < 1e-3, f"loss drift {diff_l:.2e}: cpu {ref} vs {got}"
-    assert diff_w < 1e-3, f"weight drift {diff_w:.2e}"
+    assert p999 < 1e-4, f"weight drift p99.9 {p999:.2e} (max {diff_w:.2e})"
+    assert diff_w <= 2 * lr * steps, f"weight drift {diff_w:.2e} > AdamW bound"
     return {"max_loss_diff": diff_l, "max_weight_diff": diff_w,
+            "p999_weight_diff": p999,
+            "weights_over_1e-4": int((d > 1e-4).sum()), "weights": d.numel(),
             "losses": [round(x, 4) for x in got]}
 
 
@@ -379,10 +400,10 @@ def grpo_train_step():
     return {k: round(float(out[k]), 4) for k in ("loss", "policy_loss", "kl_penalty")}
 
 
-def _real_size(arch, batch=8, seq=1024):
+def _real_size(arch, batch=8, seq=1024, moe_dispatch="blocked"):
     """One bf16 optimizer step of the real ~100M pilot model: memory and speed."""
     from helioslm_v5.src.training.pretrain import count_params, pilot_config
-    cfg = pilot_config(arch)
+    cfg = pilot_config(arch, moe_dispatch=moe_dispatch)
     torch.manual_seed(0)
     model = HeliosLMv5(cfg).to(DEV).train()
     opt = torch.optim.AdamW(model.parameters(), lr=1e-4)
@@ -413,6 +434,85 @@ def _real_size(arch, batch=8, seq=1024):
 
 for _arch in ("dense", "moe"):
     _named(f"real_size_{_arch}", lambda a=_arch: _real_size(a))
+# v5.106: the same MoE step with moe.dispatch="batched" (compare tokens/s
+# with real_size_moe)
+_named("real_size_moe_batched", lambda: _real_size("moe", moe_dispatch="batched"))
+
+
+@check
+def moe_batched_dispatch():
+    """v5.106: batched MoE dispatch equals blocked on this device (fp32
+    outputs and gradients), and under bf16 autocast."""
+    import copy
+    from helioslm_v5.configs.config_v5 import MoEConfig
+    from helioslm_v5.src.moe.sigmoid_moe import DeviceLimitedMoE
+    cfg = HeliosLMv5Config(size="lite", moe=MoEConfig(num_experts=16,
+                           num_activated_experts=2, device_group_size=1))
+    torch.manual_seed(15)
+    blocked = DeviceLimitedMoE(cfg).to(DEV).train()
+    batched = copy.deepcopy(blocked)
+    batched.dispatch = "batched"
+    assert batched._batchable()
+    x = torch.randn(4, 256, cfg.hidden_size, device=DEV)
+    outs = []
+    for m in (blocked, batched):
+        y = m(x)
+        y.pow(2).mean().backward()
+        outs.append((y.detach(), [p.grad for p in m.parameters()]))
+    out_diff = (outs[0][0] - outs[1][0]).abs().max().item()
+    grad_diff = max((a - b).abs().max().item()
+                    for a, b in zip(outs[0][1], outs[1][1])
+                    if a is not None and b is not None)
+    assert out_diff < 1e-4 and grad_diff < 1e-4, (out_diff, grad_diff)
+    with torch.no_grad(), torch.autocast(DEV.type, dtype=torch.bfloat16):
+        bf = (blocked(x).float() - batched(x).float()).abs().max().item()
+    assert bf < 5e-2, bf
+    return {"max_abs_diff": out_diff, "grad_max_abs_diff": grad_diff,
+            "bf16_max_abs_diff": bf}
+
+
+@check
+def kda_chunked():
+    """v5.107: the chunked-parallel KDA recurrence equals the per-token loop
+    on this device (outputs, state, gradients), and how much faster one
+    layer's forward + backward is at 8 x 1024 tokens."""
+    import copy
+    from helioslm_v5.configs.config_v5 import HybridAttentionConfig
+    from helioslm_v5.src.attention.linear_attention import GatedDeltaAttention
+    cfg = HeliosLMv5Config(size="lite", hybrid_attention=HybridAttentionConfig(
+        enabled=True, per_channel_decay=True))
+    torch.manual_seed(16)
+    loop = GatedDeltaAttention(cfg).to(DEV)
+    chunked = copy.deepcopy(loop)
+    chunked.chunk_size = 32
+    x = torch.randn(2, 200, cfg.hidden_size, device=DEV)
+    res = []
+    for m in (loop, chunked):
+        y, (s,) = m(x, use_cache=True)
+        y.pow(2).mean().backward()
+        res.append((y.detach(), s, [p.grad for p in m.parameters()]))
+    diff = max((res[0][0] - res[1][0]).abs().max().item(),
+               (res[0][1] - res[1][1]).abs().max().item())
+    gdiff = max((a - b).abs().max().item() for a, b in zip(res[0][2], res[1][2]))
+    assert diff < 1e-4 and gdiff < 1e-4, (diff, gdiff)
+    xb = torch.randn(8, 1024, cfg.hidden_size, device=DEV)
+    times = {}
+    for name, m in (("loop", loop), ("chunked", chunked)):
+        best = float("inf")
+        for _ in range(2):
+            if DEV.type == "cuda":
+                torch.cuda.synchronize()
+            t0 = time.time()
+            with torch.autocast(DEV.type, dtype=torch.bfloat16,
+                                enabled=DEV.type == "cuda"):
+                y, _ = m(xb)
+            y.float().pow(2).mean().backward()
+            if DEV.type == "cuda":
+                torch.cuda.synchronize()
+            best = min(best, time.time() - t0)
+        times[name] = round(best, 3)
+    return {"max_abs_diff": diff, "grad_max_abs_diff": gdiff,
+            "fwd_bwd_s": times, "speedup": round(times["loop"] / times["chunked"], 2)}
 
 
 @check

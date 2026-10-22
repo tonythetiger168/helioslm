@@ -297,6 +297,15 @@ class MoEConfig:
     # ``intermediate_size`` instead of the routed MoE. 0 = off (every
     # layer MoE, bit-identical construction and state dict).
     first_k_dense: int = 0
+    # v5.106 (#42 prep): routed-expert dispatch. "blocked" (default) runs
+    # each expert on fixed 64-row blocks, so a token's output is bit
+    # identical whatever its batchmates; "batched" stacks the expert
+    # weights and runs all experts in two bmm calls over a capacity-padded
+    # [E, C, D] tensor, one Python-level call instead of one per expert
+    # and block. Batched equals blocked to float tolerance, not bit for
+    # bit, and needs plain nn.Linear experts (it falls back to "blocked"
+    # after quantization / FP8 conversion).
+    dispatch: str = "blocked"
 
 
 @dataclass
@@ -334,6 +343,11 @@ class HybridAttentionConfig:
     # v5.63 (roadmap Q1, Qwen3-Next): causal depthwise short conv (kernel
     # size) + SiLU over the linear-attention q/k/v projections. 0 = off.
     short_conv_kernel: int = 0
+    # v5.107 (#42 prep): chunk length of the chunked-parallel delta rule
+    # used for multi-token forwards (training, prefill). 0 = the sequential
+    # per-token loop (default, unchanged). Equal to the loop to float
+    # tolerance; single-token decode always uses the loop.
+    chunk_size: int = 0
 
 
 @dataclass
@@ -837,6 +851,11 @@ class HeliosLMv5Config:
             raise ValueError(
                 f"hybrid_attention.short_conv_kernel must be 0 (off) or an "
                 f"int >= 2, got {k!r}")
+        c = h.chunk_size
+        if isinstance(c, bool) or not isinstance(c, int) or c < 0:
+            raise ValueError(
+                f"hybrid_attention.chunk_size must be an int >= 0 (0 = "
+                f"sequential), got {c!r}")
         if not isinstance(h.first_layer_full, bool):
             raise ValueError(
                 f"hybrid_attention.first_layer_full must be a bool, got "
@@ -877,6 +896,10 @@ class HeliosLMv5Config:
         if f is not None and (isinstance(f, bool) or not isinstance(f, int) or f < 1):
             raise ValueError(
                 f"mtp.light_ffn_size must be a positive int or None, got {f!r}")
+        if self.moe.dispatch not in ("blocked", "batched"):
+            raise ValueError(
+                f"moe.dispatch must be 'blocked' or 'batched', "
+                f"got {self.moe.dispatch!r}")
         if self.moe.balance_loss_scope not in (None, "micro", "global"):
             raise ValueError(
                 f"moe.balance_loss_scope must be None, 'micro' or 'global', "
