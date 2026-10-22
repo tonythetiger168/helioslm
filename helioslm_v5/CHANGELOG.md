@@ -1,5 +1,19 @@
 # HeliosLM v5 Changelog
 
+## v5.103 (2026-10-22) - OS5: MTP speculative rollouts for GRPO
+
+- `GRPOConfig.rollout_use_mtp` (default False, unchanged): GRPO rollouts
+  sample through `generate(..., use_mtp=True)`, which is MTPDecoder's exact
+  speculative sampling. The tokens follow the main model's distribution,
+  and `old_logprob` is still the main model's log-prob of what was
+  sampled. Turning it on without MTP modules is refused.
+- `examples/mtp_rollout_bench.py`: GRPO-shaped rollout throughput, plain
+  vs MTP. It reports the speed-up, acceptance and tokens per round, and
+  has two gates: greedy outputs must be identical, and the sampled
+  first-token distribution must agree (TV distance). The GPU run is still
+  to come; CPU numbers are telemetry only.
+- `tests/test_mtp_rollout.py` (3 tests).
+
 ## v5.102 (2026-10-22) - OS6: MoE configuration table for #42 (30B-A3B)
 
 - `eval/moe_config_table.py`: the MoE fields of Hy3, MiMo-V2.5,
