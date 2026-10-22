@@ -1,5 +1,26 @@
 # HeliosLM v5 Changelog
 
+## v5.98 (2026-10-22) - hsh H6: compaction, subagents, AGENTS.md, Claude Code hooks bridge
+
+- Core: log-only `context/shadow {first, last}` hides a range of surface
+  events from the derived history.
+- `hsh/compaction.py`: dsh's compaction lifecycle in the log
+  (`compaction/start` -> `compaction/summary` -> `context/shadow` ->
+  summary `user/message` -> `compaction/end`), so requests after a
+  compaction still rebuild from the log. Summaries nest; a failing
+  summarizer is logged and leaves history intact; an orphaned lock is
+  refused. Automatic mode (preset row `compaction`) compacts before a
+  turn's first request once the history passes `threshold_tokens`;
+  `compact(agent)` folds everything between turns.
+- `hsh/subagent.py`: the `subagent` tool (fresh child session and preset,
+  lineage as data, `max_depth`), `agent_instructions` (AGENTS.md /
+  CLAUDE.md into the system prompt, capped) and `claude_hooks`, which runs
+  an existing Claude Code `hooks.json` (PreToolUse, PostToolUse,
+  UserPromptSubmit, Stop; exit 2 and JSON decisions).
+- The `standard` preset (and so `code` and `creator`) now includes
+  AGENTS.md, `subagent` and automatic compaction.
+- `tests/test_hsh_extras.py` (8 tests).
+
 ## v5.97 (2026-10-22) - hsh H5: built-in tools, PTC code mode, presets and patches
 
 - `hsh/builtin.py`: `Workspace` (`ctx.workspace`; every path confined to

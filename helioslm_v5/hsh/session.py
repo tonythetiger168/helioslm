@@ -18,7 +18,9 @@ Event vocabulary (core types; plugins add more with
   ``user/message``, ``assistant/message``, ``tool/result``;
 - log-only events: ``turn/start``, ``turn/end``, ``step/start``,
   ``step/end``, ``assistant/attempt`` (a settled failed or retried attempt,
-  never history), ``tool/call``, ``request/header``, ``session/end-seed``.
+  never history), ``tool/call``, ``request/header``, ``session/end-seed``,
+  ``context/shadow`` (``{"first": seq, "last": seq}``: surface events in
+  that range leave the model history; compaction uses it, H6).
 
 Thinking (roadmap OS2). An assistant message may carry ``reasoning``.
 ``derive_messages(..., keep_thinking=...)`` decides which of it the model
@@ -58,6 +60,7 @@ _EVENT_TYPES = {
     "tool/result": True,
     "request/header": False,
     "session/end-seed": False,
+    "context/shadow": False,
 }
 
 KEEP_THINKING = ("none", "turn", "all")
@@ -265,10 +268,14 @@ def derive_messages(events, keep_thinking="turn", projections=()):
         if ev["type"] == "turn/start":
             current_turn = ev["data"]["turn"]
 
+    shadowed = [(ev["data"]["first"], ev["data"]["last"]) for ev in events
+                 if ev["type"] == "context/shadow"]
     system = None
     messages = []
     for ev in events:
         t, d = ev["type"], ev["data"]
+        if t != "system/message" and any(a <= ev["seq"] <= b for a, b in shadowed):
+            continue
         if t == "system/message":
             # One system head: a new rendering replaces it, an empty one
             # clears it (no older instructions stay model-visible).
