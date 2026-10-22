@@ -1,6 +1,6 @@
 # HeliosLM v5 Changelog
 
-## v5.93 (2026-10-22) - cuda_smoke: train_parity_fp32 gates on the 99.9th percentile
+## v5.105 (2026-10-22) - cuda_smoke: train_parity_fp32 gates on the 99.9th percentile
 
 - A fresh pod (RTX 6000 Ada, torch 2.8.0+cu128, main @ v5.92) gave 22/23
   twice: `train_parity_fp32` failed with "weight drift 2.97e-03" against a
@@ -15,6 +15,176 @@
   the weight difference below 1e-4 (a real device bug moves many weights),
   and the max within AdamW's own bound of 2 * lr * steps. It also reports
   the percentile and how many weights differ by more than 1e-4.
+## v5.102 (2026-10-22) - OS6: MoE configuration table for #42 (30B-A3B)
+
+- `eval/moe_config_table.py`: the MoE fields of Hy3, MiMo-V2.5,
+  MiMo-V2.5-Pro, DeepSeek-V4-Flash, MiniMax-M3 and GLM-5.2 as read from
+  their config.json files. The expert-weight count lands within 96-100%
+  of each vendor's total. `model_params` gives a GQA plus embedding
+  estimate, and `candidates()` lists configs near 30B total / 3B active.
+- `docs/MOE_CONFIG_TABLE.md`: the table, common patterns (2-4% of experts
+  active, sigmoid with aux-free bias, expert width 1/3-1/2 of hidden) and
+  the 30B-A3B candidates. It also proposes a 100M sweep (granularity,
+  shared expert, first-k dense, balance strategy) for the next GPU run,
+  with throughput measured after #72. It does not touch `src/moe/`.
+- `tests/test_moe_config_table.py` (3 tests).
+
+## v5.101 (2026-10-22) - OS8: MiniMax Sparse Attention notes, detached indexer distillation
+
+- `docs/MSA_NOTES.md`: reading of arXiv:2606.13392 (MSA, the attention
+  behind MiniMax-M3). It covers block-level top-k per GQA group, exp-free
+  top-k, the KV-outer kernel, the warm-up and KL recipe, the results
+  (RULER and HELMET on par with full attention at 128K, 7.6x faster decode
+  at 1M) and the regressions, set point by point against HeliosLM's
+  DSA-style sparse path.
+- Adopted from it: `MLA.indexer_distill_loss(..., detach_input=True)`
+  stops the distillation gradient at the indexer's inputs so it trains the
+  indexer only (MSA B.3: letting it reach the backbone caused gradient
+  spikes and short-context regression). Default False keeps the old
+  behaviour.
+- `case_indexer.test_learned_lightning_indexer` checks both settings.
+
+## v5.99 (2026-10-22) - OS4: licences of the 2026-10-22 open-model review
+
+- `eval/teacher_license_audit.py`: readings for the review's models not
+  yet in the audit: `tencent/Hy3` (Apache-2.0 with a Tencent header),
+  `XiaomiMiMo/MiMo-V2.5-Pro` (MIT on the card), `deepseek-ai/DeepSeek-V4-Flash`
+  (MIT) and `zai-org/GLM-5.2` (MIT, unlike GLM-5.3's own licence), all
+  `allowed` with notice-keeping. MiniMax M3 was already a pinned row
+  (MiniMax Community License: attribution, notice to MiniMax, written
+  authorization over US$20M yearly revenue).
+- huggingface.co is not reachable from the build container, so the texts
+  were read through a web reader and no byte-exact hash exists yet. The
+  new rows carry `reviewed_sha256 = PENDING`: `usable(rid)` is False for
+  them until a live audit pins the hash
+  (`python examples/teacher_license_audit.py --pending` prints the
+  entries to paste after comparing the texts). `audit()` rows gain
+  `pinned`. The committed 2026-10-20 artifact is unchanged.
+- T120 gains `test_pending_rows_are_not_usable_until_pinned`.
+
+## v5.98 (2026-10-22) - hsh H6: compaction, subagents, AGENTS.md, Claude Code hooks bridge
+
+- Core: log-only `context/shadow {first, last}` hides a range of surface
+  events from the derived history.
+- `hsh/compaction.py`: dsh's compaction lifecycle in the log
+  (`compaction/start` -> `compaction/summary` -> `context/shadow` ->
+  summary `user/message` -> `compaction/end`), so requests after a
+  compaction still rebuild from the log. Summaries nest; a failing
+  summarizer is logged and leaves history intact; an orphaned lock is
+  refused. Automatic mode (preset row `compaction`) compacts before a
+  turn's first request once the history passes `threshold_tokens`;
+  `compact(agent)` folds everything between turns.
+- `hsh/subagent.py`: the `subagent` tool (fresh child session and preset,
+  lineage as data, `max_depth`), `agent_instructions` (AGENTS.md /
+  CLAUDE.md into the system prompt, capped) and `claude_hooks`, which runs
+  an existing Claude Code `hooks.json` (PreToolUse, PostToolUse,
+  UserPromptSubmit, Stop; exit 2 and JSON decisions).
+- The `standard` preset (and so `code` and `creator`) now includes
+  AGENTS.md, `subagent` and automatic compaction.
+- `tests/test_hsh_extras.py` (8 tests).
+
+## v5.97 (2026-10-22) - hsh H5: built-in tools, PTC code mode, presets and patches
+
+- `hsh/builtin.py`: `Workspace` (`ctx.workspace`; every path confined to
+  the root, `..` / absolute / symlink escapes refused) and tool plugins:
+  `bash` (fresh `bash -c`, scrubbed env, timeout, CPU/memory rlimits),
+  `str_replace_editor` (dsh's view / create / str_replace / insert),
+  `read` / `write` / `edit` / `glob` / `grep`, `todo_write`, and
+  `run_code`: the model writes one Python program that calls the other
+  tools as `tools.<name>(**args)`; the program runs in a child process and
+  every call goes back through the host pipeline.
+- `ctx.tools.ptc_mode(ctx)`: dsh's PTC rule. The model sees only
+  `run_code`; a direct native call is refused as unknown; the program's
+  sub-dispatches still reach every tool (guards still apply).
+- `hsh/presets.py`: dsh's four work modes as presets (`minimal`,
+  `standard`, `code`, `creator` with an `inspect` tool), config rows mounted
+  on the agent's scoped context in the setup window (`create_agent`), and
+  patches (insert / replace / remove / disable / enable) from JSON files.
+- `tests/test_hsh_presets.py` (10 tests), including a scripted model that
+  fixes a typo through the minimal preset with every request rebuilt from
+  the log.
+
+## v5.96 (2026-10-22) - hsh H4: model adapter seam and the turn/step agent loop
+
+- `hsh/llm.py` (`ctx.llm`): adapters registered per provider; every call
+  passes the `llm/stream` waterfall. Adapters: `ScriptedAdapter` (tests),
+  `TextModelAdapter` (any `generate(prompt)` model, e.g. a HeliosLM
+  checkpoint, over the repo's `@@tool@@` protocol; a malformed block is
+  returned as text, never a crash), `OpenAICompatAdapter` (OpenAI-style
+  HTTP; DeepSeek `reasoning_content` mapped to `reasoning`; key read from
+  an environment variable).
+- `hsh/loop.py` (`ctx.agents`, injects sessions + tools + llm): dsh's turn
+  flow. `agent/pre-step` (enter / reject / rewrite), `agent/request`
+  (config), `system-prompt/assemble`, `request/header` on change,
+  request built only from the log, `assistant/attempt` +
+  `agent/request-error` (retry on request), tool calls through
+  `ctx.tools` in the agent's scope, deferred tool contexts injected after
+  the results, `agent/turn-stopping` (may continue the turn), `max_steps`.
+  `setup(agent)` registers scoped tools before the first prompt.
+- `tests/test_hsh_loop.py` (12 tests): every request every agent sent
+  equals the request rebuilt from its session log, across tool steps,
+  turns, retries, injected context, a system prompt change and a config
+  change.
+
+## v5.95 (2026-10-22) - hsh H3: scoped tool registry and guarded execution pipeline
+
+- `hsh/schema.py`: the JSON Schema subset tools may declare, refused at
+  registration when anything else appears; a validator for it (bool is
+  not an integer; `oneOf` needs exactly one match).
+- `hsh/tools.py` (`ctx.tools`), after dsh's `core/tools`: parse and
+  validate arguments -> `tools/pre-execute` (allow / deny / ask, with
+  `ctx.approval`; no approval means deny) -> monotonic guards ->
+  `tools/execute` around the body -> `project_content` ->
+  `tools/post-execute` -> `finalize_content` (runs for every outcome) ->
+  `tools/result`. Every failure, including a throwing listener, becomes an
+  error result with a code; nothing escapes to the loop.
+- Scopes: an agent's own tools shadow globals; `restrict(allow, deny)`
+  filters inherited globals (restrictions intersect); a restricted-away
+  tool and a missing one give the same `unknown-tool` result; pipeline
+  events are dispatched scoped. `schemas()` sends only name, description
+  and parameters.
+- `tests/test_hsh_tools.py` (21 tests).
+
+## v5.94 (2026-10-22) - hsh H2: append-only session log (model-visible means logged); OS1, OS2
+
+- `hsh/session.py`, after dsh's `core/session`:
+  - `Session`: append-only `{"seq", "type", "data"}` events with
+    contiguous seq, a closed event vocabulary (plugins may add log-only
+    types), lossless-JSON data detached from the caller;
+  - `derive_messages` projects model history from the log (system head
+    replaced or cleared; `assistant/attempt` and log-only events never
+    become history; pure plugin projections);
+  - `build_request` / `rebuild_requests`: every request is a pure function
+    of the log, so a replay yields the request each attempt saw;
+    `request_hash` compares them;
+  - JSONL persistence with a format/version header, `repair()` for an
+    interrupted tail, `fork(after_turn)` with an inherited-seed marker;
+  - `Sessions` service (`ctx.sessions`) broadcasting `session/event`.
+- Roadmap OS2 (MiniMax M3's weak spot): `keep_thinking` = `none` |
+  `turn` (default; reasoning survives one turn's tool calls) | `all`.
+- Roadmap OS1: `usage_summary` folds `assistant/message` usage per turn
+  (input, output, reasoning tokens; retried attempts counted apart).
+- `tests/test_hsh_session.py` (15 tests): requests rebuilt from the log
+  equal the requests a hand-driven loop sent, byte for byte, for all three
+  thinking modes and a retry; an unlogged input is detected.
+
+## v5.93 (2026-10-22) - hsh H1: plugin kernel after DeepSeek Harness
+
+- New package `helioslm_v5/hsh/`: the harness rebuilt on the design of
+  DeepSeek Harness (dsh, MIT, everything-is-a-plugin). Pure Python, written
+  from dsh's design documents, not its source. Plan and phase map:
+  `docs/HSH_HARNESS.md` (H1-H6).
+- `hsh/kernel.py` (H1), the Cordis layer:
+  - services (`ctx.provide`, `ctx.<key>`), plugins with `inject` that
+    wait for, activate on, and unwind with their services;
+  - reversible effects, unwound last-in first-out exactly once, including
+    nested plugins and the services they provided;
+  - a failing `apply` rolls back and leaves the fork `failed`;
+  - events with a declared dispatch mode (emit, waterfall, parallel,
+    serial, bail); another method or an undeclared event raises;
+  - scoped contexts: a scoped dispatch reaches untagged listeners plus its
+    own scope's.
+- `tests/test_hsh_kernel.py` (16 tests).
 
 ## v5.92 (2026-10-22) - Plan E1: lm-evaluation-harness adapter
 
