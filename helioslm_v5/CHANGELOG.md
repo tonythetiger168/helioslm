@@ -1,5 +1,33 @@
 # HeliosLM v5 Changelog
 
+## v5.109 (2026-10-22) - One-shot GPU batch run (cuda_smoke, OS5, OS7, OS6, TW3)
+
+- `examples/gpu_batch_run.py`: runs every GPU-pending job in order on one
+  machine, each with its own time limit, and collects them into
+  `<out-dir>/gpu_batch_<stamp>.json` (schema `gpu-batch/1`): git commit,
+  GPU and torch, then one row per job (PASS / FAIL / TIMEOUT / SKIP,
+  seconds, command, log tail) with the job's own JSON inlined. The file is
+  rewritten after every job. Jobs: `cuda_smoke`, OS5
+  `mtp_rollout_bench`, OS7 `longctx_arch_probe`, pilot data (only when
+  OS6 needs it), OS6 sweep (skipped until #72's `moe.dispatch` is on the
+  checkout), TMMLU+ fetch and `tw_bench_run` (skipped until #86 is merged
+  and a pilot checkpoint exists). `--plan` prints the plan without torch;
+  `--smoke` runs everything at toy size; `--stop-pod` stops the RunPod pod.
+- `examples/moe_sweep_100m.py`: the OS6 100M sweep from
+  `docs/MOE_CONFIG_TABLE.md`, 8 arms that change one variable each
+  (granularity x2 / x4, no shared expert, first 1 / 3 layers dense,
+  quantile / quantile_balancing). Granularity and shared arms keep total
+  and active parameters equal to base (shared experts scale with the
+  expert width). Per arm: val bits/byte, tokens/s, MFU, parameter counts
+  and per-layer expert load (`max_vio`). Exits 3 (skip) without #72
+  unless `--allow-blocked`.
+- `docs/GPU_BATCH_RUNBOOK.md`: how to run it on RunPod or chained after
+  another job on the same pod.
+- Tests: `test_gpu_batch_run.py` checks the skip logic, timeouts, the
+  stale-output guard and the results file against stub scripts (no
+  torch); with torch it checks the sweep's equal-parameter arms and runs
+  `--smoke` on the CPU.
+
 ## v5.106 (2026-10-22) - #42 prep: batched MoE dispatch
 
 - On the RTX 6000 Ada the MoE pilot trained ~2.5x slower than dense at a
