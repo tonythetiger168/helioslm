@@ -1,5 +1,19 @@
 # HeliosLM v5 Changelog
 
+## v5.102 (2026-10-22) - OS6: MoE configuration table for #42 (30B-A3B)
+
+- `eval/moe_config_table.py`: the MoE fields of Hy3, MiMo-V2.5,
+  MiMo-V2.5-Pro, DeepSeek-V4-Flash, MiniMax-M3 and GLM-5.2 as read from
+  their config.json files. The expert-weight count lands within 96-100%
+  of each vendor's total. `model_params` gives a GQA plus embedding
+  estimate, and `candidates()` lists configs near 30B total / 3B active.
+- `docs/MOE_CONFIG_TABLE.md`: the table, common patterns (2-4% of experts
+  active, sigmoid with aux-free bias, expert width 1/3-1/2 of hidden) and
+  the 30B-A3B candidates. It also proposes a 100M sweep (granularity,
+  shared expert, first-k dense, balance strategy) for the next GPU run,
+  with throughput measured after #72. It does not touch `src/moe/`.
+- `tests/test_moe_config_table.py` (3 tests).
+
 ## v5.101 (2026-10-22) - OS8: MiniMax Sparse Attention notes, detached indexer distillation
 
 - `docs/MSA_NOTES.md`: reading of arXiv:2606.13392 (MSA, the attention
