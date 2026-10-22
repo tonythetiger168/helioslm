@@ -11,7 +11,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 FAST = ["forward_fp32", "greedy_generate", "bf16_train_step", "fp8_kv_cache",
-        "quant_awq", "quant_gptq", "quant_mxfp4", "fp8_trainer"]
+        "quant_awq", "quant_gptq", "quant_mxfp4", "fp8_trainer",
+        "moe_batched_dispatch"]
 
 
 def test_cuda_smoke_logic_on_cpu(tmp_path):

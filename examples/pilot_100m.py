@@ -58,6 +58,10 @@ def main():
     ap.add_argument("--dtype", choices=["bf16", "fp32"], default="bf16")
     ap.add_argument("--peak-tflops", type=float)
     ap.add_argument("--compile", action="store_true")
+    ap.add_argument("--moe-dispatch", choices=["blocked", "batched"],
+                    default="blocked",
+                    help="routed-expert dispatch (v5.106); batched runs all "
+                         "experts in two bmm calls")
     ap.add_argument("--kda-chunk", type=int, default=0,
                     help="k3_block: chunked-parallel KDA recurrence with "
                          "this chunk length (v5.107); 0 = per-token loop")
@@ -69,6 +73,7 @@ def main():
                        hidden_size=args.hidden, num_layers=args.layers,
                        intermediate_size=args.intermediate,
                        max_seq=args.seq, balance=args.balance,
+                       moe_dispatch=args.moe_dispatch,
                        kda_chunk=args.kda_chunk)
     with torch.device("meta"):
         params = count_params(HeliosLMv5(cfg))

@@ -42,7 +42,7 @@ ARCHS = ("dense", "moe", "k3_block", "mimo_hybrid")
 
 def pilot_config(arch="dense", vocab_size=32768, hidden_size=640,
                  num_layers=8, intermediate_size=1792, max_seq=2048,
-                 balance="smebu", kda_chunk=0):
+                 balance="smebu", moe_dispatch="blocked", kda_chunk=0):
     if arch not in ARCHS:
         raise ValueError(f"arch must be one of {ARCHS}, got {arch!r}")
     kw = dict(size="mid", vocab_size=vocab_size, hidden_size=hidden_size,
@@ -52,13 +52,14 @@ def pilot_config(arch="dense", vocab_size=32768, hidden_size=640,
               mtp=MTPConfig(enabled=False))
     # routed experts at half the dense width: top-2 of 4 activates the same
     # FFN compute per token as the dense arm (equal active FFN parameters)
-    moe = MoEConfig(balance_strategy=balance,
+    moe = MoEConfig(balance_strategy=balance, dispatch=moe_dispatch,
                     expert_hidden_size=intermediate_size // 2)
     if arch == "dense":
         moe = MoEConfig(first_k_dense=num_layers)
     elif arch == "k3_block":
         moe = MoEConfig(balance_strategy=balance, latent_dim=hidden_size // 2,
-                        expert_hidden_size=intermediate_size // 2)
+                        expert_hidden_size=intermediate_size // 2,
+                        dispatch=moe_dispatch)
         kw.update(use_attention_residuals=True,
                   attention=AttentionConfig(output_gate=True),
                   hybrid_attention=HybridAttentionConfig(

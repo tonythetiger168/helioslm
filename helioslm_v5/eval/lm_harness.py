@@ -61,6 +61,7 @@ def load_pilot(run, data=None, device="cpu", checkpoint="ckpt.pt"):
                        hidden_size=meta["hidden"], num_layers=meta["layers"],
                        intermediate_size=meta["intermediate"],
                        max_seq=meta["seq"], balance=meta["balance"],
+                       moe_dispatch=meta.get("moe_dispatch", "blocked"),
                        kda_chunk=meta.get("kda_chunk", 0))
     model = HeliosLMv5(cfg)
     state = torch.load(run / checkpoint, map_location="cpu", weights_only=False)
