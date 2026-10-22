@@ -160,11 +160,18 @@ def evaluate(model, val, seq, max_windows, bytes_per_token, device, dtype):
     was = model.training
     model.eval()
     tot, n = 0.0, 0
-    for x, y in val.eval_windows(seq, max_windows):
-        x, y = x.to(device), y.to(device)
+    for w in val.eval_windows(seq, max_windows):
+        x, y = w[0].to(device), w[1].to(device)
         with torch.autocast(device.type, dtype=dtype,
                             enabled=dtype != torch.float32):
             logits = model(x)[0]
+        if len(w) > 2:              # SFT windows: score target tokens only
+            m = w[2].to(device).reshape(-1).float()
+            ce = F.cross_entropy(logits.float().reshape(-1, logits.shape[-1]),
+                                 y.reshape(-1), reduction="none")
+            tot += (ce * m).sum().item()
+            n += int(m.sum().item())
+            continue
         tot += F.cross_entropy(logits.float().reshape(-1, logits.shape[-1]),
                                y.reshape(-1), reduction="sum").item()
         n += y.numel()
@@ -178,12 +185,19 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
              lr=6e-4, warmup=100, min_lr_ratio=0.1, weight_decay=0.1,
              clip=1.0, eval_every=100, eval_windows=50, ckpt_every=100,
              seed=0, device="cpu", dtype=torch.float32, bytes_per_token=1.0,
-             peak_flops=None, compile_model=False, log=print):
+             peak_flops=None, compile_model=False, init_from=None, log=print):
     """Train (or resume) to ``steps`` optimizer steps. Returns the summary.
 
     Resume: if ``<out_dir>/ckpt.pt`` exists, model and optimizer state and
     the step counter are restored; batches are a function of the step, so
     the continuation is identical to an uninterrupted run (bitwise on CPU).
+
+    Fine-tuning (v5.111, distillation SFT): ``init_from`` names a
+    checkpoint whose model weights start a NEW run (ignored on resume,
+    optimizer fresh). A shard whose ``batch`` / ``eval_windows`` yield a
+    third tensor, a 0/1 loss mask aligned with ``y`` (``distill_sft.
+    SFTShard``), trains and evaluates on the masked tokens only: the mean
+    over target tokens of each micro-batch.
     """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -211,6 +225,10 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
             keep = [ln for ln in lp.read_text().splitlines()
                     if ln and json.loads(ln)["step"] <= step]
             lp.write_text("".join(ln + "\n" for ln in keep))
+    elif init_from is not None:
+        state = torch.load(init_from, map_location=device, weights_only=False)
+        model.load_state_dict(state["model"] if "model" in state else state)
+        log(f"initialised from {init_from}")
     params = count_params(model)
     fwd = torch.compile(model) if compile_model else model
     model.train()
@@ -225,14 +243,21 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
         opt.zero_grad(set_to_none=True)
         loss_sum = 0.0
         for micro in range(grad_accum):
-            x, y = train.batch(batch, seq, step * grad_accum + micro, seed)
-            x, y = x.to(device), y.to(device)
+            b = train.batch(batch, seq, step * grad_accum + micro, seed)
+            x, y = b[0].to(device), b[1].to(device)
             with torch.autocast(device.type, dtype=dtype,
                                 enabled=dtype != torch.float32):
                 logits = fwd(x)[0]
-                loss = F.cross_entropy(
-                    logits.float().reshape(-1, logits.shape[-1]),
-                    y.reshape(-1)) / grad_accum
+                if len(b) > 2:
+                    m = b[2].to(device).reshape(-1).float()
+                    ce = F.cross_entropy(
+                        logits.float().reshape(-1, logits.shape[-1]),
+                        y.reshape(-1), reduction="none")
+                    loss = (ce * m).sum() / m.sum().clamp(min=1) / grad_accum
+                else:
+                    loss = F.cross_entropy(
+                        logits.float().reshape(-1, logits.shape[-1]),
+                        y.reshape(-1)) / grad_accum
             loss.backward()
             loss_sum += loss.item()
         gnorm = torch.nn.utils.clip_grad_norm_(model.parameters(), clip).item()
