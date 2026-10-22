@@ -1,5 +1,26 @@
 # HeliosLM v5 Changelog
 
+## v5.97 (2026-10-22) - hsh H5: built-in tools, PTC code mode, presets and patches
+
+- `hsh/builtin.py`: `Workspace` (`ctx.workspace`; every path confined to
+  the root, `..` / absolute / symlink escapes refused) and tool plugins:
+  `bash` (fresh `bash -c`, scrubbed env, timeout, CPU/memory rlimits),
+  `str_replace_editor` (dsh's view / create / str_replace / insert),
+  `read` / `write` / `edit` / `glob` / `grep`, `todo_write`, and
+  `run_code`: the model writes one Python program that calls the other
+  tools as `tools.<name>(**args)`; the program runs in a child process and
+  every call goes back through the host pipeline.
+- `ctx.tools.ptc_mode(ctx)`: dsh's PTC rule. The model sees only
+  `run_code`; a direct native call is refused as unknown; the program's
+  sub-dispatches still reach every tool (guards still apply).
+- `hsh/presets.py`: dsh's four work modes as presets (`minimal`,
+  `standard`, `code`, `creator` with an `inspect` tool), config rows mounted
+  on the agent's scoped context in the setup window (`create_agent`), and
+  patches (insert / replace / remove / disable / enable) from JSON files.
+- `tests/test_hsh_presets.py` (10 tests), including a scripted model that
+  fixes a typo through the minimal preset with every request rebuilt from
+  the log.
+
 ## v5.96 (2026-10-22) - hsh H4: model adapter seam and the turn/step agent loop
 
 - `hsh/llm.py` (`ctx.llm`): adapters registered per provider; every call

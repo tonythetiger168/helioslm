@@ -10,3 +10,7 @@ from .tools import Execution, ToolDefinition, ToolResult, Tools, tool  # noqa: F
 from .llm import (LLM, LLMError, OpenAICompatAdapter, ScriptedAdapter,  # noqa: F401
                   TextModelAdapter, render_transcript)
 from .loop import Agent, Agents  # noqa: F401
+from .builtin import (Workspace, bash_tool, editor_tool, fs_tools,  # noqa: F401
+                      run_code_tool, todo_tool)
+from .presets import (PLUGINS, PRESETS, PresetError, apply_preset,  # noqa: F401
+                      compose, create_agent, load_patch)

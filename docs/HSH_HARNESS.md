@@ -123,3 +123,25 @@ print(agent.send("hello"))
 ```
 
 Tests: `helioslm_v5/tests/test_hsh_loop.py` (12).
+
+## H5: presets and built-in tools (`hsh/presets.py`, `hsh/builtin.py`)
+
+| Preset | Tools the model sees | Note |
+|---|---|---|
+| `minimal` | `bash`, `str_replace_editor` | dsh's minimal mode |
+| `standard` | `bash`, `read`, `write`, `edit`, `glob`, `grep`, `todo_write` | |
+| `code` | `run_code` only | PTC: the program calls the standard tools |
+| `creator` | standard + `inspect` | plugins, services, events, tools, log, preset |
+
+```python
+ctx.plugin(Workspace, {"root": "/path/to/repo"})
+agent = create_agent(ctx, "fix-1", config, "minimal",
+                     patches=[[{"replace": "persona", "config": {"prefix": "..."}}]])
+```
+
+`bash` and `run_code` confine processes (workspace cwd, scrubbed
+environment, timeout, rlimits) but are not a security sandbox; dsh uses
+Landlock/Seatbelt for that. Keep HeliosLM's TrustGate as a guard when the
+model is untrusted.
+
+Tests: `helioslm_v5/tests/test_hsh_presets.py` (10).

@@ -155,6 +155,7 @@ class Tools(Service):
         self._tools = {}          # scope (None = global) -> {name: def}
         self._restrictions = {}   # scope -> [ {"allow": set|None, "deny": set} ]
         self._guards = []         # [(scope, fn)]
+        self._ptc = {}            # scope -> transport tool name
 
     # ----- registration -----------------------------------------------
     def register(self, definition, ctx=None):
@@ -192,6 +193,21 @@ class Tools(Service):
 
         return ctx.effect(dispose)
 
+    def ptc_mode(self, ctx, transport="run_code"):
+        """dsh's PTC mode for ``ctx.scope``: the model sees only the
+        ``transport`` tool and a direct call to any other tool is refused
+        as unknown; the transport's own sub-dispatches (``parent`` set)
+        still reach every tool the scope can see."""
+        self._ptc[ctx.scope] = transport
+        self.ctx.emit("tools/change")
+
+        def dispose():
+            if self._ptc.get(ctx.scope) == transport:
+                del self._ptc[ctx.scope]
+                self.ctx.emit("tools/change")
+
+        return ctx.effect(dispose)
+
     def guard(self, fn, ctx=None):
         """``fn(execution) -> reason | None``; a reason denies the call."""
         ctx = ctx or self.ctx
@@ -205,7 +221,14 @@ class Tools(Service):
         return ctx.effect(dispose)
 
     # ----- visibility -------------------------------------------------
-    def visible(self, scope=None):
+    def visible(self, scope=None, transport=False):
+        out = self._visible(scope)
+        mode = self._ptc.get(scope)
+        if mode is not None and not transport:
+            out = {k: v for k, v in out.items() if k == mode}
+        return out
+
+    def _visible(self, scope):
         out = {}
         for name, d in self._tools.get(None, {}).items():
             if all((r["allow"] is None or name in r["allow"]) and name not in r["deny"]
@@ -233,7 +256,7 @@ class Tools(Service):
             args = copy.deepcopy(arguments)
         exe = Execution(call_id, name, args, scope, parent)
         sctx = self.ctx.scoped(scope)
-        defn = self.visible(scope).get(name)
+        defn = self.visible(scope, transport=parent is not None).get(name)
         exe.tool = defn
         try:
             if defn is None:
