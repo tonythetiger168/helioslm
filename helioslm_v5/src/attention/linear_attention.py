@@ -30,8 +30,9 @@ Cache contract (cross-module, relied upon by MTP rollback / the engine):
 
 Training path: a sequential loop over T (identical op order to the decode
 path, so both are numerically identical — verified at atol 1e-5). This is
-O(T) sequential and intended for the lite config; a chunked-parallel scan
-is a future optimization, deliberately out of scope here.
+O(T) sequential. v5.95: ``hybrid_attention.chunk_size`` > 0 switches
+multi-token forwards to ``chunked_delta_rule`` (T / chunk steps, each a
+triangular solve), equal to the loop to float tolerance.
 
 Numerical stability: the decay gate is a sigmoid (so 0 < decay < 1 by
 construction) additionally clamped to [m, 1 - m] with a dtype-aware margin
@@ -108,6 +109,89 @@ def past_seq_len(past_key_values) -> int:
     return 0
 
 
+def chunked_delta_rule(q, k, v, decay, keep, seg_start, state, chunk):
+    """Chunked-parallel form of the recurrence in the module docstring
+    (v5.95, ``hybrid_attention.chunk_size``); same results as the
+    per-token loop up to float rounding.
+
+    Shapes: q, k, v [B, H, T, D]; decay [B, H, T] (per head) or
+    [B, H, T, Dk] (per channel); keep [B, 1, T] or None (masked tokens:
+    decay already 1, write strength 0); seg_start [B, T] bool or None;
+    state [B, H, Dk, Dv]. Returns (out [B, H, T, Dv], new state).
+
+    With the write ``u_t = keep_t (v_t - S_{t-1}^T k_t)`` the state after
+    token t of a chunk is ``S_t = Lam_t S_0 + sum_{j<=t} Lam_{t,j} k_j u_j^T``
+    where ``Lam_{t,j} = diag(prod_{i=j+1..t} decay_i)``. Substituting into
+    the retrieval gives a unit lower-triangular system for the u of a
+    chunk, ``(I + diag(keep) A) u = keep (v - (k * Lam_{t-1}) S_0)`` with
+    ``A_tj = k_t^T Lam_{t-1,j} k_j`` (j < t), solved with one triangular
+    solve instead of t sequential steps. Every decay product is formed
+    as ``exp`` of a difference of cumulative log-decays over j <= t, so
+    all factors are <= 1 (no division by small decays). A document
+    boundary (seg_start) zeroes every pair (t, j) across it, and the
+    carried state only for tokens still in the chunk's first document.
+    Computed in fp32 (fp64 for fp64 inputs) whatever the input dtype.
+    """
+    out_dtype, state_dtype = q.dtype, state.dtype
+    ct = torch.promote_types(q.dtype, torch.float32)   # fp64 stays fp64
+    q, k, v, state = q.to(ct), k.to(ct), v.to(ct), state.to(ct)
+    B, H, T, _ = q.shape
+    per_channel = decay.dim() == 4
+    g = torch.log(decay.to(ct))
+    if not per_channel:
+        g = g[..., None]                                     # [B, H, T, 1]
+    keep = keep.to(ct) if keep is not None else None
+    seg = torch.cumsum(seg_start.long(), 1) if seg_start is not None else None
+    outs = []
+    for c0 in range(0, T, chunk):
+        c1 = min(c0 + chunk, T)
+        n = c1 - c0
+        qc, kc, vc = q[:, :, c0:c1], k[:, :, c0:c1], v[:, :, c0:c1]
+        G = g[:, :, c0:c1].cumsum(2)                        # log Lam_t
+        Gp = torch.cat([torch.zeros_like(G[:, :, :1]), G[:, :, :-1]], 2)
+        lower = torch.ones(n, n, dtype=torch.bool, device=q.device).tril()
+        strict = lower.tril(-1)
+        same = inh = None
+        if seg is not None:
+            sc = seg[:, c0:c1]
+            prev = seg[:, c0 - 1] if c0 > 0 else torch.zeros_like(sc[:, 0])
+            same = (sc[:, :, None] == sc[:, None, :])[:, None]   # [B, 1, n, n]
+            inh = (sc == prev[:, None])[:, None, :, None].to(ct)   # [B, 1, n, 1]
+
+        def pair(Ga, mask):
+            # exp(Ga_t - G_j) on the masked pairs, 0 elsewhere (masked to
+            # -inf BEFORE exp, so no overflow from j > t).
+            m = mask if same is None else mask & same
+            d = Ga[:, :, :, None, :] - G[:, :, None, :, :]          # [B, H, n, n, C]
+            return torch.exp(d.masked_fill(~m[..., None], float("-inf")))
+
+        Pk, Pq = pair(Gp, strict), pair(G, lower)
+        if per_channel:
+            A = torch.einsum("bhtc,bhjc,bhtjc->bhtj", kc, kc, Pk)
+            Qm = torch.einsum("bhtc,bhjc,bhtjc->bhtj", qc, kc, Pq)
+        else:
+            A = (kc @ kc.transpose(-1, -2)) * Pk[..., 0]
+            Qm = (qc @ kc.transpose(-1, -2)) * Pq[..., 0]
+        kdec, qdec = kc * torch.exp(Gp), qc * torch.exp(G)
+        if inh is not None:
+            kdec, qdec = kdec * inh, qdec * inh
+        rhs = vc - kdec @ state                                     # [B, H, n, Dv]
+        if keep is not None:
+            kp = keep[:, :, c0:c1, None]
+            rhs, A = rhs * kp, A * kp
+        eye = torch.eye(n, dtype=q.dtype, device=q.device)
+        u = torch.linalg.solve_triangular(eye + A, rhs, upper=False,
+                                          unitriangular=True)
+        outs.append(qdec @ state + Qm @ u)
+        w = torch.exp(G[:, :, -1:] - G)                             # Lam_{n-1,j}
+        carry = torch.exp(G[:, :, -1])[..., None]                    # [B, H, C, 1]
+        if same is not None:
+            w = w * same[:, :, -1, :, None].to(ct)
+            carry = carry * inh[:, :, -1:, :]
+        state = carry * state + (kc * w).transpose(-1, -2) @ u
+    return torch.cat(outs, 2).to(out_dtype), state.to(state_dtype)
+
+
 class GatedDeltaAttention(nn.Module):
     """Simplified Gated Delta Rule linear attention (see module docstring).
 
@@ -156,6 +240,8 @@ class GatedDeltaAttention(nn.Module):
 
         self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False)
         self.q_scale = 1.0 / math.sqrt(self.head_dim)
+        # v5.95: chunked-parallel recurrence for multi-token forwards.
+        self.chunk_size = hc.chunk_size
 
         # v5.63 (roadmap Q1, Qwen3-Next Gated DeltaNet): causal depthwise
         # short convolution over the q/k/v projections, followed by SiLU.
@@ -314,11 +400,40 @@ class GatedDeltaAttention(nn.Module):
         else:
             keep = None
 
-        # Sequential recurrence. Training and decode share this exact op
-        # order, so a one-shot forward and token-by-token decode agree
-        # numerically to float-reassociation noise (asserted at atol 1e-5
-        # in the test suite). At a packed-sequence document boundary the
-        # state is zeroed before the boundary token is processed.
+        # Sequential recurrence by default: training and decode share this
+        # exact op order, so a one-shot forward and token-by-token decode
+        # agree numerically to float-reassociation noise (asserted at atol
+        # 1e-5 in the test suite). At a packed-sequence document boundary
+        # the state is zeroed before the boundary token is processed. With
+        # chunk_size set, multi-token forwards use the chunked-parallel
+        # form instead (same math, see chunked_delta_rule).
+        if self.chunk_size and seq > 1:
+            out, state = chunked_delta_rule(
+                q, k, v, decay, keep, seg_start,
+                state.as_subclass(torch.Tensor), self.chunk_size)
+        else:
+            out, state = self._sequential(q, k, v, decay, keep, seg_start, state)
+
+        # Subclass hygiene: when the incoming state was a StateTensor, plain
+        # torch ops keep the subclass (Tensor subclasses are "sticky"), so
+        # `out` — and then the residual stream, other layers' MLA caches,
+        # everything downstream — would silently carry the
+        # _is_recurrent_state marker. Only the returned cache tensor may be
+        # marked; drop the subclass at the module boundary.
+        out = out.as_subclass(torch.Tensor)
+        output = self.o_proj(out.transpose(1, 2).contiguous().view(B, seq, -1))
+
+        present = None
+        if use_cache:
+            present = (state.as_subclass(StateTensor),)
+            if self.conv_kernel:
+                present = present + (new_conv_state.as_subclass(StateTensor),)
+        return output, present
+
+    def _sequential(self, q, k, v, decay, keep, seg_start, state):
+        """The per-token recurrence (default; always used for decode)."""
+        B = q.shape[0]
+        seq = q.shape[2]
         outs = []
         for t in range(seq):
             if seg_start is not None and bool(seg_start[:, t].any()):
@@ -336,21 +451,7 @@ class GatedDeltaAttention(nn.Module):
             outs.append(o_t)
         out = torch.stack(outs, dim=2)                        # [B, H, seq, Dv]
 
-        # Subclass hygiene: when the incoming state was a StateTensor, plain
-        # torch ops keep the subclass (Tensor subclasses are "sticky"), so
-        # `out` — and then the residual stream, other layers' MLA caches,
-        # everything downstream — would silently carry the
-        # _is_recurrent_state marker. Only the returned cache tensor may be
-        # marked; drop the subclass at the module boundary.
-        out = out.as_subclass(torch.Tensor)
-        output = self.o_proj(out.transpose(1, 2).contiguous().view(B, seq, -1))
-
-        present = None
-        if use_cache:
-            present = (state.as_subclass(StateTensor),)
-            if self.conv_kernel:
-                present = present + (new_conv_state.as_subclass(StateTensor),)
-        return output, present
+        return out, state
 
     def _short_conv(self, q, k, v, conv_state, attention_mask, seg_start):
         """Causal depthwise conv (kernel K) + SiLU over [q|k|v] channels.

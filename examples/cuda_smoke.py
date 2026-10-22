@@ -19,6 +19,8 @@ GPU and compares it with the CPU where a reference exists:
   quant_<method>   AWQ / GPTQ / MXFP4 fused vs unfused on CUDA
   fp8_trainer      FP8Trainer with labels: finite token CE, gradients flow
   gpu_monitor      vllm_engine.GPUMonitor reads the device
+  kda_chunked      v5.95 chunked KDA recurrence equals the loop on the GPU,
+                   and its speed
 
 Training checks (v5.90):
   train_parity_fp32       same init and batches, 5 AdamW steps: CUDA tracks CPU
@@ -413,6 +415,50 @@ def _real_size(arch, batch=8, seq=1024):
 
 for _arch in ("dense", "moe"):
     _named(f"real_size_{_arch}", lambda a=_arch: _real_size(a))
+
+
+@check
+def kda_chunked():
+    """v5.95: the chunked-parallel KDA recurrence equals the per-token loop
+    on this device (outputs, state, gradients), and how much faster one
+    layer's forward + backward is at 8 x 1024 tokens."""
+    import copy
+    from helioslm_v5.configs.config_v5 import HybridAttentionConfig
+    from helioslm_v5.src.attention.linear_attention import GatedDeltaAttention
+    cfg = HeliosLMv5Config(size="lite", hybrid_attention=HybridAttentionConfig(
+        enabled=True, per_channel_decay=True))
+    torch.manual_seed(16)
+    loop = GatedDeltaAttention(cfg).to(DEV)
+    chunked = copy.deepcopy(loop)
+    chunked.chunk_size = 32
+    x = torch.randn(2, 200, cfg.hidden_size, device=DEV)
+    res = []
+    for m in (loop, chunked):
+        y, (s,) = m(x, use_cache=True)
+        y.pow(2).mean().backward()
+        res.append((y.detach(), s, [p.grad for p in m.parameters()]))
+    diff = max((res[0][0] - res[1][0]).abs().max().item(),
+               (res[0][1] - res[1][1]).abs().max().item())
+    gdiff = max((a - b).abs().max().item() for a, b in zip(res[0][2], res[1][2]))
+    assert diff < 1e-4 and gdiff < 1e-4, (diff, gdiff)
+    xb = torch.randn(8, 1024, cfg.hidden_size, device=DEV)
+    times = {}
+    for name, m in (("loop", loop), ("chunked", chunked)):
+        best = float("inf")
+        for _ in range(2):
+            if DEV.type == "cuda":
+                torch.cuda.synchronize()
+            t0 = time.time()
+            with torch.autocast(DEV.type, dtype=torch.bfloat16,
+                                enabled=DEV.type == "cuda"):
+                y, _ = m(xb)
+            y.float().pow(2).mean().backward()
+            if DEV.type == "cuda":
+                torch.cuda.synchronize()
+            best = min(best, time.time() - t0)
+        times[name] = round(best, 3)
+    return {"max_abs_diff": diff, "grad_max_abs_diff": gdiff,
+            "fwd_bwd_s": times, "speedup": round(times["loop"] / times["chunked"], 2)}
 
 
 @check
