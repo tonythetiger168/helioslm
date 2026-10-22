@@ -1,5 +1,35 @@
 # HeliosLM v5 Changelog
 
+## v5.108 (2026-10-22) - Plan E3 / TW3: Traditional-Chinese MCQ pack
+
+- `eval/tw_bench.py`: loads TMMLU+ (`<subject>_{dev,val,test}.csv`),
+  C-Eval (`<subject>_val.csv`) and CMMLU (`<subject>.csv`) to one record
+  shape; TW-JusticeBench takes a `columns` map because its file layout
+  could not be read from the sandbox (check it on the pod before trusting
+  a score). Answers may be letters, 0-3 or full-width letters; malformed
+  records raise. TMLU is no longer on the Hub (TW1).
+- Two scoring modes: loglikelihood (the letter with the highest
+  log p(" X" | prompt), confidence = softmax over the four letters, the
+  lm-eval `acc` rule) and generation (letter extracted from zh-TW / zh-CN
+  phrasing; no letter is wrong). zh-TW and lm-eval prompt templates;
+  k-shot from the dev split per subject.
+- Phase A gates (`self_check`): reference answer 100% in both modes and
+  empty answer 0%, run on every loaded set before a model is scored.
+- `summarize`: micro accuracy, macro over subjects, and an optional macro
+  over categories ({subject: category}).
+- Licence rule (TW1): data stays under `data/tw_bench/` (git-ignored);
+  results JSON holds ids, letters and scores, never question text.
+  `eval_texts` feeds the E2 overlap check.
+- `model_score_fn(model, tokenizer)`: HeliosLMv5 scorer with the same
+  arithmetic as the E1 adapter, without needing lm-eval.
+- `examples/tw_bench_run.py`: scores a pilot run (`--run`), or only runs
+  the gates (`--check-only`).
+- `tests/test_tw_bench.py`: invented fixtures only (no benchmark text in
+  the repo); loaders, error paths, extraction oracles, gates (including a
+  broken extractor caught), loglik confidence, macros, k-shot prompts, no
+  question text in results, decontam hook, scorer vs direct log-softmax,
+  and the example end to end.
+
 ## v5.104 (2026-10-22) - OS7: long-context layout probe (RULER-lite)
 
 - `eval/ruler_lite.py`: three synthetic tasks in token-id space after
