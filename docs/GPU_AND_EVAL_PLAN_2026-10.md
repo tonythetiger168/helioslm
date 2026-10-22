@@ -90,7 +90,7 @@ GPU 小時是用兩個公開的實際訓練紀錄等比推算的：
 |---|---|---|---|
 | **E1** ✅ | lm-evaluation-harness 介接（`--model helioslm`） | CPU | 已完成（v5.92）：`eval/lm_harness.py`、`examples/eval_harness.py`；離線測試以 lm-eval 自己的 `simple_evaluate` 驗證 |
 | **E2** ✅ | 污染檢查：13-gram 比對訓練 shard 與評測集，報告重疊比例 | CPU | 已完成（v5.88）：`eval/decontam.py`、`pilot_prepare_data.py --decontaminate`；人造洩漏（英、中）能被抓到 |
-| **E3** | 繁中評測包（TW3）：TMMLU+ v1.1、TMLU、TW-JusticeBench，加 C-Eval / CMMLU 對照 | CPU 或 GPU | 授權照 TW1 審核結果；只在本地評測，不再散布題目 |
+| **E3** 🟡 | 繁中評測包（TW3）：TMMLU+ v1.1、TW-JusticeBench，加 C-Eval / CMMLU 對照（TMLU 已從 Hub 下架） | CPU 或 GPU | 程式已完成（v5.108）：`eval/tw_bench.py`、`examples/tw_bench_run.py`，Phase A gate（參考答案 100%、空答案 0%）；結果檔不含題目。實際分數要在連得到 Hub 的 pod 上跑 |
 | **E4** | 同條件 baseline 表：SmolLM3-3B、Qwen3.5-0.8B / 2B、Gemma 4 E2B 用同一個 harness 重跑 | 1 張 GPU，約 10–30 美元 | `benchmarks/baseline_eval_*.json` 附 harness 版本與 few-shot 設定 |
 | **E5** ✅ | 預先登記評測計劃：每一代訓練前先 commit 評測設定、題目版本與 gate 門檻 | — | 工具已完成（v5.88）：`eval/prereg.py` 鎖定計劃 hash，改過門檻後舊結果失效。v1.0 的實際門檻待負責人決定 |
 | **E6** | 新題評測：LiveCodeBench（只取訓練截止後的題目）、MathArena AIME 2026 | GPU | 只在 3B 以上才有意義 |

@@ -54,5 +54,8 @@ smoke*.json
 # Standard-benchmark full downloads (re-fetch: scripts/fetch_std_bench.py)
 data/std_bench/full/
 
+# TW3 evaluation sets: local only, never redistributed (TW1 licence rule)
+data/tw_bench/
+
 # Editor/backup leftovers
 *.bak

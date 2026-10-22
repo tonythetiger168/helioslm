@@ -91,7 +91,7 @@ renumbered.
 | B4 | U7 SMEBU + depth-scaled sandwich norm (Arcee Trinity) — fewer bias reversals at every step size, MaxVio variance −39% at λ=1e-2; sandwich gain 1/√L | ✅ Done (v5.72, T111) |
 | TW | TW1 dataset license audit (HF card license + gated status) — 45 cards read live: 21 commercial, 11 non-commercial, 1 no-derivatives, 12 without a licence field; wrong ids in the plan corrected | ✅ Done (v5.81, T119) |
 | TW | TW2 zh-TW pretraining pipeline (Wikipedia s2twp + FineWeb-2 + data.gov.tw, ~100M tokens) | ⬜ Not started |
-| TW | TW3 Traditional-Chinese evals in the harness (TMMLU+, TMLU, TW-JusticeBench) | ⬜ Not started |
+| TW | TW3 Traditional-Chinese evals in the harness (TMMLU+, TW-JusticeBench; TMLU is off the Hub) | 🟡 Code done (v5.108, `eval/tw_bench.py`); first scores need the pod (Hub files) |
 | TW | TW4 zh-TW tokenizer coverage report — toy char vocab loses 100% of CJK; BPE without Chinese 3.00 tokens/char; repo BPE 0.86 with 78% single-token coverage | ✅ Done (v5.75, T114) |
 | TW | TW5 Chinese tokenizer seed (Big5 Traditional + GB2312 Simplified common characters) — 3.00 -> 1.00 tokens per CJK character for a tokenizer without Chinese, 1.82x Chinese text per training step, Traditional unaffected by adding Simplified | ✅ Done (v5.80, T118) |
 | AC | AC1 mini SWE task set (20 small repos, hidden tests, trap gates) | ✅ Done (v5.62, T97) |
