@@ -1,4 +1,4 @@
-"""v5.95 (#42 prep): chunked-parallel delta rule (hybrid_attention.chunk_size).
+"""v5.107 (#42 prep): chunked-parallel delta rule (hybrid_attention.chunk_size).
 
 Pins:
 

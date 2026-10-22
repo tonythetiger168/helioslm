@@ -60,7 +60,7 @@ def main():
     ap.add_argument("--compile", action="store_true")
     ap.add_argument("--kda-chunk", type=int, default=0,
                     help="k3_block: chunked-parallel KDA recurrence with "
-                         "this chunk length (v5.95); 0 = per-token loop")
+                         "this chunk length (v5.107); 0 = per-token loop")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the config and parameter counts and exit")
     args = ap.parse_args()

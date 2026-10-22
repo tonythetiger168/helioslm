@@ -23,7 +23,7 @@ _ART = _REPO / "benchmarks" / "teacher_license_audit_2026-10-20.json"
 
 
 def test_reviews_complete():
-    assert len(ta.TEACHERS) == 10
+    assert len(ta.TEACHERS) == 10 and len(ta.REVIEWS) == 14
     for rid, r in ta.REVIEWS.items():
         assert r["verdict"] in ta.VERDICTS, rid
         assert r["conditions"] and r["license"], rid
@@ -60,6 +60,30 @@ def test_changed_or_unreviewed_licence_is_refused():
     print("PASS test_changed_or_unreviewed_licence_is_refused")
 
 
+def test_pending_rows_are_not_usable_until_pinned():
+    # OS4: the five models of the 2026-10-22 review
+    assert set(ta.PENDING_TEACHERS) == {
+        "tencent/Hy3", "XiaomiMiMo/MiMo-V2.5-Pro",
+        "deepseek-ai/DeepSeek-V4-Flash", "zai-org/GLM-5.2"}
+    assert "MiniMaxAI/MiniMax-M3" in ta.TEACHERS  # already pinned
+    assert not set(ta.PENDING_TEACHERS) & set(ta.TEACHERS)
+    for rid in ta.PENDING_TEACHERS:
+        assert not ta.usable(rid), rid
+    assert ta.usable("deepseek-ai/DeepSeek-V4.1-Flash")
+    assert not ta.usable("nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16")
+    assert not ta.usable("someone/new-model")
+    # a live audit of pending rows records the hash without refusing, and
+    # pin_pending hands back entries with the reading unchanged
+    texts = {r: f"licence of {r}" for r in ta.PENDING_TEACHERS}
+    rows = ta.audit(ta.PENDING_TEACHERS, _fake(texts))
+    assert all(not r["pinned"] for r in rows)
+    pins = ta.pin_pending(rows)
+    for rid, e in pins.items():
+        assert e["reviewed_sha256"] == hashlib.sha256(texts[rid].encode()).hexdigest()
+        assert e["verdict"] == ta.REVIEWS[rid]["verdict"]
+    print("PASS test_pending_rows_are_not_usable_until_pinned")
+
+
 def test_committed_audit():
     art = json.loads(_ART.read_text())
     rows = art["rows"]
@@ -84,4 +108,5 @@ def test_committed_audit():
 if __name__ == "__main__":
     test_reviews_complete()
     test_changed_or_unreviewed_licence_is_refused()
+    test_pending_rows_are_not_usable_until_pinned()
     test_committed_audit()

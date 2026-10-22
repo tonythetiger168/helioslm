@@ -334,7 +334,7 @@ class HybridAttentionConfig:
     # v5.63 (roadmap Q1, Qwen3-Next): causal depthwise short conv (kernel
     # size) + SiLU over the linear-attention q/k/v projections. 0 = off.
     short_conv_kernel: int = 0
-    # v5.95 (#42 prep): chunk length of the chunked-parallel delta rule
+    # v5.107 (#42 prep): chunk length of the chunked-parallel delta rule
     # used for multi-token forwards (training, prefill). 0 = the sequential
     # per-token loop (default, unchanged). Equal to the loop to float
     # tolerance; single-token decode always uses the loop.
@@ -401,6 +401,9 @@ class GRPOConfig:
     # sample carries them ("sampler_logprob" / "sampler_token_logprobs"):
     # weight = min(exp(old - sampler), tis_cap). None = off.
     tis_cap: Optional[float] = None
+    # v5.99 OS3: abstention-aware accuracy reward (training/abstain.py):
+    # wrong answers cost this much, "I don't know" earns 0. None = off.
+    abstain_penalty: Optional[float] = None
 
     def __post_init__(self):
         self._validate()
@@ -439,6 +442,10 @@ class GRPOConfig:
         if self.tis_cap is not None and not self.tis_cap >= 1.0:
             raise ValueError(
                 f"grpo.tis_cap must be >= 1 or None, got {self.tis_cap!r}")
+        if self.abstain_penalty is not None and not self.abstain_penalty >= 0:
+            raise ValueError(
+                f"grpo.abstain_penalty must be >= 0 or None, got "
+                f"{self.abstain_penalty!r}")
 
 
 class OptionConflictError(ValueError):

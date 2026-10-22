@@ -30,7 +30,7 @@ Cache contract (cross-module, relied upon by MTP rollback / the engine):
 
 Training path: a sequential loop over T (identical op order to the decode
 path, so both are numerically identical — verified at atol 1e-5). This is
-O(T) sequential. v5.95: ``hybrid_attention.chunk_size`` > 0 switches
+O(T) sequential. v5.107: ``hybrid_attention.chunk_size`` > 0 switches
 multi-token forwards to ``chunked_delta_rule`` (T / chunk steps, each a
 triangular solve), equal to the loop to float tolerance.
 
@@ -111,7 +111,7 @@ def past_seq_len(past_key_values) -> int:
 
 def chunked_delta_rule(q, k, v, decay, keep, seg_start, state, chunk):
     """Chunked-parallel form of the recurrence in the module docstring
-    (v5.95, ``hybrid_attention.chunk_size``); same results as the
+    (v5.107, ``hybrid_attention.chunk_size``); same results as the
     per-token loop up to float rounding.
 
     Shapes: q, k, v [B, H, T, D]; decay [B, H, T] (per head) or
@@ -240,7 +240,7 @@ class GatedDeltaAttention(nn.Module):
 
         self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False)
         self.q_scale = 1.0 / math.sqrt(self.head_dim)
-        # v5.95: chunked-parallel recurrence for multi-token forwards.
+        # v5.107: chunked-parallel recurrence for multi-token forwards.
         self.chunk_size = hc.chunk_size
 
         # v5.63 (roadmap Q1, Qwen3-Next Gated DeltaNet): causal depthwise

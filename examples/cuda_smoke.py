@@ -19,7 +19,7 @@ GPU and compares it with the CPU where a reference exists:
   quant_<method>   AWQ / GPTQ / MXFP4 fused vs unfused on CUDA
   fp8_trainer      FP8Trainer with labels: finite token CE, gradients flow
   gpu_monitor      vllm_engine.GPUMonitor reads the device
-  kda_chunked      v5.95 chunked KDA recurrence equals the loop on the GPU,
+  kda_chunked      v5.107 chunked KDA recurrence equals the loop on the GPU,
                    and its speed
 
 Training checks (v5.90):
@@ -419,7 +419,7 @@ for _arch in ("dense", "moe"):
 
 @check
 def kda_chunked():
-    """v5.95: the chunked-parallel KDA recurrence equals the per-token loop
+    """v5.107: the chunked-parallel KDA recurrence equals the per-token loop
     on this device (outputs, state, gradients), and how much faster one
     layer's forward + backward is at 8 x 1024 tokens."""
     import copy

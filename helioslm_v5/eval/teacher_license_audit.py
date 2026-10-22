@@ -126,7 +126,55 @@ REVIEWS = {
                        "Apache 2.0"],
     },
 }
-TEACHERS = tuple(REVIEWS)
+# OS4 (v5.99): the five models of the 2026-10-22 open-model review. Read
+# 2026-10-22 through a web reader because huggingface.co is not reachable
+# from the build container, so no byte-exact hash could be taken. Each
+# row's hash is PENDING: the reading stands, but the row is not usable as a
+# teacher until a live audit pins the hash (audit(PENDING_TEACHERS) does it
+# and fails nothing; see pin_pending). MiniMax M3 is already a pinned row
+# above.
+PENDING = "pending: hash not pinned"
+REVIEWS.update({
+    "tencent/Hy3": {
+        "reviewed_sha256": PENDING,
+        "license": "Apache-2.0 (with a Tencent header naming Hy3 and its "
+                   "copyright)",
+        "verdict": "allowed",
+        "conditions": ["keep the licence, the Tencent copyright header and "
+                       "any NOTICE (s.4)",
+                       "earlier Hunyuan releases used the Tencent Hunyuan "
+                       "Community License (territory exclusions); confirm "
+                       "the pinned text is the Apache one"],
+    },
+    "XiaomiMiMo/MiMo-V2.5-Pro": {
+        "reviewed_sha256": PENDING,
+        "license": "MIT (model card)",
+        "verdict": "allowed",
+        "conditions": ["keep the copyright and permission notice",
+                       "the card says MIT; the live audit records whether a "
+                       "LICENSE file exists (V2.6-Pro-MOPD had none)"],
+    },
+    "deepseek-ai/DeepSeek-V4-Flash": {
+        "reviewed_sha256": PENDING,
+        "license": "MIT",
+        "verdict": "allowed",
+        "conditions": ["keep the copyright and permission notice",
+                       "expected to equal the V4.1-Flash text "
+                       "(f2c6c602...): a different hash means re-read"],
+    },
+    "zai-org/GLM-5.2": {
+        "reviewed_sha256": PENDING,
+        "license": "MIT (Copyright (c) 2026 Zhipu AI)",
+        "verdict": "allowed",
+        "conditions": ["keep the copyright and permission notice",
+                       "unlike GLM-5.3 (GLM-5.3 License, security review "
+                       "over US$10B MaaS revenue), 5.2 is plain MIT"],
+    },
+})
+TEACHERS = tuple(r for r, v in REVIEWS.items()
+                 if v["reviewed_sha256"] != PENDING)
+PENDING_TEACHERS = tuple(r for r, v in REVIEWS.items()
+                         if v["reviewed_sha256"] == PENDING)
 SCOPE_NOTES = (
     "weight licences only: outputs from a vendor's own API follow that "
     "API's terms of service",
@@ -167,9 +215,32 @@ def audit(teachers=TEACHERS, fetch=hub_fetch):
         text = meta.pop("license_text")
         sha = license_sha(text) if text else None
         review = REVIEWS[rid]
+        if review["reviewed_sha256"] == PENDING:
+            rows.append({"id": rid, **meta, "license_sha256": sha, **review,
+                         "pinned": False})
+            continue
         if sha != review["reviewed_sha256"]:
             raise ValueError(f"{rid}: licence text changed since it was "
                              f"reviewed ({review['reviewed_sha256']} -> "
                              f"{sha}); re-read it and update REVIEWS")
-        rows.append({"id": rid, **meta, "license_sha256": sha, **review})
+        rows.append({"id": rid, **meta, "license_sha256": sha, **review,
+                     "pinned": True})
     return rows
+
+
+def usable(rid):
+    """May ``rid``'s outputs be used for distillation today? Only a pinned
+    row whose verdict allows it (conditions still apply)."""
+    r = REVIEWS.get(rid)
+    return bool(r) and r["reviewed_sha256"] != PENDING and \
+        r["verdict"] in ("allowed", "allowed_with_conditions")
+
+
+def pin_pending(rows):
+    """REVIEWS entries to paste after a live audit of PENDING_TEACHERS:
+    the reviewer compares each fetched text with the recorded reading
+    first; this only fills in the hash it saw."""
+    return {r["id"]: {**{k: REVIEWS[r["id"]][k] for k in
+                         ("license", "verdict", "conditions")},
+                      "reviewed_sha256": r["license_sha256"]}
+            for r in rows if not r["pinned"]}
