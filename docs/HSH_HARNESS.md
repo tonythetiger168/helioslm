@@ -96,3 +96,30 @@ Tests: `helioslm_v5/tests/test_hsh_session.py` (15).
   payload for the log.
 
 Tests: `helioslm_v5/tests/test_hsh_tools.py` (21).
+
+## H4: model seam and agent loop (`hsh/llm.py`, `hsh/loop.py`)
+
+- `ctx.llm.register(provider, adapter)`; `ctx.llm.call(request)` runs the
+  `llm/stream` waterfall around the adapter. The request header's
+  `config.provider` picks the adapter.
+- `ctx.agents.create(session_id, config, system_prompt=..., setup=...)`
+  returns an `Agent`; `agent.send(text)` runs turns until the inbox is
+  empty; `agent.inject(text)` adds context to the next request.
+- Turn flow and events as in dsh: `agent/pre-step`, `agent/request`,
+  `system-prompt/assemble`, `agent/request-error`, `agent/turn-stopping`,
+  `agent/status`, `agent/created`.
+- Oracle: `agent.sent` (hashes of every request sent) equals
+  `rebuild_requests(agent.session.events)`.
+
+A real model in five lines:
+
+```python
+from helioslm_v5.hsh import *
+ctx = Context()
+for p in (Sessions, Tools, LLM, Agents): ctx.plugin(p)
+ctx.llm.register("deepseek", OpenAICompatAdapter("https://api.deepseek.com", "DEEPSEEK_API_KEY"))
+agent = ctx.agents.create("demo", {"provider": "deepseek", "model": "deepseek-v4-flash"})
+print(agent.send("hello"))
+```
+
+Tests: `helioslm_v5/tests/test_hsh_loop.py` (12).

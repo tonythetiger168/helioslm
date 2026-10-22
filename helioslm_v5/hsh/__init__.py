@@ -7,3 +7,6 @@ from .session import (Session, SessionError, Sessions,  # noqa: F401
                       usage_summary)
 from .schema import SchemaError, check_schema, validate  # noqa: F401
 from .tools import Execution, ToolDefinition, ToolResult, Tools, tool  # noqa: F401
+from .llm import (LLM, LLMError, OpenAICompatAdapter, ScriptedAdapter,  # noqa: F401
+                  TextModelAdapter, render_transcript)
+from .loop import Agent, Agents  # noqa: F401

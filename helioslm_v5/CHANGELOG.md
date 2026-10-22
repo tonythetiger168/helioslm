@@ -1,5 +1,27 @@
 # HeliosLM v5 Changelog
 
+## v5.96 (2026-10-22) - hsh H4: model adapter seam and the turn/step agent loop
+
+- `hsh/llm.py` (`ctx.llm`): adapters registered per provider; every call
+  passes the `llm/stream` waterfall. Adapters: `ScriptedAdapter` (tests),
+  `TextModelAdapter` (any `generate(prompt)` model, e.g. a HeliosLM
+  checkpoint, over the repo's `@@tool@@` protocol; a malformed block is
+  returned as text, never a crash), `OpenAICompatAdapter` (OpenAI-style
+  HTTP; DeepSeek `reasoning_content` mapped to `reasoning`; key read from
+  an environment variable).
+- `hsh/loop.py` (`ctx.agents`, injects sessions + tools + llm): dsh's turn
+  flow. `agent/pre-step` (enter / reject / rewrite), `agent/request`
+  (config), `system-prompt/assemble`, `request/header` on change,
+  request built only from the log, `assistant/attempt` +
+  `agent/request-error` (retry on request), tool calls through
+  `ctx.tools` in the agent's scope, deferred tool contexts injected after
+  the results, `agent/turn-stopping` (may continue the turn), `max_steps`.
+  `setup(agent)` registers scoped tools before the first prompt.
+- `tests/test_hsh_loop.py` (12 tests): every request every agent sent
+  equals the request rebuilt from its session log, across tool steps,
+  turns, retries, injected context, a system prompt change and a config
+  change.
+
 ## v5.95 (2026-10-22) - hsh H3: scoped tool registry and guarded execution pipeline
 
 - `hsh/schema.py`: the JSON Schema subset tools may declare, refused at
