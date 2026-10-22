@@ -28,6 +28,38 @@
   torch); with torch it checks the sweep's equal-parameter arms and runs
   `--smoke` on the CPU.
 
+## v5.107 (2026-10-22) - #42 prep: chunked-parallel KDA recurrence
+
+- The gated delta-rule layers (`GatedDeltaAttention`, the KDA arm of
+  `k3_block`) ran a Python loop over every token; on the RTX 6000 Ada
+  `k3_block` trained ~10x slower than dense at a tiny width (v5.90).
+- `hybrid_attention.chunk_size` (new, default 0 = the per-token loop,
+  unchanged): multi-token forwards use `chunked_delta_rule`, T / chunk
+  steps instead of T. Single-token decode always uses the loop.
+  - Math: with the write `u_t = keep_t (v_t - S_{t-1}^T k_t)`, the state
+    inside a chunk is `S_t = Lam_t S_0 + sum_j Lam_{t,j} k_j u_j^T`, so the
+    u of a chunk solve one unit lower-triangular system
+    `(I + diag(keep) A) u = keep (v - (k * Lam_{t-1}) S_0)`, with
+    `A_tj = k_t^T Lam_{t-1,j} k_j`. Outputs and the next state follow by
+    matrix products.
+  - Stable: every decay product is `exp` of a difference of cumulative
+    log-decays over j <= t (all factors <= 1, masked to -inf before the
+    exp); nothing divides by a decay. Tiny decays (the 1e-6 clamp) stay
+    finite.
+  - Same semantics as the loop: per-head and per-channel (KDA) decay,
+    padding (masked tokens write nothing), packed-sequence document
+    resets, a carried state, and the short conv in front.
+  - Computed in fp32 (fp64 stays fp64) whatever the input dtype.
+- `pilot_100m.py --kda-chunk N`, `pilot_config(kda_chunk=)`;
+  `lm_harness.load_pilot` reads it from `run.json`.
+- `cuda_smoke.py` `kda_chunked`: equality with the loop on the device
+  and one layer's forward + backward time at 8 x 1024 tokens. On the CPU
+  (per-channel, chunk 32): 33.0 s -> 19.7 s, 1.68x. GPU not measured yet.
+- `tests/test_kda_chunked.py` (62 tests): float64 equality with the loop
+  to 1e-10 over per-head / per-channel x padding x document starts x
+  carried state x chunk 1 / 7 / 32 / > T; tiny decays; the module
+  (outputs, cache, gradients) with masks, packed positions and the short
+  conv; chunked prefill then per-token decode; a whole hybrid model.
 ## v5.106 (2026-10-22) - #42 prep: batched MoE dispatch
 
 - On the RTX 6000 Ada the MoE pilot trained ~2.5x slower than dense at a
