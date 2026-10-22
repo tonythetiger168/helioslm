@@ -1,5 +1,28 @@
 # HeliosLM v5 Changelog
 
+## v5.94 (2026-10-22) - hsh H2: append-only session log (model-visible means logged); OS1, OS2
+
+- `hsh/session.py`, after dsh's `core/session`:
+  - `Session`: append-only `{"seq", "type", "data"}` events with
+    contiguous seq, a closed event vocabulary (plugins may add log-only
+    types), lossless-JSON data detached from the caller;
+  - `derive_messages` projects model history from the log (system head
+    replaced or cleared; `assistant/attempt` and log-only events never
+    become history; pure plugin projections);
+  - `build_request` / `rebuild_requests`: every request is a pure function
+    of the log, so a replay yields the request each attempt saw;
+    `request_hash` compares them;
+  - JSONL persistence with a format/version header, `repair()` for an
+    interrupted tail, `fork(after_turn)` with an inherited-seed marker;
+  - `Sessions` service (`ctx.sessions`) broadcasting `session/event`.
+- Roadmap OS2 (MiniMax M3's weak spot): `keep_thinking` = `none` |
+  `turn` (default; reasoning survives one turn's tool calls) | `all`.
+- Roadmap OS1: `usage_summary` folds `assistant/message` usage per turn
+  (input, output, reasoning tokens; retried attempts counted apart).
+- `tests/test_hsh_session.py` (15 tests): requests rebuilt from the log
+  equal the requests a hand-driven loop sent, byte for byte, for all three
+  thinking modes and a retry; an unlogged input is detected.
+
 ## v5.93 (2026-10-22) - hsh H1: plugin kernel after DeepSeek Harness
 
 - New package `helioslm_v5/hsh/`: the harness rebuilt on the design of
