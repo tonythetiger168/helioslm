@@ -1,5 +1,24 @@
 # HeliosLM v5 Changelog
 
+## v5.104 (2026-10-22) - OS7: long-context layout probe (RULER-lite)
+
+- `eval/ruler_lite.py`: three synthetic tasks in token-id space after
+  RULER: single needle, multi-key needle, and variable tracking (a chain
+  of ARROW links plus a decoy chain). Each sequence ends `[QUERY k]` and
+  the answer is one value token predicted at the last position (chance
+  1/32). Needle positions are uniform, so longer lengths mean longer
+  distances. `accuracy(model, task, length, ...)` scores them.
+- `examples/longctx_arch_probe.py`: four HeliosLMv5 layouts at the same
+  width, depth and data: dense MLA, MiMo-style SWA+global with sinks,
+  K3-order KDA hybrid, and DSA top-k (prefill too). Each is trained on the
+  task mix at `--train-len` and evaluated at 1x, 2x and 4x. CSA/HCA are
+  not HeliosLMv5 layers and stay in `repo_longctx_probe.py`. The GPU run
+  is still to come; KDA is slow at long lengths until chunked KDA (#73)
+  lands.
+- `tests/test_ruler_lite.py`: the task rule re-derived from each sequence,
+  determinism, too-short lengths refused, and every arm runs a forward
+  and backward pass.
+
 ## v5.103 (2026-10-22) - OS5: MTP speculative rollouts for GRPO
 
 - `GRPOConfig.rollout_use_mtp` (default False, unchanged): GRPO rollouts
