@@ -199,6 +199,17 @@ def test_learned_lightning_indexer():
             assert torch.equal(p, before[n]), f"{n} moved under distill"
     _expect_raises(ValueError, lambda: mla_d.indexer_distill_loss(h_t),
                    "distill loss on head_mean indexer")
+    # v5.101 (MSA B.3): detach_input=True keeps the distill gradient out
+    # of the backbone; the default lets it reach the latent projections.
+    for detach, reaches in ((False, True), (True, False)):
+        mla_t.zero_grad(set_to_none=True)
+        mla_t.indexer_distill_loss(h_t, detach_input=detach).backward()
+        back = [n for n, p in mla_t.named_parameters()
+                if not n.startswith("indexer") and p.grad is not None
+                and p.grad.abs().sum() > 0]
+        assert bool(back) == reaches, (detach, back)
+        assert any(p.grad is not None for p in mla_t.indexer.parameters())
+    mla_t.zero_grad(set_to_none=True)
 
     # --- supervised learnability oracle (standalone module): a crisp
     # best-match task with a margin — the indexer must learn to pick, for

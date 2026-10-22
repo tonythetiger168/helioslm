@@ -1,5 +1,20 @@
 # HeliosLM v5 Changelog
 
+## v5.101 (2026-10-22) - OS8: MiniMax Sparse Attention notes, detached indexer distillation
+
+- `docs/MSA_NOTES.md`: reading of arXiv:2606.13392 (MSA, the attention
+  behind MiniMax-M3). It covers block-level top-k per GQA group, exp-free
+  top-k, the KV-outer kernel, the warm-up and KL recipe, the results
+  (RULER and HELMET on par with full attention at 128K, 7.6x faster decode
+  at 1M) and the regressions, set point by point against HeliosLM's
+  DSA-style sparse path.
+- Adopted from it: `MLA.indexer_distill_loss(..., detach_input=True)`
+  stops the distillation gradient at the indexer's inputs so it trains the
+  indexer only (MSA B.3: letting it reach the backbone caused gradient
+  spikes and short-context regression). Default False keeps the old
+  behaviour.
+- `case_indexer.test_learned_lightning_indexer` checks both settings.
+
 ## v5.99 (2026-10-22) - OS4: licences of the 2026-10-22 open-model review
 
 - `eval/teacher_license_audit.py`: readings for the review's models not

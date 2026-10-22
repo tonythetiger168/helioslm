@@ -1343,7 +1343,7 @@ class MLA(nn.Module):
         return stats
 
     def indexer_distill_loss(self, hidden_states, attention_mask=None,
-                             position_ids=None):
+                             position_ids=None, detach_input=False):
         """DSA-style distillation loss for the learned lightning indexer.
 
         Top-k selection is discrete, so the LM loss never reaches the
@@ -1363,6 +1363,13 @@ class MLA(nn.Module):
         train the indexer alone, optimize
         ``self._effective_indexer().parameters()`` (with IndexShare the
         group's layers all distill into the same shared indexer).
+
+        ``detach_input=True`` (v5.101, after MiniMax Sparse Attention,
+        arXiv:2606.13392 B.3) stops the gradient at the indexer's inputs,
+        so this loss trains the indexer only and never reaches the
+        backbone; MSA reports that letting it through caused gradient
+        spikes and short-context regression. Default False keeps the
+        joint-training behaviour above.
 
         Prefill-only: pass a batch WITHOUT a KV cache. With an fp8 cache
         config the served index keys are E4M3-rounded while this loss sees
@@ -1399,7 +1406,11 @@ class MLA(nn.Module):
                                 c_kv.transpose(-2, -1))
                    + torch.matmul(q_rope.mean(dim=1, keepdim=True),
                                   k_rope.transpose(-2, -1))).detach()
-        student = self._effective_indexer()(hidden_states, c_kv)
+        if detach_input:
+            student = self._effective_indexer()(hidden_states.detach(),
+                                                c_kv.detach())
+        else:
+            student = self._effective_indexer()(hidden_states, c_kv)
         neg = ~attn_mask
         teacher = teacher.masked_fill(neg, float("-inf"))
         student = student.masked_fill(neg, float("-inf"))
