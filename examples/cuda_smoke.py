@@ -243,21 +243,37 @@ def _train(model, batches, device, dtype=torch.float32, lr=1e-3):
 
 
 @check
-def train_parity_fp32():
-    """Same init, same batches, 5 AdamW steps: CUDA tracks CPU."""
+def train_parity_fp32(steps=5, lr=1e-3):
+    """Same init, same batches, 5 AdamW steps: CUDA tracks CPU.
+
+    The max weight difference is not a usable gate on its own: AdamW
+    divides by sqrt(v), so an element whose gradient is ~0 moves by up to
+    lr per step in the direction of its rounding noise, and CPU and CUDA
+    round differently. Measured: on the CPU alone, 1 vs 4 threads already
+    gives a max of 2.2e-4 on a handful of elements while the 99.9th
+    percentile stays at 4.6e-7; on CUDA (torch 2.8.0+cu128) the max
+    reached 3.0e-3. So the gate is the 99.9th percentile (a real device
+    bug moves many weights), with the max only bounded by AdamW's own
+    limit of 2 * lr per step.
+    """
     model, cfg = _lite(11)
     init = {k: v.clone() for k, v in model.state_dict().items()}
-    batches = _batches(cfg, 5)
-    ref = _train(model, batches, torch.device("cpu"))
+    batches = _batches(cfg, steps)
+    ref = _train(model, batches, torch.device("cpu"), lr=lr)
     ref_w = {k: v.detach().clone() for k, v in model.state_dict().items()}
     model.load_state_dict(init)
-    got = _train(model, batches, DEV)
+    got = _train(model, batches, DEV, lr=lr)
     diff_l = max(abs(a - b) for a, b in zip(ref, got))
-    diff_w = max((model.state_dict()[k].detach().cpu().float()
-                  - ref_w[k].float()).abs().max().item() for k in ref_w)
+    d = torch.cat([(model.state_dict()[k].detach().cpu().float()
+                    - ref_w[k].float()).abs().flatten() for k in ref_w])
+    p999 = d.kthvalue(max(1, int(0.999 * d.numel()))).values.item()
+    diff_w = d.max().item()
     assert diff_l < 1e-3, f"loss drift {diff_l:.2e}: cpu {ref} vs {got}"
-    assert diff_w < 1e-3, f"weight drift {diff_w:.2e}"
+    assert p999 < 1e-4, f"weight drift p99.9 {p999:.2e} (max {diff_w:.2e})"
+    assert diff_w <= 2 * lr * steps, f"weight drift {diff_w:.2e} > AdamW bound"
     return {"max_loss_diff": diff_l, "max_weight_diff": diff_w,
+            "p999_weight_diff": p999,
+            "weights_over_1e-4": int((d > 1e-4).sum()), "weights": d.numel(),
             "losses": [round(x, 4) for x in got]}
 
 
