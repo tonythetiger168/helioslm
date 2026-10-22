@@ -77,3 +77,22 @@ Tests: `helioslm_v5/tests/test_hsh_kernel.py` (16).
   starts a child at a turn boundary.
 
 Tests: `helioslm_v5/tests/test_hsh_session.py` (15).
+
+## H3: tools (`hsh/tools.py`, `hsh/schema.py`)
+
+- `ToolDefinition(name, description, parameters, execute, output=None,
+  render=None, project_content=None, finalize_content=None)`; the body
+  gets validated, copied arguments and returns a JSON value.
+- Pipeline: arguments -> `tools/pre-execute` -> approval (for `ask`) ->
+  guards -> `tools/execute` -> `project_content` -> `tools/post-execute`
+  -> `finalize_content` -> `tools/result`. Error codes: `unknown-tool`,
+  `invalid-arguments`, `denied`, `tool-error`, `invalid-output`,
+  `pipeline-error`.
+- `register(defn, ctx=agent_ctx)` scopes a tool to one agent (shadowing a
+  global of the same name); `restrict(agent_ctx, allow=..., deny=...)`
+  filters the globals that agent sees; `guard(fn, ctx=...)` denies by
+  returning a reason. All three are effects of the registering plugin.
+- `ToolResult.session_data(turn, step, call_id)` is the `tool/result`
+  payload for the log.
+
+Tests: `helioslm_v5/tests/test_hsh_tools.py` (21).

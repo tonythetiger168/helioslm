@@ -5,3 +5,5 @@ from .session import (Session, SessionError, Sessions,  # noqa: F401
                       build_request, derive_messages, fold_request_header,
                       rebuild_requests, register_event_type, request_hash,
                       usage_summary)
+from .schema import SchemaError, check_schema, validate  # noqa: F401
+from .tools import Execution, ToolDefinition, ToolResult, Tools, tool  # noqa: F401
