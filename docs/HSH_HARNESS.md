@@ -60,3 +60,20 @@ OpenAI-compatible adapter and the local HeliosLM model.
 - `ctx.scoped(key)` tags registrations and dispatches with `key`.
 
 Tests: `helioslm_v5/tests/test_hsh_kernel.py` (16).
+
+## H2: the session log (`hsh/session.py`)
+
+- The log is the source of truth; `derive_messages(events)` is the model
+  history. Surface events: `system/message`, `user/message`,
+  `assistant/message`, `tool/result`. Log-only: `turn/*`, `step/*`,
+  `assistant/attempt`, `tool/call`, `request/header`, `session/end-seed`.
+- **Model-visible means logged.** `build_request(events)` is the only way
+  to build a request; `rebuild_requests(events)` replays the log and
+  returns the request every attempt saw. A loop that sneaks anything into
+  a request without logging it fails the hash comparison.
+- `keep_thinking` (OS2): `none`, `turn` (default), `all`.
+- `usage_summary(events)` (OS1): tokens per turn, attempts counted apart.
+- `Session.repair()` seals an interrupted tail; `Session.fork(after_turn)`
+  starts a child at a turn boundary.
+
+Tests: `helioslm_v5/tests/test_hsh_session.py` (15).
