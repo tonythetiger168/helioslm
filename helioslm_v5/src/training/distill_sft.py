@@ -1,4 +1,4 @@
-"""Student SFT on filtered teacher answers (v5.111, D3).
+"""Student SFT on filtered teacher answers (v5.112, D3).
 
 Sequence-level distillation: the student is fine-tuned with cross-entropy
 on the teacher's answers (D1 records that survived the D2 filter), the
