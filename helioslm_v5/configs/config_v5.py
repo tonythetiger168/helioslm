@@ -297,7 +297,7 @@ class MoEConfig:
     # ``intermediate_size`` instead of the routed MoE. 0 = off (every
     # layer MoE, bit-identical construction and state dict).
     first_k_dense: int = 0
-    # v5.94 (#42 prep): routed-expert dispatch. "blocked" (default) runs
+    # v5.106 (#42 prep): routed-expert dispatch. "blocked" (default) runs
     # each expert on fixed 64-row blocks, so a token's output is bit
     # identical whatever its batchmates; "batched" stacks the expert
     # weights and runs all experts in two bmm calls over a capacity-padded

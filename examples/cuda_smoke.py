@@ -20,7 +20,7 @@ GPU and compares it with the CPU where a reference exists:
   fp8_trainer      FP8Trainer with labels: finite token CE, gradients flow
   gpu_monitor      vllm_engine.GPUMonitor reads the device
   moe_batched_dispatch / real_size_moe_batched
-                   v5.94 batched MoE dispatch equals blocked on the GPU,
+                   v5.106 batched MoE dispatch equals blocked on the GPU,
                    and its real-size step speed
 
 Training checks (v5.90):
@@ -416,14 +416,14 @@ def _real_size(arch, batch=8, seq=1024, moe_dispatch="blocked"):
 
 for _arch in ("dense", "moe"):
     _named(f"real_size_{_arch}", lambda a=_arch: _real_size(a))
-# v5.94: the same MoE step with moe.dispatch="batched" (compare tokens/s
+# v5.106: the same MoE step with moe.dispatch="batched" (compare tokens/s
 # with real_size_moe)
 _named("real_size_moe_batched", lambda: _real_size("moe", moe_dispatch="batched"))
 
 
 @check
 def moe_batched_dispatch():
-    """v5.94: batched MoE dispatch equals blocked on this device (fp32
+    """v5.106: batched MoE dispatch equals blocked on this device (fp32
     outputs and gradients), and under bf16 autocast."""
     import copy
     from helioslm_v5.configs.config_v5 import MoEConfig

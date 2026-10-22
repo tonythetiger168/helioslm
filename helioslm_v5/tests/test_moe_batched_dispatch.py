@@ -1,4 +1,4 @@
-"""v5.94 (#42 prep): moe.dispatch = "batched".
+"""v5.106 (#42 prep): moe.dispatch = "batched".
 
 Pins:
 

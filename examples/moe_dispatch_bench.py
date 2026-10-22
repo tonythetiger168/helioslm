@@ -1,4 +1,4 @@
-"""moe_dispatch_bench.py — blocked vs batched MoE dispatch (v5.94, #42 prep).
+"""moe_dispatch_bench.py — blocked vs batched MoE dispatch (v5.106, #42 prep).
 
 Times one DeviceLimitedMoE layer, forward + backward, with
 ``moe.dispatch`` "blocked" (fixed 64-row blocks, one call per expert and

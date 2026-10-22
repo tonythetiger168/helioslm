@@ -241,7 +241,7 @@ class DeviceLimitedMoE(nn.Module):
         # never changes within a process, so the list is built at most once
         # per (rank, device) instead of on every forward.
         self._local_experts_cache = None
-        # v5.94: "blocked" (bit-stable per token) or "batched" (bmm).
+        # v5.106: "blocked" (bit-stable per token) or "batched" (bmm).
         self.dispatch = config.moe.dispatch
 
         # Routed experts (latent<->expert_hidden under LatentMoE).

@@ -60,7 +60,7 @@ def main():
     ap.add_argument("--compile", action="store_true")
     ap.add_argument("--moe-dispatch", choices=["blocked", "batched"],
                     default="blocked",
-                    help="routed-expert dispatch (v5.94); batched runs all "
+                    help="routed-expert dispatch (v5.106); batched runs all "
                          "experts in two bmm calls")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the config and parameter counts and exit")
