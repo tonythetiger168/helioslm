@@ -1,5 +1,23 @@
 # HeliosLM v5 Changelog
 
+## v5.99 (2026-10-22) - OS4: licences of the 2026-10-22 open-model review
+
+- `eval/teacher_license_audit.py`: readings for the review's models not
+  yet in the audit: `tencent/Hy3` (Apache-2.0 with a Tencent header),
+  `XiaomiMiMo/MiMo-V2.5-Pro` (MIT on the card), `deepseek-ai/DeepSeek-V4-Flash`
+  (MIT) and `zai-org/GLM-5.2` (MIT, unlike GLM-5.3's own licence), all
+  `allowed` with notice-keeping. MiniMax M3 was already a pinned row
+  (MiniMax Community License: attribution, notice to MiniMax, written
+  authorization over US$20M yearly revenue).
+- huggingface.co is not reachable from the build container, so the texts
+  were read through a web reader and no byte-exact hash exists yet. The
+  new rows carry `reviewed_sha256 = PENDING`: `usable(rid)` is False for
+  them until a live audit pins the hash
+  (`python examples/teacher_license_audit.py --pending` prints the
+  entries to paste after comparing the texts). `audit()` rows gain
+  `pinned`. The committed 2026-10-20 artifact is unchanged.
+- T120 gains `test_pending_rows_are_not_usable_until_pinned`.
+
 ## v5.98 (2026-10-22) - hsh H6: compaction, subagents, AGENTS.md, Claude Code hooks bridge
 
 - Core: log-only `context/shadow {first, last}` hides a range of surface
