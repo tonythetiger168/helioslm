@@ -505,3 +505,88 @@ def test_indexer_share_group_stress():
           "layouts (2,5)/(3,4)/(8,4) route to leaders exactly, shared=="
           "duplicated bitwise, 40-step decode deterministic to kv=64, "
           "k==kv_len transition clean, scorer finite under x1e3/zero")
+
+
+# ----------------------------------------------------------------------
+def test_indexer_distill_share_detach():
+    """IndexShare x v5.101 detach_input: distill gradient routing under a
+    SHARED indexer.
+
+    ``MLA.indexer_distill_loss`` scores with ``self._effective_indexer()``,
+    so under ``indexer_share_every > 1`` every group member distills into
+    the SAME leader indexer (the docstring says so; nothing pins it).
+    Combined with v5.101's ``detach_input`` (MSA B.3: indexer-only
+    training) the contract is:
+
+    1. detach=True, all layers' losses together: gradients reach ONLY the
+       leaders' indexer parameters — no backbone parameter of ANY layer
+       (the follower's own latent projections included) sees a grad;
+    2. a follower's distill loss alone puts a grad on its GROUP LEADER's
+       indexer and on no other group's indexer;
+    3. detach=False on a follower: the grad reaches the follower's OWN
+       backbone projections (kv_a_proj) AND the leader's indexer, but not
+       the leader layer's backbone — the cross-layer route is exactly
+       "student side -> shared indexer, teacher-input side -> own layer".
+
+    Case coverage elsewhere: unshared detach semantics in
+    test_learned_lightning_indexer, share layout/routing in
+    test_indexer_share_group_stress.
+    """
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+
+    torch.manual_seed(101)
+    cfg = HeliosLMv5Config(size="lite")
+    cfg.num_hidden_layers = 4
+    cfg.attention.sparse_top_k = 8
+    cfg.attention.sparse_indexer = "learned"
+    cfg.attention.indexer_share_every = 2
+    model = HeliosLMv5(cfg).train()
+    attns = [layer.attention for layer in model.layers]
+    assert attns[1].indexer is None and attns[3].indexer is None
+    leaders = (attns[0].indexer, attns[2].indexer)
+
+    g = torch.Generator().manual_seed(7)
+    h = torch.randn(2, 12, cfg.hidden_size, generator=g)
+
+    def zero():
+        model.zero_grad(set_to_none=True)
+
+    def grad_of(module):
+        return [p for p in module.parameters()
+                if p.grad is not None and p.grad.abs().sum() > 0]
+
+    # 1) detach=True, joint backward over every layer's distill loss:
+    #    only the two leader indexers carry grads, model-wide.
+    zero()
+    sum(a.indexer_distill_loss(h, detach_input=True) for a in attns
+        ).backward()
+    touched = {n for n, p in model.named_parameters()
+               if p.grad is not None and p.grad.abs().sum() > 0}
+    assert touched, "no grads at all"
+    for n in touched:
+        assert ".attention.indexer." in n, f"detach leak into {n}"
+        layer_no = int(n.split(".")[1])
+        assert layer_no in (0, 2), f"follower owns indexer grad: {n}"
+    assert all(grad_of(ix) for ix in leaders), "a leader indexer got none"
+
+    # 2) a follower distills into ITS group leader only
+    zero()
+    attns[1].indexer_distill_loss(h, detach_input=True).backward()
+    assert grad_of(leaders[0]), "follower's loss missed its leader"
+    assert not grad_of(leaders[1]), "follower's loss leaked across groups"
+    assert not grad_of(attns[1]), "detach=True reached follower backbone"
+
+    # 3) detach=False on the same follower: own backbone + leader indexer,
+    #    and the leader layer's own backbone stays clean
+    zero()
+    attns[1].indexer_distill_loss(h, detach_input=False).backward()
+    assert grad_of(leaders[0]), "shared indexer got no grad"
+    assert grad_of(attns[1].kv_a_proj), "follower backbone got no grad"
+    backbone0 = [n for n, p in attns[0].named_parameters()
+                 if not n.startswith("indexer")
+                 and p.grad is not None and p.grad.abs().sum() > 0]
+    assert not backbone0, f"leader backbone touched: {backbone0}"
+    _pass("test_indexer_distill_share_detach",
+          "joint detach=True grads land only on leader indexers; "
+          "follower loss -> its group leader only; detach=False reaches "
+          "the follower's own backbone, never the leader layer's")
