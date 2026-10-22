@@ -11,7 +11,8 @@ Shipped presets (dsh's four work modes):
 
 - ``minimal``: ``bash`` + ``str_replace_editor`` and a short persona;
 - ``standard``: ``bash``, ``read``/``write``/``edit``/``glob``/``grep``,
-  ``todo_write``;
+  ``todo_write``, ``subagent``; ``AGENTS.md`` in the system prompt;
+  automatic compaction;
 - ``code``: standard plus ``run_code`` in PTC mode: the model sees only
   ``run_code`` and calls the other tools from inside its program;
 - ``creator``: standard plus ``inspect`` for looking at the running
@@ -32,6 +33,8 @@ import copy
 import json
 
 from .builtin import bash_tool, editor_tool, fs_tools, run_code_tool, todo_tool
+from .compaction import compaction
+from .subagent import agent_instructions, claude_hooks, subagent_tool
 from .tools import ToolDefinition
 
 
@@ -104,6 +107,10 @@ PLUGINS = {
     "tool-run-code": run_code_tool,
     "code-mode": code_mode,
     "creator-inspect": inspect_tool,
+    "agent-instructions": agent_instructions,
+    "compaction": compaction,
+    "tool-subagent": subagent_tool,
+    "claude-hooks": claude_hooks,
 }
 
 _STANDARD = [
@@ -111,9 +118,12 @@ _STANDARD = [
      "config": {"prefix": "You are a coding agent running in the HeliosLM harness. "
                           "Work in the workspace, verify with tools, and say when you "
                           "are not sure."}},
+    {"id": "agent-instructions", "name": "agent-instructions"},
     {"id": "tool-bash", "name": "tool-bash"},
     {"id": "tool-fs", "name": "tool-fs"},
     {"id": "tool-todo", "name": "tool-todo"},
+    {"id": "tool-subagent", "name": "tool-subagent"},
+    {"id": "compaction", "name": "compaction", "config": {"threshold_tokens": 24000}},
 ]
 
 PRESETS = {

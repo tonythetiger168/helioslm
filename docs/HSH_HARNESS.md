@@ -145,3 +145,28 @@ Landlock/Seatbelt for that. Keep HeliosLM's TrustGate as a guard when the
 model is untrusted.
 
 Tests: `helioslm_v5/tests/test_hsh_presets.py` (10).
+
+## H6: compaction, subagents, instructions, hooks
+
+- **Compaction** (`hsh/compaction.py`): the whole operation is log events;
+  `context/shadow` removes the old range from the derived history and a
+  `user/message` (source `compaction`) carries the summary. Automatic
+  compaction runs only before a turn's first request, because the summary
+  is appended at the end of the log; a long tool loop inside one turn is
+  compacted at the start of the next.
+- **Subagents** (`subagent` tool): a child agent on `<parent>/subN` with
+  its own preset; the parent's scoped tools are not inherited; depth is
+  limited by `max_depth` (default 1).
+- **AGENTS.md** (`agent-instructions` row): the first of `AGENTS.md`,
+  `CLAUDE.md` found in the workspace root is appended to the system
+  prompt, capped at `max_bytes`.
+- **Claude Code hooks** (`claude-hooks` row, config `{"path": "hooks.json"}`
+  or `{"hooks": {...}}`): PreToolUse, PostToolUse, UserPromptSubmit and
+  Stop with matchers, exit code 2 and the JSON decision fields. Argument
+  rewriting is not supported: the logged call runs as logged.
+
+Not done (and why): MCP client (needs an MCP package; out of scope without
+a dependency decision), Web UI / desktop app, Landlock-class sandboxing,
+background jobs, goals and schedules.
+
+Tests: `helioslm_v5/tests/test_hsh_extras.py` (8). All hsh tests: 82.
