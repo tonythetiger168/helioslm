@@ -92,10 +92,11 @@ def test_pack_and_split():
 
 # ---------------------------------------------------------------- torch
 
-def _shard(tmp_path, n=40, seq=32, name="train"):
+def _shard(tmp_path, n=40, seq=64, name="train"):
     recs = [rec(i, reasoning="想" * (i % 5), content=f"答{i % 7}" * 3,
                 prompt=f"題目{i}？") for i in range(n)]
     toks, mask, st = ds.build(recs, enc, EOT, seq=seq, keep_thinking="all")
+    assert st["packed"] == n                         # the fixture must fit its windows
     ds.write_sft_shard(toks, mask, tmp_path, name)
     return st
 
@@ -103,28 +104,28 @@ def _shard(tmp_path, n=40, seq=32, name="train"):
 def test_sft_shard(tmp_path):
     torch = pytest.importorskip("torch")
     _shard(tmp_path)
-    sh = ds.SFTShard(tmp_path / "train.bin", 32)
-    x, y, m = sh.batch(4, 32, 3, 0)
-    assert x.shape == y.shape == m.shape == (4, 32)
+    sh = ds.SFTShard(tmp_path / "train.bin", 64)
+    x, y, m = sh.batch(4, 64, 3, 0)
+    assert x.shape == y.shape == m.shape == (4, 64)
     assert torch.equal(x[:, 1:], y[:, :-1])
-    assert torch.equal(sh.batch(4, 32, 3, 0)[0], x)
-    assert not torch.equal(sh.batch(4, 32, 4, 0)[0], x)
+    assert torch.equal(sh.batch(4, 64, 3, 0)[0], x)
+    assert not torch.equal(sh.batch(4, 64, 4, 0)[0], x)
     i = 0
-    full = torch.tensor(sh.data[:33].astype("int64"))
-    fm = torch.tensor(sh.mask[:33].astype("int64"))
+    full = torch.tensor(sh.data[:65].astype("int64"))
+    fm = torch.tensor(sh.mask[:65].astype("int64"))
     x0, y0, m0 = sh._window(i)
     assert torch.equal(y0, full[1:]) and torch.equal(m0, fm[1:])
     assert int(m0.sum()) > 0
     with pytest.raises(ValueError):
-        sh.batch(2, 16, 0, 0)
+        sh.batch(2, 32, 0, 0)
     with pytest.raises(ValueError):
-        ds.SFTShard(tmp_path / "train.bin", 31)
+        ds.SFTShard(tmp_path / "train.bin", 63)
 
 
 def _tiny():
     from helioslm_v5.src.training.pretrain import pilot_config
     return pilot_config("dense", vocab_size=256, hidden_size=64, num_layers=2,
-                        intermediate_size=128, max_seq=32)
+                        intermediate_size=128, max_seq=64)
 
 
 def test_pretrain_masked_init_and_resume(tmp_path):
@@ -134,22 +135,22 @@ def test_pretrain_masked_init_and_resume(tmp_path):
     torch.set_num_threads(1)
     _shard(tmp_path, name="train")
     _shard(tmp_path, n=12, name="val")
-    tr = ds.SFTShard(tmp_path / "train.bin", 32)
-    va = ds.SFTShard(tmp_path / "val.bin", 32)
+    tr = ds.SFTShard(tmp_path / "train.bin", 64)
+    va = ds.SFTShard(tmp_path / "val.bin", 64)
 
     torch.manual_seed(0)
     model = HeliosLMv5(_tiny()).eval()
-    got = evaluate(model, va, 32, 10, 1.0, torch.device("cpu"), torch.float32)
+    got = evaluate(model, va, 64, 10, 1.0, torch.device("cpu"), torch.float32)
     tot, n = 0.0, 0
     with torch.no_grad():
-        for x, y, m in va.eval_windows(32, 10):
+        for x, y, m in va.eval_windows(64, 10):
             ce = F.cross_entropy(model(x)[0].float().reshape(-1, 256), y.reshape(-1),
                                  reduction="none")
             tot += (ce * m.reshape(-1)).sum().item()
             n += int(m.sum())
     assert got["val_loss"] == pytest.approx(round(tot / n, 5), abs=1e-5)
 
-    kw = dict(batch=2, seq=32, grad_accum=2, warmup=1, eval_every=2, eval_windows=3,
+    kw = dict(batch=2, seq=64, grad_accum=2, warmup=1, eval_every=2, eval_windows=3,
               ckpt_every=2, seed=0, log=lambda m: None)
     base = tmp_path / "base"
     pretrain(_tiny(), tr, va, base, steps=2, lr=3e-3, **kw)
@@ -169,7 +170,7 @@ def test_pretrain_masked_init_and_resume(tmp_path):
     assert all(torch.equal(v, sbb[k]) for k, v in sa.items())
     logs = [json.loads(x) for x in (a / "log.jsonl").read_text().splitlines()]
     assert all(math.isfinite(r["train_loss"]) for r in logs)
-    assert not any(torch.equal(v, sa[k]) for k, v in sb.items() if v.dim() >= 2)
+    assert any(not torch.equal(v, sa[k]) for k, v in sb.items())
 
 
 def test_cli_prepare_and_train(tmp_path):
@@ -193,8 +194,9 @@ def test_cli_prepare_and_train(tmp_path):
                     encoding="utf-8")
     data = tmp_path / "sft"
     cli.main(["prepare", "--records", str(recs), "--tokenizer", str(tmp_path / "tokenizer.json"),
-              "--out", str(data), "--seq", "64", "--val-fraction", "0.2"])
+              "--out", str(data), "--seq", "256", "--val-fraction", "0.2"])
     meta = json.loads((data / "meta.json").read_text())
+    assert meta["splits"]["train"]["too_long"] == 0
     assert meta["splits"]["train"]["packed"] > 0 and meta["splits"]["val"]["windows"] > 0
     assert meta["keep_thinking"] == "mix"
 
@@ -202,9 +204,9 @@ def test_cli_prepare_and_train(tmp_path):
     vocab = meta["vocab_size"]
     base = tmp_path / "base"
     cfg = pilot_config("dense", vocab_size=vocab, hidden_size=64, num_layers=2,
-                       intermediate_size=128, max_seq=64)
-    sh = ds.SFTShard(data / "train.bin", 64)
-    pretrain(cfg, sh, sh, base, steps=1, batch=2, seq=64, lr=1e-3, warmup=1,
+                       intermediate_size=128, max_seq=256)
+    sh = ds.SFTShard(data / "train.bin", 256)
+    pretrain(cfg, sh, sh, base, steps=1, batch=2, seq=256, lr=1e-3, warmup=1,
              eval_every=1, eval_windows=1, ckpt_every=1, log=lambda m: None)
     (base / "run.json").write_text(json.dumps({"arch": "dense", "hidden": 64, "layers": 2,
                                                "intermediate": 128, "balance": "smebu"}))

@@ -176,6 +176,9 @@ class SFTShard:
     def __init__(self, path, seq):
         import numpy as np
         path = Path(path)
+        if path.stat().st_size == 0:
+            raise ValueError(f"{path} is empty: no example fit a window of seq + 1 "
+                             "(see the prepare stats' too_long)")
         self.seq = seq
         self.data = np.memmap(path, dtype=np.uint16, mode="r")
         self.mask = np.memmap(path.with_suffix(".mask.bin"), dtype=np.uint8, mode="r")
