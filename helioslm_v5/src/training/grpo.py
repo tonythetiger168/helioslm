@@ -69,6 +69,11 @@ class GRPOTrainer:
         # answers cost this much, "I don't know" earns 0, and an answer
         # of None marks an unanswerable question.
         self.abstain_penalty = getattr(g, "abstain_penalty", None)
+        # v5.103 OS5: speculative rollouts through the model's MTP heads.
+        self.rollout_use_mtp = getattr(g, "rollout_use_mtp", False)
+        if self.rollout_use_mtp and getattr(model, "mtp_modules", None) is None:
+            raise ValueError("grpo.rollout_use_mtp=True needs a model with "
+                             "MTP modules (config.mtp.enabled=True)")
 
         self.device = next(model.parameters()).device
         self.tokenizer = tokenizer if tokenizer is not None else _ByteLevelTokenizer()
@@ -478,6 +483,10 @@ class GRPOTrainer:
                 # sampling and logprobs disagree (real off-policy bias
                 # whenever the filter binds).
                 top_p=1.0,
+                # OS5: speculative sampling emits tokens from the same
+                # distribution; old_logprob below is the main model's own
+                # log-prob of whatever was sampled, either way.
+                **({"use_mtp": True} if self.rollout_use_mtp else {}),
             )
             if gen.dim() == 1:
                 gen = gen.unsqueeze(0)

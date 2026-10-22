@@ -404,6 +404,10 @@ class GRPOConfig:
     # v5.99 OS3: abstention-aware accuracy reward (training/abstain.py):
     # wrong answers cost this much, "I don't know" earns 0. None = off.
     abstain_penalty: Optional[float] = None
+    # v5.103 OS5 (MiMo-V2.5): sample rollouts with MTP speculative decoding
+    # (MTPDecoder; exact speculative sampling, so the emitted tokens follow
+    # the main model's distribution). Needs mtp.enabled. False = plain.
+    rollout_use_mtp: bool = False
 
     def __post_init__(self):
         self._validate()
@@ -436,7 +440,8 @@ class GRPOConfig:
             raise ValueError(
                 f"grpo.clip_eps_high must be in (0, 10) or None, got "
                 f"{self.clip_eps_high!r}")
-        for name in ("normalize_adv_std", "filter_zero_adv_groups"):
+        for name in ("normalize_adv_std", "filter_zero_adv_groups",
+                     "rollout_use_mtp"):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"grpo.{name} must be a bool")
         if self.tis_cap is not None and not self.tis_cap >= 1.0:

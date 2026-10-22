@@ -32,6 +32,39 @@
   carried state x chunk 1 / 7 / 32 / > T; tiny decays; the module
   (outputs, cache, gradients) with masks, packed positions and the short
   conv; chunked prefill then per-token decode; a whole hybrid model.
+## v5.104 (2026-10-22) - OS7: long-context layout probe (RULER-lite)
+
+- `eval/ruler_lite.py`: three synthetic tasks in token-id space after
+  RULER: single needle, multi-key needle, and variable tracking (a chain
+  of ARROW links plus a decoy chain). Each sequence ends `[QUERY k]` and
+  the answer is one value token predicted at the last position (chance
+  1/32). Needle positions are uniform, so longer lengths mean longer
+  distances. `accuracy(model, task, length, ...)` scores them.
+- `examples/longctx_arch_probe.py`: four HeliosLMv5 layouts at the same
+  width, depth and data: dense MLA, MiMo-style SWA+global with sinks,
+  K3-order KDA hybrid, and DSA top-k (prefill too). Each is trained on the
+  task mix at `--train-len` and evaluated at 1x, 2x and 4x. CSA/HCA are
+  not HeliosLMv5 layers and stay in `repo_longctx_probe.py`. The GPU run
+  is still to come; KDA is slow at long lengths until chunked KDA (#73)
+  lands.
+- `tests/test_ruler_lite.py`: the task rule re-derived from each sequence,
+  determinism, too-short lengths refused, and every arm runs a forward
+  and backward pass.
+
+## v5.103 (2026-10-22) - OS5: MTP speculative rollouts for GRPO
+
+- `GRPOConfig.rollout_use_mtp` (default False, unchanged): GRPO rollouts
+  sample through `generate(..., use_mtp=True)`, which is MTPDecoder's exact
+  speculative sampling. The tokens follow the main model's distribution,
+  and `old_logprob` is still the main model's log-prob of what was
+  sampled. Turning it on without MTP modules is refused.
+- `examples/mtp_rollout_bench.py`: GRPO-shaped rollout throughput, plain
+  vs MTP. It reports the speed-up, acceptance and tokens per round, and
+  has two gates: greedy outputs must be identical, and the sampled
+  first-token distribution must agree (TV distance). The GPU run is still
+  to come; CPU numbers are telemetry only.
+- `tests/test_mtp_rollout.py` (3 tests).
+
 ## v5.102 (2026-10-22) - OS6: MoE configuration table for #42 (30B-A3B)
 
 - `eval/moe_config_table.py`: the MoE fields of Hy3, MiMo-V2.5,
