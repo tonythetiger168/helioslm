@@ -8,7 +8,13 @@ Pins:
 2. shards: write_shards / TokenShard round-trip, uint16 overflow is
    refused, batches depend only on (seed, micro-step), evaluation windows
    are fixed;
-3. the learning-rate schedule (warmup, cosine to min_lr);
+3. the learning-rate schedule (warmup, cosine to min_lr); WSD (LB2):
+   flat until the decay phase, each decay shape ends at min_lr, the
+   stable phase does not depend on the total, bad arguments are refused;
+   a WSD run with a decay-phase data switch, stopped at step 3 of a
+   planned 6 (schedule_total) and resumed, equals the straight run
+   bitwise; its decay steps read the second shard; decay_train without
+   wsd and schedule_total < steps are refused;
 4. exact resume: 3 steps, stop, 3 more steps == 6 uninterrupted steps
    (bitwise weights and identical log lines), for the dense and the MoE
    arm; the MoE routers' biases move (update_bias is called); the loss
@@ -33,7 +39,7 @@ sys.path.insert(0, str(_REPO))
 
 from helioslm_v5.src.training.pretrain import (  # noqa: E402
     ARCHS, HeliosLMv5, TokenShard, count_params, lr_at, pilot_config,
-    pretrain, write_shards)
+    pretrain, write_shards, wsd_decay_start)
 
 
 def _tiny(arch):
@@ -96,6 +102,85 @@ def test_lr_schedule():
     mid = lr_at(55, 100, 1.0, 10, 0.1)
     assert abs(mid - (0.1 + 0.9 * 0.5 * (1 + math.cos(math.pi * 0.5)))) < 1e-12
     print("PASS test_lr_schedule")
+
+
+def test_wsd_schedule():
+    # 100 steps, warmup 10, decay the last 20: steps 80..99
+    assert wsd_decay_start(100, 10, 0.2) == 80
+    assert wsd_decay_start(100, 90, 0.2) == 90       # never inside warmup
+    for s in (10, 50, 79, 80):
+        assert lr_at(s, 100, 1.0, 10, 0.1, "wsd") == 1.0, s
+    assert abs(lr_at(0, 100, 1.0, 10, 0.1, "wsd") - 0.1) < 1e-12
+    for shape in ("sqrt", "linear", "cosine"):
+        lrs = [lr_at(s, 100, 1.0, 10, 0.1, "wsd", 0.2, shape)
+               for s in range(80, 101)]
+        assert all(a >= b for a, b in zip(lrs, lrs[1:])), shape
+        assert abs(lrs[-1] - 0.1) < 1e-12, shape
+    # 1 - sqrt(t) at t = 1/4: 0.1 + 0.9 * 0.5
+    assert abs(lr_at(85, 100, 1.0, 10, 0.1, "wsd", 0.2, "sqrt") - 0.55) < 1e-12
+    assert abs(lr_at(85, 100, 1.0, 10, 0.1, "wsd", 0.2, "linear")
+               - (0.1 + 0.9 * 0.75)) < 1e-12
+    # stable phase is the same whatever the total (continue-then-decay)
+    for s in range(10, 160):
+        assert lr_at(s, 200, 1.0, 10, 0.1, "wsd") == 1.0
+    for bad in (dict(schedule="step"), dict(schedule="wsd", decay_frac=0.0),
+                dict(schedule="wsd", decay_shape="exp")):
+        try:
+            lr_at(50, 100, 1.0, 10, 0.1, **bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"accepted {bad}")
+    print("PASS test_wsd_schedule")
+
+
+def test_wsd_decay_data_switch():
+    torch.set_num_threads(1)
+    with tempfile.TemporaryDirectory() as d:
+        tr, va = _stream(d)
+        write_shards([[(i * 7) % 48 for i in range(4000)]], d, "anneal")
+        an = TokenShard(Path(d) / "anneal.bin")
+
+        def run(out, steps):
+            return pretrain(_tiny("dense"), tr, va, out, steps=steps,
+                            batch=4, seq=32, grad_accum=2, lr=3e-3,
+                            warmup=2, eval_every=3, eval_windows=4,
+                            ckpt_every=3, seed=0, schedule="wsd",
+                            decay_frac=0.5, decay_train=an,
+                            schedule_total=6, log=lambda m: None)
+
+        # 3 steps of a planned 6, then resume to 6 == 6 straight
+        straight, resumed = Path(d) / "a", Path(d) / "b"
+        run(straight, 6)
+        run(resumed, 3)
+        run(resumed, 6)
+        sa = torch.load(straight / "ckpt.pt", weights_only=False)
+        sb = torch.load(resumed / "ckpt.pt", weights_only=False)
+        for k, v in sa["model"].items():
+            assert torch.equal(v, sb["model"][k]), k
+        log = [json.loads(x) for x in
+               (straight / "log.jsonl").read_text().splitlines()]
+        assert [r["phase"] for r in log] == ["main"] * 3 + ["decay"] * 3
+        assert log[2]["lr"] == 3e-3 and log[-1]["lr"] < log[3]["lr"]
+        # the decay steps really read the anneal shard: a run without the
+        # switch ends with different weights
+        plain = Path(d) / "c"
+        pretrain(_tiny("dense"), tr, va, plain, steps=6, batch=4, seq=32,
+                 grad_accum=2, lr=3e-3, warmup=2, eval_every=3,
+                 eval_windows=4, ckpt_every=3, seed=0, schedule="wsd",
+                 decay_frac=0.5, log=lambda m: None)
+        sc = torch.load(plain / "ckpt.pt", weights_only=False)
+        assert any(not torch.equal(v, sc["model"][k])
+                   for k, v in sa["model"].items())
+        for bad in (dict(decay_train=an), dict(schedule_total=1)):
+            try:
+                pretrain(_tiny("dense"), tr, va, Path(d) / "e", steps=2,
+                         batch=4, seq=32, log=lambda m: None, **bad)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError(f"accepted {bad}")
+    print("PASS test_wsd_decay_data_switch")
 
 
 def _stream(d):
@@ -191,5 +276,7 @@ if __name__ == "__main__":
     test_configs()
     test_shards()
     test_lr_schedule()
+    test_wsd_schedule()
+    test_wsd_decay_data_switch()
     test_exact_resume_and_learning()
     test_prepare_data_script()
