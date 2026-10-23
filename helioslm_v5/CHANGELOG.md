@@ -1,5 +1,38 @@
 # HeliosLM v5 Changelog
 
+## v5.127 (2026-10-23) - Route B: continued-pretraining plan for an open base
+
+The owner chose route B on 2026-10-23: beat every MediaTek Research text
+model (Breexe-8x7B, Breeze 2 8B / 3B, Breeze-7B) by continuing the
+pretraining of an open Apache-2.0 base on Taiwanese data instead of
+training a 4B from scratch. This PR is the CPU-side preparation; nothing
+is spent. Plan and reasoning:
+`docs/CPT_PLAN_B.md`.
+
+- Base: `google/gemma-4-E4B` (Apache-2.0, 4.5B effective, llama.cpp
+  `gemma4`), with `gemma-4-E2B` as the recipe pilot and Ministral 3 3B
+  as the fallback. A plan may only name a base from `cpt_plan.BASES`.
+- `src/training/cpt_plan.py`: the candidate bases, the run-plan schema
+  and a 6ND / 2ND cost model at a stated MFU and GPU price.
+  `examples/cpt_plan.py` prints the table.
+- `data/cpt/b1_gemma4_e4b.json` (40B-token WSD continued pretraining,
+  SFT, MOPD / RL, eval): about 1,360 H100-hours, US$3.8k, or US$7.5k
+  with 100% contingency. `data/cpt/b0_gemma4_e2b_pilot.json`: about
+  US$200.
+- `data/mixtures/b1_gemma4_e4b_cpt_v1.json`: about 59% Taiwanese
+  Traditional Chinese from commercially licensed sources, plus general
+  replay; D1 traces in the decay phase.
+- `docs/prereg/b1.0.json`:
+  - B1 must beat all four MediaTek models on TMMLU+, TW-JusticeBench,
+    C-Eval and CMMLU.
+  - It must beat its own base on the two Taiwanese tasks.
+  - It may lose at most 2 points to the base on C-Eval / CMMLU.
+- uint32 token shards for vocabularies over 65,536:
+  `pretrain.token_dtype`, `write_shards(dtype=...)`,
+  `TokenShard(path, dtype=...)`, `build_midtrain.py --dtype` (auto),
+  recorded in `meta.json`.
+- T130 `test_cpt_plan.py`.
+
 ## v5.126 (2026-10-23) - LB9: gated short-convolution layers (LFM2)
 
 LB9 of the 2026-10-23 leaderboard review. In LFM2 and LFM2.5 (Liquid AI),

@@ -15,7 +15,8 @@ killed. This module is that loop; ``examples/pilot_prepare_data.py`` and
     lfm_conv     (v5.126, LB9) LFM2-style: gated short convolutions with
                  MLA on every third layer and the last, dense FFN.
   MTP is off so the loss is plain next-token cross-entropy.
-- Data: ``uint16`` token shards (``write_shards`` / ``TokenShard``).
+- Data: ``uint16`` token shards (``write_shards`` / ``TokenShard``;
+  ``uint32`` for a vocabulary over 65,536, v5.127).
   Batch positions come from a generator seeded by (seed, micro-step), so
   a resumed run reads exactly the batches the uninterrupted run would.
 - ``pretrain``: AdamW, linear warmup then cosine decay to ``min_lr`` (or
@@ -108,24 +109,36 @@ def count_params(model):
 
 
 # ---------------------------------------------------------------- data
-def write_shards(token_lists, out_dir, name):
+TOKEN_DTYPES = {"uint16": np.uint16, "uint32": np.uint32}
+
+
+def token_dtype(vocab_size):
+    """Narrowest shard dtype for a vocabulary: uint16 up to 65,536 ids,
+    uint32 above (route B bases: Gemma 4 has 262,144, v5.127)."""
+    return "uint16" if vocab_size <= 65536 else "uint32"
+
+
+def write_shards(token_lists, out_dir, name, dtype="uint16"):
     """Concatenate documents (each a token-id list, already ending in EOS)
-    into ``<out_dir>/<name>.bin`` as uint16. Returns the token count."""
+    into ``<out_dir>/<name>.bin`` as ``dtype`` (uint16, or uint32 for a
+    vocabulary over 65,536). Returns the token count."""
+    np_dtype = TOKEN_DTYPES[dtype]
+    hi = np.iinfo(np_dtype).max
     out = Path(out_dir) / f"{name}.bin"
     n = 0
     with open(out, "wb") as f:
         for ids in token_lists:
             arr = np.asarray(ids, dtype=np.int64)
-            if arr.size and (arr.min() < 0 or arr.max() > 65535):
-                raise ValueError("token ids must fit in uint16")
-            f.write(arr.astype(np.uint16).tobytes())
+            if arr.size and (arr.min() < 0 or arr.max() > hi):
+                raise ValueError(f"token ids must fit in {dtype}")
+            f.write(arr.astype(np_dtype).tobytes())
             n += arr.size
     return n
 
 
 class TokenShard:
-    def __init__(self, path):
-        self.data = np.memmap(path, dtype=np.uint16, mode="r")
+    def __init__(self, path, dtype="uint16"):
+        self.data = np.memmap(path, dtype=TOKEN_DTYPES[dtype], mode="r")
 
     def __len__(self):
         return len(self.data)
