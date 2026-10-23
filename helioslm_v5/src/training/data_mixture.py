@@ -1,4 +1,4 @@
-"""Pretraining data mixture manifests (v5.115, LB3).
+"""Pretraining data mixture manifests (v5.116, LB3).
 
 A mixture is a JSON file naming every source of a pretraining corpus, its
 licence, its share of the tokens and its filters, so the #40 corpus is a

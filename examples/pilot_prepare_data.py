@@ -23,7 +23,7 @@ a 13-word n-gram with any item (helioslm_v5/eval/decontam.py); the
 validation split is never trained on and is left as is. The counts
 go into meta.json; --decontam-report PATH writes the per-item report.
 
-Quality filters (LB3, v5.115; helioslm_v5/src/training/data_quality.py),
+Quality filters (LB3, v5.116; helioslm_v5/src/training/data_quality.py),
 applied to TRAIN documents before decontamination: --heuristics (length,
 duplicate lines, symbol / ellipsis ratios, non-text share),
 --zh-variants tw mixed none (keep only those Traditional / Simplified

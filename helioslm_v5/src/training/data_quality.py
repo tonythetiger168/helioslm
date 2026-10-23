@@ -1,5 +1,5 @@
 """Pretraining data quality: heuristics, zh variant, a hashed classifier
-(v5.115, LB3 of the 2026-10-23 leaderboard review).
+(v5.116, LB3 of the 2026-10-23 leaderboard review).
 
 The 2026 small-model leaders win on data rather than architecture:
 MiniCPM5 trains on Ultra-FineWeb (a classifier-filtered FineWeb), K2
