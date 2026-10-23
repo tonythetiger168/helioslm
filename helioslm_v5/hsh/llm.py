@@ -170,8 +170,9 @@ class TextModelAdapter:
 
 class OpenAICompatAdapter:
     """POST ``{base_url}/chat/completions``. ``api_key_env`` names the
-    environment variable holding the key. ``reasoning_content`` (DeepSeek)
-    is mapped to ``reasoning`` both ways."""
+    environment variable holding the key; None sends no key (a self-hosted
+    vLLM / SGLang server). ``reasoning_content`` (DeepSeek) is mapped to
+    ``reasoning`` both ways."""
 
     def __init__(self, base_url, api_key_env="OPENAI_API_KEY", timeout=120,
                  opener=None):
@@ -214,21 +215,29 @@ class OpenAICompatAdapter:
         u = resp.get("usage") or {}
         details = u.get("completion_tokens_details") or {}
         return {"content": choice.get("content") or "",
-                "reasoning": choice.get("reasoning_content"),
+                # vLLM >= 0.10 names the field "reasoning"
+                "reasoning": choice.get("reasoning_content") or choice.get("reasoning"),
                 "tool_calls": calls,
                 "usage": {"input_tokens": u.get("prompt_tokens", 0),
                           "output_tokens": u.get("completion_tokens", 0),
-                          "reasoning_tokens": details.get("reasoning_tokens", 0)},
+                          "reasoning_tokens": details.get("reasoning_tokens", 0),
+                          # DeepSeek API / vLLM spellings of cache hits
+                          "cached_input_tokens": u.get("prompt_cache_hit_tokens") or
+                          (u.get("prompt_tokens_details") or {}).get("cached_tokens") or 0},
+                "finish_reason": resp["choices"][0].get("finish_reason"),
+                "model": resp.get("model"),
                 "stream": []}
 
     def complete(self, request):
-        key = os.environ.get(self.api_key_env)
-        if not key:
-            raise LLMError(f"environment variable {self.api_key_env} is not set")
+        headers = {"Content-Type": "application/json"}
+        if self.api_key_env is not None:
+            key = os.environ.get(self.api_key_env)
+            if not key:
+                raise LLMError(f"environment variable {self.api_key_env} is not set")
+            headers["Authorization"] = f"Bearer {key}"
         data = json.dumps(self.to_wire(request)).encode()
         req = urllib.request.Request(
             self.base_url + "/chat/completions", data=data, method="POST",
-            headers={"Content-Type": "application/json",
-                     "Authorization": f"Bearer {key}"})
+            headers=headers)
         with self.opener(req, timeout=self.timeout) as fh:
             return self.from_wire(json.loads(fh.read().decode()))

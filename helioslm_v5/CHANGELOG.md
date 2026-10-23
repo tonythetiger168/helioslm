@@ -23,12 +23,27 @@
 - `tests/test_prereg.py`: relative-gate validation and verdicts (a
   point-estimate lead with a CI touching 0 fails), PENDING handling,
   bootstrap oracles, and the committed v1.0 plan.
-- Fix for main: v5.110 changed `eval/term_bench.py` and `eval/swe_bench.py`
-  without regenerating `benchmarks/std_bench_reference_2026-10-15.json`,
-  so `test_std_bench.py::test_reference_artifact` failed on main. The
-  artifact is regenerated with `examples/std_bench_run.py --reference`
-  (only the two input hashes change; every gate is unchanged).
 
+## v5.111 (2026-10-22) - D1: DeepSeek teacher data generation for distillation
+
+- `src/training/distill_gen.py`: runs a prompt file through an
+  OpenAI-compatible teacher (default: vLLM serving DeepSeek-V4.1-Flash on a
+  pod, no key) into JSONL records with reasoning, content, finish_reason,
+  usage and sampling settings. Teachers pass `teacher_license_audit.usable`
+  or are refused (V4-Flash stays refused while its hash is PENDING).
+  Resumable (done ids skipped, failures to `.errors.jsonl`), transient HTTP
+  errors retried with backoff, and cost / output-token / wall-clock limits
+  stop new requests while in-flight ones are still written.
+- OS1 `token_stats` (totals, p50/p95, reasoning share, truncation rate,
+  per domain; reasoning tokens estimated by character share when the server
+  reports none) and OS2 `keep_thinking` for earlier assistant turns.
+- Prompts written by the teacher from `data/distill/seeds_zhtw.json`
+  (`meta_prompts` / `extract_prompts`), so no non-commercial dataset text.
+- `estimate` for per-token (API) and per-hour (pod) pricing.
+- `hsh/llm.py` OpenAICompatAdapter: `api_key_env=None` sends no key; reads
+  vLLM's `reasoning` field, `finish_reason`, `model` and cache-hit tokens.
+- `examples/distill_generate.py` (seed / generate / extract / stats /
+  estimate) and `docs/DISTILL_DEEPSEEK.md` (plan, cost, RunPod runbook).
 ## v5.110 (2026-10-23) - Windows checkout repairs: LF policy, sandbox python3 PATH, timeout process-tree kill, base64 patch transport
 
 Version calibration note: `configs/config_v5.py` `model_name` had been
