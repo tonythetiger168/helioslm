@@ -5,7 +5,13 @@ matter, any edit does); validation rejects malformed plans; check_gates
 returns per-gate verdicts, refuses results filed against another plan
 (e.g. gates edited after seeing scores) and results that omit a
 registered task.
+
+v5.114: relative gates ("beat a registered baseline": the lower end of the
+95% paired-bootstrap interval of ours - theirs is above the margin), PENDING
+revisions (a plan locks but cannot be checked until pinned), and the
+committed v1.0 plan (docs/prereg/v1.0.json).
 """
+import json
 import copy
 import sys
 from pathlib import Path
@@ -14,7 +20,10 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from helioslm_v5.eval.prereg import PreregError, check_gates, lock, validate  # noqa: E402
+from helioslm_v5.eval.prereg import (  # noqa: E402
+    PreregError, check_gates, lock, paired_bootstrap, pending, validate)
+
+ROOT = Path(__file__).resolve().parents[2]
 
 PLAN = {
     "release": "v1.0", "model": "0.5B dense",
@@ -95,3 +104,80 @@ def test_results_must_cite_this_plan_and_be_complete():
     del partial["scores"]["tmmluplus"]
     with pytest.raises(PreregError, match="omit"):
         check_gates(PLAN, partial)
+
+
+REL = copy.deepcopy(PLAN)
+REL["baselines"] = [{"name": "breeze2-3b", "revision": "abc123"}]
+REL["gates"].append({"task": "tmmluplus", "metric": "acc", "vs": "breeze2-3b",
+                     "margin": 0.0})
+
+
+def _rel_results(low):
+    r = _results()
+    r["prereg_sha256"] = lock(REL)
+    r["comparisons"] = {"breeze2-3b": {"tmmluplus": {"acc": {
+        "ours": 0.31, "theirs": 0.30, "ci95_low": low, "ci95_high": low + 0.02}}}}
+    return r
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda g: g.__setitem__("vs", "taide-8b"),
+    lambda g: g.__setitem__("margin", "0"),
+    lambda g: g.pop("margin"),
+    lambda g: g.__setitem__("metric", "acc_norm"),
+])
+def test_relative_gate_validation(mutate):
+    bad = copy.deepcopy(REL)
+    mutate(bad["gates"][-1])
+    with pytest.raises(PreregError):
+        validate(bad)
+
+
+def test_relative_gate_verdicts():
+    win = check_gates(REL, _rel_results(0.004))
+    assert win["passed"] and win["gates"][-1]["ours"] == 0.31
+    tie = check_gates(REL, _rel_results(-0.001))   # point estimate ahead, CI is not
+    assert not tie["passed"] and not tie["gates"][-1]["pass"]
+    edge = check_gates(REL, _rel_results(0.0))     # strictly above the margin
+    assert not edge["passed"]
+    missing = _rel_results(0.01)
+    del missing["comparisons"]
+    with pytest.raises(PreregError, match="omit"):
+        check_gates(REL, missing)
+
+
+def test_pending_revisions_lock_but_do_not_check():
+    plan = copy.deepcopy(REL)
+    plan["baselines"][0]["revision"] = "PENDING"
+    assert pending(plan) == ["breeze2-3b"] and len(lock(plan)) == 64
+    r = _rel_results(0.01)
+    r["prereg_sha256"] = lock(plan)
+    with pytest.raises(PreregError, match="not final"):
+        check_gates(plan, r)
+
+
+def test_paired_bootstrap():
+    import numpy as np
+    rng = np.random.default_rng(0)
+    base = (rng.random(2000) < 0.4).astype(int)
+    same = paired_bootstrap([base, base], base, n_boot=2000)
+    assert same["diff"] == 0 and same["ci95_low"] == 0 == same["ci95_high"]
+    better = base.copy()
+    better[np.flatnonzero(base == 0)[:200]] = 1          # +10 points
+    win = paired_bootstrap([better] * 3, base, n_boot=2000)
+    assert win["diff"] == pytest.approx(0.1) and win["ci95_low"] > 0.08
+    assert win["seeds"] == 3 and win["n"] == 2000
+    assert paired_bootstrap([better], base, seed=1) == paired_bootstrap([better], base, seed=1)
+    with pytest.raises(PreregError, match="shapes"):
+        paired_bootstrap([base[:10]], base)
+
+
+def test_committed_v1_plan():
+    plan = json.loads((ROOT / "docs" / "prereg" / "v1.0.json").read_text(encoding="utf-8"))
+    validate(plan)
+    assert plan["release"] == "v1.0" and plan["seeds"] == [0, 1, 2]
+    gated = {(g["task"], g["vs"]) for g in plan["gates"]}
+    breeze = "MediaTek-Research/Llama-Breeze2-3B-Instruct"
+    assert gated == {("tmmluplus", breeze), ("tw_justice", breeze)}
+    assert all(g["margin"] == 0.0 for g in plan["gates"])
+    assert set(pending(plan)) >= {"tmmluplus", breeze}   # pinned on the pod

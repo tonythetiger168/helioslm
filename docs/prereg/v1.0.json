@@ -1,0 +1,21 @@
+{
+  "release": "v1.0",
+  "model": "HeliosLM 0.5B dense (#40), 100B tokens",
+  "harness": {"name": "helioslm_v5/eval/tw_bench.py", "version": "v5.108"},
+  "seeds": [0, 1, 2],
+  "tasks": [
+    {"name": "tmmluplus", "revision": "PENDING", "split": "test", "n_shot": 5, "metric": "acc"},
+    {"name": "tw_justice", "revision": "PENDING", "split": "test", "n_shot": 0, "metric": "acc"},
+    {"name": "ceval", "revision": "PENDING", "split": "val", "n_shot": 5, "metric": "acc"},
+    {"name": "cmmlu", "revision": "PENDING", "split": "test", "n_shot": 5, "metric": "acc"}
+  ],
+  "baselines": [
+    {"name": "MediaTek-Research/Llama-Breeze2-3B-Instruct", "revision": "PENDING"},
+    {"name": "Qwen3.5-0.8B", "revision": "PENDING"}
+  ],
+  "gates": [
+    {"task": "tmmluplus", "metric": "acc", "vs": "MediaTek-Research/Llama-Breeze2-3B-Instruct", "margin": 0.0},
+    {"task": "tw_justice", "metric": "acc", "vs": "MediaTek-Research/Llama-Breeze2-3B-Instruct", "margin": 0.0}
+  ],
+  "notes": "Owner's rule (2026-10-23): from v1.0 (0.5B) on, HeliosLM must score higher than the Taiwanese models. The smallest Taiwanese model known on 2026-10-22 is Breeze 2 3B (TAIDE and Taiwan-LLM start at 7-8B), so it is the gating baseline. 'Higher' = the lower end of the 95% paired-bootstrap interval of (HeliosLM - Breeze 2 3B) per-question accuracy, HeliosLM averaged over the three seeds, is above 0. Every model is scored by the same scorer (tw_bench loglikelihood, zh template, same shots). Qwen3.5-0.8B is a same-size reference, reported but not gated. C-Eval and CMMLU are Simplified-Chinese controls, reported but not gated. Revisions are PENDING until pinned on the pod (the Hub is unreachable from the dev sandbox); the TW-JusticeBench column map must be checked against its files at the same time. Pinning changes the lock; the pinned plan must be committed before #40 training starts."
+}

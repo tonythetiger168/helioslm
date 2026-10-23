@@ -1,5 +1,34 @@
 # HeliosLM v5 Changelog
 
+## v5.114 (2026-10-23) - E5: v1.0 pre-registration, "beat the Taiwanese models"
+
+- Owner's rule: from v1.0 (0.5B) on, HeliosLM must score higher than
+  the Taiwanese models. `docs/prereg/v1.0.json` registers it:
+  - gating baseline: Breeze 2 3B (`MediaTek-Research/Llama-Breeze2-3B-Instruct`),
+    the smallest Taiwanese model known on 2026-10-22 (TAIDE and
+    Taiwan-LLM start at 7-8B);
+  - gated tasks: TMMLU+ (5-shot) and TW-JusticeBench (0-shot), accuracy
+    from the E3 scorer (`eval/tw_bench.py`), every model scored the same way;
+  - reported, not gated: Qwen3.5-0.8B (same-size reference), C-Eval and
+    CMMLU (Simplified-Chinese controls);
+  - three seeds; dataset and baseline revisions PENDING until pinned on
+    the pod, then the plan is re-locked and committed before #40 trains.
+- `eval/prereg.py`:
+  - relative gates `{"task", "metric", "vs", "margin"}`: pass when the
+    lower end of the 95% paired-bootstrap interval of (ours - baseline)
+    is above the margin, so a lead inside the noise does not count;
+  - `paired_bootstrap(ours_per_seed, theirs)`: per-question resampling,
+    chunked so TMMLU+ (22.7k questions, 10k resamples) runs in seconds;
+  - `pending(plan)`; `check_gates` refuses a plan with PENDING revisions.
+- `tests/test_prereg.py`: relative-gate validation and verdicts (a
+  point-estimate lead with a CI touching 0 fails), PENDING handling,
+  bootstrap oracles, and the committed v1.0 plan.
+- Fix for main: v5.110 changed `eval/term_bench.py` and `eval/swe_bench.py`
+  without regenerating `benchmarks/std_bench_reference_2026-10-15.json`,
+  so `test_std_bench.py::test_reference_artifact` failed on main. The
+  artifact is regenerated with `examples/std_bench_run.py --reference`
+  (only the two input hashes change; every gate is unchanged).
+
 ## v5.110 (2026-10-23) - Windows checkout repairs: LF policy, sandbox python3 PATH, timeout process-tree kill, base64 patch transport
 
 Version calibration note: `configs/config_v5.py` `model_name` had been
