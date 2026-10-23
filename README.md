@@ -451,6 +451,11 @@ Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/hel
 - **v5.77** — Stable LatentMoE: Kimi K3 Quantile Balancing router bias; fastest from a skewed start and after a drift, no bias drift; SMEBU stays lower in steady state — T116
 - **v5.78** — Phase B: 16x CSA compressor by curriculum (4x weights, fine-tuned at 16x): passkey recall 0.375/0.390 -> 0.790/0.740, 92%/88% of the oracle ceiling — T117
 - **v5.123** — LB8: Gemma 3n-style per-layer embeddings (`per_layer_embed_dim`, `model_v5.PerLayerEmbedding`, zero-init so identical at init; `pilot_100m.py --ple-dim`) — T128
+- **v5.124** — LB7: checkpoint merging (`src/training/merge.py`: linear soups, task arithmetic, TIES; `examples/merge_checkpoints.py`) and MiniCPM5-style top-k-union reverse KL for on-policy distillation (`MOPDTrainer(full_vocab=True, topk_union=k)`) — T127
+- **v5.123** — Deployment series (proposed): local L-Edge / L8 / L16 / L24 / L48+ by GPU memory and cloud C1-Lite / C1 / C8 / CX by GPUs per replica, all cut from the six generations by quantization (README *Product roadmap*); docs only
+- **v5.122** — GGUF block quantization: `export_gguf(dtype="q8_0" | "q4_k")` writes ggml Q8_0 / Q4_K blocks (`src/export/ggml_quants.py`, numpy), 1-D tensors and MoE routers stay F32, `read_gguf` dequantizes; Q4_K decoding checked against a scalar port of ggml's `dequantize_row_q4_K`. The `helioslm` architecture name still keeps llama.cpp from running the file
+- **v5.121** — LB5: mid-training data for the WSD decay phase (`src/training/mid_train.py`: `render_trace` turns D1 records into chat-format documents with reasoning, `mix_docs` interleaves sources to token budgets; manifest `format: trace`; `examples/build_midtrain.py` -> `pilot_100m.py --decay-data`) — T126
+- **v5.120** — LB4: cross-tokenizer logit KD for pretraining (`src/training/logit_kd.py` aligns teacher top-k to the BPE student on shared character boundaries; `pretrain.KDShard`, `sparse_kd_loss`, `kd_alpha`; `examples/teacher_topk.py` + `build_kd_targets.py`; `pilot_100m.py --kd-train`) — T125
 - **v5.118** — LB6: hybrid-thinking soft switch for distillation SFT (`distill_sft` `mode_switch`: the last user turn ends in ` /think` or ` /no_think` to match the target; `distill_sft.py prepare --mode-switch`)
 - **v5.117** — LB6: GRPO rollout length schedule (`grpo.length_stages`, `two_stage_lengths`) and DAPO overlong handling (`overlong_buffer` soft punishment, `overlong_filter`); `truncated_frac` / `mean_response_tokens` in the update stats — T124
 - **v5.116** — LB3: pretraining data quality (`src/training/data_quality.py`: Gopher-style heuristics, Big5/GB2312 Traditional-vs-Simplified labels, hashed n-gram quality classifier) and mixture manifests with licence gates and main/decay phases (`src/training/data_mixture.py`, `data/mixtures/lb3_0p5b_v1.json`); `examples/data_quality.py`; `pilot_prepare_data.py --heuristics --zh-variants --quality-model` — T123
@@ -553,6 +558,31 @@ HeliosLM aims to evolve from a verifiable, modifiable LLM research stack into an
 | **v6.0 — Frontier** | HeliosLM Frontier | **1T (1,000B)** | ~40B | MoE | Frontier research candidate; competitive performance on defined evaluations |
 
 These are **stretch targets, not mandatory training commitments**. A version may ship with a smaller verified model if quality, economics or safety gates are not met. The 1T target is contingent on major external funding, training data rights, infrastructure and distributed-systems validation; matching parameter count alone does not imply matching DeepSeek, Kimi, OpenAI or Anthropic capabilities.
+
+### Deployment series (proposed, 2026-10-23)
+
+Each generation above is trained once; the deployment series below are cut from those checkpoints by quantization and context length, so the product line adds no training runs. **All sizes and speeds are estimates** (weights = parameters × bytes per weight: Q4_K_M ≈ 0.61, Q8_0 ≈ 1.06, BF16 = 2; decode speed from memory bandwidth). None is measured, and no series is supported until it passes its own pre-registered evaluation (E5) on the quantized file it ships.
+
+**Local series (by GPU memory)**
+
+| Series | GPU memory | Example hardware | Model | Quantization | Weights (est.) | Default context | Source generation |
+| --- | --- | --- | --- | --- | ---: | --- | --- |
+| **L-Edge** | none, ≤ 8 GB RAM | laptop CPU, Raspberry Pi 5, phone NPU | 0.5B dense | Q4_K_M / Q8_0 | 0.3 / 0.5 GB | 8K | v1.0 |
+| **L8** | 8 GB | RTX 4060, 3060 Ti | 3B dense | Q4_K_M (Q8_0 optional) | 1.8 / 3.2 GB | 32K | v2.0 |
+| **L16** | 12–16 GB | RTX 3060 12GB, 4070, 4060 Ti / 5060 Ti 16GB | 3B dense, or 30B-A3B with routed experts in system RAM | BF16; Q4_K_M | 6.0 GB; 18 GB | 128K; 16K | v2.0, v3.0 |
+| **L24** | 24–32 GB | RTX 3090, 4090, 5090 | 30B-A3B MoE | Q4_K_M (Q6_K on 32 GB) | 18 GB | 32K (128K on 32 GB) | v3.0 |
+| **L48+** | 48–128 GB | RTX PRO 6000 96GB, 2×24 GB, 128 GB unified memory | 30B-A3B, or 100B-A10B | Q8_0 / BF16; Q4_K_M | 32 / 60 GB; 61 GB | 128K | v3.0, v4.0 |
+
+**Cloud series (by GPUs per replica)**
+
+| Series | One replica | Model | Precision | Weights (est.) | Role | Source generation |
+| --- | --- | --- | --- | ---: | --- | --- |
+| **C1-Lite** | 1× RTX 4090 / 5090 | 0.5B, 3B | BF16 | 1 / 6 GB | Low-cost API, decision-head serving, speculative-decoding draft | v1.0, v2.0 |
+| **C1** | 1× H100 80GB | 30B-A3B | FP8 | 31 GB | Main API tier; ~45 GB left for KV cache | v3.0 |
+| **C8** | one 8-GPU NVLink node | 100B-A10B; 300B-A20B | FP8 | 100 GB; 300 GB | Reasoning and code agents, private deployment; expert parallelism inside the node | v4.0, v5.0 |
+| **CX** | 8× B200 and up, multi-node or NVL72 | 1T-A40B | FP8 or MXFP4 | 1,000 GB; 530 GB | Flagship; prefill/decode disaggregation, cross-node experts | v6.0 |
+
+Context sizes assume the default MLA cache (latent 512 + RoPE 64, about 37 KB per token for a 3B model); plain 8-head GQA needs about 3.5x more. The local series need checkpoints that llama.cpp-family runtimes can load: `src/export/gguf.py` writes Q8_0 / Q4_K blocks since v5.122, but still declares a custom `helioslm` architecture, which no such runtime executes. A series whose source generation is still gated (v4.0 and later) inherits that gate.
 
 ### Tentative product windows (subject to gates)
 
