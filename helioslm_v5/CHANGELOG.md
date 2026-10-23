@@ -37,6 +37,22 @@ streamed and decontaminated. CPU-only, no new dependency (numpy).
   `meta.json["quality_filter"]`.
 - T123 `tests/test_data_quality.py` (7 tests).
 
+## v5.113 (2026-10-22) - D3: student SFT on teacher answers (distillation)
+
+- `src/training/distill_sft.py`: formats filtered teacher records as the
+  repo's `##user##` / `##assistant##` transcript with a `<think>` block
+  (`keep_thinking` all / none / mix; mix keeps a fixed share chosen by a
+  hash of the record id), encodes prompt and target apart so the loss mask
+  boundary is exact, packs whole examples into seq + 1 windows (too-long
+  examples dropped and counted, never cut), splits train / val by prompt,
+  and writes uint16 token + uint8 mask shards read by `SFTShard`.
+- `pretrain()`: a shard yielding (x, y, mask) trains and evaluates on the
+  masked tokens only; `init_from` starts a new run from a checkpoint's
+  weights (ignored on resume). Unmasked shards take the old code path.
+- Presets `pilot_100m` (seq 2048, lr 1e-4) and `v1_0p5b` (seq 4096, lr
+  5e-5), both 2 epochs, mix 0.7.
+- `examples/distill_sft.py prepare | train` (train reads the base run's
+  run.json and ckpt.pt from pilot_100m.py).
 ## v5.112 (2026-10-22) - D2: filtering teacher answers for distillation
 
 - `src/training/distill_filter.py`: drops D1 records, counting each reason:
