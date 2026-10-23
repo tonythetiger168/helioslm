@@ -1,5 +1,42 @@
 # HeliosLM v5 Changelog
 
+## v5.116 (2026-10-23) - LB3: pretraining data quality filters and mixture manifests
+
+From the 2026-10-23 leaderboard review (LB1–LB9): the 2026 small-model
+leaders win on data (MiniCPM5 on the classifier-filtered Ultra-FineWeb,
+K2 Horizon on ~20T curated tokens), while `pilot_prepare_data.py` only
+streamed and decontaminated. CPU-only, no new dependency (numpy).
+
+- `src/training/data_quality.py`:
+  - `heuristic_check`: Gopher / C4 style rules (length in words + CJK
+    characters, duplicate lines, ellipsis lines, symbol ratio, non-text
+    share); returns every failed rule.
+  - `zh_profile` / `zh_variant`: Traditional vs Simplified without opencc.
+    Big5-but-not-GB2312 characters are Traditional-only, GB2312-but-not-
+    Big5 Simplified-only, shared characters count for neither; labels
+    tw / cn / mixed / none.
+  - `HashedNgramClassifier`: the fastText-style quality classifier of
+    FineWeb-Edu / Ultra-FineWeb as logistic regression over crc32-hashed
+    CJK character 1-2-grams and word 1-2-grams (scores identical across
+    machines); save / load as `.npz` + `.json`.
+  - `filter_docs`: the three filters in order, with per-reason drop counts.
+- `src/training/data_mixture.py`: JSON mixture manifests with per-source
+  licence (allow list, or `review` + note), `license_verified`, phase
+  (`main` / `decay`, matching the LB2 WSD decay-phase data switch),
+  weight (sums to 1 per phase), zh variants and quality threshold;
+  `token_budget`, `usable_sources` (verified licences only),
+  `mixture_sha256`.
+- `data/mixtures/lb3_0p5b_v1.json`: draft #40 corpus (FineWeb-2 cmn
+  filtered to tw/mixed, FineWeb-Edu, Ultra-FineWeb, FineMath, The Stack v2,
+  zh Wikipedia; decay phase: D1 teacher answers, top-scored FineWeb-Edu,
+  FineMath 4+). No licence is verified yet (huggingface.co is blocked in
+  the cloud container), so `usable_sources` is empty.
+- `examples/data_quality.py`: `train` / `score` / `profile` / `budget`.
+- `examples/pilot_prepare_data.py`: `--heuristics`, `--zh-variants`,
+  `--quality-model`, `--quality-threshold`; drop counts in
+  `meta.json["quality_filter"]`.
+- T123 `tests/test_data_quality.py` (7 tests).
+
 ## v5.115 (2026-10-23) - LB2: warmup-stable-decay schedule and decay-phase data switch
 
 From the 2026-10-23 leaderboard review (LB1–LB9): MiniCPM5 and other

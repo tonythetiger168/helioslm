@@ -23,6 +23,14 @@ a 13-word n-gram with any item (helioslm_v5/eval/decontam.py); the
 validation split is never trained on and is left as is. The counts
 go into meta.json; --decontam-report PATH writes the per-item report.
 
+Quality filters (LB3, v5.116; helioslm_v5/src/training/data_quality.py),
+applied to TRAIN documents before decontamination: --heuristics (length,
+duplicate lines, symbol / ellipsis ratios, non-text share),
+--zh-variants tw mixed none (keep only those Traditional / Simplified
+labels; "none" = under 20 CJK characters), --quality-model MODEL with
+--quality-threshold (default 0.5; train one with examples/data_quality.py).
+The drop counts go into meta.json under "quality_filter".
+
 Tokenizer: --tokenizer PATH loads an existing tokenizer.json; otherwise a
 byte-level BPE (--vocab, default 32768) is trained on the TRAIN documents
 only, seeded with the common Chinese characters (--zh-seed both|tw|cn|none,
@@ -121,6 +129,14 @@ def main():
     ap.add_argument("--eval-field", default="text")
     ap.add_argument("--decontam-n", type=int, default=13)
     ap.add_argument("--decontam-report")
+    ap.add_argument("--heuristics", action="store_true",
+                    help="drop training documents failing the LB3 rules")
+    ap.add_argument("--zh-variants", nargs="*",
+                    choices=["tw", "cn", "mixed", "none"],
+                    help="keep only training documents with these labels")
+    ap.add_argument("--quality-model",
+                    help="hashed n-gram classifier from data_quality.py")
+    ap.add_argument("--quality-threshold", type=float, default=0.5)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     if args.vocab > 65536:
@@ -135,6 +151,24 @@ def main():
         split["val" if is_val(i, args.val_fraction) else "train"].append(d)
     if not split["val"]:                    # tiny corpora: keep one doc
         split["val"].append(split["train"].pop())
+    quality = None
+    if args.heuristics or args.zh_variants or args.quality_model:
+        from helioslm_v5.src.training.data_quality import (
+            HashedNgramClassifier, filter_docs)
+        clf = (HashedNgramClassifier.load(args.quality_model)
+               if args.quality_model else None)
+        split["train"], quality = filter_docs(
+            split["train"],
+            heuristics=args.heuristics,
+            variants=set(args.zh_variants) if args.zh_variants else None,
+            classifier=clf, threshold=args.quality_threshold)
+        quality.update(heuristics=args.heuristics,
+                       zh_variants=args.zh_variants,
+                       quality_model=args.quality_model,
+                       quality_threshold=args.quality_threshold
+                       if clf else None)
+        if not split["train"]:
+            sys.exit("the quality filters removed every training document")
     decontam = None
     if args.decontaminate:
         from helioslm_v5.eval.decontam import EvalIndex, decontaminate
@@ -170,7 +204,8 @@ def main():
             "zh_seed": None if args.tokenizer else args.zh_seed,
             "sources": {"text": args.text, "hf": args.hf,
                         "split": args.split, "max_docs": args.max_docs},
-            "splits": {}, "decontamination": decontam}
+            "splits": {}, "decontamination": decontam,
+            "quality_filter": quality}
     for name, ds in split.items():
         ids = (tok.encode(d).ids + [eot] for d in ds)
         n_tok = write_shards(ids, out, name)
