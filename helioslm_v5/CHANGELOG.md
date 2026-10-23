@@ -27,7 +27,7 @@ on its own on one H200 (about 3-4 hours).
   - `--gpus 0,1,2,3` runs one worker per GPU (`assign`: largest model
     first, so Breexe gets a GPU of its own) and merges their results;
   - `--stop-pod` stops the pod at the end.
-- T131 `test_base_gap.py`.
+- T132 `test_base_gap.py`.
 ## v5.127 (2026-10-23) - Route B: continued-pretraining plan for an open base
 
 The owner chose route B on 2026-10-23: beat every MediaTek Research text
