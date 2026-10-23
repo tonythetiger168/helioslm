@@ -17,7 +17,9 @@ Rules ``load_mixture`` enforces: unique names; phase main or decay;
 weights > 0 summing to 1 within each phase; a licence from
 ``ALLOWED_LICENSES``, or ``"license": "review"`` with a ``license_note``
 (then the source cannot be used until ``license_verified`` is true and
-the licence is filled in). ``license_verified`` false is allowed for
+the licence is filled in). ``format`` (v5.120, LB5) is ``text`` (default)
+or ``trace``: D1 teacher records rendered as chat transcripts with their
+reasoning (``mid_train.render_trace``; optional ``think_ratio``). ``license_verified`` false is allowed for
 planning; ``usable_sources`` returns only verified ones.
 """
 import hashlib
@@ -30,6 +32,7 @@ ALLOWED_LICENSES = {
 }
 PHASES = ("main", "decay")
 ZH_VARIANTS = {"tw", "cn", "mixed", "none"}
+FORMATS = ("text", "trace")    # trace: D1 records rendered by mid_train (LB5)
 
 
 def validate_mixture(mix):
@@ -64,6 +67,12 @@ def validate_mixture(mix):
         bad = set(s.get("zh_variants") or []) - ZH_VARIANTS
         if bad:
             raise ValueError(f"{n}: unknown zh_variants {sorted(bad)}")
+        if s.get("format", "text") not in FORMATS:
+            raise ValueError(f"{n}: format must be one of {FORMATS}")
+        tr = s.get("think_ratio")
+        if tr is not None and (s.get("format") != "trace"
+                               or not 0.0 <= tr <= 1.0):
+            raise ValueError(f"{n}: think_ratio in [0, 1], trace sources only")
         q = s.get("quality_threshold")
         if q is not None and not 0.0 <= q <= 1.0:
             raise ValueError(f"{n}: quality_threshold must be in [0, 1]")
