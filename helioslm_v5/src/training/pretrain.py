@@ -151,9 +151,11 @@ class KDShard(TokenShard):
         from .logit_kd import load_targets
         path = Path(path)
         self.kd_idx, self.kd_p = load_targets(kd_dir or path.parent, path.stem)
-        if len(self.kd_idx) != len(self.data):
-            raise ValueError(f"{len(self.kd_idx)} target rows for "
-                             f"{len(self.data)} tokens")
+        for a in (self.kd_idx, self.kd_p):
+            if len(a) != len(self.data) or a.shape != self.kd_idx.shape:
+                raise ValueError(f"target arrays {self.kd_idx.shape} / "
+                                 f"{self.kd_p.shape} for {len(self.data)} "
+                                 "tokens")
 
     def batch(self, batch, seq, micro_step, seed):
         x, y = super().batch(batch, seq, micro_step, seed)
