@@ -1,5 +1,19 @@
 # HeliosLM v5 Changelog
 
+## v5.128 (2026-10-23) - Nemotron 3 Ultra licence read: allowed as a teacher
+
+- `eval/teacher_license_audit.py`: the NVIDIA Nemotron 3 Ultra row was
+  `unclear` because the OpenMDW-1.1 text could not be read. Its canonical
+  text (`1.1/LICENSE.OpenMDW-1.1` in the OpenMDW repository, which the
+  model card links) is now read and its sha256 recorded as
+  `license_text_sha256`. Verdict `allowed`: the grant is "without
+  restriction", the agreement "does not impose any restrictions or
+  obligations with respect to any use, modification, or sharing of any
+  outputs", distribution of the Model Materials keeps the agreement and
+  notices, and a patent or copyright suit over them ends the grant. The
+  Hub repository still has no LICENSE file, so the live audit keeps
+  matching on `None`; the committed 2026-10-20 audit artifact is left as
+  recorded then. No row is `unclear` any more.
 ## v5.127 (2026-10-23) - Route B: continued-pretraining plan for an open base
 
 The owner chose route B on 2026-10-23: beat every MediaTek Research text
