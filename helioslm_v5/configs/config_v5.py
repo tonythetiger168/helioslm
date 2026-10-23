@@ -698,7 +698,7 @@ class HeliosLMv5Config:
     #   h = h + post_norm(sublayer(pre_norm(h))).
     # False (default) = no post norms, bit-identical.
     sandwich_norm: bool = False
-    # v5.122 (LB8, Gemma 3n / Gemma 4 E2B): per-layer embeddings. Each
+    # v5.123 (LB8, Gemma 3n / Gemma 4 E2B): per-layer embeddings. Each
     # layer gets its own small per-token embedding (width
     # ``per_layer_embed_dim``) mixed with a projection of the input
     # embedding; a gated projection adds it to the residual after the
