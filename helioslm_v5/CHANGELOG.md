@@ -1,5 +1,24 @@
 # HeliosLM v5 Changelog
 
+## v5.117 (2026-10-23) - LB6: hybrid-thinking mode switch for distillation SFT
+
+The hybrid-thinking half of LB6 (2026-10-23 leaderboard review).
+MiniCPM5-1B trains on deep-thinking and hybrid-thinking SFT data so one
+model answers with or without reasoning. D3's `keep_thinking="mix"`
+already trains both modes, but the prompt did not say which one, so the
+mode was left to chance at inference.
+
+- `distill_sft.format_example(..., mode_switch=True)` / `build(...,
+  mode_switch=True)`: the last user turn ends in ` /think` when the
+  target carries reasoning and ` /no_think` when its think block is
+  empty (Qwen3's soft-switch convention). Off by default; prompts are
+  unchanged without it.
+- `examples/distill_sft.py prepare --mode-switch` (also a preset key);
+  recorded in the shard `meta.json`.
+- `tests/test_distill_sft.py::test_mode_switch`: tags match the target
+  in all / none / mix, multi-turn tags the last user turn only, default
+  off.
+
 ## v5.113 (2026-10-22) - D3: student SFT on teacher answers (distillation)
 
 - `src/training/distill_sft.py`: formats filtered teacher records as the

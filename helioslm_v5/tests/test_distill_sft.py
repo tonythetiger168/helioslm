@@ -15,7 +15,9 @@ Pins:
    masked cross-entropy; init_from with lr 0 reproduces the base weights;
    kill + resume is bitwise equal to an uninterrupted run;
 6. (torch + tokenizers) the CLI end to end: prepare then train from a
-   tiny base run.
+   tiny base run;
+7. (v5.117, LB6) mode_switch tags the last user turn /think or /no_think
+   to match the target, is off by default, and agrees with "mix".
 """
 import json
 import math
@@ -59,6 +61,35 @@ def test_format_and_keep_thinking():
     assert ds.keeps_thinking("x", "mix", 0.7) == ds.keeps_thinking("x", "mix", 0.7)
     with pytest.raises(ValueError):
         ds.keeps_thinking("x", "some")
+
+
+def test_mode_switch():
+    # LB6: the last user turn says which mode the target is in
+    p, t = ds.format_example(rec(1), "all", mode_switch=True)
+    assert p == "##user##問題？ /think\n##assistant##"
+    assert t.startswith("<think>\n先想。")
+    p, t = ds.format_example(rec(1), "none", mode_switch=True)
+    assert p == "##user##問題？ /no_think\n##assistant##"
+    assert t.startswith(ds.EMPTY_THINK)
+    # no reasoning to keep -> no_think, whatever keep_thinking says
+    p, _ = ds.format_example(rec(1, reasoning=""), "all", mode_switch=True)
+    assert p.endswith("/no_think\n##assistant##")
+    multi = {"id": "m", "messages": [{"role": "user", "content": "a"},
+                                     {"role": "assistant", "content": "b"},
+                                     {"role": "user", "content": "c"}],
+             "reasoning": "r", "content": "d"}
+    assert ds.format_example(multi, "all", mode_switch=True)[0] == \
+        "##user##a\n##assistant##b\n##user##c /think\n##assistant##"
+    # off by default: prompts are unchanged
+    assert ds.format_example(rec(1), "all")[0] == "##user##問題？\n##assistant##"
+    # in "mix" the tag agrees with the target for every record
+    for i in range(200):
+        p, t = ds.format_example(rec(i), "mix", 0.5, mode_switch=True)
+        assert p.endswith(" /think\n##assistant##") == \
+            (not t.startswith(ds.EMPTY_THINK))
+    toks, mask, st = ds.build([rec(i) for i in range(20)], enc, EOT, 64,
+                              "mix", 0.5, mode_switch=True)
+    assert st["examples"] == 20
 
 
 def test_encode_mask_boundary():
