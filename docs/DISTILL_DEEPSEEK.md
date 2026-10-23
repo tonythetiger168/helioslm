@@ -73,6 +73,10 @@ python examples/distill_generate.py stats --answers $R/answers.jsonl
 python examples/distill_generate.py generate --prompts $R/prompts.jsonl --out $R/answers.jsonl \
   --shuffle-seed 0 --limit 20000 --per-hour 15 --max-cost 120
 
+# 5b. 過濾（不需 GPU，也可以拿回本機再跑）
+python examples/distill_filter.py --answers $R/answers.jsonl --out $R/kept.jsonl \
+  --eval data/std_bench/gsm8k_test_first50.jsonl data/std_bench/humaneval_first20.jsonl
+
 # 6. 代理軌跡（D4，PR #91 合併後才有）：教師在 hsh 裡用工具解 3,000 個可驗證任務
 python examples/distill_agent.py tasks --n 3000 --out $R/agent_tasks.jsonl
 python examples/distill_agent.py run --tasks $R/agent_tasks.jsonl --out $R/trajectories.jsonl --workers 32
