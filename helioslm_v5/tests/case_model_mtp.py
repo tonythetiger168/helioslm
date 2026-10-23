@@ -278,3 +278,78 @@ def test_mtp_rebind_after_quantization():
         "quantized model forward produced NaN/Inf"
     _pass("test_mtp_rebind_after_quantization",
           "lm_head/embed_tokens re-bound to quantized modules, forward finite")
+
+
+# ----------------------------------------------------------------------
+def test_mtp_speculative_distribution():
+    """v5.103 (OS5) follow-up: the SAMPLED side of MTP speculative
+    decoding must follow the main model's distribution.
+
+    Greedy equivalence (use_mtp == plain, bitwise) is pinned in
+    test_v5_model; the sampled side (temperature > 0, the GRPO rollout
+    shape — rollout_use_mtp samples at temperature 1 / top_p 1) was
+    gated only by examples/mtp_rollout_bench.py, which is telemetry, not
+    a registered test. If the acceptance/residual math drifted, GRPO
+    rollouts would go silently off-policy while old_logprob still scores
+    the main model.
+
+    Here, at the generate() level on a toy model (1 layer, vocab 120,
+    1 MTP module): the empirical first-token distribution of each path
+    (N=3000 independent seeded draws, independent seed bases so the two
+    samples are not RNG-coupled) against the EXACT theoretical
+    distribution p = softmax(next-logits) (top_p=1.0 = no filter, so the
+    plain path samples from exactly p).
+
+    Measured on this fixture (CPU, torch fp32): TV(empirical, p) =
+    0.0766 plain / 0.0761 MTP, right at the N=3000, K~117-support noise
+    floor ~0.4*sqrt(K/N) = 0.08. Bounds below are ~2x the measured
+    values, so the gate catches mechanism bias (a systematic shift),
+    not sampling noise. Determinism (same seed -> same tokens) is exact.
+    """
+    from helioslm_v5.configs.config_v5 import (
+        HybridAttentionConfig, MoEConfig, MTPConfig)
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+
+    cfg = HeliosLMv5Config(
+        size="lite", num_hidden_layers=1, vocab_size=120, hidden_size=64,
+        intermediate_size=128,
+        hybrid_attention=HybridAttentionConfig(enabled=False),
+        mtp=MTPConfig(enabled=True, num_modules=1),
+        moe=MoEConfig(num_experts=2, num_activated_experts=1,
+                      expert_hidden_size=64),
+        use_attention_residuals=False, use_hyper_connections=False)
+    torch.manual_seed(0)
+    model = HeliosLMv5(cfg).eval()
+    g = torch.Generator().manual_seed(11)
+    prompt = torch.randint(3, 120, (1, 5), generator=g)
+    with torch.no_grad():
+        p = torch.softmax(model(prompt)[0][0, -1].double(), -1)
+
+    N = 3000
+    tvs = {}
+    for flag, base in ((False, 2000), (True, 5000)):
+        counts = torch.zeros(cfg.vocab_size, dtype=torch.float64)
+        kw = {"use_mtp": True} if flag else {}
+        for i in range(N):
+            torch.manual_seed(base + i)
+            gen = model.generate(prompt, max_new_tokens=1,
+                                 temperature=1.0, top_p=1.0, **kw)
+            counts[int(gen[0, -1])] += 1
+        tvs[flag] = 0.5 * (counts / N - p).abs().sum().item()
+        # determinism: identical seeds reproduce the full sampled sequence
+        seqs = []
+        for _ in range(2):
+            torch.manual_seed(99)
+            seqs.append(model.generate(prompt, max_new_tokens=6,
+                                       temperature=1.0, top_p=1.0,
+                                       **kw).clone())
+        assert torch.equal(seqs[0], seqs[1]), f"use_mtp={flag} not deterministic"
+    # measured 0.0766 / 0.0761 (see docstring); bound = ~2x measured
+    assert tvs[False] < 0.16, f"plain path off its own distribution: {tvs[False]}"
+    assert tvs[True] < 0.16, (
+        f"MTP speculative path off the main-model distribution: "
+        f"{tvs[True]} (plain {tvs[False]:.4f}) — acceptance/residual "
+        "math suspects")
+    _pass("test_mtp_speculative_distribution",
+          f"TV to exact p: plain {tvs[False]:.4f}, MTP {tvs[True]:.4f} "
+          f"(noise floor ~0.08, bound 0.16); both paths deterministic")
