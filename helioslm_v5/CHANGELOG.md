@@ -24,6 +24,48 @@ that shard.
   - unverified licences are refused unless `--allow-unverified` is set;
   - the output feeds `pilot_100m.py --schedule wsd --decay-data`.
 - `tests/test_midtrain.py` (T126).
+## v5.120 (2026-10-23) - LB4: cross-tokenizer logit KD for pretraining
+
+LB4 of the 2026-10-23 leaderboard review. Gemma and MiniCPM5 pretrain
+their small models on a large teacher's logits instead of one-hot tokens.
+HeliosLM keeps its Big5-seeded BPE, so the teacher's distribution is over
+another vocabulary. `api_distill.py` (v5.82) moves it onto a
+character-level student only. This release does it for the BPE student,
+as offline targets built on CPU.
+
+- `src/training/logit_kd.py` (no torch):
+  - `pieces_from_offsets`, `teacher_prefix_ends` and
+    `student_prefix_ends` align the teacher's and the student's
+    predictions where both condition on the same text (a shared
+    character boundary).
+  - `project_topk` maps each teacher candidate to its first student
+    token, sums, renormalises and keeps the top k.
+  - `doc_targets` builds one document's targets.
+  - `KDTargetWriter` writes one row of targets per stream position
+    (`<name>.kd_idx.npy` uint16, `<name>.kd_p.npy` float16).
+  - `topk_from_logprobs` runs on the teacher side.
+- `pretrain.KDShard` reads the targets for the same windows as
+  `TokenShard`. `pretrain.sparse_kd_loss` computes CE to the teacher's
+  top-k. `pretrain(kd_alpha=...)` trains on
+  `(1 - kd_alpha) * CE + kd_alpha * KD`; positions without a target get
+  CE only, and `kd_loss` is logged.
+- `examples/teacher_topk.py` (GPU pod, needs `transformers`, open-weight
+  teachers only) writes per-document teacher top-k JSONL.
+  `examples/build_kd_targets.py` turns it into a student shard plus
+  targets. `pilot_100m.py` gains `--kd-train` / `--kd-alpha` and checks
+  the tokenizer hash.
+- `tests/test_logit_kd.py` (T125):
+  - alignment, byte-split characters, projection and the writer's row
+    placement;
+  - the script end to end on a trained BPE: with a teacher that shares
+    the student's tokenization, every position aligns and the top
+    candidate is the true next token;
+  - KD loss equals CE for one-hot targets;
+  - `kd_alpha=0` matches plain CE, and `kd_alpha=1` moves the student
+    toward the teacher.
+
+Offline targets cost k * 4 bytes per token, which suits the pilot and the
+#41 60B-token gate. At 1T tokens the teacher should run online instead.
 ## v5.119 (2026-10-23) - E5: v1.0 / v2.0 pre-registration, split gate vs Qwen3.5-0.8B and Breeze 2 3B
 
 - Owner's direction: HeliosLM must beat the Taiwanese models, built at the
