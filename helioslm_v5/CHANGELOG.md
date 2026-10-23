@@ -1,5 +1,29 @@
 # HeliosLM v5 Changelog
 
+## v5.117 (2026-10-23) - LB6: RL length schedule and DAPO overlong handling
+
+From the 2026-10-23 leaderboard review (LB1–LB9): MiniCPM5-1B's RL uses a
+two-stage length schedule and cut the share of responses hitting the
+max-token limit by 29 points. GRPO had one fixed `max_new_tokens` and
+no handling of truncated rollouts. Every default reproduces the previous
+update bit for bit.
+
+- `GRPOConfig.length_stages`: `[(from_step, max_new_tokens), ...]`; the
+  trainer's update counter (`GRPOTrainer.rl_step`) picks the stage and
+  `train_step` records the limit on each sample. `two_stage_lengths`
+  builds a short-then-long schedule.
+- `GRPOConfig.overlong_buffer`: DAPO soft overlong punishment
+  (`overlong_penalty`, arXiv 2503.14476 eq. 13) added to the rewards of
+  samples that carry a limit.
+- `GRPOConfig.overlong_filter`: DAPO overlong filtering; truncated
+  samples (limit reached without EOS) leave the loss and its
+  normalization.
+- The update stats add `mean_response_tokens` and `truncated_frac`.
+- The hybrid-thinking half of LB6 (an explicit think / no-think switch in
+  the SFT format) waits for D3 (#90), whose `keep_thinking="mix"` already
+  trains both modes.
+- T124 `tests/test_grpo_length.py` (6 tests).
+
 ## v5.116 (2026-10-23) - LB3: pretraining data quality filters and mixture manifests
 
 From the 2026-10-23 leaderboard review (LB1–LB9): the 2026 small-model
