@@ -78,7 +78,12 @@ def test_licence_gate(monkeypatch):
         dg.check_teacher("gpt-x")
     monkeypatch.setitem(dg.TEACHERS, "v4-flash", {"repo": "deepseek-ai/DeepSeek-V4-Flash",
                                                   "served_model": "x"})
-    assert tla.REVIEWS["deepseek-ai/DeepSeek-V4-Flash"]["reviewed_sha256"] == tla.PENDING
+    # pinned 2026-10-23 (v5.131): the gate lets it through
+    assert dg.check_teacher("v4-flash")["repo"] == "deepseek-ai/DeepSeek-V4-Flash"
+    # a row whose hash is PENDING is refused
+    monkeypatch.setitem(tla.REVIEWS, "deepseek-ai/DeepSeek-V4-Flash",
+                        {**tla.REVIEWS["deepseek-ai/DeepSeek-V4-Flash"],
+                         "reviewed_sha256": tla.PENDING})
     with pytest.raises(dg.TeacherNotAllowed):
         dg.check_teacher("v4-flash")
     with pytest.raises(dg.TeacherNotAllowed):

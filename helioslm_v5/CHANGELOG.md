@@ -1,5 +1,29 @@
 # HeliosLM v5 Changelog
 
+## v5.131 (2026-10-23) - Pin the four pending teacher licences
+
+- `eval/teacher_license_audit.py`: the OS4 rows read on 2026-10-22
+  through a web reader (tencent/Hy3, XiaomiMiMo/MiMo-V2.5-Pro,
+  deepseek-ai/DeepSeek-V4-Flash, zai-org/GLM-5.2) were PENDING because
+  huggingface.co was not reachable from the build container. A live audit
+  of the Hub on 2026-10-23 fetched each LICENSE text, which was compared
+  with the recorded reading before its hash was pinned:
+  - Hy3: a Tencent header naming Hy3 and its copyright, then the
+    Apache-2.0 text word for word (not the Hunyuan Community License);
+    the repository has no NOTICE file.
+  - DeepSeek-V4-Flash: the same MIT text as V4.1-Flash (same hash).
+  - GLM-5.2: MIT, Copyright (c) 2026 Zhipu AI.
+  - MiMo-V2.5-Pro: no LICENSE file in the repository; the card says MIT,
+    so it is recorded like MiMo-V2.6-Pro-MOPD (hash `None`).
+  All four are now usable teachers; `PENDING_TEACHERS` is empty (the
+  PENDING mechanism stays for future rows).
+- `benchmarks/teacher_license_audit_2026-10-23.json`: the live audit of
+  the four rows (card licence, revision, LICENSE sha256), registered in
+  `verification_tiers.json` as measured. The 2026-10-20 artifact is left
+  as recorded then.
+- Tests: T120 checks the pins against the new artifact and the PENDING
+  path with a temporary row; the D1 licence gate test now expects
+  V4-Flash to pass and still refuses a PENDING row.
 ## v5.130 (2026-10-23) - llama.cpp-runnable GGUF: deepseek2 mapping
 
 The v5.122 GGUF files declare a custom `helioslm` architecture, which
