@@ -1,5 +1,34 @@
 # HeliosLM v5 Changelog
 
+## v5.123 (2026-10-23) - LB9: gated short-convolution layers (LFM2)
+
+LB9 of the 2026-10-23 leaderboard review. In LFM2 and LFM2.5 (Liquid AI),
+most layers of the small models (10 of 16) mix tokens with a double-gated
+causal depthwise short convolution instead of attention, and a few
+attention layers stay for retrieval. This costs little on CPUs and
+phones, and the cache has a fixed size.
+
+- `src/attention/gated_conv.py` `GatedShortConv`:
+  - `out_proj(C * conv(B * x))` with kernel `gated_conv_kernel`
+    (default 3).
+  - The cache holds the last k - 1 gated inputs as a `StateTensor`, so
+    `past_seq_len`, MTP rollback and engine batching treat it like the
+    delta-rule state.
+  - Taps never cross a position restart, so packed documents stay
+    separate.
+  - Padding writes zeros.
+- `HeliosLMv5Config.gated_conv_layers` (default None, off;
+  bit-identical) chooses which layers use it. At least one MLA layer
+  must remain. `_is_full_attention_layer` is False for these layers.
+- `pilot_config("lfm_conv")` / `pilot_100m.py --arch lfm_conv` gives
+  MLA on every third layer and the last, and conv layers elsewhere. The
+  option matrix (T110) gains the `gated_conv` feature.
+- `tests/test_gated_conv.py` (T129) checks:
+  - a match against an `F.conv1d` reference;
+  - cached decode equals the full forward;
+  - packed and padded inputs;
+  - validation.
+
 ## v5.118 (2026-10-23) - LB6: hybrid-thinking mode switch for distillation SFT
 
 The hybrid-thinking half of LB6 (2026-10-23 leaderboard review).

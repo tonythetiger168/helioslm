@@ -40,6 +40,7 @@ import torch.nn.functional as F
 
 # RMSNorm is defined once in attention.mla (O14); re-exported here so the
 # historical public name ``helioslm_v5.src.model_v5.RMSNorm`` keeps working.
+from helioslm_v5.src.attention.gated_conv import GatedShortConv
 from helioslm_v5.src.attention.mla import MLA, RMSNorm
 from helioslm_v5.src.attention.linear_attention import (
     GatedDeltaAttention, past_seq_len)
@@ -53,7 +54,10 @@ def _is_full_attention_layer(config, layer_idx):
     """Hybrid interleave rule (v5.5): MLA iff layer 0 or
     ``idx % every == every - 1``; GatedDeltaAttention otherwise. With
     ``first_layer_full=False`` (v5.57, K3 block order) the layer-0
-    exception is dropped."""
+    exception is dropped. Layers in ``gated_conv_layers`` (v5.123, LB9)
+    are never MLA."""
+    if layer_idx in (config.gated_conv_layers or ()):
+        return False                      # LB9: a gated short-conv layer
     hcfg = config.hybrid_attention
     if hcfg is None or not getattr(hcfg, "enabled", False):
         return True
@@ -177,10 +181,13 @@ class HeliosLMv5Layer(nn.Module):
         self.layer_idx = layer_idx  # kept for external cache plumbing/debugging
         self.pre_attn_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps,
             zero_centered=bool(config.zero_centered_norm))
-        self.attention = (MLA(config, shared_indexer=shared_indexer,
-                              layer_idx=layer_idx)
-                          if _is_full_attention_layer(config, layer_idx)
-                          else GatedDeltaAttention(config))
+        if layer_idx in (config.gated_conv_layers or ()):
+            self.attention = GatedShortConv(config)     # v5.123 LB9
+        elif _is_full_attention_layer(config, layer_idx):
+            self.attention = MLA(config, shared_indexer=shared_indexer,
+                                 layer_idx=layer_idx)
+        else:
+            self.attention = GatedDeltaAttention(config)
         self.pre_moe_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps,
             zero_centered=bool(config.zero_centered_norm))
         # B2-3 (v5.65): the first ``moe.first_k_dense`` layers use a dense
