@@ -132,43 +132,43 @@ REVIEWS = {
     },
 }
 # OS4 (v5.99): the five models of the 2026-10-22 open-model review. Read
-# 2026-10-22 through a web reader because huggingface.co is not reachable
-# from the build container, so no byte-exact hash could be taken. Each
-# row's hash is PENDING: the reading stands, but the row is not usable as a
-# teacher until a live audit pins the hash (audit(PENDING_TEACHERS) does it
-# and fails nothing; see pin_pending). MiniMax M3 is already a pinned row
-# above.
+# 2026-10-22 through a web reader because huggingface.co was not reachable
+# from the build container, so no byte-exact hash could be taken; those
+# rows stayed PENDING (not usable) until a live audit pinned them. Pinned
+# 2026-10-23 (v5.131) from a live audit of the Hub, each fetched text
+# compared with the recorded reading first (pin_pending). MiniMax M3 is
+# already a pinned row above.
 PENDING = "pending: hash not pinned"
 REVIEWS.update({
     "tencent/Hy3": {
-        "reviewed_sha256": PENDING,
+        # Tencent header, then the Apache-2.0 text word for word; no NOTICE
+        "reviewed_sha256": "76a14d21e741dbbf1572e9c0e6bb809a9bd76f5b4da64a0b89e7331cc77ea84a",
         "license": "Apache-2.0 (with a Tencent header naming Hy3 and its "
                    "copyright)",
         "verdict": "allowed",
         "conditions": ["keep the licence, the Tencent copyright header and "
-                       "any NOTICE (s.4)",
+                       "any NOTICE (s.4); the repository has no NOTICE file",
                        "earlier Hunyuan releases used the Tencent Hunyuan "
-                       "Community License (territory exclusions); confirm "
-                       "the pinned text is the Apache one"],
+                       "Community License (territory exclusions); the "
+                       "pinned text is the plain Apache one"],
     },
     "XiaomiMiMo/MiMo-V2.5-Pro": {
-        "reviewed_sha256": PENDING,
-        "license": "MIT (model card)",
+        "reviewed_sha256": None,   # no LICENSE file in the repository
+        "license": "MIT (model card; no LICENSE file in the repository)",
         "verdict": "allowed",
         "conditions": ["keep the copyright and permission notice",
-                       "the card says MIT; the live audit records whether a "
-                       "LICENSE file exists (V2.6-Pro-MOPD had none)"],
+                       "confirm the licence with the MiMo GitHub repository "
+                       "before use: the Hub repo carries no LICENSE file"],
     },
     "deepseek-ai/DeepSeek-V4-Flash": {
-        "reviewed_sha256": PENDING,
+        "reviewed_sha256": "f2c6c602815669d292889e5be8c802f2ed950653b77999b1584e8e6aed25d040",
         "license": "MIT",
         "verdict": "allowed",
         "conditions": ["keep the copyright and permission notice",
-                       "expected to equal the V4.1-Flash text "
-                       "(f2c6c602...): a different hash means re-read"],
+                       "same text as V4.1-Flash (same hash)"],
     },
     "zai-org/GLM-5.2": {
-        "reviewed_sha256": PENDING,
+        "reviewed_sha256": "f4a18c6ae40b0a8e7d2b7667f52f6e1994e54a46430d2e172b73cb8c9b5eb0d7",
         "license": "MIT (Copyright (c) 2026 Zhipu AI)",
         "verdict": "allowed",
         "conditions": ["keep the copyright and permission notice",
