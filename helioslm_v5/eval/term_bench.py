@@ -272,7 +272,12 @@ def seed_sandbox(task, root):
         if not p.resolve().is_relative_to(Path(root).resolve()):
             raise TermBenchError(f"{task['id']}: setup path escapes: {rel}")
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(content, encoding="utf-8")
+        # newline="\n": task contents are defined with LF. Text mode's
+        # default newline translation rewrites them to CRLF on Windows,
+        # which survives into byte-exact artifacts (term/09's tar member
+        # "read me\r\n") while _read() silently translates back and hides
+        # it everywhere else. Write the bytes the task actually defines.
+        p.write_text(content, encoding="utf-8", newline="\n")
 
 
 def _limit_resources():   # pragma: no cover - runs in the child process
@@ -282,21 +287,94 @@ def _limit_resources():   # pragma: no cover - runs in the child process
     resource.setrlimit(resource.RLIMIT_FSIZE, (CMD_FILE_BYTES, CMD_FILE_BYTES))
 
 
+def _sandbox_path():
+    """PATH for the sandbox shell.
+
+    On POSIX the pinned minimal PATH is enough: bash, awk, sed, tar and
+    python3 all live in /usr/bin. On Windows the shell is Git Bash, whose
+    /usr/bin carries the GNU tools but NOT python3. Without a python3 on
+    PATH, every python3-dependent command (term/08-json-filter, every
+    swe/* patch and hidden-test run) fails with exit 127 and, because the
+    shell redirect creates the output file first, fails SILENTLY as an
+    empty artifact.
+
+    Two candidate locations are appended (whichever exist): the directory
+    of the python3 on the current process PATH, and the directory of the
+    running interpreter. Both are needed: this repo's automation runs
+    under two different interpreters (the managed .venv, whose Scripts
+    dir ships python3.exe, and the bundle cpython, whose dir does not),
+    and ``sys.executable`` alone therefore only covers one of them.
+    Paths are converted to /c/... POSIX form for Git Bash. POSIX
+    behaviour is unchanged.
+    """
+    base = "/usr/local/bin:/usr/bin:/bin"
+    if os.name != "nt":
+        return base
+    import shutil
+    cands = []
+    w = shutil.which("python3")
+    if w:
+        cands.append(os.path.dirname(os.path.abspath(w)))
+    cands.append(os.path.dirname(os.path.abspath(sys.executable)))
+    extra = []
+    for d in cands:
+        if not os.path.isdir(d):
+            continue
+        p = d.replace("\\", "/")
+        if len(p) > 1 and p[1] == ":":
+            p = "/" + p[0].lower() + p[2:]
+        if p not in extra:
+            extra.append(p)
+    return base + "".join(":" + d for d in extra)
+
+
+def _kill_tree(proc):
+    """Kill ``proc`` and every descendant (timeout path).
+
+    ``swe/XX-binary-search``'s bug IS an infinite loop: the hidden test
+    against the untouched/trap repo spins forever, so sandbox timeouts
+    are routine, not exceptional. ``subprocess``'s timeout only kills the
+    direct child (bash); a bash child such as ``python3 _hidden_test.py``
+    — on this automation host itself a shim that re-execs a grandchild
+    interpreter — survives as an ORPHAN and burns a core indefinitely
+    (measured: one such orphan accumulated 81188 s of CPU over ~22.7 h,
+    and its inherited pipe handle deadlocked a later ``communicate()``).
+    POSIX: the child runs in its own session (start_new_session), so
+    killpg reaches the whole group. Windows: taskkill /T walks the
+    process tree. Loud on unexpected failure is unnecessary here — a
+    kill failure leaves the old behaviour, not wrong results.
+    """
+    if os.name == "posix":
+        import signal
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+    else:
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                       capture_output=True)
+
+
 def run_command(cmd, root, timeout=CMD_TIMEOUT_S):
     """Run one shell command in the sandbox -> (exit code, output)."""
-    env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": str(root),
+    env = {"PATH": _sandbox_path(), "HOME": str(root),
            "LC_ALL": "C", "LANG": "C"}
-    kwargs = {"preexec_fn": _limit_resources} if os.name == "posix" else {}
+    kwargs = ({"preexec_fn": _limit_resources, "start_new_session": True}
+              if os.name == "posix" else {})
+    p = subprocess.Popen(["bash", "-c", cmd], cwd=root, env=env,
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         text=True, **kwargs)
     try:
-        r = subprocess.run(["bash", "-c", cmd], cwd=root, env=env,
-                           capture_output=True, text=True, timeout=timeout,
-                           **kwargs)
+        so, se = p.communicate(timeout=timeout)
+        rc = p.returncode
     except subprocess.TimeoutExpired:
+        _kill_tree(p)
+        so, se = p.communicate()
         return 124, f"[timed out after {timeout}s]"
-    out = (r.stdout + r.stderr)
+    out = (so + se)
     if len(out) > OUTPUT_CHARS:
         out = out[:OUTPUT_CHARS] + f"\n[... {len(out) - OUTPUT_CHARS} chars truncated]"
-    return r.returncode, out
+    return rc, out
 
 
 # ---------------------------------------------------------------- protocol

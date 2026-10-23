@@ -159,7 +159,15 @@ def test_static_hc_fold_regression():
         assert (torch.cat(outs, 1) - ref).abs().max() < 1e-4
         ids2 = ids.clone()
         ids2[:, 9] = (ids2[:, 9] + 1) % cfg.vocab_size
-        assert torch.equal(off(ids2)[0][:, :9], ref[:, :9])
+        # v5.110: torch.equal -> tolerance. fp32 reduction order differs
+        # between the full forward and the cached decode path, so bitwise
+        # equality flakes on pure noise: measured max|diff| = 5.96e-07
+        # over 18432 elements (15772 non-zero) on a Windows host. The
+        # 1e-5 bound sits 5 orders below this test's own 1e-4 decode
+        # tolerance and 6 orders below the ~0.5 leakage the v5.66 fold
+        # bug produced, so it cannot mask a real causality leak.
+        causal_diff = (off(ids2)[0][:, :9] - ref[:, :9]).abs().max().item()
+        assert causal_diff < 1e-5, causal_diff
 
     layer = off.layers[0]
     seen = []

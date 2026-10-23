@@ -1,0 +1,33 @@
+# HeliosLM line-ending policy (v5.79).
+#
+# Several verification oracles pin sha256 digests of committed artifacts
+# (benchmarks/calibration_board_2026-10-15.json "inputs",
+# benchmarks/cost_per_completed_task_2026-10-13.json,
+# benchmarks/std_bench_reference_2026-10-15.json subset hashes, and the
+# byte-for-byte board rebuild in tests/test_calibration_board.py). Those
+# digests are computed over LF content. On Windows checkouts with
+# core.autocrlf=true the working tree becomes CRLF and every pinned
+# digest "drifts" — the files differ only by line endings, so this is a
+# checkout artifact, not data corruption.
+#
+# Fix: keep text files LF in the working tree on every platform
+# (eol=lf), and mark known binary formats so they are never converted.
+
+* text=auto eol=lf
+
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.zip  binary
+*.gz   binary
+*.pyc  binary
+*.pt   binary
+*.pth  binary
+*.bin  binary
+*.gguf binary
+*.wav  binary
+*.mp3  binary
+*.mp4  binary
+*.pdf  binary

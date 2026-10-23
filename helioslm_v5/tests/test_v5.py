@@ -170,6 +170,13 @@ TESTS = [
     # plugin repair locks + whole-tree import smoke
     case_harness_repair.test_harness_memory_sqlite_fs_repair,
     case_harness_repair.test_import_smoke,
+    # v5.110 (2026-10-23): Windows checkout-repair locks — LF policy,
+    # sandbox python3 PATH, timeout process-tree kill, base64 patch
+    # transport. See case_harness_repair's v5.110 block and CHANGELOG.
+    case_harness_repair.test_pinned_artifacts_lf_eol,
+    case_harness_repair.test_sandbox_python3_resolvable,
+    case_harness_repair.test_sandbox_timeout_kills_tree,
+    case_harness_repair.test_patch_command_base64_roundtrip,
 ]
 
 # CI thread guard (2026-10-13): PR #16's full-suite probe passes with
@@ -183,7 +190,7 @@ if os.environ.get("GITHUB_ACTIONS") == "true":
 
 
 def main():
-    print("HeliosLM v5.22 Test Suite (lite config, CPU)")
+    print("HeliosLM v5.110 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:

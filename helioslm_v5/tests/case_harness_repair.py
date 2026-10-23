@@ -179,3 +179,141 @@ def test_harness_memory_sqlite_fs_repair():
     _pass("test_harness_memory_sqlite_fs_repair",
           "memory round-trip on empty store; sqlite :memory: tuple "
           "rows + execute affected + loud SELECT guard; fs escape blocked")
+
+
+# ---------------------------------------------------------------------------
+# v5.110 (2026-10-23): Windows checkout-repair locks. A fresh Windows clone
+# failed four harness behaviours that POSIX CI never saw; the fixes live in
+# eval/term_bench.py (_sandbox_path / _kill_tree), eval/swe_bench.py
+# (base64 patch transport) and the root .gitattributes (LF policy). These
+# tests lock the repaired behaviours so a later "simplification"
+# reintroduces the failures loudly. Root causes + measurements: CHANGELOG
+# v5.110.
+# ---------------------------------------------------------------------------
+
+_TEXT_EXT = {".py", ".md", ".json", ".jsonl", ".txt", ".yml", ".yaml",
+             ".csv", ".sh", ".toml", ".cfg", ".ini"}
+
+
+def test_pinned_artifacts_lf_eol():
+    """The digest-pinned benchmark/data artifacts must stay LF. A Windows
+    checkout (core.autocrlf) serves CRLF bytes, and CRLF sha256 != the
+    pinned LF sha256 (measured: api_probe_deepseek CRLF 104978f5... vs
+    pinned LF 9bd4ae7d...), so calibration-board/cost/std-bench digest
+    gates failed on content that was actually right. The root
+    .gitattributes now pins `* text=auto eol=lf` plus a binary list.
+    Locked: the policy file exists and benchmarks/ + data/ text files
+    carry no CR byte."""
+    ga = _REPO_ROOT / ".gitattributes"
+    assert ga.is_file(), ".gitattributes missing: LF checkout policy lost"
+    body = ga.read_text(encoding="utf-8")
+    assert "text=auto" in body and "eol=lf" in body, body
+    bad = []
+    for sub in ("helioslm_v5/benchmarks", "helioslm_v5/data"):
+        base = _REPO_ROOT / sub
+        if not base.is_dir():
+            continue
+        for p in base.rglob("*"):
+            if p.is_file() and p.suffix.lower() in _TEXT_EXT:
+                if b"\r" in p.read_bytes():
+                    bad.append(str(p.relative_to(_REPO_ROOT)))
+    assert not bad, f"CRLF bytes in pinned artifacts: {bad[:5]}"
+    _pass("test_pinned_artifacts_lf_eol",
+          ".gitattributes eol=lf; benchmarks/ + data/ CRLF-free")
+
+
+def test_sandbox_python3_resolvable():
+    """Git Bash's /usr/bin ships the GNU tools but NOT python3 on Windows,
+    so every `python3 ...` sandbox command exited 127 — and because the
+    shell creates redirect targets first, it failed SILENTLY as empty
+    artifacts (term/08, all swe/* patch + hidden-test runs). term_bench
+    now appends the real interpreter directories to the sandbox PATH.
+    Locked end-to-end: `python3 -c` runs inside the sandbox PATH."""
+    import os as _os
+    import tempfile
+    from helioslm_v5.eval import term_bench as tb
+    path = tb._sandbox_path()
+    assert "/usr/bin" in path, path
+    if _os.name == "nt":
+        # the appended dirs must be POSIX-form (/c/...) for Git Bash
+        extras = [d for d in path.split(":") if d.startswith("/") and
+                  len(d) > 2 and d[2] == "/"]
+        assert extras, f"no Windows interpreter dir appended: {path}"
+    with tempfile.TemporaryDirectory() as root:
+        rc, out = tb.run_command("python3 -c \"print('py3-ok')\"", root,
+                                 timeout=30)
+    assert rc == 0 and "py3-ok" in out, (rc, out)
+    _pass("test_sandbox_python3_resolvable",
+          "sandbox ran python3 end-to-end on Windows")
+
+
+def test_sandbox_timeout_kills_tree():
+    """swe/07-binary-search's bug IS an infinite loop, so sandbox timeouts
+    are routine. subprocess' timeout only killed the direct child (bash);
+    a python3 grandchild — on this host a shim re-execing the real
+    interpreter — survived as an orphan and burned a core (measured:
+    81188 s CPU over ~22.7 h; its inherited pipe also deadlocked a later
+    communicate()). run_command now kills the whole tree (POSIX killpg on
+    the child session, Windows taskkill /T). Locked: an infinite-loop
+    command returns 124 promptly and the grandchild interpreter is dead."""
+    import os as _os
+    import tempfile
+    import time
+    from helioslm_v5.eval import term_bench as tb
+    with tempfile.TemporaryDirectory() as root:
+        t0 = time.time()
+        rc, out = tb.run_command(
+            "python3 -c \"import os,time; "
+            "open('pid.txt','w').write(str(os.getpid())); "
+            "time.sleep(1000)\"",
+            root, timeout=5)
+        dt = time.time() - t0
+        assert rc == 124, (rc, out)
+        assert dt < 20, f"timeout path took {dt:.1f}s (kill tree broken?)"
+        pid = int((Path(root) / "pid.txt").read_text().strip())
+    alive = True
+    try:
+        if _os.name == "posix":
+            _os.kill(pid, 0)
+        else:
+            import subprocess as _sp
+            r = _sp.run(["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV",
+                         "/NH"], capture_output=True, text=True)
+            alive = str(pid) in r.stdout
+    except (ProcessLookupError, PermissionError):
+        alive = False
+    assert not alive, f"grandchild pid {pid} survived the timeout kill"
+    _pass("test_sandbox_timeout_kills_tree",
+          f"infinite-loop command returned 124 in {dt:.1f}s and the "
+          "grandchild interpreter is dead")
+
+
+def test_patch_command_base64_roundtrip():
+    r"""swe/13-parse-duration's fix carries a regex (\d+); passed inline as
+    JSON argv, the Windows command-line chain (CreateProcess quoting ->
+    Git Bash CRT parse -> python3 launcher shim re-exec) re-serialized it
+    and dropped one backslash layer -> json.decoder.JSONDecodeError:
+    Invalid \escape at the sandbox python3. patch_command now ships the
+    payload base64-encoded (the alphabet survives every layer). Locked
+    end-to-end through the REAL sandbox: a backslash-bearing edit applies
+    cleanly, and the command line carries no raw backslash at all."""
+    import tempfile
+    from helioslm_v5.eval import swe_bench as sb
+    from helioslm_v5.eval import term_bench as tb
+    old = 'm = re.match(r"^(\\d+)h(?:(\\d+)m)?$", s)'
+    new = ('m = re.match(r"^(\\d+(?:\\.\\d+)?)h'
+           '(?:(\\d+(?:\\.\\d+)?)m)?$", s)')
+    with tempfile.TemporaryDirectory() as root:
+        target = Path(root) / "parse.py"
+        target.write_text("import re\n" + old + "\n", encoding="utf-8",
+                          newline="\n")
+        cmd = sb.patch_command([("parse.py", old, new)])
+        assert "\\" not in cmd, \
+            "raw backslash leaked into the command line (base64 lost?)"
+        rc, out = tb.run_command(cmd, root, timeout=30)
+        assert rc == 0, (rc, out)
+        body = target.read_text(encoding="utf-8")
+        assert new in body and old not in body, body
+    _pass("test_patch_command_base64_roundtrip",
+          "regex-bearing patch applied via base64 payload in the real "
+          "sandbox")

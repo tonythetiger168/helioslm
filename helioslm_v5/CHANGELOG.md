@@ -1,5 +1,51 @@
 # HeliosLM v5 Changelog
 
+## v5.110 (2026-10-23) - Windows checkout repairs: LF policy, sandbox python3 PATH, timeout process-tree kill, base64 patch transport
+
+Version calibration note: `configs/config_v5.py` `model_name` had been
+stuck at "HeliosLM-v5.49" while the changelog advanced to v5.109 (a
+60-minor-version drift; upstream entries do not update `model_name`).
+This release calibrates `model_name` to the changelog head + 1.
+
+A fresh Windows clone of this repo failed four harness behaviours that
+POSIX CI never saw; each fix is locked by a new test in
+`tests/case_harness_repair.py` (registered in `tests/test_v5.py`):
+
+- `.gitattributes` (new, repo root): `* text=auto eol=lf` plus a binary
+  extension list. Root cause: a Windows checkout serves CRLF bytes, and
+  CRLF sha256 != the pinned LF sha256 for the digest-pinned benchmark /
+  data artifacts (measured: api_probe_deepseek CRLF 104978f5... vs
+  pinned LF 9bd4ae7d...), failing the calibration-board / cost-per-task /
+  std-bench digest gates on content that was actually right.
+- `eval/term_bench.py::_sandbox_path`: appends the real interpreter
+  directories (the `python3` found on the process PATH and the running
+  interpreter's dir, converted to /c/... form) to the sandbox PATH on
+  Windows. Git Bash /usr/bin has no python3, so python3 commands exited
+  127 and shell redirection turned that into silent empty artifacts.
+  POSIX behaviour unchanged.
+- `eval/term_bench.py::_kill_tree` + Popen/communicate(timeout): a
+  sandbox timeout now kills the whole process tree (POSIX killpg on the
+  child session; Windows taskkill /F /T). Root cause: swe/07's bug is
+  itself an infinite loop; the old timeout killed only bash and orphaned
+  a python3 grandchild that burned 81188 s of CPU over ~22.7 h and
+  deadlocked a later communicate() via an inherited pipe handle.
+- `eval/swe_bench.py::patch_command`: the edit payload travels
+  base64-encoded (files opened with `newline=''`). Root cause: swe/13's
+  regex (\d+) lost one backslash layer through the Windows command-line
+  re-serialization chain (CreateProcess quoting -> Git Bash CRT parse ->
+  python3 launcher shim), dying with `JSONDecodeError: Invalid \escape`.
+- `tests/test_option_matrix.py`: `read_text(encoding="utf-8")` — the
+  platform-default codec (cp950 on a zh-TW Windows host) crashed on the
+  UTF-8 sources.
+- `tests/test_mhc_sinkhorn.py`: causality assertion `torch.equal` ->
+  max|diff| < 1e-5. fp32 reduction order differs between the full
+  forward and the cached decode path; measured noise max 5.96e-07 over
+  18432 elements (15772 non-zero). The bound sits 5 orders below this
+  test's own 1e-4 decode tolerance and 6 orders below the ~0.5 leakage
+  of the v5.66 fold bug, so it cannot mask a real causality leak.
+  (Floating-point threshold change with quantitative justification,
+  per repo policy.)
+
 ## v5.109 (2026-10-22) - One-shot GPU batch run (cuda_smoke, OS5, OS7, OS6, TW3)
 
 - `examples/gpu_batch_run.py`: runs every GPU-pending job in order on one

@@ -44,13 +44,24 @@ class SweBenchError(ValueError):
 
 def patch_command(edits):
     """Shell command applying exact ``(path, old, new)`` replacements; it
-    exits non-zero (and changes nothing further) if an ``old`` is absent."""
-    payload = json.dumps(edits)
-    script = ("import json,sys\n"
-              "for p, o, n in json.loads(sys.argv[1]):\n"
-              "    s = open(p).read()\n"
+    exits non-zero (and changes nothing further) if an ``old`` is absent.
+
+    The payload travels base64-encoded: patches carry regex backslashes
+    (swe/13-parse-duration's ``\\d+``), and on Windows the command line
+    passes through multiple re-serialization layers (CreateProcess
+    quoting, the Git Bash CRT parse, and python3 launcher shims that
+    re-exec another interpreter); a raw JSON argv lost one backslash
+    level there and died with ``JSONDecodeError: Invalid \\escape``.
+    Base64's alphabet survives every one of those layers. Files are read
+    and written with ``newline=''`` so LF task fixtures stay LF.
+    """
+    import base64
+    payload = base64.b64encode(json.dumps(edits).encode("utf-8")).decode()
+    script = ("import base64,json,sys\n"
+              "for p, o, n in json.loads(base64.b64decode(sys.argv[1])):\n"
+              "    s = open(p, newline='').read()\n"
               "    if o not in s: sys.exit('not found in ' + p)\n"
-              "    open(p, 'w').write(s.replace(o, n, 1))\n")
+              "    open(p, 'w', newline='').write(s.replace(o, n, 1))\n")
     return "python3 -c " + _sq(script) + " " + _sq(payload)
 
 
@@ -561,8 +572,11 @@ def _verify(task, root):
         for rel in task["visible"]:
             p = work / rel
             p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(task["files"][rel], encoding="utf-8")
-        (work / HIDDEN_NAME).write_text(task["hidden"], encoding="utf-8")
+            # newline="\n": keep the restored tests byte-identical to the
+            # task definition on every platform (see term_bench setup).
+            p.write_text(task["files"][rel], encoding="utf-8", newline="\n")
+        (work / HIDDEN_NAME).write_text(task["hidden"], encoding="utf-8",
+                                        newline="\n")
         for rel in list(task["visible"]) + [HIDDEN_NAME]:
             code, out = tb.run_command(f"python3 {rel}", work)
             if code != 0:

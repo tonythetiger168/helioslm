@@ -211,7 +211,10 @@ def test_core_modules_read_config_directly():
                    if dataclasses.is_dataclass(getattr(lite, f.name))}
     problems = []
     for rel in _CORE:
-        tree = ast.parse((_REPO / rel).read_text())
+        # v5.110: encoding="utf-8" — Path.read_text() defaults to the
+        # platform locale (cp950 on zh-TW Windows) and dies on the UTF-8
+        # sources; CI/POSIX default to UTF-8 so only a Windows clone saw it.
+        tree = ast.parse((_REPO / rel).read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                     and node.func.id == "getattr" and node.args
