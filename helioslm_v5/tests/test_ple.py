@@ -1,4 +1,4 @@
-"""T128 — LB8 per-layer embeddings (Gemma 3n / Gemma 4 E2B), v5.123.
+"""T128 — LB8 per-layer embeddings (Gemma 3n / Gemma 4 E2B), v5.125.
 
 Pins:
 

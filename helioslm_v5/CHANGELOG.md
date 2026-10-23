@@ -1,6 +1,6 @@
 # HeliosLM v5 Changelog
 
-## v5.123 (2026-10-23) - LB8: per-layer embeddings
+## v5.125 (2026-10-23) - LB8: per-layer embeddings
 
 LB8 of the 2026-10-23 leaderboard review. Gemma 3n and Gemma 4 E2B give
 every layer its own small per-token embedding. The large table is a
