@@ -1,5 +1,29 @@
 # HeliosLM v5 Changelog
 
+## v5.121 (2026-10-23) - LB5: mid-training data for the decay phase
+
+LB5 of the 2026-10-23 leaderboard review. K2 Horizon puts about 17%
+reasoning traces into pretraining. MiniCPM5 switches to curated,
+reasoning-heavy data for its decay phase. LB2's WSD schedule already
+swaps the training shard at the first decay step. This release builds
+that shard.
+
+- `src/training/mid_train.py` (no torch):
+  - `render_trace` turns a D1 record into one plain-text document in
+    the student's chat format, with its reasoning and the LB6 `/think`
+    switch. Every token is trained, unlike SFT.
+  - `mix_docs` interleaves the sources' documents to their token
+    budgets by smooth weighted round robin, with a seeded shuffle per
+    epoch. A source that would need more than `max_epochs` passes is
+    reported as short instead of being repeated further.
+- Mixture manifests gain `format` (`text` or `trace`) and `think_ratio`.
+  `lb3_0p5b_v1.json` marks `distill-d1` as a trace source.
+- `examples/build_midtrain.py` builds `train.bin` and `meta.json` from one
+  manifest phase and local copies of its sources:
+  - text sources go through the LB3 filters;
+  - unverified licences are refused unless `--allow-unverified` is set;
+  - the output feeds `pilot_100m.py --schedule wsd --decay-data`.
+- `tests/test_midtrain.py` (T126).
 ## v5.120 (2026-10-23) - LB4: cross-tokenizer logit KD for pretraining
 
 LB4 of the 2026-10-23 leaderboard review. Gemma and MiniCPM5 pretrain
