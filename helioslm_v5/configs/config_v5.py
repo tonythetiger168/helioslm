@@ -698,7 +698,7 @@ class HeliosLMv5Config:
     #   h = h + post_norm(sublayer(pre_norm(h))).
     # False (default) = no post norms, bit-identical.
     sandwich_norm: bool = False
-    # v5.124 (LB9, LFM2 / LFM2.5): layers whose token mixer is a gated
+    # v5.126 (LB9, LFM2 / LFM2.5): layers whose token mixer is a gated
     # causal short convolution (``attention.gated_conv.GatedShortConv``,
     # kernel ``gated_conv_kernel``) instead of MLA / the delta rule.
     # LFM2 uses 10 conv layers out of 16. None / () = off (bit-identical).

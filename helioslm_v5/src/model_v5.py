@@ -54,7 +54,7 @@ def _is_full_attention_layer(config, layer_idx):
     """Hybrid interleave rule (v5.5): MLA iff layer 0 or
     ``idx % every == every - 1``; GatedDeltaAttention otherwise. With
     ``first_layer_full=False`` (v5.57, K3 block order) the layer-0
-    exception is dropped. Layers in ``gated_conv_layers`` (v5.124, LB9)
+    exception is dropped. Layers in ``gated_conv_layers`` (v5.126, LB9)
     are never MLA."""
     if layer_idx in (config.gated_conv_layers or ()):
         return False                      # LB9: a gated short-conv layer
@@ -182,7 +182,7 @@ class HeliosLMv5Layer(nn.Module):
         self.pre_attn_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps,
             zero_centered=bool(config.zero_centered_norm))
         if layer_idx in (config.gated_conv_layers or ()):
-            self.attention = GatedShortConv(config)     # v5.124 LB9
+            self.attention = GatedShortConv(config)     # v5.126 LB9
         elif _is_full_attention_layer(config, layer_idx):
             self.attention = MLA(config, shared_indexer=shared_indexer,
                                  layer_idx=layer_idx)

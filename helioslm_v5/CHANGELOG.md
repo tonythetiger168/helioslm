@@ -1,6 +1,6 @@
 # HeliosLM v5 Changelog
 
-## v5.124 (2026-10-23) - LB9: gated short-convolution layers (LFM2)
+## v5.126 (2026-10-23) - LB9: gated short-convolution layers (LFM2)
 
 LB9 of the 2026-10-23 leaderboard review. In LFM2 and LFM2.5 (Liquid AI),
 most layers of the small models (10 of 16) mix tokens with a double-gated
@@ -52,7 +52,7 @@ effective).
   `pilot_config(ple_dim=...)` and `pilot_100m.py --ple-dim` set up the
   A/B pilot.
 - `tests/test_ple.py` (T128).
-## v5.124 (2026-10-23) - LB7: checkpoint merging and top-k-union on-policy distillation
+## v5.126 (2026-10-23) - LB7: checkpoint merging and top-k-union on-policy distillation
 
 This is LB7 of the 2026-10-23 leaderboard review. K2 Horizon averages
 checkpoints and merges specialist models after training. MiniCPM5 trains
