@@ -95,16 +95,21 @@ REVIEWS = {
             "purposes)",
         ],
     },
+    # Re-read 2026-10-23 (v5.128): the repository still has no LICENSE
+    # file; the card names OpenMDW-1.1 and links the canonical text,
+    # 1.1/LICENSE.OpenMDW-1.1 in github.com/OpenMDW/OpenMDW, whose sha256
+    # is recorded in license_text_sha256.
     "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16": {
-        "reviewed_sha256": None,   # no LICENSE file; text at openmdw.ai
-        "license": "OpenMDW-1.1 (model card; text not readable here)",
-        "verdict": "unclear",
+        "reviewed_sha256": None,   # no LICENSE file in the repository
+        "license": "OpenMDW-1.1 (model card; no LICENSE file in the repository)",
+        "license_text_sha256": "2ab44b68365473c112f5092211a38f231cb23e50de68b75a13369adbd76a74df",
+        "verdict": "allowed",
         "conditions": [
-            "read the OpenMDW-1.1 text before use: openmdw.ai is not "
-            "reachable from this environment and no licence file is in the "
-            "repository; secondary reports call it permissive (commercial "
-            "use and derivatives, keep notices) but none states its terms "
-            "on outputs",
+            "the agreement imposes no restriction or obligation on outputs",
+            "distributing any of the Model Materials: keep a copy of the "
+            "agreement and the copyright and origin notices",
+            "a patent or copyright suit claiming the Model Materials "
+            "infringe ends the grant",
         ],
     },
     "openai/gpt-oss-120b": {
