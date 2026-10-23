@@ -16,7 +16,7 @@ Pins:
    kill + resume is bitwise equal to an uninterrupted run;
 6. (torch + tokenizers) the CLI end to end: prepare then train from a
    tiny base run;
-7. (v5.117, LB6) mode_switch tags the last user turn /think or /no_think
+7. (v5.118, LB6) mode_switch tags the last user turn /think or /no_think
    to match the target, is off by default, and agrees with "mix".
 """
 import json

@@ -18,7 +18,7 @@ loss on the answer tokens only.
                 answer only (an empty think block, so one model learns
                 both modes); "mix": a fixed share ``think_ratio`` keeps
                 it, chosen by a hash of the record id (reproducible);
-  mode_switch   (v5.117, LB6 hybrid thinking) appends a soft switch to
+  mode_switch   (v5.118, LB6 hybrid thinking) appends a soft switch to
                 the last user turn, " /think" when the target carries
                 reasoning and " /no_think" when its think block is empty,
                 so with keep_thinking="mix" the user, not chance, picks
@@ -74,7 +74,11 @@ def keeps_thinking(rec_id, mode, think_ratio=0.7):
 
 def format_example(rec, keep_thinking="all", think_ratio=0.7,
                    mode_switch=False):
-    """(prompt text, target text) for one D1 record."""
+    """(prompt text, target text) for one D1 record. A record that is
+    already text (``prompt_text`` / ``target_text``, the D4 agent steps)
+    is passed through, untagged by ``mode_switch``."""
+    if "prompt_text" in rec:
+        return rec["prompt_text"], rec["target_text"]
     reasoning = (rec.get("reasoning") or "").strip()
     thinks = keeps_thinking(rec["id"], keep_thinking, think_ratio) \
         and bool(reasoning)
