@@ -21,7 +21,9 @@ the documents. Sources whose licence is not verified are refused unless
 --allow-unverified (pilot runs on local test data only).
 
 Writes ``train.bin`` and ``meta.json`` (tokenizer hash, mixture hash,
-per-source tokens / docs / epochs / short) into --out.
+shard dtype, per-source tokens / docs / epochs / short) into --out.
+A tokenizer with more than 65,536 ids (route B bases, v5.127) gets a
+uint32 shard; read it with ``TokenShard(path, dtype=meta['dtype'])``.
 """
 import argparse
 import hashlib
@@ -41,6 +43,13 @@ from helioslm_v5.src.training.data_quality import (  # noqa: E402
     HashedNgramClassifier, filter_docs)
 from helioslm_v5.src.training.mid_train import (  # noqa: E402
     mix_docs, render_trace)
+
+TOKEN_DTYPES = {"uint16": np.uint16, "uint32": np.uint32}
+
+
+def token_dtype(vocab_size):
+    # pretrain.token_dtype without importing torch
+    return "uint16" if vocab_size <= 65536 else "uint32"
 
 
 def read_records(path):
@@ -65,6 +74,9 @@ def main(argv=None):
     ap.add_argument("--quality-model")
     ap.add_argument("--max-epochs", type=int, default=4)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--dtype", choices=["auto", "uint16", "uint32"],
+                    default="auto", help="shard dtype; auto picks uint32 "
+                    "for a vocabulary over 65,536 (route B bases)")
     ap.add_argument("--allow-unverified", action="store_true")
     ap.add_argument("--out", required=True)
     a = ap.parse_args(argv)
@@ -89,6 +101,8 @@ def main(argv=None):
     eot = tok.token_to_id("<|endoftext|>")
     if eot is None:
         eot = tok.get_vocab_size() - 1
+    dtype = (token_dtype(tok.get_vocab_size()) if a.dtype == "auto"
+             else a.dtype)
 
     total = sum(s["weight"] for s in srcs)
     budgets, docs, filters = {}, {}, {}
@@ -114,12 +128,13 @@ def main(argv=None):
                              max_epochs=a.max_epochs)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
+    hi = np.iinfo(TOKEN_DTYPES[dtype]).max
     n = 0
     with open(out / "train.bin", "wb") as f:
         for _, ids in order:
-            if max(ids) > 65535:
-                sys.exit("token ids must fit in uint16")
-            f.write(np.asarray(ids, dtype=np.uint16).tobytes())
+            if max(ids) > hi:
+                sys.exit(f"token ids must fit in {dtype}; pass --dtype uint32")
+            f.write(np.asarray(ids, dtype=TOKEN_DTYPES[dtype]).tobytes())
             n += len(ids)
     for name, r in report.items():
         r["budget"] = budgets[name]
@@ -128,7 +143,7 @@ def main(argv=None):
     meta = {"tokenizer_sha256": hashlib.sha256(
                 Path(a.tokenizer).read_bytes()).hexdigest(),
             "mixture": mix["name"], "mixture_sha256": mixture_sha256(mix),
-            "phase": a.phase, "tokens": n, "unverified_licences": blocked,
+            "phase": a.phase, "tokens": n, "dtype": dtype, "unverified_licences": blocked,
             "sources": report}
     (out / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")
     print(json.dumps({"tokens": n, "sources": {

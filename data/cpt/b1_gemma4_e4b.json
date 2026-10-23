@@ -1,0 +1,21 @@
+{
+  "name": "b1-gemma4-e4b",
+  "note": "Route B release run (docs/CPT_PLAN_B.md). 40B tokens of continued pretraining (WSD: 32B stable + 8B decay with D1 traces), then SFT, multi-teacher on-policy distillation / RL, and the pre-registered eval (docs/prereg/b1.0.json). MFU 0.30 is a planning guess (large 262K vocabulary head, sliding-window attention); measure it in the first hour and re-cost.",
+  "base": "gemma4-e4b",
+  "mixture": "data/mixtures/b1_gemma4_e4b_cpt_v1.json",
+  "prereg": "docs/prereg/b1.0.json",
+  "gpu": "h100",
+  "mfu": 0.30,
+  "contingency": 1.0,
+  "stages": [
+    {"name": "cpt-main", "kind": "train", "tokens": 32e9},
+    {"name": "cpt-decay", "kind": "train", "tokens": 8e9},
+    {"name": "teacher-d2", "kind": "fixed", "gpu": "h200", "gpu_hours": 96,
+     "note": "DeepSeek-V4.1-Flash traces for SFT / decay on a 4xH200 pod, about one day (distill_pod.sh)"},
+    {"name": "sft", "kind": "train", "tokens": 1e9},
+    {"name": "mopd-rl", "kind": "fixed", "gpu_hours": 192,
+     "note": "8xH100 for a day: MOPD with top-k-union KL (LB7) plus GRPO length stages (LB6)"},
+    {"name": "eval", "kind": "fixed", "gpu_hours": 40,
+     "note": "HeliosLM-B over 3 seeds plus 5 baselines incl. Breexe-8x7B, 4 tasks"}
+  ]
+}

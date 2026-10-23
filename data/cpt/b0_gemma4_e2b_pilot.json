@@ -1,0 +1,14 @@
+{
+  "name": "b0-gemma4-e2b-pilot",
+  "note": "Recipe check before the B1 spend: the same mixture and schedule on the E2B sibling at an eighth of the tokens. Pass = TMMLU+ and TW-JusticeBench up on the E2B base with C-Eval / CMMLU within 2 points.",
+  "base": "gemma4-e2b",
+  "mixture": "data/mixtures/b1_gemma4_e4b_cpt_v1.json",
+  "gpu": "h100",
+  "mfu": 0.30,
+  "contingency": 0.5,
+  "stages": [
+    {"name": "cpt-main", "kind": "train", "tokens": 4e9},
+    {"name": "cpt-decay", "kind": "train", "tokens": 1e9},
+    {"name": "eval", "kind": "fixed", "gpu_hours": 8}
+  ]
+}
