@@ -267,7 +267,8 @@ def test_openai_wire_mapping_offline(monkeypatch):
                       "completion_tokens_details": {"reasoning_tokens": 2}}}
     out = OpenAICompatAdapter.from_wire(resp)
     assert out["reasoning"] == "r" and out["tool_calls"][0]["name"] == "add"
-    assert out["usage"] == {"input_tokens": 7, "output_tokens": 5, "reasoning_tokens": 2}
+    assert out["usage"] == {"input_tokens": 7, "output_tokens": 5, "reasoning_tokens": 2,
+                            "cached_input_tokens": 0}
 
     class FakeResp:
         def __init__(self, body):
