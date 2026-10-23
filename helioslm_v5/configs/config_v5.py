@@ -39,7 +39,7 @@ raises ``ValueError`` immediately on an invalid configuration instead of
 letting silent truncation happen downstream.
 """
 from dataclasses import dataclass, field
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
 
 @dataclass
@@ -698,6 +698,13 @@ class HeliosLMv5Config:
     #   h = h + post_norm(sublayer(pre_norm(h))).
     # False (default) = no post norms, bit-identical.
     sandwich_norm: bool = False
+    # v5.126 (LB9, LFM2 / LFM2.5): layers whose token mixer is a gated
+    # causal short convolution (``attention.gated_conv.GatedShortConv``,
+    # kernel ``gated_conv_kernel``) instead of MLA / the delta rule.
+    # LFM2 uses 10 conv layers out of 16. None / () = off (bit-identical).
+    # At least one MLA layer must remain (the cache's sequence axis).
+    gated_conv_layers: Optional[Tuple[int, ...]] = None
+    gated_conv_kernel: int = 3
     # v5.125 (LB8, Gemma 3n / Gemma 4 E2B): per-layer embeddings. Each
     # layer gets its own small per-token embedding (width
     # ``per_layer_embed_dim``) mixed with a projection of the input
@@ -919,6 +926,32 @@ class HeliosLMv5Config:
             raise ValueError(
                 f"hybrid_attention.first_layer_full must be a bool, got "
                 f"{h.first_layer_full!r}")
+        gc = self.gated_conv_layers
+        if gc is not None:
+            gc = tuple(gc)
+            if (any(isinstance(i, bool) or not isinstance(i, int) for i in gc)
+                    or len(set(gc)) != len(gc)
+                    or any(not 0 <= i < self.num_hidden_layers for i in gc)):
+                raise ValueError(
+                    "gated_conv_layers must be distinct layer indices in "
+                    f"[0, {self.num_hidden_layers}), got {self.gated_conv_layers!r}")
+            self.gated_conv_layers = gc
+            gk = self.gated_conv_kernel
+            if isinstance(gk, bool) or not isinstance(gk, int) or gk < 2:
+                raise ValueError(f"gated_conv_kernel must be an int >= 2, got {gk!r}")
+
+            def _mla(i):
+                if not h.enabled:
+                    return True
+                if i == 0 and h.first_layer_full:
+                    return True
+                return i % h.full_attention_every == h.full_attention_every - 1
+
+            if not any(_mla(i) for i in range(self.num_hidden_layers)
+                       if i not in gc):
+                raise ValueError(
+                    "gated_conv_layers replaces every MLA layer; at least one "
+                    "must remain (the cache's sequence axis)")
         if (h.enabled and not h.first_layer_full
                 and self.num_hidden_layers < h.full_attention_every):
             raise ValueError(

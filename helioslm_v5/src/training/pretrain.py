@@ -11,7 +11,9 @@ killed. This module is that loop; ``examples/pilot_prepare_data.py`` and
     moe          the mid preset's routed experts (4, top 2) at half the
                  dense FFN width, so active FFN compute matches dense;
     k3_block     3:1 KDA:Gated-MLA, attention residuals, LatentMoE;
-    mimo_hybrid  5:1 sliding-window (128) : global MLA with sinks.
+    mimo_hybrid  5:1 sliding-window (128) : global MLA with sinks;
+    lfm_conv     (v5.126, LB9) LFM2-style: gated short convolutions with
+                 MLA on every third layer and the last, dense FFN.
   MTP is off so the loss is plain next-token cross-entropy.
 - Data: ``uint16`` token shards (``write_shards`` / ``TokenShard``).
   Batch positions come from a generator seeded by (seed, micro-step), so
@@ -38,7 +40,7 @@ from helioslm_v5.configs.config_v5 import (
     MTPConfig)
 from helioslm_v5.src.model_v5 import HeliosLMv5
 
-ARCHS = ("dense", "moe", "k3_block", "mimo_hybrid")
+ARCHS = ("dense", "moe", "k3_block", "mimo_hybrid", "lfm_conv")
 
 
 def pilot_config(arch="dense", vocab_size=32768, hidden_size=640,
@@ -68,6 +70,15 @@ def pilot_config(arch="dense", vocab_size=32768, hidden_size=640,
                       enabled=True, full_attention_every=4,
                       first_layer_full=False, per_channel_decay=True,
                       chunk_size=kda_chunk))
+    elif arch == "lfm_conv":
+        # LB9 (LFM2): dense FFN; MLA on every third layer and the last,
+        # gated short convolutions elsewhere (6 of 16 attention in LFM2)
+        moe = MoEConfig(first_k_dense=num_layers)
+        attn = {i for i in range(num_layers) if (i + 1) % 3 == 0}
+        attn.add(num_layers - 1)
+        kw.update(gated_conv_layers=tuple(i for i in range(num_layers)
+                                          if i not in attn),
+                  hybrid_attention=HybridAttentionConfig(enabled=False))
     elif arch == "mimo_hybrid":
         kw.update(attention=AttentionConfig(sliding_window=128,
                                             global_attention_every=6,
