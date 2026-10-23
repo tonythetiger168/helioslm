@@ -384,6 +384,51 @@ class HeliosLMv5Layer(nn.Module):
         return hidden_states, present_kv, attn_res_new
 
 
+class PerLayerEmbedding(nn.Module):
+    """Per-layer embeddings (LB8, Gemma 3n / Gemma 4 E2B).
+
+    inputs(ids, h0) -> [B, L, N, p]: a per-layer token embedding (one
+    [vocab, N * p] table, scaled by sqrt(p)) plus a normalised projection
+    of the input embedding h0, averaged (* 1/sqrt 2). For layer i,
+    ``apply(i, h, x_i)`` = h + post_norm_i(up_i(gelu(gate_i(h)) * x_i)).
+    ``up_i`` starts at zero, so at init the residual stream is unchanged.
+    Positions without a token (multimodal prefix) get the projection
+    term only."""
+
+    def __init__(self, config):
+        super().__init__()
+        d, n, p = (config.hidden_size, config.num_hidden_layers,
+                   config.per_layer_embed_dim)
+        self.n, self.p = n, p
+        zc = bool(config.zero_centered_norm)
+        self.embed = nn.Embedding(config.vocab_size, n * p)
+        self.model_proj = nn.Linear(d, n * p, bias=False)
+        self.proj_norm = RMSNorm(p, eps=config.rms_norm_eps, zero_centered=zc)
+        self.gate = nn.ModuleList(nn.Linear(d, p, bias=False)
+                                  for _ in range(n))
+        self.up = nn.ModuleList(nn.Linear(p, d, bias=False) for _ in range(n))
+        self.post_norm = nn.ModuleList(
+            RMSNorm(d, eps=config.rms_norm_eps, zero_centered=zc)
+            for _ in range(n))
+
+    def zero_init(self):
+        for up in self.up:
+            nn.init.zeros_(up.weight)
+
+    def inputs(self, input_ids, h0, prefix_len=0):
+        B, L = h0.shape[:2]
+        m = self.model_proj(h0).view(B, L, self.n, self.p) * h0.shape[-1] ** -0.5
+        m = self.proj_norm(m)
+        e = self.embed(input_ids).view(B, -1, self.n, self.p) * self.p ** 0.5
+        if prefix_len:
+            e = F.pad(e, (0, 0, 0, 0, prefix_len, 0))
+        return (m + e.to(m.dtype)) * 2 ** -0.5
+
+    def apply_layer(self, i, h, x):
+        g = F.gelu(self.gate[i](h), approximate="tanh") * x.to(h.dtype)
+        return h + self.post_norm[i](self.up[i](g))
+
+
 class HeliosLMv5(nn.Module):
     """HeliosLM v5.5 model. Sizing is driven by HeliosLMv5Config(size=...)."""
 
@@ -451,7 +496,12 @@ class HeliosLMv5(nn.Module):
             self.vision_encoder = None
             self.audio_encoder = None
 
+        self.ple = (PerLayerEmbedding(config)
+                    if config.per_layer_embed_dim > 0 else None)
+
         self.apply(self._init_weights)
+        if self.ple is not None:
+            self.ple.zero_init()
 
         # v5.71 U6 (Gemma 3n/4 cross-layer KV sharing): the last
         # ``kv_share_last_n`` MLA layers reuse the K/V of the most recent
@@ -543,6 +593,8 @@ class HeliosLMv5(nn.Module):
             prefix_len += audio_feat.shape[1]
 
         total_len = hidden_states.shape[1]
+        ple_in = (self.ple.inputs(input_ids, hidden_states, prefix_len)
+                  if self.ple is not None else None)
 
         if position_ids is None:
             position_ids = torch.arange(
@@ -630,6 +682,9 @@ class HeliosLMv5(nn.Module):
                     attn_res=attn_res,
                     shared_kv=kv_saved.get(kv_src.get(i)),
                 )
+                if ple_in is not None:
+                    hidden_states = self.ple.apply_layer(
+                        i, hidden_states, ple_in[:, :, i])
                 if i in kv_needed:
                     kv_saved[i] = present_kv
                 if use_cache:

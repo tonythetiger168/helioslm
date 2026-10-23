@@ -83,6 +83,9 @@ def main():
     ap.add_argument("--kda-chunk", type=int, default=0,
                     help="k3_block: chunked-parallel KDA recurrence with "
                          "this chunk length (v5.107); 0 = per-token loop")
+    ap.add_argument("--ple-dim", type=int, default=0,
+                    help="LB8: per-layer embedding width (Gemma 3n); "
+                         "0 = off")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the config and parameter counts and exit")
     args = ap.parse_args()
@@ -92,7 +95,7 @@ def main():
                        intermediate_size=args.intermediate,
                        max_seq=args.seq, balance=args.balance,
                        moe_dispatch=args.moe_dispatch,
-                       kda_chunk=args.kda_chunk)
+                       kda_chunk=args.kda_chunk, ple_dim=args.ple_dim)
     with torch.device("meta"):
         params = count_params(HeliosLMv5(cfg))
     print("params", json.dumps(params))

@@ -43,14 +43,15 @@ ARCHS = ("dense", "moe", "k3_block", "mimo_hybrid")
 
 def pilot_config(arch="dense", vocab_size=32768, hidden_size=640,
                  num_layers=8, intermediate_size=1792, max_seq=2048,
-                 balance="smebu", moe_dispatch="blocked", kda_chunk=0):
+                 balance="smebu", moe_dispatch="blocked", kda_chunk=0,
+                 ple_dim=0):
     if arch not in ARCHS:
         raise ValueError(f"arch must be one of {ARCHS}, got {arch!r}")
     kw = dict(size="mid", vocab_size=vocab_size, hidden_size=hidden_size,
               num_hidden_layers=num_layers,
               intermediate_size=intermediate_size,
               max_position_embeddings=max(max_seq, 2048),
-              mtp=MTPConfig(enabled=False))
+              mtp=MTPConfig(enabled=False), per_layer_embed_dim=ple_dim)
     # routed experts at half the dense width: top-2 of 4 activates the same
     # FFN compute per token as the dense arm (equal active FFN parameters)
     moe = MoEConfig(balance_strategy=balance, dispatch=moe_dispatch,
@@ -76,14 +77,16 @@ def pilot_config(arch="dense", vocab_size=32768, hidden_size=640,
 
 
 def count_params(model):
-    """total, embedding (input embedding + output head) and active
-    (routed experts counted at top_k / num_experts) parameter counts."""
+    """total, embedding (input embedding + output head + the LB8
+    per-layer embedding table) and active (routed experts counted at
+    top_k / num_experts) parameter counts."""
     cfg = model.config
     total = emb = routed = 0
     for name, p in model.named_parameters():
         n = p.numel()
         total += n
-        if "embed_tokens" in name or "lm_head" in name:
+        if ("embed_tokens" in name or "lm_head" in name
+                or name.startswith("ple.embed.")):
             emb += n
         if ".experts." in name:
             routed += n
