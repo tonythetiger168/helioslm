@@ -28,6 +28,54 @@ on its own on one H200 (about 3-4 hours).
     first, so Breexe gets a GPU of its own) and merges their results;
   - `--stop-pod` stops the pod at the end.
 - T132 `test_base_gap.py`.
+## v5.130 (2026-10-23) - llama.cpp-runnable GGUF: deepseek2 mapping
+
+The v5.122 GGUF files declare a custom `helioslm` architecture, which
+llama.cpp, Ollama and LM Studio cannot run. HeliosLM's default stack (MLA
+with q/kv LoRA, sigmoid-routed MoE with shared experts and a selection-only
+bias) is the DeepSeek-V3 shape, so a compatible model can be written as
+llama.cpp's existing `deepseek2` architecture without new runtime code.
+
+- `src/export/llamacpp.py`:
+  - `llamacpp_incompatibilities(config)` lists every enabled feature the
+    `deepseek2` graph cannot express: KDA / hybrid attention, NoPE and
+    NoPE temperature, RoPE scaling, partial or shared global RoPE,
+    cross-layer KV sharing, output gates, sparse top-k attention, logit
+    soft caps, QK norm, sliding windows, learnable sinks, no `q_lora_rank`,
+    LatentMoE, non-SwiGLU or clamped/shifted SwiGLU, no shared expert,
+    attention residuals, hyper-connections, sandwich norm, LB8
+    `per_layer_embed_dim`, LB9 `gated_conv_layers`, and multimodal.
+  - `to_deepseek2_tensors(model, config)` renames and reshapes the
+    weights. `kv_a_proj` and `k_rope_proj` are joined into
+    `attn_kv_a_mqa`. `kv_b` is split into `attn_k_b` (transposed) and
+    `attn_v_b`. RoPE rows are reordered from NeoX halves to adjacent
+    pairs. `zero_centered_norm` gains are folded to `1 + w`. Experts are
+    stacked into `ffn_*_exps`, and shared experts are joined along the FF
+    width. Any parameter without a counterpart raises, except MTP heads,
+    which are dropped.
+  - `export_llamacpp_gguf(model, path, config, dtype=...)` writes it with
+    the typed `deepseek2.*` metadata llama.cpp checks: MLA as MQA,
+    sigmoid gating, `expert_weights_norm` false, scale 1.
+  - `attn_k_b` / `attn_v_b` stay F32 in every dtype, because llama.cpp's
+    CPU weight repacking (f5027fb) aborts on F16 `attn_k_b` and gives
+    wrong logits with F16 `attn_v_b`.
+- `gguf.write_gguf` is split out of `export_gguf` so both writers share
+  the tensor encoding.
+- Tokenizer: the file uses `tokenizer.ggml.model = "none"` and runs on
+  token ids. HeliosBPE pre-tokenizes on spaces only, which no llama.cpp
+  pre-tokenizer matches, so a text-in Ollama model is a follow-up.
+- Checked against llama.cpp f5027fb (CPU, with and without repacking) on
+  the lite preset and a DeepSeek-shaped MLA (kv_lora 512, rope 64): f32 and
+  f16 logits match HeliosLM (cosine 1.0, same top-1). Q8_0 and Q4_K match
+  llama.cpp run on our own dequantized weights (cosine 0.999+); against
+  HeliosLM full precision, Q8_0 gives cosine 0.999 and Q4_K 0.95-0.96 on
+  random-init weights.
+- `tests/test_llamacpp_export.py` (T131) recomputes logits from the GGUF
+  tensors with a torch port of llama.cpp's `deepseek2` graph (dense
+  layers, 1 or 2 shared experts, top-4, zero-centered norms) and requires
+  them to match HeliosLM. It also checks the RoPE reorder, metadata value
+  types, tensor shapes, F32 tensors, each incompatible flag, and the
+  unmapped-parameter refusal.
 ## v5.128 (2026-10-23) - Nemotron 3 Ultra licence read: allowed as a teacher
 
 - `eval/teacher_license_audit.py`: the NVIDIA Nemotron 3 Ultra row was
