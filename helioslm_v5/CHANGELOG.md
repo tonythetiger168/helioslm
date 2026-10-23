@@ -1,5 +1,16 @@
 # HeliosLM v5 Changelog
 
+## v5.123 (2026-10-23) - Deployment series by GPU memory and cloud replica size
+
+Docs only. The README *Product roadmap* gains a *Deployment series*
+section that splits the product line into five local series keyed by GPU
+memory (L-Edge CPU, L8, L16, L24, L48+) and four cloud series keyed by
+GPUs per replica (C1-Lite, C1, C8, CX). Every series is a quantization
+and context-length cut of one of the six planned generations, so the
+split adds no training runs. Sizes and speeds are estimates; each series
+must pass its own pre-registered evaluation on the quantized file it
+ships.
+
 ## v5.122 (2026-10-23) - GGUF export: ggml Q8_0 and Q4_K block quantization
 
 Step one of making the local deployment series loadable by llama.cpp-family
