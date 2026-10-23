@@ -450,6 +450,7 @@ Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/hel
 - **v5.76** — B2-6: multi-teacher on-policy distillation (MOPD); routed teachers keep the student's inc skill (1.00) and halve its KL to the rev teacher, one teacher for everything erases inc — T115
 - **v5.77** — Stable LatentMoE: Kimi K3 Quantile Balancing router bias; fastest from a skewed start and after a drift, no bias drift; SMEBU stays lower in steady state — T116
 - **v5.78** — Phase B: 16x CSA compressor by curriculum (4x weights, fine-tuned at 16x): passkey recall 0.375/0.390 -> 0.790/0.740, 92%/88% of the oracle ceiling — T117
+- **v5.130** — llama.cpp-runnable GGUF: `export_llamacpp_gguf` writes llama.cpp's `deepseek2` architecture (MLA as MQA, sigmoid MoE with shared experts, RoPE rows reordered) and `llamacpp_incompatibilities` lists the features it cannot express (KDA, NoPE, cross-layer KV, LatentMoE, LB8 PLE, LB9 conv, ...); f32/f16 logits match HeliosLM in llama.cpp f5027fb; token-id input only, tokenizer is a follow-up — T131
 - **v5.127** — Route B: continued-pretraining plan on `google/gemma-4-E4B` (Apache-2.0) to beat every MediaTek text model (`docs/CPT_PLAN_B.md`; `cpt_plan.py` cost model, B1 ≈ US$3.8k / 1,360 H100-h, E2B pilot ≈ US$200; `prereg/b1.0.json`; CPT mixture; uint32 token shards) — T130
 - **v5.126** — LB9: LFM2-style gated short-convolution layers (`attention/gated_conv.py` `GatedShortConv`, `gated_conv_layers` / `gated_conv_kernel`, fixed-size StateTensor cache; pilot arch `lfm_conv`) — T129
 - **v5.125** — LB8: Gemma 3n-style per-layer embeddings (`per_layer_embed_dim`, `model_v5.PerLayerEmbedding`, zero-init so identical at init; `pilot_100m.py --ple-dim`) — T128
@@ -584,7 +585,7 @@ Each generation above is trained once; the deployment series below are cut from 
 | **C8** | one 8-GPU NVLink node | 100B-A10B; 300B-A20B | FP8 | 100 GB; 300 GB | Reasoning and code agents, private deployment; expert parallelism inside the node | v4.0, v5.0 |
 | **CX** | 8× B200 and up, multi-node or NVL72 | 1T-A40B | FP8 or MXFP4 | 1,000 GB; 530 GB | Flagship; prefill/decode disaggregation, cross-node experts | v6.0 |
 
-Context sizes assume the default MLA cache (latent 512 + RoPE 64, about 37 KB per token for a 3B model); plain 8-head GQA needs about 3.5x more. The local series need checkpoints that llama.cpp-family runtimes can load: `src/export/gguf.py` writes Q8_0 / Q4_K blocks since v5.122, but still declares a custom `helioslm` architecture, which no such runtime executes. A series whose source generation is still gated (v4.0 and later) inherits that gate.
+Context sizes assume the default MLA cache (latent 512 + RoPE 64, about 37 KB per token for a 3B model); plain 8-head GQA needs about 3.5x more. The local series need checkpoints that llama.cpp-family runtimes can load: `src/export/gguf.py` writes Q8_0 / Q4_K blocks since v5.122, and since v5.130 `src/export/llamacpp.py` writes a model as llama.cpp's `deepseek2` architecture when `llamacpp_incompatibilities(config)` is empty (no KDA, NoPE, cross-layer KV, LatentMoE, per-layer embeddings or conv layers). The file still takes token ids, because HeliosBPE has no matching llama.cpp tokenizer yet. A series whose source generation is still gated (v4.0 and later) inherits that gate.
 
 ### Tentative product windows (subject to gates)
 

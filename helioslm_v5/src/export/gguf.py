@@ -98,7 +98,7 @@ _FILE_TYPE_ENUM = {"f32": 0, "f16": 1, "q8_0": 7, "q4_k": 14}
 # MoE router weights stay F32 in block-quantized files, as llama.cpp keeps
 # ffn_gate_inp: a small error in a router logit flips which experts run,
 # which costs far more than the bytes saved.
-_KEEP_F32_SUFFIXES = ("router.weight",)
+_KEEP_F32_SUFFIXES = ("router.weight", "ffn_gate_inp.weight")
 
 # Source tensor dtypes we accept. Anything else (int buffers, float64, ...)
 # raises loudly rather than being silently re-typed.
@@ -296,9 +296,6 @@ def export_gguf(model_or_tensors, path, *, config=None, dtype="f32", name=None,
     """
     if dtype not in _FILE_TYPE_ENUM:
         raise ValueError(f"dtype must be one of {sorted(_FILE_TYPE_ENUM)}, got {dtype!r}")
-    quant_types = _QUANT_FILE_TYPES.get(dtype)
-    path = Path(path)
-
     pairs = _resolve_tensors(model_or_tensors)
 
     # -- metadata -----------------------------------------------------------
@@ -319,6 +316,27 @@ def export_gguf(model_or_tensors, path, *, config=None, dtype="f32", name=None,
                 raise ValueError(f"extra_metadata key {key!r} duplicates a built-in key")
             vtype, typed_value = _python_to_typed(value)
             kv.append((key, vtype, typed_value))
+    return write_gguf(path, kv, pairs, dtype)
+
+
+def write_gguf(path, kv, pairs, dtype, *, keep_1d_f32=False, keep_f32=()):
+    """Write a GGUF v3 file from typed metadata and named tensors.
+
+    ``kv`` is an ordered list of ``(key, value_type, value)`` with the
+    ``_VAL_*`` type codes (llama.cpp checks key types, so callers that
+    target an executor pick them explicitly); ``pairs`` is a list of
+    ``(name, tensor)``; ``dtype`` is a ``general.file_type`` choice as in
+    :func:`export_gguf`. ``keep_1d_f32`` also keeps 1-D tensors F32 in
+    an f16 file (llama.cpp's convention); ``keep_f32`` is a tuple of name
+    suffixes written F32 in every dtype. Used by :func:`export_gguf` and
+    the llama.cpp exporter (``llamacpp.py``).
+    """
+    if dtype not in _FILE_TYPE_ENUM:
+        raise ValueError(f"dtype must be one of {sorted(_FILE_TYPE_ENUM)}, got {dtype!r}")
+    quant_types = _QUANT_FILE_TYPES.get(dtype)
+    path = Path(path)
+    for key, _, _ in kv:
+        _validate_key(key)
 
     # -- tensor conversion ---------------------------------------------------
     converted = []  # (name, shape, ggml_type, data_bytes)
@@ -345,7 +363,7 @@ def export_gguf(model_or_tensors, path, *, config=None, dtype="f32", name=None,
         if quant_types is not None:
             block_type = next(
                 (bt for bt in quant_types if tensor.dim() >= 2
-                 and not tname.endswith(_KEEP_F32_SUFFIXES)
+                 and not tname.endswith(_KEEP_F32_SUFFIXES + tuple(keep_f32))
                  and tensor.shape[-1] % _q.BLOCK_LAYOUT[bt][0] == 0), None)
             if block_type is not None:
                 src = tensor.detach().to(torch.float32).contiguous().cpu().numpy()
@@ -355,6 +373,9 @@ def export_gguf(model_or_tensors, path, *, config=None, dtype="f32", name=None,
                     raise ValueError(f"tensor {tname!r}: {exc}") from None
                 converted.append((tname, tuple(tensor.shape), block_type, data))
                 continue
+            ggml_type, torch_dtype, np_dtype = _FILE_DTYPES["f32"]
+        elif (keep_1d_f32 and tensor.dim() == 1) or (
+                keep_f32 and tname.endswith(tuple(keep_f32))):
             ggml_type, torch_dtype, np_dtype = _FILE_DTYPES["f32"]
         else:
             ggml_type, torch_dtype, np_dtype = _FILE_DTYPES[dtype]
