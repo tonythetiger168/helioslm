@@ -1,0 +1,76 @@
+{
+  "experiment": "distillation teacher licence audit",
+  "audited_at": "2026-10-23T12:59:31Z",
+  "scope_notes": [
+    "weight licences only: outputs from a vendor's own API follow that API's terms of service",
+    "a distilled student is treated as a derivative work (conservative)"
+  ],
+  "rows": [
+    {
+      "id": "tencent/Hy3",
+      "card_license": "apache-2.0",
+      "card_license_name": null,
+      "sha": "a960ebc3da325ba167f069f76c41eb62c9280d22",
+      "license_file": "LICENSE",
+      "license_sha256": "76a14d21e741dbbf1572e9c0e6bb809a9bd76f5b4da64a0b89e7331cc77ea84a",
+      "reviewed_sha256": "76a14d21e741dbbf1572e9c0e6bb809a9bd76f5b4da64a0b89e7331cc77ea84a",
+      "license": "Apache-2.0 (with a Tencent header naming Hy3 and its copyright)",
+      "verdict": "allowed",
+      "conditions": [
+        "keep the licence, the Tencent copyright header and any NOTICE (s.4); the repository has no NOTICE file",
+        "earlier Hunyuan releases used the Tencent Hunyuan Community License (territory exclusions); the pinned text is the plain Apache one"
+      ],
+      "pinned": true
+    },
+    {
+      "id": "XiaomiMiMo/MiMo-V2.5-Pro",
+      "card_license": "mit",
+      "card_license_name": null,
+      "sha": "21d1ecfecd7bd70f31be25ca49d7edd21f003659",
+      "license_file": null,
+      "license_sha256": null,
+      "reviewed_sha256": null,
+      "license": "MIT (model card; no LICENSE file in the repository)",
+      "verdict": "allowed",
+      "conditions": [
+        "keep the copyright and permission notice",
+        "confirm the licence with the MiMo GitHub repository before use: the Hub repo carries no LICENSE file"
+      ],
+      "pinned": true
+    },
+    {
+      "id": "deepseek-ai/DeepSeek-V4-Flash",
+      "card_license": "mit",
+      "card_license_name": null,
+      "sha": "60d8d70770c6776ff598c94bb586a859a38244f1",
+      "license_file": "LICENSE",
+      "license_sha256": "f2c6c602815669d292889e5be8c802f2ed950653b77999b1584e8e6aed25d040",
+      "reviewed_sha256": "f2c6c602815669d292889e5be8c802f2ed950653b77999b1584e8e6aed25d040",
+      "license": "MIT",
+      "verdict": "allowed",
+      "conditions": [
+        "keep the copyright and permission notice",
+        "same text as V4.1-Flash (same hash)"
+      ],
+      "pinned": true
+    },
+    {
+      "id": "zai-org/GLM-5.2",
+      "card_license": "mit",
+      "card_license_name": null,
+      "sha": "cf457fa734ab149ffef225f80893eb38c6ff5cdc",
+      "license_file": "LICENSE",
+      "license_sha256": "f4a18c6ae40b0a8e7d2b7667f52f6e1994e54a46430d2e172b73cb8c9b5eb0d7",
+      "reviewed_sha256": "f4a18c6ae40b0a8e7d2b7667f52f6e1994e54a46430d2e172b73cb8c9b5eb0d7",
+      "license": "MIT (Copyright (c) 2026 Zhipu AI)",
+      "verdict": "allowed",
+      "conditions": [
+        "keep the copyright and permission notice",
+        "unlike GLM-5.3 (GLM-5.3 License, security review over US$10B MaaS revenue), 5.2 is plain MIT"
+      ],
+      "pinned": true
+    }
+  ],
+  "rows_sha256": "7017535c61946852eb74d889672c18b394ab48c18b3786a0cc7fdbb466822454",
+  "note": "a reviewed reading of the licence text, not legal advice"
+}
