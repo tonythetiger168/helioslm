@@ -1,4 +1,4 @@
-"""T129 — LB9 gated short-convolution layers (LFM2), v5.123.
+"""T129 — LB9 gated short-convolution layers (LFM2), v5.124.
 
 Pins:
 

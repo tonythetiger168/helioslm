@@ -12,7 +12,7 @@ killed. This module is that loop; ``examples/pilot_prepare_data.py`` and
                  dense FFN width, so active FFN compute matches dense;
     k3_block     3:1 KDA:Gated-MLA, attention residuals, LatentMoE;
     mimo_hybrid  5:1 sliding-window (128) : global MLA with sinks;
-    lfm_conv     (v5.123, LB9) LFM2-style: gated short convolutions with
+    lfm_conv     (v5.124, LB9) LFM2-style: gated short convolutions with
                  MLA on every third layer and the last, dense FFN.
   MTP is off so the loss is plain next-token cross-entropy.
 - Data: ``uint16`` token shards (``write_shards`` / ``TokenShard``).

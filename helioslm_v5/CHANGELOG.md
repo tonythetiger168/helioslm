@@ -1,6 +1,6 @@
 # HeliosLM v5 Changelog
 
-## v5.123 (2026-10-23) - LB9: gated short-convolution layers (LFM2)
+## v5.124 (2026-10-23) - LB9: gated short-convolution layers (LFM2)
 
 LB9 of the 2026-10-23 leaderboard review. In LFM2 and LFM2.5 (Liquid AI),
 most layers of the small models (10 of 16) mix tokens with a double-gated

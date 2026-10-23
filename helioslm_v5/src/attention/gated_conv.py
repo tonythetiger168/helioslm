@@ -1,4 +1,4 @@
-"""Gated short-convolution token mixer (v5.123, LB9 of the 2026-10-23
+"""Gated short-convolution token mixer (v5.124, LB9 of the 2026-10-23
 leaderboard review; LFM2 / LFM2.5, Liquid AI).
 
 LFM2 replaces attention in most layers of its small models (10 of 16 at
