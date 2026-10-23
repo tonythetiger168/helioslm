@@ -1,4 +1,4 @@
-"""merge_checkpoints.py — LB7 checkpoint merging (v5.121).
+"""merge_checkpoints.py — LB7 checkpoint merging (v5.122).
 
   # average the last checkpoints of a WSD decay phase (model soup)
   python3 examples/merge_checkpoints.py --method linear \\
