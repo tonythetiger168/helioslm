@@ -22,6 +22,52 @@ tokens.
   top-k union, with both distributions renormalised over it. With k
   equal to the vocabulary size it is the exact KL.
 - New test file `tests/test_merge.py` (T127).
+## v5.123 (2026-10-23) - Deployment series by GPU memory and cloud replica size
+
+Docs only. The README *Product roadmap* gains a *Deployment series*
+section that splits the product line into five local series keyed by GPU
+memory (L-Edge CPU, L8, L16, L24, L48+) and four cloud series keyed by
+GPUs per replica (C1-Lite, C1, C8, CX). Every series is a quantization
+and context-length cut of one of the six planned generations, so the
+split adds no training runs. Sizes and speeds are estimates; each series
+must pass its own pre-registered evaluation on the quantized file it
+ships.
+
+## v5.122 (2026-10-23) - GGUF export: ggml Q8_0 and Q4_K block quantization
+
+Step one of making the local deployment series loadable by llama.cpp-family
+runtimes: the GGUF writer only wrote F32/F16.
+
+- `src/export/ggml_quants.py` (numpy only): Q8_0 (32-value blocks, f16
+  scale + int8) and Q4_K (256-value super-blocks, f16 d/dmin, twelve bytes
+  of packed 6-bit sub-block scales and mins, 4-bit values) encoders and
+  decoders in ggml's byte layout. The Q4_K encoder takes each sub-block's
+  scale and min from its own range; llama.cpp's quantizer searches for a
+  lower-error scale, so its files decode slightly closer, in the same
+  format.
+- `export_gguf(dtype="q8_0" | "q4_k")`: every tensor with >= 2 dims whose
+  innermost dim fits the block is quantized (q4_k falls back to Q8_0 for
+  dims that are a multiple of 32 only); 1-D tensors and MoE router
+  weights stay F32, as llama.cpp keeps norms and `ffn_gate_inp`.
+  `general.file_type` is MOSTLY_Q8_0 (7) or MOSTLY_Q4_K_S (14).
+- `read_gguf`: sizes Q8_0/Q4_K payloads and `get_tensor` dequantizes them
+  to float32.
+- `tests/test_gguf_quant.py`: exact Q8_0 bytes on a representable block;
+  Q8_0 error bound; all 4,096 scale/min pairs through the 12-byte packing;
+  the Q4_K decoder equals a scalar port of ggml's `dequantize_row_q4_K` on
+  random blocks; Q4_K error bound; lite-model export (types per tensor,
+  determinism, sizes) and Q8_0 logits cosine > 0.99.
+
+Lite model (8.5M, random init), file size and logits cosine vs F32:
+F32 36.1 MB, F16 18.0 MB (1.0), Q8_0 9.6 MB (0.994-0.9999 over four
+seeds), Q4_K 5.2 MB (0.95-0.96). Random-init weights say little about a
+trained model; measure perplexity on the first trained checkpoint.
+
+Not done: the file still declares `general.architecture = helioslm`, so
+llama.cpp will not load it. Mapping to an existing llama.cpp architecture
+is the next change. Not checked against llama.cpp or the `gguf` package
+(neither is installed).
+
 ## v5.121 (2026-10-23) - LB5: mid-training data for the decay phase
 
 LB5 of the 2026-10-23 leaderboard review. K2 Horizon puts about 17%
