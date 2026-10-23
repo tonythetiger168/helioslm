@@ -70,6 +70,7 @@ FEATURES = {
     "mtp_light": {"mtp": dict(style="light")},
     "sandwich_norm": {"top": dict(sandwich_norm=True)},
     "smebu": {"moe": dict(balance_strategy="smebu")},
+    "ple": {"top": dict(per_layer_embed_dim=8)},
 }
 
 # Single configs that trigger the rules no feature pair reaches (a

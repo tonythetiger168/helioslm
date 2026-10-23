@@ -1,5 +1,29 @@
 # HeliosLM v5 Changelog
 
+## v5.125 (2026-10-23) - LB8: per-layer embeddings
+
+LB8 of the 2026-10-23 leaderboard review. Gemma 3n and Gemma 4 E2B give
+every layer its own small per-token embedding. The large table is a
+lookup, so it can stay off the accelerator, and Gemma counts it outside
+the "effective" parameters (E2B is 5.1B parameters in total, 2.3B
+effective).
+
+- `HeliosLMv5Config.per_layer_embed_dim` (default 0, off; no modules,
+  bit-identical) and `model_v5.PerLayerEmbedding`:
+  - A [vocab, layers * dim] table is mixed with a normalised projection
+    of the input embedding.
+  - After layer i, the model adds `post_norm_i(up_i(gelu(gate_i(h)) *
+    x_i))`.
+  - `up_i` starts at zero, so a fresh PLE model computes exactly the
+    model without it, which makes it safe to add to a trained
+    checkpoint.
+  - Cached decode works, because the inputs are per-token.
+- OPTION_RULES `per_layer_embeddings_exclude_hyper_connections`. The
+  option matrix (T110) gains the `ple` feature.
+- `count_params` puts the per-layer table under "embedding".
+  `pilot_config(ple_dim=...)` and `pilot_100m.py --ple-dim` set up the
+  A/B pilot.
+- `tests/test_ple.py` (T128).
 ## v5.124 (2026-10-23) - LB7: checkpoint merging and top-k-union on-policy distillation
 
 This is LB7 of the 2026-10-23 leaderboard review. K2 Horizon averages
