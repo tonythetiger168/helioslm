@@ -66,6 +66,6 @@ tar czf /workspace/distill_$(date +%Y%m%d).tgz -C /workspace distill
 echo "資料已打包：/workspace/distill_*.tgz。可用 runpodctl send 傳回本機。"
 # 7b. Gemma 4 E4B 底模差距測量（排行榜串；教師已關，pip 升級不影響生成）
 if [ -f examples/base_gap_eval.py ]; then
-  pip install -q -U transformers accelerate datasets && python examples/base_gap_eval.py --fetch --cleanup --data /workspace/tw_bench --out-dir /workspace/results 2>&1 | tee /workspace/base_gap.log || true
+  pip install -q -U transformers accelerate datasets && python examples/base_gap_eval.py --fetch --cleanup --gpus 0,1,2,3 --data /workspace/tw_bench --out-dir /workspace/results 2>&1 | tee /workspace/base_gap.log || true
 fi
 python examples/gpu_batch_run.py --out-dir /workspace/results --stop-pod
