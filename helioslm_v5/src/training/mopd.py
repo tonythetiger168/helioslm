@@ -26,7 +26,7 @@ report; the report itself was not reachable from this container:
               sum_v p_S(v) (log p_S(v) - log p_T(v)) at the sampled
               positions instead of the sampled-token estimator.
 
-  top-k union  (v5.122, LB7) MiniCPM5 merges its RL experts into one
+  top-k union  (v5.124, LB7) MiniCPM5 merges its RL experts into one
               student by on-policy distillation with a reverse KL taken
               over the union of the student's and the teacher's top-k
               tokens at each position, both distributions renormalised

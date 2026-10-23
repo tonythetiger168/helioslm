@@ -1,4 +1,4 @@
-"""Checkpoint merging (v5.122, LB7 of the 2026-10-23 leaderboard review).
+"""Checkpoint merging (v5.124, LB7 of the 2026-10-23 leaderboard review).
 
 K2 Horizon averages checkpoints and merges specialist models after
 training; MiniCPM5 trains 16 RL experts and folds them back into one

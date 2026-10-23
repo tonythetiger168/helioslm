@@ -1,6 +1,6 @@
 # HeliosLM v5 Changelog
 
-## v5.122 (2026-10-23) - LB7: checkpoint merging and top-k-union on-policy distillation
+## v5.124 (2026-10-23) - LB7: checkpoint merging and top-k-union on-policy distillation
 
 This is LB7 of the 2026-10-23 leaderboard review. K2 Horizon averages
 checkpoints and merges specialist models after training. MiniCPM5 trains
