@@ -604,6 +604,15 @@ OPTION_RULES = (
                   "(the fp8 cache stores the compressed latent c_kv; the "
                   "expanded per-head cache has no latent to quantize)"),
     OptionRule(
+        # PLE adds to the single residual stream after each layer; the
+        # widened HC stream has no such slot.
+        "per_layer_embeddings_exclude_hyper_connections", "excludes",
+        lambda c: c.per_layer_embed_dim > 0,
+        lambda c: c.use_hyper_connections,
+        lambda c: "per_layer_embed_dim > 0 cannot be combined with "
+                  "use_hyper_connections (PLE writes to the single residual "
+                  "stream)"),
+    OptionRule(
         "sinkhorn_needs_hyper_connections", "requires",
         lambda c: c.hyper_connection_sinkhorn,
         lambda c: c.use_hyper_connections,
@@ -696,6 +705,16 @@ class HeliosLMv5Config:
     # At least one MLA layer must remain (the cache's sequence axis).
     gated_conv_layers: Optional[Tuple[int, ...]] = None
     gated_conv_kernel: int = 3
+    # v5.125 (LB8, Gemma 3n / Gemma 4 E2B): per-layer embeddings. Each
+    # layer gets its own small per-token embedding (width
+    # ``per_layer_embed_dim``) mixed with a projection of the input
+    # embedding; a gated projection adds it to the residual after the
+    # layer. The large vocab x layers x dim table is a lookup, so it can
+    # live off-accelerator (Gemma counts it outside the "effective"
+    # parameters). The output projections start at zero, so a fresh PLE
+    # model computes exactly what the model without it does. 0 = off
+    # (no modules, bit-identical).
+    per_layer_embed_dim: int = 0
 
     # Size presets for the architecture fields declared Optional above. A
     # field still None at __post_init__ time ("follow the size") is filled
@@ -835,6 +854,10 @@ class HeliosLMv5Config:
         for name, value in positive_ints.items():
             if value is None or value <= 0:
                 raise ValueError(f"{name} must be a positive integer, got {value}")
+        ple = self.per_layer_embed_dim
+        if isinstance(ple, bool) or not isinstance(ple, int) or ple < 0:
+            raise ValueError("per_layer_embed_dim must be an int >= 0, "
+                             f"got {ple!r}")
         if self.rms_norm_eps <= 0:
             raise ValueError(f"rms_norm_eps must be positive, got {self.rms_norm_eps}")
         if m.bias_update_rate <= 0:

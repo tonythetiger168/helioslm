@@ -30,7 +30,7 @@ _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
 from helioslm_v5.src.training.pretrain import (  # noqa: E402
-    ARCHS, HeliosLMv5, TokenShard, count_params, pilot_config, pretrain)
+    ARCHS, HeliosLMv5, KDShard, TokenShard, count_params, pilot_config, pretrain)
 
 
 def main():
@@ -62,6 +62,12 @@ def main():
     ap.add_argument("--decay-data",
                     help="wsd: shard directory whose train.bin replaces the "
                          "main data in the decay phase (same tokenizer)")
+    ap.add_argument("--kd-train",
+                    help="LB4: a build_kd_targets.py shard (.bin with its "
+                         ".kd_idx/.kd_p arrays) that replaces --data's "
+                         "train.bin; trains on CE mixed with teacher KD")
+    ap.add_argument("--kd-alpha", type=float, default=0.5,
+                    help="weight of the KD loss against CE")
     ap.add_argument("--eval-every", type=int, default=250)
     ap.add_argument("--eval-windows", type=int, default=100)
     ap.add_argument("--ckpt-every", type=int, default=250)
@@ -77,6 +83,9 @@ def main():
     ap.add_argument("--kda-chunk", type=int, default=0,
                     help="k3_block: chunked-parallel KDA recurrence with "
                          "this chunk length (v5.107); 0 = per-token loop")
+    ap.add_argument("--ple-dim", type=int, default=0,
+                    help="LB8: per-layer embedding width (Gemma 3n); "
+                         "0 = off")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the config and parameter counts and exit")
     args = ap.parse_args()
@@ -86,7 +95,7 @@ def main():
                        intermediate_size=args.intermediate,
                        max_seq=args.seq, balance=args.balance,
                        moe_dispatch=args.moe_dispatch,
-                       kda_chunk=args.kda_chunk)
+                       kda_chunk=args.kda_chunk, ple_dim=args.ple_dim)
     with torch.device("meta"):
         params = count_params(HeliosLMv5(cfg))
     print("params", json.dumps(params))
@@ -107,11 +116,19 @@ def main():
             raise SystemExit("--decay-data was tokenized with a different "
                              "tokenizer than --data")
         decay_train = TokenShard(Path(args.decay_data) / "train.bin")
+    train = TokenShard(Path(args.data) / "train.bin")
+    if args.kd_train:
+        kd = Path(args.kd_train)
+        kmeta = json.loads(kd.with_suffix(".kd.json").read_text())
+        if kmeta.get("tokenizer_sha256") != meta["tokenizer_sha256"]:
+            raise SystemExit("--kd-train was tokenized with a different "
+                             "tokenizer than --data")
+        train = KDShard(kd)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out / "run.json").write_text(json.dumps(run, indent=2) + "\n")
     summary = pretrain(
-        cfg, TokenShard(Path(args.data) / "train.bin"),
+        cfg, train,
         TokenShard(Path(args.data) / "val.bin"), out,
         steps=args.steps, batch=args.batch, seq=args.seq,
         grad_accum=args.grad_accum, lr=args.lr, warmup=args.warmup,
@@ -122,7 +139,7 @@ def main():
         ckpt_every=args.ckpt_every, seed=args.seed, device=device,
         dtype=dtype, bytes_per_token=meta["val_bytes_per_token"],
         peak_flops=args.peak_tflops * 1e12 if args.peak_tflops else None,
-        compile_model=args.compile)
+        compile_model=args.compile, kd_alpha=args.kd_alpha)
     print("done", json.dumps(summary))
 
 

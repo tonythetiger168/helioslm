@@ -45,14 +45,15 @@ ARCHS = ("dense", "moe", "k3_block", "mimo_hybrid", "lfm_conv")
 
 def pilot_config(arch="dense", vocab_size=32768, hidden_size=640,
                  num_layers=8, intermediate_size=1792, max_seq=2048,
-                 balance="smebu", moe_dispatch="blocked", kda_chunk=0):
+                 balance="smebu", moe_dispatch="blocked", kda_chunk=0,
+                 ple_dim=0):
     if arch not in ARCHS:
         raise ValueError(f"arch must be one of {ARCHS}, got {arch!r}")
     kw = dict(size="mid", vocab_size=vocab_size, hidden_size=hidden_size,
               num_hidden_layers=num_layers,
               intermediate_size=intermediate_size,
               max_position_embeddings=max(max_seq, 2048),
-              mtp=MTPConfig(enabled=False))
+              mtp=MTPConfig(enabled=False), per_layer_embed_dim=ple_dim)
     # routed experts at half the dense width: top-2 of 4 activates the same
     # FFN compute per token as the dense arm (equal active FFN parameters)
     moe = MoEConfig(balance_strategy=balance, dispatch=moe_dispatch,
@@ -87,14 +88,16 @@ def pilot_config(arch="dense", vocab_size=32768, hidden_size=640,
 
 
 def count_params(model):
-    """total, embedding (input embedding + output head) and active
-    (routed experts counted at top_k / num_experts) parameter counts."""
+    """total, embedding (input embedding + output head + the LB8
+    per-layer embedding table) and active (routed experts counted at
+    top_k / num_experts) parameter counts."""
     cfg = model.config
     total = emb = routed = 0
     for name, p in model.named_parameters():
         n = p.numel()
         total += n
-        if "embed_tokens" in name or "lm_head" in name:
+        if ("embed_tokens" in name or "lm_head" in name
+                or name.startswith("ple.embed.")):
             emb += n
         if ".experts." in name:
             routed += n
@@ -132,12 +135,15 @@ class TokenShard:
         if len(self.data) < seq + 2:
             raise ValueError(f"shard has {len(self.data)} tokens, needs "
                              f"more than seq + 1 = {seq + 1}")
-        gen = torch.Generator().manual_seed(seed * 1_000_003 + micro_step)
-        starts = torch.randint(0, len(self.data) - seq - 1, (batch,),
-                               generator=gen).tolist()
+        starts = self._starts(batch, seq, micro_step, seed)
         w = np.stack([self.data[s:s + seq + 1] for s in starts]).astype(np.int64)
         w = torch.from_numpy(w)
         return w[:, :-1], w[:, 1:]
+
+    def _starts(self, batch, seq, micro_step, seed):
+        gen = torch.Generator().manual_seed(seed * 1_000_003 + micro_step)
+        return torch.randint(0, len(self.data) - seq - 1, (batch,),
+                             generator=gen).tolist()
 
     def eval_windows(self, seq, max_windows):
         """Consecutive, non-overlapping windows from the start (fixed)."""
@@ -146,6 +152,48 @@ class TokenShard:
             w = torch.from_numpy(
                 self.data[i * seq:i * seq + seq + 1].astype(np.int64))
             yield w[:-1].unsqueeze(0), w[1:].unsqueeze(0)
+
+
+class KDShard(TokenShard):
+    """A token shard with LB4 teacher targets (``logit_kd.KDTargetWriter``
+    output for the same stream). ``batch`` reads the same windows as
+    ``TokenShard`` and adds an all-ones loss mask and the targets of
+    every input position: (x, y, mask, kd_idx [B, T, k], kd_p [B, T, k])."""
+
+    def __init__(self, path, kd_dir=None):
+        super().__init__(path)
+        from .logit_kd import load_targets
+        path = Path(path)
+        self.kd_idx, self.kd_p = load_targets(kd_dir or path.parent, path.stem)
+        for a in (self.kd_idx, self.kd_p):
+            if len(a) != len(self.data) or a.shape != self.kd_idx.shape:
+                raise ValueError(f"target arrays {self.kd_idx.shape} / "
+                                 f"{self.kd_p.shape} for {len(self.data)} "
+                                 "tokens")
+
+    def batch(self, batch, seq, micro_step, seed):
+        x, y = super().batch(batch, seq, micro_step, seed)
+        starts = self._starts(batch, seq, micro_step, seed)
+        idx = np.stack([self.kd_idx[s:s + seq] for s in starts])
+        p = np.stack([self.kd_p[s:s + seq] for s in starts])
+        return (x, y, torch.ones_like(y),
+                torch.from_numpy(idx.astype(np.int64)),
+                torch.from_numpy(p.astype(np.float32)))
+
+
+def sparse_kd_loss(logits, idx, p):
+    """Cross-entropy to the teacher's top-k: mean over positions with a
+    target (p sums to > 0) of -sum_k p_k log p_student(idx_k). Returns
+    (loss, positions); loss is 0 with no target in the batch."""
+    logp = F.log_softmax(logits.float(), dim=-1)
+    lp = logp.gather(-1, idx.to(logp.device))
+    p = p.to(logp.device)
+    per = -(p * lp).sum(-1)
+    has = p.sum(-1) > 0
+    n = int(has.sum())
+    if n == 0:
+        return per.sum() * 0.0, 0
+    return per[has].sum() / n, n
 
 
 # -------------------------------------------------------------- schedule
@@ -241,7 +289,8 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
              decay_train=None, schedule_total=None,
              clip=1.0, eval_every=100, eval_windows=50, ckpt_every=100,
              seed=0, device="cpu", dtype=torch.float32, bytes_per_token=1.0,
-             peak_flops=None, compile_model=False, init_from=None, log=print):
+             peak_flops=None, compile_model=False, init_from=None,
+             kd_alpha=0.5, log=print):
     """Train (or resume) to ``steps`` optimizer steps. Returns the summary.
 
     Resume: if ``<out_dir>/ckpt.pt`` exists, model and optimizer state and
@@ -262,7 +311,14 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
     ``schedule_total`` (default ``steps``) is the run length the schedule
     is laid out for: train to ``steps`` < ``schedule_total`` and resume
     later with a larger ``steps``, and the LR and data follow one plan.
+
+    Logit KD (LB4): a shard whose ``batch`` yields teacher targets as a
+    fourth and fifth tensor (``KDShard``) trains on
+    ``(1 - kd_alpha) * CE + kd_alpha * sparse_kd_loss``; positions
+    without a target contribute CE only. ``kd_loss`` is logged.
     """
+    if not 0.0 <= kd_alpha <= 1.0:
+        raise ValueError(f"kd_alpha must be in [0, 1], got {kd_alpha}")
     if decay_train is not None and schedule != "wsd":
         raise ValueError("decay_train needs schedule='wsd'")
     plan = steps if schedule_total is None else schedule_total
@@ -316,7 +372,8 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
         for g in opt.param_groups:
             g["lr"] = cur_lr
         opt.zero_grad(set_to_none=True)
-        loss_sum = 0.0
+        loss_sum = kd_sum = 0.0
+        kd_used = False
         for micro in range(grad_accum):
             b = train.batch(batch, seq, step * grad_accum + micro, seed)
             x, y = b[0].to(device), b[1].to(device)
@@ -329,6 +386,11 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
                         logits.float().reshape(-1, logits.shape[-1]),
                         y.reshape(-1), reduction="none")
                     loss = (ce * m).sum() / m.sum().clamp(min=1) / grad_accum
+                    if len(b) > 4:
+                        kd, _ = sparse_kd_loss(logits, b[3], b[4])
+                        loss = (1 - kd_alpha) * loss + kd_alpha * kd / grad_accum
+                        kd_sum += kd.item() / grad_accum
+                        kd_used = True
                 else:
                     loss = F.cross_entropy(
                         logits.float().reshape(-1, logits.shape[-1]),
@@ -343,6 +405,8 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
         rec = {"step": step, "lr": round(cur_lr, 8),
                "phase": "decay" if step > decay_start else "main",
                "train_loss": round(loss_sum, 5), "grad_norm": round(gnorm, 4)}
+        if kd_used:
+            rec["kd_loss"] = round(kd_sum, 5)
         if step % eval_every == 0 or step == steps:
             if device.type == "cuda":
                 torch.cuda.synchronize()

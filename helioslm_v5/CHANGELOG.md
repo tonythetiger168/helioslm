@@ -28,6 +28,164 @@ phones, and the cache has a fixed size.
   - cached decode equals the full forward;
   - packed and padded inputs;
   - validation.
+## v5.125 (2026-10-23) - LB8: per-layer embeddings
+
+LB8 of the 2026-10-23 leaderboard review. Gemma 3n and Gemma 4 E2B give
+every layer its own small per-token embedding. The large table is a
+lookup, so it can stay off the accelerator, and Gemma counts it outside
+the "effective" parameters (E2B is 5.1B parameters in total, 2.3B
+effective).
+
+- `HeliosLMv5Config.per_layer_embed_dim` (default 0, off; no modules,
+  bit-identical) and `model_v5.PerLayerEmbedding`:
+  - A [vocab, layers * dim] table is mixed with a normalised projection
+    of the input embedding.
+  - After layer i, the model adds `post_norm_i(up_i(gelu(gate_i(h)) *
+    x_i))`.
+  - `up_i` starts at zero, so a fresh PLE model computes exactly the
+    model without it, which makes it safe to add to a trained
+    checkpoint.
+  - Cached decode works, because the inputs are per-token.
+- OPTION_RULES `per_layer_embeddings_exclude_hyper_connections`. The
+  option matrix (T110) gains the `ple` feature.
+- `count_params` puts the per-layer table under "embedding".
+  `pilot_config(ple_dim=...)` and `pilot_100m.py --ple-dim` set up the
+  A/B pilot.
+- `tests/test_ple.py` (T128).
+## v5.124 (2026-10-23) - LB7: checkpoint merging and top-k-union on-policy distillation
+
+This is LB7 of the 2026-10-23 leaderboard review. K2 Horizon averages
+checkpoints and merges specialist models after training. MiniCPM5 trains
+16 RL experts and folds them into one student by on-policy distillation
+with a reverse KL over the union of the student's and the teacher's top-k
+tokens.
+
+- `src/training/merge.py`: `merge_states` offers three methods:
+  - `linear`: model soups and checkpoint averaging.
+  - `task_arithmetic`.
+  - `ties`: TIES-Merging, which trims each task vector, elects a sign
+    per entry and averages the entries that agree with it.
+
+  Integer buffers are copied rather than averaged. `examples/
+  merge_checkpoints.py` writes a checkpoint that `pretrain(init_from=...)`
+  loads, and copies `run.json` next to it.
+- `mopd.topk_union_reverse_kl` and `MOPDTrainer(full_vocab=True,
+  topk_union=k)`: the full-vocabulary reverse KL is restricted to the
+  top-k union, with both distributions renormalised over it. With k
+  equal to the vocabulary size it is the exact KL.
+- New test file `tests/test_merge.py` (T127).
+## v5.123 (2026-10-23) - Deployment series by GPU memory and cloud replica size
+
+Docs only. The README *Product roadmap* gains a *Deployment series*
+section that splits the product line into five local series keyed by GPU
+memory (L-Edge CPU, L8, L16, L24, L48+) and four cloud series keyed by
+GPUs per replica (C1-Lite, C1, C8, CX). Every series is a quantization
+and context-length cut of one of the six planned generations, so the
+split adds no training runs. Sizes and speeds are estimates; each series
+must pass its own pre-registered evaluation on the quantized file it
+ships.
+
+## v5.122 (2026-10-23) - GGUF export: ggml Q8_0 and Q4_K block quantization
+
+Step one of making the local deployment series loadable by llama.cpp-family
+runtimes: the GGUF writer only wrote F32/F16.
+
+- `src/export/ggml_quants.py` (numpy only): Q8_0 (32-value blocks, f16
+  scale + int8) and Q4_K (256-value super-blocks, f16 d/dmin, twelve bytes
+  of packed 6-bit sub-block scales and mins, 4-bit values) encoders and
+  decoders in ggml's byte layout. The Q4_K encoder takes each sub-block's
+  scale and min from its own range; llama.cpp's quantizer searches for a
+  lower-error scale, so its files decode slightly closer, in the same
+  format.
+- `export_gguf(dtype="q8_0" | "q4_k")`: every tensor with >= 2 dims whose
+  innermost dim fits the block is quantized (q4_k falls back to Q8_0 for
+  dims that are a multiple of 32 only); 1-D tensors and MoE router
+  weights stay F32, as llama.cpp keeps norms and `ffn_gate_inp`.
+  `general.file_type` is MOSTLY_Q8_0 (7) or MOSTLY_Q4_K_S (14).
+- `read_gguf`: sizes Q8_0/Q4_K payloads and `get_tensor` dequantizes them
+  to float32.
+- `tests/test_gguf_quant.py`: exact Q8_0 bytes on a representable block;
+  Q8_0 error bound; all 4,096 scale/min pairs through the 12-byte packing;
+  the Q4_K decoder equals a scalar port of ggml's `dequantize_row_q4_K` on
+  random blocks; Q4_K error bound; lite-model export (types per tensor,
+  determinism, sizes) and Q8_0 logits cosine > 0.99.
+
+Lite model (8.5M, random init), file size and logits cosine vs F32:
+F32 36.1 MB, F16 18.0 MB (1.0), Q8_0 9.6 MB (0.994-0.9999 over four
+seeds), Q4_K 5.2 MB (0.95-0.96). Random-init weights say little about a
+trained model; measure perplexity on the first trained checkpoint.
+
+Not done: the file still declares `general.architecture = helioslm`, so
+llama.cpp will not load it. Mapping to an existing llama.cpp architecture
+is the next change. Not checked against llama.cpp or the `gguf` package
+(neither is installed).
+
+## v5.121 (2026-10-23) - LB5: mid-training data for the decay phase
+
+LB5 of the 2026-10-23 leaderboard review. K2 Horizon puts about 17%
+reasoning traces into pretraining. MiniCPM5 switches to curated,
+reasoning-heavy data for its decay phase. LB2's WSD schedule already
+swaps the training shard at the first decay step. This release builds
+that shard.
+
+- `src/training/mid_train.py` (no torch):
+  - `render_trace` turns a D1 record into one plain-text document in
+    the student's chat format, with its reasoning and the LB6 `/think`
+    switch. Every token is trained, unlike SFT.
+  - `mix_docs` interleaves the sources' documents to their token
+    budgets by smooth weighted round robin, with a seeded shuffle per
+    epoch. A source that would need more than `max_epochs` passes is
+    reported as short instead of being repeated further.
+- Mixture manifests gain `format` (`text` or `trace`) and `think_ratio`.
+  `lb3_0p5b_v1.json` marks `distill-d1` as a trace source.
+- `examples/build_midtrain.py` builds `train.bin` and `meta.json` from one
+  manifest phase and local copies of its sources:
+  - text sources go through the LB3 filters;
+  - unverified licences are refused unless `--allow-unverified` is set;
+  - the output feeds `pilot_100m.py --schedule wsd --decay-data`.
+- `tests/test_midtrain.py` (T126).
+## v5.120 (2026-10-23) - LB4: cross-tokenizer logit KD for pretraining
+
+LB4 of the 2026-10-23 leaderboard review. Gemma and MiniCPM5 pretrain
+their small models on a large teacher's logits instead of one-hot tokens.
+HeliosLM keeps its Big5-seeded BPE, so the teacher's distribution is over
+another vocabulary. `api_distill.py` (v5.82) moves it onto a
+character-level student only. This release does it for the BPE student,
+as offline targets built on CPU.
+
+- `src/training/logit_kd.py` (no torch):
+  - `pieces_from_offsets`, `teacher_prefix_ends` and
+    `student_prefix_ends` align the teacher's and the student's
+    predictions where both condition on the same text (a shared
+    character boundary).
+  - `project_topk` maps each teacher candidate to its first student
+    token, sums, renormalises and keeps the top k.
+  - `doc_targets` builds one document's targets.
+  - `KDTargetWriter` writes one row of targets per stream position
+    (`<name>.kd_idx.npy` uint16, `<name>.kd_p.npy` float16).
+  - `topk_from_logprobs` runs on the teacher side.
+- `pretrain.KDShard` reads the targets for the same windows as
+  `TokenShard`. `pretrain.sparse_kd_loss` computes CE to the teacher's
+  top-k. `pretrain(kd_alpha=...)` trains on
+  `(1 - kd_alpha) * CE + kd_alpha * KD`; positions without a target get
+  CE only, and `kd_loss` is logged.
+- `examples/teacher_topk.py` (GPU pod, needs `transformers`, open-weight
+  teachers only) writes per-document teacher top-k JSONL.
+  `examples/build_kd_targets.py` turns it into a student shard plus
+  targets. `pilot_100m.py` gains `--kd-train` / `--kd-alpha` and checks
+  the tokenizer hash.
+- `tests/test_logit_kd.py` (T125):
+  - alignment, byte-split characters, projection and the writer's row
+    placement;
+  - the script end to end on a trained BPE: with a teacher that shares
+    the student's tokenization, every position aligns and the top
+    candidate is the true next token;
+  - KD loss equals CE for one-hot targets;
+  - `kd_alpha=0` matches plain CE, and `kd_alpha=1` moves the student
+    toward the teacher.
+
+Offline targets cost k * 4 bytes per token, which suits the pilot and the
+#41 60B-token gate. At 1T tokens the teacher should run online instead.
 ## v5.119 (2026-10-23) - E5: v1.0 / v2.0 pre-registration, split gate vs Qwen3.5-0.8B and Breeze 2 3B
 
 - Owner's direction: HeliosLM must beat the Taiwanese models, built at the

@@ -71,6 +71,7 @@ FEATURES = {
     "sandwich_norm": {"top": dict(sandwich_norm=True)},
     "smebu": {"moe": dict(balance_strategy="smebu")},
     "gated_conv": {"top": dict(gated_conv_layers=(1,))},
+    "ple": {"top": dict(per_layer_embed_dim=8)},
 }
 
 # Single configs that trigger the rules no feature pair reaches (a

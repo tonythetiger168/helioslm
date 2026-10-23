@@ -16,10 +16,10 @@ files that do not declare otherwise):
 
 Deliberate simplifications (documented, loud):
 
-  - Only GGML_TYPE_F32 and GGML_TYPE_F16 tensor payloads are written and
-    read. The quantized GGML types (Q4_0, Q8_0, K-quants, ...) are block
-    formats that would need their own encoders; passing HeliosLM
-    GPTQ/AWQ-packed buffers here raises ValueError instead of silently
+  - Tensor payloads are F32, F16, or (v5.122) the ggml block formats Q8_0
+    and Q4_K, encoded from float weights by ``ggml_quants.py``. Other
+    quantized GGML types are not written. HeliosLM GPTQ/AWQ-packed buffers
+    are not translated: passing them raises ValueError instead of silently
     writing a mislabeled file.
   - Only little-endian files are produced and parsed (GGUF's default).
   - ``general.architecture`` is ``"helioslm"``. No GGML executor (llama.cpp
@@ -53,6 +53,8 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from . import ggml_quants as _q
+
 GGUF_MAGIC = b"GGUF"
 GGUF_VERSION = 3
 DEFAULT_ALIGNMENT = 32          # spec fallback when general.alignment is absent
@@ -68,6 +70,9 @@ GGML_TYPE_F16 = 1
 _GGML_ITEMSIZE = {GGML_TYPE_F32: 4, GGML_TYPE_F16: 2}
 _GGML_TORCH_DTYPE = {GGML_TYPE_F32: torch.float32, GGML_TYPE_F16: torch.float16}
 _GGML_NAME = {GGML_TYPE_F32: "F32", GGML_TYPE_F16: "F16"}
+GGML_TYPE_Q8_0 = _q.GGML_TYPE_Q8_0
+GGML_TYPE_Q4_K = _q.GGML_TYPE_Q4_K
+_GGML_NAME.update({GGML_TYPE_Q8_0: "Q8_0", GGML_TYPE_Q4_K: "Q4_K"})
 
 # gguf_metadata_value_type codes.
 _VAL_UINT8, _VAL_INT8, _VAL_UINT16, _VAL_INT16 = 0, 1, 2, 3
@@ -82,7 +87,18 @@ _VAL_STRUCT = {
 
 _FILE_DTYPES = {"f32": (GGML_TYPE_F32, torch.float32, "<f4"),
                 "f16": (GGML_TYPE_F16, torch.float16, "<f2")}
-_FILE_TYPE_ENUM = {"f32": 0, "f16": 1}  # general.file_type: ALL_F32 / MOSTLY_F16
+# Block-quantized files: the preferred block type, then fallbacks for
+# tensors whose innermost dim does not fit it. 1-D tensors (norms, biases)
+# always stay F32, as llama.cpp's own quantizer keeps them.
+_QUANT_FILE_TYPES = {"q8_0": (GGML_TYPE_Q8_0,),
+                     "q4_k": (GGML_TYPE_Q4_K, GGML_TYPE_Q8_0)}
+# general.file_type (llama_ftype): ALL_F32 / MOSTLY_F16 / MOSTLY_Q8_0 /
+# MOSTLY_Q4_K_S (every eligible tensor Q4_K; _M would mix in Q6_K).
+_FILE_TYPE_ENUM = {"f32": 0, "f16": 1, "q8_0": 7, "q4_k": 14}
+# MoE router weights stay F32 in block-quantized files, as llama.cpp keeps
+# ffn_gate_inp: a small error in a router logit flips which experts run,
+# which costs far more than the bytes saved.
+_KEEP_F32_SUFFIXES = ("router.weight",)
 
 # Source tensor dtypes we accept. Anything else (int buffers, float64, ...)
 # raises loudly rather than being silently re-typed.
@@ -259,8 +275,13 @@ def export_gguf(model_or_tensors, path, *, config=None, dtype="f32", name=None,
         path: destination file path (overwritten; parent must exist).
         config: optional HeliosLMv5Config; when given, the standard GGUF LLM
             hyperparameter keys are written under the ``helioslm.`` prefix.
-        dtype: ``"f32"`` (default, bit-exact) or ``"f16"`` (casts every
-            tensor; raises loudly if a finite value overflows the f16 range).
+        dtype: ``"f32"`` (default, bit-exact), ``"f16"`` (casts every
+            tensor; raises loudly if a finite value overflows the f16 range),
+            ``"q8_0"`` or ``"q4_k"`` (ggml block quantization of every tensor
+            with >= 2 dims whose innermost dim is a multiple of the block
+            size; q4_k falls back to Q8_0 for dims that are a multiple of 32
+            only; everything else, including 1-D tensors and MoE router
+            weights, is written F32).
         name: ``general.name``; defaults to ``config.model_name`` when a
             config is given, else "HeliosLM".
         extra_metadata: optional mapping of additional GGUF keys (must be
@@ -273,9 +294,9 @@ def export_gguf(model_or_tensors, path, *, config=None, dtype="f32", name=None,
     (int/float64 buffers), non-ASCII or >64-byte tensor names, duplicate
     names, 0-d or >4-d tensors, f16 overflow, invalid metadata keys/values.
     """
-    if dtype not in _FILE_DTYPES:
-        raise ValueError(f"dtype must be one of {sorted(_FILE_DTYPES)}, got {dtype!r}")
-    ggml_type, torch_dtype, np_dtype = _FILE_DTYPES[dtype]
+    if dtype not in _FILE_TYPE_ENUM:
+        raise ValueError(f"dtype must be one of {sorted(_FILE_TYPE_ENUM)}, got {dtype!r}")
+    quant_types = _QUANT_FILE_TYPES.get(dtype)
     path = Path(path)
 
     pairs = _resolve_tensors(model_or_tensors)
@@ -300,7 +321,7 @@ def export_gguf(model_or_tensors, path, *, config=None, dtype="f32", name=None,
             kv.append((key, vtype, typed_value))
 
     # -- tensor conversion ---------------------------------------------------
-    converted = []  # (name, shape, data_bytes)
+    converted = []  # (name, shape, ggml_type, data_bytes)
     for tname, tensor in pairs:
         encoded = tname.encode("utf-8")
         if len(encoded) > MAX_TENSOR_NAME_BYTES or not encoded.isascii():
@@ -321,6 +342,22 @@ def export_gguf(model_or_tensors, path, *, config=None, dtype="f32", name=None,
                 f"{MAX_TENSOR_DIMS}. Reshape scalars to [1] explicitly if you "
                 "want them exported."
             )
+        if quant_types is not None:
+            block_type = next(
+                (bt for bt in quant_types if tensor.dim() >= 2
+                 and not tname.endswith(_KEEP_F32_SUFFIXES)
+                 and tensor.shape[-1] % _q.BLOCK_LAYOUT[bt][0] == 0), None)
+            if block_type is not None:
+                src = tensor.detach().to(torch.float32).contiguous().cpu().numpy()
+                try:
+                    data = _q.QUANTIZE[block_type](src)
+                except ValueError as exc:
+                    raise ValueError(f"tensor {tname!r}: {exc}") from None
+                converted.append((tname, tuple(tensor.shape), block_type, data))
+                continue
+            ggml_type, torch_dtype, np_dtype = _FILE_DTYPES["f32"]
+        else:
+            ggml_type, torch_dtype, np_dtype = _FILE_DTYPES[dtype]
         t = tensor.detach().to(torch_dtype).contiguous().cpu()
         if torch_dtype == torch.float16 and tensor.dtype != torch.float16:
             overflow = torch.isinf(t) & torch.isfinite(tensor.detach())
@@ -330,7 +367,7 @@ def export_gguf(model_or_tensors, path, *, config=None, dtype="f32", name=None,
                     "outside the f16 range; refusing lossy f16 cast"
                 )
         data = t.numpy().astype(np.dtype(np_dtype), copy=False).tobytes()
-        converted.append((tname, tuple(tensor.shape), data))
+        converted.append((tname, tuple(tensor.shape), ggml_type, data))
 
     # -- write ---------------------------------------------------------------
     def align_up(offset):
@@ -346,11 +383,11 @@ def export_gguf(model_or_tensors, path, *, config=None, dtype="f32", name=None,
 
     offsets = []
     cursor = 0
-    for _, _, data in converted:
+    for _, _, _, data in converted:
         offsets.append(cursor)
         cursor = align_up(cursor + len(data))
 
-    for (tname, shape, _), offset in zip(converted, offsets):
+    for (tname, shape, ggml_type, _), offset in zip(converted, offsets):
         blob += _pack_str(tname)
         blob += struct.pack("<I", len(shape))
         for dim in reversed(shape):  # GGML lists dims innermost-first
@@ -358,7 +395,7 @@ def export_gguf(model_or_tensors, path, *, config=None, dtype="f32", name=None,
         blob += struct.pack("<IQ", ggml_type, offset)
 
     blob += bytes(align_up(len(blob)) - len(blob))  # tensor-data block alignment
-    for _, _, data in converted:
+    for _, _, _, data in converted:
         assert len(blob) % DEFAULT_ALIGNMENT == 0, "tensor-data misalignment"
         blob += data
         pad = align_up(len(data)) - len(data)
@@ -398,26 +435,35 @@ class GGUFFile:
     def tensor_bytes(self, name):
         for t in self.tensors:
             if t.name == name:
-                if t.ggml_type not in _GGML_TORCH_DTYPE:
-                    # Unknown/quantized GGML types have no known payload
-                    # size (nbytes == -1), which would slice to b"" —
-                    # fail as loudly as get_tensor instead.
+                if t.nbytes < 0:
+                    # Unknown GGML types have no known payload size, which
+                    # would slice to b"" — fail as loudly as get_tensor.
                     raise ValueError(
                         f"tensor {name!r} has GGML type {t.ggml_type}; only "
-                        "F32/F16 payloads can be read as raw bytes"
+                        "F32/F16/Q8_0/Q4_K payloads can be read as raw bytes"
                     )
                 start = self._data_start + t.offset
                 return bytes(self._raw[start:start + t.nbytes])
         raise ValueError(f"no tensor named {name!r} in file")
 
     def get_tensor(self, name):
-        """Return the tensor as a torch.Tensor (F32/F16 payloads only)."""
+        """Return the tensor as a torch.Tensor.
+
+        F32/F16 payloads come back in their own dtype; Q8_0/Q4_K payloads
+        are dequantized to float32.
+        """
         for t in self.tensors:
             if t.name == name:
+                if t.ggml_type in _q.DEQUANTIZE:
+                    n = 1
+                    for d in t.shape:
+                        n *= d
+                    values = _q.DEQUANTIZE[t.ggml_type](self.tensor_bytes(name), n)
+                    return torch.from_numpy(values.copy()).reshape(t.shape)
                 if t.ggml_type not in _GGML_TORCH_DTYPE:
                     raise ValueError(
                         f"tensor {name!r} has GGML type {t.ggml_type}; only "
-                        "F32/F16 payloads can be materialized as torch tensors"
+                        "F32/F16/Q8_0/Q4_K payloads can be materialized as torch tensors"
                     )
                 raw = bytearray(self.tensor_bytes(name))
                 out = torch.frombuffer(raw, dtype=_GGML_TORCH_DTYPE[t.ggml_type])
@@ -518,11 +564,18 @@ def read_gguf(path):
             )
         itemsize = _GGML_ITEMSIZE.get(ggml_type)
         nbytes = None
+        n_elems = 1
+        for d in dims_ggml:
+            n_elems *= d
         if itemsize is not None:
-            n_elems = 1
-            for d in dims_ggml:
-                n_elems *= d
             nbytes = n_elems * itemsize
+        elif ggml_type in _q.BLOCK_LAYOUT:
+            if dims_ggml[0] % _q.BLOCK_LAYOUT[ggml_type][0] != 0:
+                raise ValueError(
+                    f"tensor {name!r}: innermost dim {dims_ggml[0]} is not a "
+                    f"multiple of the {_GGML_NAME[ggml_type]} block size"
+                )
+            nbytes = _q.nbytes(ggml_type, n_elems)
         infos.append(GGUFTensorInfo(
             name=name, shape=tuple(reversed(dims_ggml)), ggml_type=ggml_type,
             offset=offset, nbytes=nbytes if nbytes is not None else -1,
