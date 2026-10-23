@@ -17,7 +17,7 @@ Rules ``load_mixture`` enforces: unique names; phase main or decay;
 weights > 0 summing to 1 within each phase; a licence from
 ``ALLOWED_LICENSES``, or ``"license": "review"`` with a ``license_note``
 (then the source cannot be used until ``license_verified`` is true and
-the licence is filled in). ``format`` (v5.120, LB5) is ``text`` (default)
+the licence is filled in). ``format`` (v5.121, LB5) is ``text`` (default)
 or ``trace``: D1 teacher records rendered as chat transcripts with their
 reasoning (``mid_train.render_trace``; optional ``think_ratio``). ``license_verified`` false is allowed for
 planning; ``usable_sources`` returns only verified ones.

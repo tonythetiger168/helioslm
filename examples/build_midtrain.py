@@ -1,4 +1,4 @@
-"""build_midtrain.py — LB5 decay-phase (mid-training) shard (v5.120).
+"""build_midtrain.py — LB5 decay-phase (mid-training) shard (v5.121).
 
 Builds the shard that ``pilot_100m.py --schedule wsd --decay-data``
 switches to at the first decay step, from one phase of a mixture

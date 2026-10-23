@@ -1,5 +1,5 @@
 """Mid-training data: reasoning traces mixed into the decay phase
-(v5.120, LB5 of the 2026-10-23 leaderboard review).
+(v5.121, LB5 of the 2026-10-23 leaderboard review).
 
 K2 Horizon puts ~17% reasoning traces into pretraining and MiniCPM5
 switches to curated, instruction- and reasoning-heavy data for its decay

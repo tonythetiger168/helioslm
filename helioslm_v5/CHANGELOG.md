@@ -1,6 +1,6 @@
 # HeliosLM v5 Changelog
 
-## v5.120 (2026-10-23) - LB5: mid-training data for the decay phase
+## v5.121 (2026-10-23) - LB5: mid-training data for the decay phase
 
 LB5 of the 2026-10-23 leaderboard review. K2 Horizon puts about 17%
 reasoning traces into pretraining. MiniCPM5 switches to curated,

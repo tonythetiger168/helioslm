@@ -1,4 +1,4 @@
-"""T126 — LB5 mid-training data for the decay phase (v5.120).
+"""T126 — LB5 mid-training data for the decay phase (v5.121).
 
 Pins:
 
