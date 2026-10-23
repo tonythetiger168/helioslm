@@ -1,4 +1,4 @@
-"""T131 — route B base-gap eval: Hugging Face scorer and gap table (v5.128).
+"""T131 — route B base-gap eval: Hugging Face scorer and gap table (v5.129).
 
 Pins:
 
@@ -112,3 +112,21 @@ def test_load_tasks():
         assert len(shots["law"]) == 5
         tasks, shots = bg.load_tasks(d, "tmmluplus")
         assert len(tasks) == 6
+
+
+def test_assign():
+    groups = bg.assign([bg.BASE, *bg.RIVALS], 4)
+    assert len(groups) == 4
+    assert [bg.RIVALS[0]] in groups                # Breexe alone
+    assert sorted(m for g in groups for m in g) == sorted([bg.BASE, *bg.RIVALS])
+    assert bg.assign([bg.BASE], 4) == [[bg.BASE]]
+    assert bg.assign([bg.BASE, *bg.RIVALS], 1) == [
+        sorted([bg.BASE, *bg.RIVALS], key=lambda m: -bg.SIZE_B[m])]
+
+
+def test_main_without_models_writes_report():
+    with tempfile.TemporaryDirectory() as d:
+        r = bg.main(["--models", "--benches", "ceval", "--data", d,
+                     "--out-dir", d])
+        assert r["models"] == {} and "ceval" in r["task_errors"]
+        assert list(Path(d).glob("base_gap_*.json"))

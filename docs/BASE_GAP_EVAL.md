@@ -1,7 +1,7 @@
-# B 路線底模差距評測手冊（`examples/base_gap_eval.py`，v5.128）
+# B 路線底模差距評測手冊（`examples/base_gap_eval.py`，v5.129）
 
 續訓前先量清楚：原版 `google/gemma-4-E4B` 和聯發科四個文字模型差多少。
-擁有者 2026-10-23 批准這一步，預算約 20 美元。E2B 先導和正式 B1 還沒批准。
+擁有者 2026-10-23 批准這一步。E2B 先導和正式 B1 都還沒批准。
 
 ## 會跑什麼
 
@@ -27,7 +27,17 @@
 
 結果會寫出底模減去每個對手的差距，附 95% paired-bootstrap 信賴區間。
 
-## 在 RunPod 上
+## 在蒸餾 pod 上（預設做法）
+
+`examples/distill_pod.sh` 的步驟 7b 會自動跑這支腳本。時間點在教師（vLLM）關掉、
+資料打包之後，最後的 `gpu_batch_run.py --stop-pod` 之前。
+
+- 用 `--gpus 0,1,2,3`，四張 H200 各跑一個 worker，Breexe 自己佔一張。
+  約 1 小時，4×H200 每小時約 21 美元，所以約 21–30 美元。
+- 不需要另外開 pod。
+- pod 上要有 `HF_TOKEN`，並且已經在 Hugging Face 接受各模型的授權（見下面第 2 步）。
+
+## 單獨開 pod
 
 1. **開 pod。**
    - GPU 選 **1 張 H200（141 GB）**，因為 Breexe 用 bf16 需要約 94 GB。範本用 PyTorch。
@@ -49,6 +59,7 @@
    ```
 
    - 正式跑約 3–4 小時。H200 每小時約 3.6–4 美元，所以約 15–20 美元。
+   - 有多張 GPU 時加 `--gpus 0,1,...`，每張 GPU 跑一個 worker。
    - `--stop-pod` 會在最後執行 `runpodctl stop pod $RUNPOD_POD_ID`。
 4. **把結果拿回來。** 把 `results/base_gap_<時間>.json` 傳回 thread。
    檔案只有分數和題號，沒有題目原文，下一次 session 會把它提交到 `benchmarks/`。

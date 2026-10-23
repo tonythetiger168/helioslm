@@ -328,7 +328,7 @@ def _single_token_continuations(ctx, fulls):
 
 def hf_score_fn(model, tokenizer, max_length=2048, device=None):
     """score_fn for a Hugging Face causal LM and its tokenizer (route B
-    base / baseline gap eval, v5.128).
+    base / baseline gap eval, v5.129).
 
     Same arithmetic as ``model_score_fn``. When every continuation is one
     token after a shared prefix (the four letters, usually) the four

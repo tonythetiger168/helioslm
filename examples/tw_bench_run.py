@@ -6,7 +6,7 @@ C-Eval / CMMLU without lm-eval (plan E3, helioslm_v5/eval/tw_bench.py).
         --data data/tw_bench/tmmluplus/data --run runs/dense --shots 5 \\
         --device cuda --out results/tmmluplus.json
 
-    # a Hugging Face model (route B gap eval, v5.128; needs transformers)
+    # a Hugging Face model (route B gap eval, v5.129; needs transformers)
     python examples/tw_bench_run.py --bench tmmluplus \\
         --data data/tw_bench/tmmluplus/data --hf google/gemma-4-E4B \\
         --shots 5 --device cuda --out results/gemma4_tmmluplus.json
@@ -63,7 +63,7 @@ def main():
     ap.add_argument("--run", default=None, help="pilot_100m.py output directory")
     ap.add_argument("--hf", default=None,
                     help="Hugging Face model id or path instead of --run "
-                         "(needs transformers; route B gap eval, v5.128)")
+                         "(needs transformers; route B gap eval, v5.129)")
     ap.add_argument("--hf-revision", default=None)
     ap.add_argument("--max-length", type=int, default=2048,
                     help="context cut for --hf models")

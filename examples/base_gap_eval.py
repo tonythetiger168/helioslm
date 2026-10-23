@@ -1,5 +1,5 @@
 """base_gap_eval.py — route B: how far is the untouched base from every
-MediaTek model? (v5.128)
+MediaTek model? (v5.129)
 
 One pod run, before any training is paid for: score the base
 (google/gemma-4-E4B) and the four MediaTek Research text models on
@@ -18,9 +18,11 @@ of the answer letter), then write the base-minus-rival gap per task with a
 Needs transformers, accelerate, datasets and huggingface_hub on the pod,
 and HF_TOKEN for gated model cards. Models are scored one at a time and
 freed; --cleanup also deletes each model's Hub cache afterwards so the
-whole run fits in ~120 GB of disk. A model or task that fails is recorded
+whole run fits in ~120 GB of disk. --gpus 0,1,2,3 runs one worker per
+GPU (the largest model on a GPU of its own) and merges their results. A model or task that fails is recorded
 and the run goes on. The output holds scores and task ids only, never
-question text (TW1 licence rule). Results are rewritten after every
+question text (TW1 licence rule); ``scores`` keeps each model's
+per-question correct / wrong by task id for later comparisons. Results are rewritten after every
 model, so a pod that dies keeps what finished.
 """
 import argparse
@@ -48,6 +50,9 @@ RIVALS = (
     "MediaTek-Research/Llama-Breeze2-3B-Instruct",
     "MediaTek-Research/Breeze-7B-Instruct-v1_0",
 )
+# Rough compute per model (active B params) for spreading them over GPUs.
+SIZE_B = {BASE: 4.5, RIVALS[0]: 13.0, RIVALS[1]: 8.0, RIVALS[2]: 3.0,
+          RIVALS[3]: 7.0}
 # bench: (dataset id, eval split, shot split, shots). The splits are the
 # file-name suffixes fetch() writes.
 TASKS = {
@@ -175,6 +180,54 @@ def gap_table(scores, base=BASE, rivals=RIVALS, seed=0):
     return out
 
 
+def assign(models, n_gpus):
+    """Longest-first greedy split of models over GPUs by SIZE_B (unknown
+    models count 8B), so the largest model gets a GPU of its own."""
+    groups = [[] for _ in range(max(1, n_gpus))]
+    load = [0.0] * len(groups)
+    for m in sorted(models, key=lambda m: -SIZE_B.get(m, 8.0)):
+        i = min(range(len(groups)), key=lambda j: (load[j], j))
+        groups[i].append(m)
+        load[i] += SIZE_B.get(m, 8.0)
+    return [g for g in groups if g]
+
+
+def _parallel(a, report, scores, save):
+    """One child process per GPU (CUDA_VISIBLE_DEVICES), then merge."""
+    gpus = a.gpus.split(",")
+    parts = Path(a.out_dir) / "base_gap_parts"
+    parts.mkdir(parents=True, exist_ok=True)
+    procs = []
+    for i, grp in enumerate(assign(a.models, len(gpus))):
+        cmd = [sys.executable, str(Path(__file__).resolve()),
+               "--models", *grp, "--benches", *a.benches, "--data", a.data,
+               "--device", "cuda", "--max-length", str(a.max_length),
+               "--part-out", str(parts / f"part{i}.json")]
+        if a.limit:
+            cmd += ["--limit", str(a.limit)]
+        if a.cleanup:
+            cmd.append("--cleanup")
+        env = dict(os.environ, CUDA_VISIBLE_DEVICES=gpus[i])
+        log = open(parts / f"part{i}.log", "w")
+        procs.append((i, grp, subprocess.Popen(cmd, env=env, stdout=log,
+                                               stderr=subprocess.STDOUT)))
+    for i, grp, p in procs:
+        p.wait()
+        f = parts / f"part{i}.json"
+        if not f.exists():
+            for m in grp:
+                report["models"][m] = {"status": "FAILED",
+                                       "error": f"worker {i} wrote nothing "
+                                                f"(exit {p.returncode})"}
+            continue
+        part = json.loads(f.read_text(encoding="utf-8"))
+        report["models"].update(part["models"])
+        report.setdefault("task_errors", {}).update(part.get("task_errors", {}))
+        for m, benches in part.get("scores", {}).items():
+            scores[m] = benches
+        save()
+
+
 def _free(model_id, cleanup):
     gc.collect()
     try:
@@ -190,7 +243,7 @@ def _free(model_id, cleanup):
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--models", nargs="+", default=[BASE, *RIVALS])
+    ap.add_argument("--models", nargs="*", default=[BASE, *RIVALS])
     ap.add_argument("--benches", nargs="+", default=list(TASKS),
                     choices=list(TASKS))
     ap.add_argument("--data", default="data/tw_bench")
@@ -202,19 +255,24 @@ def main(argv=None):
     ap.add_argument("--out-dir", default="results")
     ap.add_argument("--cleanup", action="store_true",
                     help="delete each model's Hub cache after scoring it")
+    ap.add_argument("--gpus", default=None,
+                    help="comma list, e.g. 0,1,2,3: one worker per GPU")
+    ap.add_argument("--part-out", default=None, help=argparse.SUPPRESS)
     ap.add_argument("--stop-pod", action="store_true")
     a = ap.parse_args(argv)
 
     out_dir = Path(a.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    out = out_dir / f"base_gap_{stamp}.json"
+    out = (Path(a.part_out) if a.part_out
+           else out_dir / f"base_gap_{stamp}.json")
     report = {"schema": "base-gap/1", "started": stamp, "base": BASE,
               "limit": a.limit, "fetch": None, "models": {}, "gaps": {}}
     scores = {}
 
     def save():
         report["gaps"] = gap_table(scores)
+        report["scores"] = scores
         out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n",
                        encoding="utf-8")
 
@@ -230,8 +288,13 @@ def main(argv=None):
                 f"{type(e).__name__}: {e}"[:500]
     save()
 
+    if a.gpus and len(a.gpus.split(",")) > 1:
+        _parallel(a, report, scores, save)
+        models = []
+    else:
+        models = a.models
     from examples.tw_bench_run import load_hf
-    for mid in a.models:
+    for mid in models:
         row = report["models"][mid] = {"status": "running", "benches": {}}
         t0 = time.time()
         try:
