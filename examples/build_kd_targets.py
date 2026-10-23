@@ -1,4 +1,4 @@
-"""build_kd_targets.py — LB4 student-side KD shard builder (v5.119).
+"""build_kd_targets.py — LB4 student-side KD shard builder (v5.120).
 
 Reads the teacher's top-k file (``teacher_topk.py`` output, one JSON per
 document: {"text", "pieces", "topk"}), tokenises each text with the

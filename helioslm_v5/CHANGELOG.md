@@ -1,6 +1,6 @@
 # HeliosLM v5 Changelog
 
-## v5.119 (2026-10-23) - LB4: cross-tokenizer logit KD for pretraining
+## v5.120 (2026-10-23) - LB4: cross-tokenizer logit KD for pretraining
 
 LB4 of the 2026-10-23 leaderboard review. Gemma and MiniCPM5 pretrain
 their small models on a large teacher's logits instead of one-hot tokens.

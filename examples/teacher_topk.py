@@ -1,5 +1,5 @@
 """teacher_topk.py — LB4 teacher side: next-token top-k of an open model
-(v5.119). Runs on the GPU pod; needs ``transformers`` (not a repo
+(v5.120). Runs on the GPU pod; needs ``transformers`` (not a repo
 dependency, install it on the pod).
 
 For each document of --text (.jsonl field --field, or .txt) writes one

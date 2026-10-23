@@ -1,4 +1,4 @@
-"""Cross-tokenizer logit distillation targets for pretraining (v5.119, LB4).
+"""Cross-tokenizer logit distillation targets for pretraining (v5.120, LB4).
 
 The 2026 small-model leaders pretrain on a large teacher's logits rather
 than one-hot tokens (Gemma 2/3/4, MiniCPM5's distilled 1B). HeliosLM's

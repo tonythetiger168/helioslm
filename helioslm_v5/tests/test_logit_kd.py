@@ -1,4 +1,4 @@
-"""T125 — LB4 cross-tokenizer logit KD for pretraining (v5.119).
+"""T125 — LB4 cross-tokenizer logit KD for pretraining (v5.120).
 
 Pins:
 
