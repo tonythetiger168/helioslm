@@ -18,6 +18,12 @@ loss on the answer tokens only.
                 answer only (an empty think block, so one model learns
                 both modes); "mix": a fixed share ``think_ratio`` keeps
                 it, chosen by a hash of the record id (reproducible);
+  mode_switch   (v5.118, LB6 hybrid thinking) appends a soft switch to
+                the last user turn, " /think" when the target carries
+                reasoning and " /no_think" when its think block is empty,
+                so with keep_thinking="mix" the user, not chance, picks
+                the mode at inference (MiniCPM5-1B's hybrid-thinking SFT;
+                the tag convention is Qwen3's). Off by default;
   mask          1 on the target tokens (everything after
                 ``##assistant##``, the eot included), 0 on the prompt;
   packing       examples are packed whole into windows of seq + 1 tokens
@@ -40,6 +46,7 @@ from pathlib import Path
 USER, ASSISTANT = "##user##", "##assistant##"
 THINK_OPEN, THINK_CLOSE = "<think>\n", "\n</think>\n"
 EMPTY_THINK = "<think>\n</think>\n"
+THINK_TAG, NO_THINK_TAG = " /think", " /no_think"
 KEEP = ("all", "none", "mix")
 
 # Starting points; check them against the first eval before a long run.
@@ -65,23 +72,30 @@ def keeps_thinking(rec_id, mode, think_ratio=0.7):
     return h / 2 ** 64 < think_ratio
 
 
-def format_example(rec, keep_thinking="all", think_ratio=0.7):
+def format_example(rec, keep_thinking="all", think_ratio=0.7,
+                   mode_switch=False):
     """(prompt text, target text) for one D1 record. A record that is
     already text (``prompt_text`` / ``target_text``, the D4 agent steps)
-    is passed through."""
+    is passed through, untagged by ``mode_switch``."""
     if "prompt_text" in rec:
         return rec["prompt_text"], rec["target_text"]
+    reasoning = (rec.get("reasoning") or "").strip()
+    thinks = keeps_thinking(rec["id"], keep_thinking, think_ratio) \
+        and bool(reasoning)
+    last_user = max((i for i, m in enumerate(rec["messages"])
+                     if m["role"] == "user"), default=None)
     parts = []
-    for m in rec["messages"]:
+    for i, m in enumerate(rec["messages"]):
         if m["role"] == "user":
-            parts.append(USER + m["content"])
+            tag = (THINK_TAG if thinks else NO_THINK_TAG) \
+                if mode_switch and i == last_user else ""
+            parts.append(USER + m["content"] + tag)
         elif m["role"] == "assistant":
             parts.append(ASSISTANT + m.get("content", ""))
         elif m["role"] == "system":
             parts.append("##system##" + m["content"])
     prompt = "\n".join(parts) + "\n" + ASSISTANT
-    reasoning = (rec.get("reasoning") or "").strip()
-    if keeps_thinking(rec["id"], keep_thinking, think_ratio) and reasoning:
+    if thinks:
         think = THINK_OPEN + reasoning + THINK_CLOSE
     else:
         think = EMPTY_THINK
@@ -131,13 +145,14 @@ def pack(examples, seq, eot):
 
 
 def build(records, encode, eot, seq, keep_thinking="all", think_ratio=0.7,
-          utf8_target_bytes=True):
+          utf8_target_bytes=True, mode_switch=False):
     """Format, encode and pack records. Returns (tokens, mask, stats);
     stats include the UTF-8 bytes per target token, the denominator that
     makes the SFT val bits/byte comparable across tokenizers."""
     examples, n_bytes, thinking = [], 0, 0
     for r in records:
-        prompt, target = format_example(r, keep_thinking, think_ratio)
+        prompt, target = format_example(r, keep_thinking, think_ratio,
+                                        mode_switch)
         thinking += not target.startswith(EMPTY_THINK)
         ids, m = encode_example(prompt, target, encode, eot)
         if len(ids) <= seq + 1 and utf8_target_bytes:

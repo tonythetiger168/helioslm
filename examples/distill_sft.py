@@ -34,6 +34,7 @@ def prepare(a):
     seq = a.seq or p["seq"]
     keep = a.keep_thinking or p["keep_thinking"]
     ratio = p.get("think_ratio", 0.7) if a.think_ratio is None else a.think_ratio
+    switch = a.mode_switch or p.get("mode_switch", False)
     tok = Tokenizer.from_file(a.tokenizer)
     eot = tok.token_to_id("<|endoftext|>")
     if eot is None:
@@ -44,10 +45,12 @@ def prepare(a):
 
     tr, va = ds.split_by_prompt(read_jsonl(a.records), a.val_fraction)
     meta = {"preset": a.preset, "seq": seq, "keep_thinking": keep, "think_ratio": ratio,
+            "mode_switch": switch,
             "eot_id": eot, "vocab_size": tok.get_vocab_size(),
             "tokenizer": a.tokenizer, "records": a.records, "splits": {}}
     for name, recs in (("train", tr), ("val", va)):
-        toks, mask, st = ds.build(recs, encode, eot, seq, keep, ratio)
+        toks, mask, st = ds.build(recs, encode, eot, seq, keep, ratio,
+                                  mode_switch=switch)
         ds.write_sft_shard(toks, mask, a.out, name)
         meta["splits"][name] = st
     meta["val_bytes_per_token"] = meta["splits"]["val"]["target_bytes_per_token"] or 1.0
@@ -100,6 +103,9 @@ def main(argv=None):
     p.add_argument("--seq", type=int, default=None)
     p.add_argument("--keep-thinking", choices=ds.KEEP, default=None)
     p.add_argument("--think-ratio", type=float, default=None)
+    p.add_argument("--mode-switch", action="store_true",
+                   help="tag the last user turn /think or /no_think to match "
+                        "the target (LB6 hybrid thinking)")
     p.add_argument("--val-fraction", type=float, default=0.02)
     p.set_defaults(fn=prepare)
     t = sub.add_parser("train")
