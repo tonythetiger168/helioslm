@@ -1,6 +1,6 @@
 # HeliosLM v5 Changelog
 
-## v5.114 (2026-10-23) - LB2: warmup-stable-decay schedule and decay-phase data switch
+## v5.115 (2026-10-23) - LB2: warmup-stable-decay schedule and decay-phase data switch
 
 From the 2026-10-23 leaderboard review (LB1–LB9): MiniCPM5 and other
 2026 small-model leaders pretrain with a stable -> decay schedule and
@@ -26,6 +26,28 @@ anneal on better data in the decay phase. `pretrain.py` only had cosine.
   `test_wsd_decay_data_switch` (3 of a planned 6 steps + resume == 6
   straight, bitwise; phases logged; the decay steps read the second
   shard; misuse refused).
+## v5.114 (2026-10-23) - D4: agent-trajectory distillation through hsh
+
+- `src/training/distill_agent.py`: the teacher runs as an hsh agent
+  (`minimal` preset: bash, str_replace_editor; thinking on,
+  `keep_thinking="turn"`) on generated tasks with checkable outcomes, in
+  Traditional Chinese: sum a CSV column, fix a bug so a test passes (test
+  file must stay unchanged), rewrite Mainland terms to Taiwanese ones,
+  find the file with a code word, filter and sort JSON. Only verified
+  trajectories are kept. Each model step becomes one SFT record in the
+  student's text protocol: `render_transcript` of the request rebuilt from
+  the session log, and the `@@tool@@` block or final reply as the target.
+  A TextModelAdapter fed those targets replays every task to a pass.
+- `hsh/llm.py`: `assistant_text()` factored out of `render_transcript`;
+  tool arguments are rendered with sorted keys, so a transcript reads the
+  same whether the call came from an API model (teacher) or a text model
+  (student). The replay test failed on the key order before this.
+- `hsh/builtin.py`: the bash environment sets PYTHONDONTWRITEBYTECODE, so
+  an agent that edits a module and reruns it within the same second at the
+  same size no longer imports the stale .pyc (pinned by a test that fails
+  without it); task checks also use a fresh bytecode cache.
+- `distill_sft.format_example` passes `prompt_text` / `target_text`
+  records through. `examples/distill_agent.py tasks | run | to-sft`.
 ## v5.113 (2026-10-22) - D3: student SFT on teacher answers (distillation)
 
 - `src/training/distill_sft.py`: formats filtered teacher records as the

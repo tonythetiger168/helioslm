@@ -78,7 +78,10 @@ def _limits(cpu_s, mem_mb):
 def _env(root):
     keep = {k: os.environ[k] for k in ("PATH", "LANG", "LC_ALL", "TERM")
             if k in os.environ}
-    return keep | {"HOME": str(root), "HSH_WORKSPACE": str(root)}
+    # no .pyc in the workspace: an agent that edits a module and reruns it
+    # within the same second, at the same size, would import stale bytecode
+    return keep | {"HOME": str(root), "HSH_WORKSPACE": str(root),
+                   "PYTHONDONTWRITEBYTECODE": "1"}
 
 
 def _mount(ctx, *defs):
