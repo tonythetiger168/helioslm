@@ -1,5 +1,28 @@
 # HeliosLM v5 Changelog
 
+## v5.121 (2026-10-23) - LB7: checkpoint merging and top-k-union on-policy distillation
+
+This is LB7 of the 2026-10-23 leaderboard review. K2 Horizon averages
+checkpoints and merges specialist models after training. MiniCPM5 trains
+16 RL experts and folds them into one student by on-policy distillation
+with a reverse KL over the union of the student's and the teacher's top-k
+tokens.
+
+- `src/training/merge.py`: `merge_states` offers three methods:
+  - `linear`: model soups and checkpoint averaging.
+  - `task_arithmetic`.
+  - `ties`: TIES-Merging, which trims each task vector, elects a sign
+    per entry and averages the entries that agree with it.
+
+  Integer buffers are copied rather than averaged. `examples/
+  merge_checkpoints.py` writes a checkpoint that `pretrain(init_from=...)`
+  loads, and copies `run.json` next to it.
+- `mopd.topk_union_reverse_kl` and `MOPDTrainer(full_vocab=True,
+  topk_union=k)`: the full-vocabulary reverse KL is restricted to the
+  top-k union, with both distributions renormalised over it. With k
+  equal to the vocabulary size it is the exact KL.
+- New test file `tests/test_merge.py` (T127).
+
 ## v5.118 (2026-10-23) - LB6: hybrid-thinking mode switch for distillation SFT
 
 The hybrid-thinking half of LB6 (2026-10-23 leaderboard review).

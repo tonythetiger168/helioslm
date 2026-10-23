@@ -26,6 +26,15 @@ report; the report itself was not reachable from this container:
               sum_v p_S(v) (log p_S(v) - log p_T(v)) at the sampled
               positions instead of the sampled-token estimator.
 
+  top-k union  (v5.121, LB7) MiniCPM5 merges its RL experts into one
+              student by on-policy distillation with a reverse KL taken
+              over the union of the student's and the teacher's top-k
+              tokens at each position, both distributions renormalised
+              over that union (``topk_union=k`` with ``full_vocab``;
+              ``topk_union_reverse_kl``). It drops the long tail that
+              dominates a full-vocabulary KL's noise; with k equal to the
+              vocabulary it is the exact reverse KL.
+
 Wiring: samples are the GRPO sample dicts (``full_ids``, ``prompt_len``,
 optional ``action_mask``, optional ``old_token_logprobs``) plus ``env``;
 log-probs come from ``GRPOTrainer._token_logprobs``, the policy and its
@@ -37,6 +46,24 @@ from typing import Dict, List, Optional
 import torch
 
 from .grpo import GRPOTrainer
+
+
+def topk_union_reverse_kl(s_logits: torch.Tensor, t_logits: torch.Tensor,
+                          k: int) -> torch.Tensor:
+    """Per-position KL(student || teacher) over U = top-k(student) ∪
+    top-k(teacher), each distribution renormalised over U. Logits are
+    [..., V]; returns [...]. Gradients flow through the student logits
+    (the support is chosen without them)."""
+    ls = torch.log_softmax(s_logits.float(), -1)
+    lt = torch.log_softmax(t_logits.float(), -1)
+    k = min(k, ls.shape[-1])
+    keep = torch.zeros_like(ls, dtype=torch.bool)
+    keep.scatter_(-1, ls.detach().topk(k, -1).indices, True)
+    keep.scatter_(-1, lt.topk(k, -1).indices, True)
+    ls = torch.log_softmax(ls.masked_fill(~keep, float("-inf")), -1)
+    lt = torch.log_softmax(lt.masked_fill(~keep, float("-inf")), -1)
+    diff = (ls - lt).masked_fill(~keep, 0.0)
+    return (ls.exp() * diff).sum(-1)
 
 
 class MOPDTrainer:
@@ -57,13 +84,15 @@ class MOPDTrainer:
         subtract_global_baseline: subtract the mean advantage over all
             trained tokens of the step.
         full_vocab: use the exact full-vocabulary reverse KL loss.
+        topk_union: with ``full_vocab``, restrict that KL to the union of
+            the student's and the teacher's top-k tokens (LB7); 0 is off.
     """
 
     def __init__(self, trainer: GRPOTrainer, teachers: Dict[str, object],
                  teacher_by_env: Optional[Dict[str, str]] = None,
                  default_teacher: Optional[str] = None, strict: bool = False,
                  alpha: float = 1.0, subtract_global_baseline: bool = False,
-                 full_vocab: bool = False):
+                 full_vocab: bool = False, topk_union: int = 0):
         if not isinstance(trainer, GRPOTrainer):
             raise ValueError("MOPDTrainer needs a GRPOTrainer instance")
         if not teachers:
@@ -79,6 +108,11 @@ class MOPDTrainer:
         if full_vocab and (alpha != 1.0 or subtract_global_baseline):
             raise ValueError("TROPD alpha / global baseline only reshape the "
                              "sampled-token advantage; full_vocab ignores it")
+        if isinstance(topk_union, bool) or not isinstance(topk_union, int) \
+                or topk_union < 0:
+            raise ValueError(f"topk_union must be an int >= 0, got {topk_union!r}")
+        if topk_union and not full_vocab:
+            raise ValueError("topk_union needs full_vocab=True")
         self.trainer = trainer
         self.teachers = teachers
         self.teacher_by_env = teacher_by_env
@@ -87,6 +121,7 @@ class MOPDTrainer:
         self.alpha = alpha
         self.subtract_global_baseline = subtract_global_baseline
         self.full_vocab = full_vocab
+        self.topk_union = topk_union
         for t in teachers.values():
             t.eval()
             for p in t.parameters():
@@ -177,9 +212,12 @@ class MOPDTrainer:
                 :, P - 1:-1, :].float()
         if logits.shape[-1] != t_logits.shape[-1]:
             raise ValueError("teacher and student vocabularies differ")
-        ls = torch.log_softmax(logits, -1)[0]
-        lt = torch.log_softmax(t_logits, -1)[0]
-        kl = (ls.exp() * (ls - lt)).sum(-1)
+        if self.topk_union:
+            kl = topk_union_reverse_kl(logits, t_logits, self.topk_union)[0]
+        else:
+            ls = torch.log_softmax(logits, -1)[0]
+            lt = torch.log_softmax(t_logits, -1)[0]
+            kl = (ls.exp() * (ls - lt)).sum(-1)
         mask = s.get("action_mask")
         if mask is not None:
             kl = kl[mask.to(kl.device)]
