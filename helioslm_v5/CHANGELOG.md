@@ -1,28 +1,32 @@
 # HeliosLM v5 Changelog
 
-## v5.119 (2026-10-23) - E5: v1.0 pre-registration, "beat the Taiwanese models"
+## v5.119 (2026-10-23) - E5: v1.0 / v2.0 pre-registration, split gate vs Qwen3.5-0.8B and Breeze 2 3B
 
-- Owner's rule: from v1.0 (0.5B) on, HeliosLM must score higher than
-  the Taiwanese models. `docs/prereg/v1.0.json` registers it:
-  - gating baseline: Breeze 2 3B (`MediaTek-Research/Llama-Breeze2-3B-Instruct`),
-    the smallest Taiwanese model known on 2026-10-22 (TAIDE and
-    Taiwan-LLM start at 7-8B);
-  - gated tasks: TMMLU+ (5-shot) and TW-JusticeBench (0-shot), accuracy
-    from the E3 scorer (`eval/tw_bench.py`), every model scored the same way;
-  - reported, not gated: Qwen3.5-0.8B (same-size reference), C-Eval and
-    CMMLU (Simplified-Chinese controls);
-  - three seeds; dataset and baseline revisions PENDING until pinned on
-    the pod, then the plan is re-locked and committed before #40 trains.
+- Owner's direction: HeliosLM must beat the Taiwanese models, built at the
+  version that can win. No Taiwanese model under 2B exists and the 0.5B is
+  not expected to beat Breeze 2 3B, so the gate is split:
+  - `docs/prereg/v1.0.json` (#40, 0.5B): beat Qwen3.5-0.8B on TMMLU+
+    (5-shot) and TW-JusticeBench (0-shot); Breeze 2 3B is reported as the
+    Taiwanese reference line, C-Eval / CMMLU as controls;
+  - `docs/prereg/v2.0.json` (#41, 3B, draft): beat Breeze 2 3B
+    (`MediaTek-Research/Llama-Breeze2-3B-Instruct`) on every task the repo
+    can score (TMMLU+, TW-JusticeBench, C-Eval, CMMLU). The Breeze 2 paper
+    numbers (TMMLU+ 42.7, MMLU 59.9, MT-Bench-tw 4.26, BFCL 85) are noted for
+    orientation; MMLU, MT-Bench-tw and function calling join the gates when
+    a scorer exists.
+  - "beat" = the lower end of the 95% paired-bootstrap interval of
+    (ours - baseline) is above 0, ours averaged over three seeds, every
+    model scored by the same E3 scorer. Revisions are PENDING until pinned
+    on the pod; the plan is re-locked and committed before training.
 - `eval/prereg.py`:
-  - relative gates `{"task", "metric", "vs", "margin"}`: pass when the
-    lower end of the 95% paired-bootstrap interval of (ours - baseline)
-    is above the margin, so a lead inside the noise does not count;
+  - relative gates `{"task", "metric", "vs", "margin"}`;
   - `paired_bootstrap(ours_per_seed, theirs)`: per-question resampling,
     chunked so TMMLU+ (22.7k questions, 10k resamples) runs in seconds;
   - `pending(plan)`; `check_gates` refuses a plan with PENDING revisions.
 - `tests/test_prereg.py`: relative-gate validation and verdicts (a
   point-estimate lead with a CI touching 0 fails), PENDING handling,
-  bootstrap oracles, and the committed v1.0 plan.
+  bootstrap oracles, and both committed plans.
+
 ## v5.118 (2026-10-23) - LB6: hybrid-thinking mode switch for distillation SFT
 
 The hybrid-thinking half of LB6 (2026-10-23 leaderboard review).

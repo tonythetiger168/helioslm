@@ -172,12 +172,19 @@ def test_paired_bootstrap():
         paired_bootstrap([base[:10]], base)
 
 
-def test_committed_v1_plan():
-    plan = json.loads((ROOT / "docs" / "prereg" / "v1.0.json").read_text(encoding="utf-8"))
+@pytest.mark.parametrize("release,rival,gated_tasks", [
+    ("v1.0", "Qwen3.5-0.8B", {"tmmluplus", "tw_justice"}),
+    ("v2.0", "MediaTek-Research/Llama-Breeze2-3B-Instruct",
+     {"tmmluplus", "tw_justice", "ceval", "cmmlu"}),
+])
+def test_committed_plans(release, rival, gated_tasks):
+    """Split gate: the 0.5B must beat the same-size Qwen3.5-0.8B, the 3B
+    (#41) must beat Breeze 2 3B on every task the repo can score."""
+    path = ROOT / "docs" / "prereg" / f"{release}.json"
+    plan = json.loads(path.read_text(encoding="utf-8"))
     validate(plan)
-    assert plan["release"] == "v1.0" and plan["seeds"] == [0, 1, 2]
-    gated = {(g["task"], g["vs"]) for g in plan["gates"]}
-    breeze = "MediaTek-Research/Llama-Breeze2-3B-Instruct"
-    assert gated == {("tmmluplus", breeze), ("tw_justice", breeze)}
+    assert plan["release"] == release and plan["seeds"] == [0, 1, 2]
+    assert {(g["task"], g["vs"]) for g in plan["gates"]} == \
+        {(t, rival) for t in gated_tasks}
     assert all(g["margin"] == 0.0 for g in plan["gates"])
-    assert set(pending(plan)) >= {"tmmluplus", breeze}   # pinned on the pod
+    assert rival in pending(plan)                       # pinned on the pod
