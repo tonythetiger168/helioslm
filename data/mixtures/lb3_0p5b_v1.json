@@ -1,0 +1,33 @@
+{
+  "name": "lb3-0.5b-v1",
+  "note": "Draft corpus for #40 (0.5B, ~100B tokens), LB3 of the 2026-10-23 leaderboard review. Weights are a starting point for the 100M A/B, not tuned. No licence here is verified yet: huggingface.co is blocked in the cloud container, so each dataset card must be read from a network that reaches it before license_verified is set. distill-d1 is small today (the D1 pilot is ~20k prompts), so its decay share repeats it several times; raise it only after D1 is scaled up. zhwiki's budget also exceeds one epoch of zh Wikipedia.",
+  "sources": [
+    {"name": "fineweb2-cmn", "source": "hf:HuggingFaceFW/fineweb-2:cmn_Hani",
+     "license": "ODC-BY-1.0", "license_verified": false, "phase": "main",
+     "weight": 0.30, "zh_variants": ["tw", "mixed"], "quality_threshold": 0.5},
+    {"name": "fineweb-edu", "source": "hf:HuggingFaceFW/fineweb-edu",
+     "license": "ODC-BY-1.0", "license_verified": false, "phase": "main",
+     "weight": 0.35},
+    {"name": "ultra-fineweb", "source": "hf:openbmb/Ultra-FineWeb",
+     "license": "review", "license_note": "read the dataset card; MiniCPM5's pretraining base",
+     "license_verified": false, "phase": "main", "weight": 0.10},
+    {"name": "finemath", "source": "hf:HuggingFaceTB/finemath:finemath-3plus",
+     "license": "ODC-BY-1.0", "license_verified": false, "phase": "main",
+     "weight": 0.10},
+    {"name": "stack-v2", "source": "hf:bigcode/the-stack-v2",
+     "license": "review", "license_note": "per-file licences and Software Heritage terms; may need a permissive-only subset",
+     "license_verified": false, "phase": "main", "weight": 0.10},
+    {"name": "zhwiki", "source": "hf:wikimedia/wikipedia:20231101.zh",
+     "license": "CC-BY-SA-4.0", "license_verified": false, "phase": "main",
+     "weight": 0.05, "zh_variants": ["tw", "mixed"]},
+    {"name": "distill-d1", "source": "path:data/distill/d1_filtered.jsonl",
+     "license": "review", "license_note": "DeepSeek-V4.1-Flash outputs (D1/D2); DeepSeek Open Platform ToS s.4.2 allows training on outputs, s.8.1 disclosure applies",
+     "license_verified": false, "phase": "decay", "weight": 0.05},
+    {"name": "fineweb-edu-top", "source": "hf:HuggingFaceFW/fineweb-edu",
+     "license": "ODC-BY-1.0", "license_verified": false, "phase": "decay",
+     "weight": 0.55, "quality_threshold": 0.8},
+    {"name": "finemath-top", "source": "hf:HuggingFaceTB/finemath:finemath-4plus",
+     "license": "ODC-BY-1.0", "license_verified": false, "phase": "decay",
+     "weight": 0.40}
+  ]
+}
