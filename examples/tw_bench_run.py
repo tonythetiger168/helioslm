@@ -6,6 +6,11 @@ C-Eval / CMMLU without lm-eval (plan E3, helioslm_v5/eval/tw_bench.py).
         --data data/tw_bench/tmmluplus/data --run runs/dense --shots 5 \\
         --device cuda --out results/tmmluplus.json
 
+    # a Hugging Face model (route B gap eval, v5.128; needs transformers)
+    python examples/tw_bench_run.py --bench tmmluplus \\
+        --data data/tw_bench/tmmluplus/data --hf google/gemma-4-E4B \\
+        --shots 5 --device cuda --out results/gemma4_tmmluplus.json
+
     # no model: load the set and run the Phase A gates only
     python examples/tw_bench_run.py --bench ceval --data data/tw_bench/ceval/val \\
         --split val --check-only
@@ -26,6 +31,23 @@ sys.path.insert(0, str(_REPO))
 from helioslm_v5.eval import tw_bench  # noqa: E402
 
 
+def load_hf(model_id, revision=None, device="cuda"):
+    """(model, tokenizer, resolved commit sha) for a Hugging Face causal LM
+    in bf16 (fp32 on CPU). Multimodal checkpoints (Gemma 4, Breeze 2) are
+    scored on text only; trust_remote_code covers models that ship their
+    own modelling code."""
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    kw = dict(revision=revision, trust_remote_code=True)
+    tok = AutoTokenizer.from_pretrained(model_id, **kw)
+    dtype = torch.float32 if device == "cpu" else torch.bfloat16
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id, torch_dtype=dtype,
+        device_map=None if device == "cpu" else "auto", **kw).eval()
+    sha = getattr(model.config, "_commit_hash", None) or revision
+    return model, tok, sha
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bench", choices=tw_bench.BENCHES, required=True)
@@ -39,6 +61,12 @@ def main():
                     help="JSON file {subject: category} for the category macro")
     ap.add_argument("--template", choices=sorted(tw_bench.TEMPLATES), default="zh")
     ap.add_argument("--run", default=None, help="pilot_100m.py output directory")
+    ap.add_argument("--hf", default=None,
+                    help="Hugging Face model id or path instead of --run "
+                         "(needs transformers; route B gap eval, v5.128)")
+    ap.add_argument("--hf-revision", default=None)
+    ap.add_argument("--max-length", type=int, default=2048,
+                    help="context cut for --hf models")
     ap.add_argument("--checkpoint", default="ckpt.pt")
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--limit", type=int, default=None)
@@ -54,17 +82,21 @@ def main():
     print(json.dumps({"n": len(tasks), "phase_a": gates}, ensure_ascii=False))
     if args.check_only:
         return
-    if not args.run:
-        ap.error("--run is required unless --check-only")
+    if not args.run and not args.hf:
+        ap.error("--run or --hf is required unless --check-only")
 
     shots = None
     if args.shots:
         dev = tw_bench.load_mcq(args.data, args.bench, args.dev_split, columns)
         shots = tw_bench.shots_by_subject(dev, args.shots)
-    from helioslm_v5.eval.lm_harness import load_pilot
-    model, tok, max_len = load_pilot(args.run, device=args.device,
-                                     checkpoint=args.checkpoint)
-    score = tw_bench.model_score_fn(model, tok, max_len)
+    if args.hf:
+        model, tok, revision = load_hf(args.hf, args.hf_revision, args.device)
+        score = tw_bench.hf_score_fn(model, tok, args.max_length)
+    else:
+        from helioslm_v5.eval.lm_harness import load_pilot
+        model, tok, max_len = load_pilot(args.run, device=args.device,
+                                         checkpoint=args.checkpoint)
+        score = tw_bench.model_score_fn(model, tok, max_len)
     results = tw_bench.run_loglik(tasks, score, shots, args.template)
     cats = json.loads(Path(args.categories).read_text()) if args.categories else None
     summary = tw_bench.summarize(results, cats)
@@ -72,7 +104,9 @@ def main():
                      ensure_ascii=False, indent=2))
     if args.out:
         tw_bench.write_results(args.out, args.bench, results, summary, meta={
-            "run": args.run, "checkpoint": args.checkpoint, "split": args.split,
+            "run": args.run, "checkpoint": args.checkpoint,
+            "hf": args.hf, "hf_revision": revision if args.hf else None,
+            "split": args.split,
             "shots": args.shots, "template": args.template, "limit": args.limit,
             "phase_a": gates})
 

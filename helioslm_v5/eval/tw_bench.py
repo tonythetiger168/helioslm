@@ -315,6 +315,61 @@ def model_score_fn(model, tokenizer, max_length=1024, device=None):
     return score
 
 
+def _single_token_continuations(ctx, fulls):
+    """(prefix, [token]) when the context tokenises to the same ids alone
+    and inside every continuation, and each continuation adds exactly one
+    token; then the per-continuation scores equal the last-position
+    log-probs of one pass. Else None (a merge across the boundary)."""
+    k = len(ctx)
+    if k < 1 or any(len(f) != k + 1 or f[:k] != ctx for f in fulls):
+        return None
+    return ctx, [f[k] for f in fulls]
+
+
+def hf_score_fn(model, tokenizer, max_length=2048, device=None):
+    """score_fn for a Hugging Face causal LM and its tokenizer (route B
+    base / baseline gap eval, v5.128).
+
+    Same arithmetic as ``model_score_fn``. When every continuation is one
+    token after a shared prefix (the four letters, usually) the four
+    log p come from ONE forward pass over the prefix; otherwise each
+    continuation gets its own pass."""
+    import torch
+    import torch.nn.functional as F
+    dev = device or next(model.parameters()).device
+
+    def enc(text):
+        return list(tokenizer(text, add_special_tokens=True)["input_ids"])
+
+    def logits(ids):
+        x = torch.tensor([ids], dtype=torch.long, device=dev)
+        out = model(input_ids=x)
+        return (out.logits if hasattr(out, "logits") else out[0])[0].float()
+
+    @torch.no_grad()
+    def score(context, continuations):
+        ctx = enc(context)
+        fulls = [enc(context + c) for c in continuations]
+        fast = _single_token_continuations(ctx, fulls)
+        if fast is not None:
+            prefix, toks = fast
+            lp = F.log_softmax(logits(prefix[-max_length:])[-1], dim=-1)
+            return [lp[t].item() for t in toks]
+        out = []
+        for full in fulls:
+            k = 0
+            while k < min(len(ctx), len(full)) and ctx[k] == full[k]:
+                k += 1
+            k = min(k, len(full) - 1)
+            ids = full[-(max_length + 1):]
+            n = min(len(full) - k, len(ids) - 1)
+            lp = F.log_softmax(logits(ids[:-1]), dim=-1)[-n:]
+            target = torch.tensor(ids[-n:], device=dev)
+            out.append(lp.gather(-1, target[:, None]).sum().item())
+        return out
+    return score
+
+
 def write_results(path, bench, results, summary, meta=None):
     """Results JSON; question text is never written (licence rule)."""
     for r in results:

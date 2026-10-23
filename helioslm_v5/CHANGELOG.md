@@ -1,5 +1,30 @@
 # HeliosLM v5 Changelog
 
+## v5.128 (2026-10-23) - Route B: base-gap eval against every MediaTek model
+
+The owner approved about US$20 to measure the untouched route B base
+before any training is paid for: score `google/gemma-4-E4B` and the four
+MediaTek Research text models (Breexe-8x7B, Breeze 2 8B / 3B, Breeze-7B)
+on TMMLU+, TW-JusticeBench, C-Eval and CMMLU with one scorer, and report
+the gap. Runbook: `docs/BASE_GAP_EVAL.md` (one H200, about 3-4 hours).
+
+- `eval/tw_bench.hf_score_fn`: log-likelihood scorer for a Hugging Face
+  causal LM. When every answer letter is one token after the unchanged
+  context, the four scores come from one forward pass
+  (`_single_token_continuations`); otherwise one pass each.
+- `examples/tw_bench_run.py --hf MODEL [--hf-revision]`: score a Hugging
+  Face model instead of a pilot checkpoint (`load_hf`, bf16, records the
+  resolved revision).
+- `examples/base_gap_eval.py`:
+  - fetches the four sets to `data/tw_bench/`;
+  - scores each model once over all sets, then frees it (and with
+    `--cleanup`, its Hub cache);
+  - writes `results/base_gap_<time>.json`, re-written after every model,
+    with per-task accuracy and base-minus-rival `paired_bootstrap` gaps;
+  - a failed model or set is recorded and the run goes on;
+  - `--stop-pod` stops the pod at the end.
+- T131 `test_base_gap.py`.
+
 ## v5.126 (2026-10-23) - LB9: gated short-convolution layers (LFM2)
 
 LB9 of the 2026-10-23 leaderboard review. In LFM2 and LFM2.5 (Liquid AI),
