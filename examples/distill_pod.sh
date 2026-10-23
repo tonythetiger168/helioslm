@@ -5,6 +5,8 @@
 #   bash distill_pod.sh 2>&1 | tee /workspace/distill_pod.log
 # 可調：PER_HOUR（實際每小時價格，US$）、MAX_COST（生成階段花費上限，US$）、N_PROMPTS、N_AGENT
 set -euo pipefail
+AVAIL_GB=$(df -BG --output=avail /workspace | tail -1 | tr -dc 0-9)
+if [ ! -d /workspace/ds41 ] && [ "$AVAIL_GB" -lt 700 ]; then echo "/workspace 只剩 ${AVAIL_GB} GB，權重要約 511 GB，加上資料至少要 700 GB"; exit 1; fi
 PER_HOUR=${PER_HOUR:-15}
 MAX_COST=${MAX_COST:-120}
 N_PROMPTS=${N_PROMPTS:-20000}
@@ -17,7 +19,8 @@ mkdir -p $R
 cd /workspace
 [ -d helioslm ] || git clone https://github.com/tonythetiger168/helioslm
 cd helioslm && git pull -q
-huggingface-cli download deepseek-ai/DeepSeek-V4.1-Flash --local-dir /workspace/ds41
+if command -v hf >/dev/null; then HFDL="hf download"; else HFDL="huggingface-cli download"; fi
+$HFDL deepseek-ai/DeepSeek-V4.1-Flash --local-dir /workspace/ds41
 python examples/teacher_license_audit.py --pending || true
 
 # 2. 啟動教師
