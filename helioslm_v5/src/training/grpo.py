@@ -33,6 +33,25 @@ class _ByteLevelTokenizer:
         return bytes(int(i) % 256 for i in ids).decode("utf-8", errors="replace")
 
 
+def overlong_penalty(n_tokens: int, max_len: int, buffer: int) -> float:
+    """DAPO soft overlong punishment (arXiv 2503.14476, eq. 13): 0 up to
+    max_len - buffer, then falling linearly to -1 at max_len; -1 beyond."""
+    if n_tokens <= max_len - buffer:
+        return 0.0
+    if n_tokens <= max_len:
+        return (max_len - buffer - n_tokens) / buffer
+    return -1.0
+
+
+def two_stage_lengths(total_steps: int, short: int, long: int,
+                      switch_frac: float = 0.5) -> List[Tuple[int, int]]:
+    """``grpo.length_stages`` for a short-then-long rollout budget: ``short``
+    tokens for the first ``switch_frac`` of the updates, then ``long``."""
+    if not 0.0 < switch_frac < 1.0 or not 1 <= short < long:
+        raise ValueError("need 0 < switch_frac < 1 and 1 <= short < long")
+    return [(0, short), (max(1, int(total_steps * switch_frac)), long)]
+
+
 class GRPOTrainer:
     """
     GRPO trainer for reasoning models.
@@ -64,6 +83,13 @@ class GRPOTrainer:
         self.filter_zero_adv_groups = getattr(g, "filter_zero_adv_groups", False)
         self.tis_cap = getattr(g, "tis_cap", None)
         self.max_new_tokens = getattr(config.grpo, "max_new_tokens", 16)
+        # v5.117 LB6: length schedule and DAPO overlong handling. Samples
+        # that carry "max_new_tokens" (train_step's do) are scored and
+        # filtered against it; others (env / async paths) are untouched.
+        self.length_stages = getattr(g, "length_stages", None)
+        self.overlong_buffer = getattr(g, "overlong_buffer", None)
+        self.overlong_filter = getattr(g, "overlong_filter", False)
+        self.rl_step = 0     # completed updates; picks the length stage
         # v5.99 OS3: None = original accuracy term; a float makes the
         # accuracy term abstention-aware (training/abstain.py): wrong
         # answers cost this much, "I don't know" earns 0, and an answer
@@ -88,6 +114,16 @@ class GRPOTrainer:
             lr=config.grpo.lr,
             weight_decay=0.01
         )
+
+    def current_max_new_tokens(self) -> int:
+        """Rollout length limit for the next update (``length_stages``)."""
+        if not self.length_stages:
+            return self.max_new_tokens
+        cur = self.length_stages[0][1]
+        for start, n in self.length_stages:
+            if self.rl_step >= start:
+                cur = n
+        return cur
 
     # ------------------------------------------------------------------
     # Tokenization helpers
@@ -277,6 +313,7 @@ class GRPOTrainer:
             #    no grad).
             self.model.eval()
             samples = []  # one dict per (question, group member)
+            limit = self.current_max_new_tokens()
             for question in questions:
                 for _ in range(self.group_size):
                     resp, old_logprob, full_ids, prompt_len = \
@@ -286,6 +323,7 @@ class GRPOTrainer:
                         "old_logprob": old_logprob,  # detached
                         "full_ids": full_ids,
                         "prompt_len": prompt_len,
+                        "max_new_tokens": limit,
                     })
 
             return self._learn_from_samples(samples, answers)
@@ -330,6 +368,20 @@ class GRPOTrainer:
                     f"sample: got {rewards.numel()} for {n_samples} "
                     f"samples (batch {batch_size} x group {self.group_size})")
 
+        # v5.117 LB6: response lengths against each sample's rollout limit.
+        eos = getattr(getattr(self.model, "config", None), "eos_token_id", None)
+        n_tok = [int(s["full_ids"].shape[1] - s["prompt_len"]) for s in samples]
+        limits = [s.get("max_new_tokens") for s in samples]
+        truncated = [lim is not None and n >= lim
+                     and int(s["full_ids"][0, -1]) != eos
+                     for s, n, lim in zip(samples, n_tok, limits)]
+        if self.overlong_buffer is not None:
+            rewards = rewards + torch.tensor(
+                [overlong_penalty(n, lim, self.overlong_buffer)
+                 if lim is not None else 0.0
+                 for n, lim in zip(n_tok, limits)],
+                dtype=rewards.dtype, device=rewards.device)
+
         # Group-normalized advantages.
         rewards = rewards.view(batch_size, self.group_size)
         mean_rewards = rewards.mean(dim=1, keepdim=True)
@@ -354,6 +406,8 @@ class GRPOTrainer:
                            == rewards.min(dim=1).values).tolist()
             keep = [not flat_groups[i // self.group_size]
                     for i in range(n_samples)]
+        if self.overlong_filter:
+            keep = [k and not t for k, t in zip(keep, truncated)]
         kept = [i for i in range(n_samples) if keep[i]]
         n_kept = len(kept)
         eps_low = self.epsilon
@@ -454,12 +508,15 @@ class GRPOTrainer:
         if n_kept:
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
             self.optimizer.step()
+        self.rl_step += 1
         return {
             "loss": policy_loss_total + kl_total,
             "policy_loss": policy_loss_total,
             "kl_penalty": kl_total,
             "mean_reward": mean_rewards.mean().item(),
             "n_kept": n_kept,
+            "mean_response_tokens": sum(n_tok) / n_samples,
+            "truncated_frac": sum(truncated) / n_samples,
         }
 
     def _sample_response(self, question: str) -> Tuple[str, torch.Tensor, torch.Tensor, int]:
@@ -474,7 +531,7 @@ class GRPOTrainer:
             # it stops on config.eos_token_id and freezes finished rows.
             gen = self.model.generate(
                 prompt_ids,
-                max_new_tokens=self.max_new_tokens,
+                max_new_tokens=self.current_max_new_tokens(),
                 temperature=1.0,
                 # top_p=1.0 (no nucleus filter): old_logprob and the
                 # importance ratio score the plain softmax distribution, so

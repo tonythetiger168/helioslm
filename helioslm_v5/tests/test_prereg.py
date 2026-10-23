@@ -6,7 +6,7 @@ returns per-gate verdicts, refuses results filed against another plan
 (e.g. gates edited after seeing scores) and results that omit a
 registered task.
 
-v5.114: relative gates ("beat a registered baseline": the lower end of the
+v5.119: relative gates ("beat a registered baseline": the lower end of the
 95% paired-bootstrap interval of ours - theirs is above the margin), PENDING
 revisions (a plan locks but cannot be checked until pinned), and the
 committed v1.0 plan (docs/prereg/v1.0.json).

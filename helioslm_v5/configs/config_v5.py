@@ -417,6 +417,19 @@ class GRPOConfig:
     # (MTPDecoder; exact speculative sampling, so the emitted tokens follow
     # the main model's distribution). Needs mtp.enabled. False = plain.
     rollout_use_mtp: bool = False
+    # v5.117 LB6: rollout length schedule. [(from_step, max_new_tokens),
+    # ...], first from_step 0, steps strictly increasing; the trainer's
+    # update counter picks the stage (e.g. short then long, the staged
+    # context lengthening of small-model RL). None = the fixed
+    # max_new_tokens.
+    length_stages: Optional[list] = None
+    # DAPO soft overlong punishment (arXiv 2503.14476): responses longer
+    # than max_new_tokens - overlong_buffer lose up to 1 reward, linearly.
+    # None = off.
+    overlong_buffer: Optional[int] = None
+    # DAPO overlong filtering: truncated responses (hit max_new_tokens
+    # without EOS) are left out of the loss and its normalization.
+    overlong_filter: bool = False
 
     def __post_init__(self):
         self._validate()
@@ -450,7 +463,7 @@ class GRPOConfig:
                 f"grpo.clip_eps_high must be in (0, 10) or None, got "
                 f"{self.clip_eps_high!r}")
         for name in ("normalize_adv_std", "filter_zero_adv_groups",
-                     "rollout_use_mtp"):
+                     "rollout_use_mtp", "overlong_filter"):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"grpo.{name} must be a bool")
         if self.tis_cap is not None and not self.tis_cap >= 1.0:
@@ -460,6 +473,29 @@ class GRPOConfig:
             raise ValueError(
                 f"grpo.abstain_penalty must be >= 0 or None, got "
                 f"{self.abstain_penalty!r}")
+        st = self.length_stages
+        if st is not None:
+            ok = (isinstance(st, (list, tuple)) and len(st) > 0
+                  and all(isinstance(x, (list, tuple)) and len(x) == 2
+                          and all(isinstance(v, int) and not isinstance(v, bool)
+                                  for v in x) for x in st))
+            if not ok or st[0][0] != 0 or any(
+                    a[0] >= b[0] for a, b in zip(st, st[1:])) or any(
+                    n < 1 for _, n in st):
+                raise ValueError(
+                    "grpo.length_stages must be [(from_step, max_new_tokens)"
+                    ", ...] starting at step 0 with strictly increasing "
+                    f"steps and max_new_tokens >= 1, got {st!r}")
+        if self.overlong_buffer is not None:
+            b = self.overlong_buffer
+            if not (isinstance(b, int) and not isinstance(b, bool) and b >= 1):
+                raise ValueError(
+                    f"grpo.overlong_buffer must be an int >= 1 or None, "
+                    f"got {b!r}")
+            if st is not None and any(b >= n for _, n in st):
+                raise ValueError(
+                    "grpo.overlong_buffer must be smaller than every "
+                    "length stage's max_new_tokens")
 
 
 class OptionConflictError(ValueError):

@@ -16,7 +16,8 @@ killed. This module is that loop; ``examples/pilot_prepare_data.py`` and
 - Data: ``uint16`` token shards (``write_shards`` / ``TokenShard``).
   Batch positions come from a generator seeded by (seed, micro-step), so
   a resumed run reads exactly the batches the uninterrupted run would.
-- ``pretrain``: AdamW, linear warmup then cosine decay to ``min_lr``,
+- ``pretrain``: AdamW, linear warmup then cosine decay to ``min_lr`` (or
+  warmup-stable-decay with an optional decay-phase data switch, LB2),
   gradient accumulation and clipping, bf16 autocast on CUDA, the routers'
   aux-loss-free bias update after every optimizer step (the repo's other
   training loops never call it), held-out bits per byte (comparable
@@ -137,12 +138,54 @@ class TokenShard:
 
 
 # -------------------------------------------------------------- schedule
-def lr_at(step, total, base_lr, warmup, min_ratio=0.1):
+SCHEDULES = ("cosine", "wsd")
+DECAY_SHAPES = ("sqrt", "linear", "cosine")
+
+
+def wsd_decay_start(total, warmup, decay_frac):
+    """First step of the WSD decay phase: the last ``decay_frac`` of the
+    run, never before warmup ends."""
+    if not 0.0 < decay_frac <= 1.0:
+        raise ValueError(f"decay_frac must be in (0, 1], got {decay_frac}")
+    return max(warmup, total - max(1, round(decay_frac * total)))
+
+
+def lr_at(step, total, base_lr, warmup, min_ratio=0.1, schedule="cosine",
+          decay_frac=0.2, decay_shape="sqrt"):
+    """Learning rate for optimizer step ``step`` of ``total``.
+
+    cosine: linear warmup, then cosine decay to ``min_ratio * base_lr``.
+    wsd (warmup-stable-decay, LB2; MiniCPM's stable -> decay schedule):
+    linear warmup, flat at ``base_lr``, then the last ``decay_frac`` of
+    the run decays to ``min_ratio * base_lr``. ``decay_shape`` "sqrt" is
+    1 - sqrt(t), which Hagele et al. (2024, arXiv 2405.18392) found best
+    among WSD cooldowns; "linear" and "cosine" are the alternatives.
+    The stable phase does not depend on ``total``, so a stable-phase
+    checkpoint can be resumed with a larger ``steps`` and decayed later.
+    """
+    if schedule not in SCHEDULES:
+        raise ValueError(f"schedule must be one of {SCHEDULES}, got "
+                         f"{schedule!r}")
     if step < warmup:
         return base_lr * (step + 1) / warmup
-    t = (step - warmup) / max(1, total - warmup)
-    return base_lr * (min_ratio + (1 - min_ratio) * 0.5
-                      * (1 + math.cos(math.pi * min(1.0, t))))
+    if schedule == "cosine":
+        t = (step - warmup) / max(1, total - warmup)
+        return base_lr * (min_ratio + (1 - min_ratio) * 0.5
+                          * (1 + math.cos(math.pi * min(1.0, t))))
+    if decay_shape not in DECAY_SHAPES:
+        raise ValueError(f"decay_shape must be one of {DECAY_SHAPES}, got "
+                         f"{decay_shape!r}")
+    start = wsd_decay_start(total, warmup, decay_frac)
+    if step < start:
+        return base_lr
+    t = min(1.0, (step - start) / max(1, total - start))
+    if decay_shape == "sqrt":
+        f = 1 - math.sqrt(t)
+    elif decay_shape == "linear":
+        f = 1 - t
+    else:
+        f = 0.5 * (1 + math.cos(math.pi * t))
+    return base_lr * (min_ratio + (1 - min_ratio) * f)
 
 
 def update_router_biases(model):
@@ -160,11 +203,18 @@ def evaluate(model, val, seq, max_windows, bytes_per_token, device, dtype):
     was = model.training
     model.eval()
     tot, n = 0.0, 0
-    for x, y in val.eval_windows(seq, max_windows):
-        x, y = x.to(device), y.to(device)
+    for w in val.eval_windows(seq, max_windows):
+        x, y = w[0].to(device), w[1].to(device)
         with torch.autocast(device.type, dtype=dtype,
                             enabled=dtype != torch.float32):
             logits = model(x)[0]
+        if len(w) > 2:              # SFT windows: score target tokens only
+            m = w[2].to(device).reshape(-1).float()
+            ce = F.cross_entropy(logits.float().reshape(-1, logits.shape[-1]),
+                                 y.reshape(-1), reduction="none")
+            tot += (ce * m).sum().item()
+            n += int(m.sum().item())
+            continue
         tot += F.cross_entropy(logits.float().reshape(-1, logits.shape[-1]),
                                y.reshape(-1), reduction="sum").item()
         n += y.numel()
@@ -176,15 +226,39 @@ def evaluate(model, val, seq, max_windows, bytes_per_token, device, dtype):
 
 def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
              lr=6e-4, warmup=100, min_lr_ratio=0.1, weight_decay=0.1,
+             schedule="cosine", decay_frac=0.2, decay_shape="sqrt",
+             decay_train=None, schedule_total=None,
              clip=1.0, eval_every=100, eval_windows=50, ckpt_every=100,
              seed=0, device="cpu", dtype=torch.float32, bytes_per_token=1.0,
-             peak_flops=None, compile_model=False, log=print):
+             peak_flops=None, compile_model=False, init_from=None, log=print):
     """Train (or resume) to ``steps`` optimizer steps. Returns the summary.
 
     Resume: if ``<out_dir>/ckpt.pt`` exists, model and optimizer state and
     the step counter are restored; batches are a function of the step, so
     the continuation is identical to an uninterrupted run (bitwise on CPU).
+
+    Fine-tuning (v5.113, distillation SFT): ``init_from`` names a
+    checkpoint whose model weights start a NEW run (ignored on resume,
+    optimizer fresh). A shard whose ``batch`` / ``eval_windows`` yield a
+    third tensor, a 0/1 loss mask aligned with ``y`` (``distill_sft.
+    SFTShard``), trains and evaluates on the masked tokens only: the mean
+    over target tokens of each micro-batch.
+
+    Schedule (LB2): ``schedule="wsd"`` with ``decay_frac`` / ``decay_shape``
+    (see ``lr_at``). ``decay_train``, a second shard, replaces ``train``
+    from the first decay step on: the decay-phase data switch (annealing
+    on higher-quality or mid-training data). It needs ``schedule="wsd"``.
+    ``schedule_total`` (default ``steps``) is the run length the schedule
+    is laid out for: train to ``steps`` < ``schedule_total`` and resume
+    later with a larger ``steps``, and the LR and data follow one plan.
     """
+    if decay_train is not None and schedule != "wsd":
+        raise ValueError("decay_train needs schedule='wsd'")
+    plan = steps if schedule_total is None else schedule_total
+    if plan < steps:
+        raise ValueError(f"schedule_total {plan} < steps {steps}")
+    decay_start = (wsd_decay_start(plan, warmup, decay_frac)
+                   if schedule == "wsd" else plan)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     device = torch.device(device)
@@ -211,6 +285,10 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
             keep = [ln for ln in lp.read_text().splitlines()
                     if ln and json.loads(ln)["step"] <= step]
             lp.write_text("".join(ln + "\n" for ln in keep))
+    elif init_from is not None:
+        state = torch.load(init_from, map_location=device, weights_only=False)
+        model.load_state_dict(state["model"] if "model" in state else state)
+        log(f"initialised from {init_from}")
     params = count_params(model)
     fwd = torch.compile(model) if compile_model else model
     model.train()
@@ -219,20 +297,31 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
     t_window, tok_window = time.perf_counter(), 0
     last = {}
     while step < steps:
-        cur_lr = lr_at(step, steps, lr, warmup, min_lr_ratio)
+        cur_lr = lr_at(step, plan, lr, warmup, min_lr_ratio, schedule,
+                       decay_frac, decay_shape)
+        if decay_train is not None and step >= decay_start:
+            # batches stay a function of the step, so resume is still exact
+            train = decay_train
         for g in opt.param_groups:
             g["lr"] = cur_lr
         opt.zero_grad(set_to_none=True)
         loss_sum = 0.0
         for micro in range(grad_accum):
-            x, y = train.batch(batch, seq, step * grad_accum + micro, seed)
-            x, y = x.to(device), y.to(device)
+            b = train.batch(batch, seq, step * grad_accum + micro, seed)
+            x, y = b[0].to(device), b[1].to(device)
             with torch.autocast(device.type, dtype=dtype,
                                 enabled=dtype != torch.float32):
                 logits = fwd(x)[0]
-                loss = F.cross_entropy(
-                    logits.float().reshape(-1, logits.shape[-1]),
-                    y.reshape(-1)) / grad_accum
+                if len(b) > 2:
+                    m = b[2].to(device).reshape(-1).float()
+                    ce = F.cross_entropy(
+                        logits.float().reshape(-1, logits.shape[-1]),
+                        y.reshape(-1), reduction="none")
+                    loss = (ce * m).sum() / m.sum().clamp(min=1) / grad_accum
+                else:
+                    loss = F.cross_entropy(
+                        logits.float().reshape(-1, logits.shape[-1]),
+                        y.reshape(-1)) / grad_accum
             loss.backward()
             loss_sum += loss.item()
         gnorm = torch.nn.utils.clip_grad_norm_(model.parameters(), clip).item()
@@ -241,6 +330,7 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
         step += 1
         tok_window += tokens_per_step
         rec = {"step": step, "lr": round(cur_lr, 8),
+               "phase": "decay" if step > decay_start else "main",
                "train_loss": round(loss_sum, 5), "grad_norm": round(gnorm, 4)}
         if step % eval_every == 0 or step == steps:
             if device.type == "cuda":

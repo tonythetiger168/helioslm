@@ -1,6 +1,6 @@
 # HeliosLM v5 Changelog
 
-## v5.114 (2026-10-23) - E5: v1.0 pre-registration, "beat the Taiwanese models"
+## v5.119 (2026-10-23) - E5: v1.0 pre-registration, "beat the Taiwanese models"
 
 - Owner's rule: from v1.0 (0.5B) on, HeliosLM must score higher than
   the Taiwanese models. `docs/prereg/v1.0.json` registers it:
@@ -23,6 +23,163 @@
 - `tests/test_prereg.py`: relative-gate validation and verdicts (a
   point-estimate lead with a CI touching 0 fails), PENDING handling,
   bootstrap oracles, and the committed v1.0 plan.
+## v5.118 (2026-10-23) - LB6: hybrid-thinking mode switch for distillation SFT
+
+The hybrid-thinking half of LB6 (2026-10-23 leaderboard review).
+MiniCPM5-1B trains on deep-thinking and hybrid-thinking SFT data so one
+model answers with or without reasoning. D3's `keep_thinking="mix"`
+already trains both modes, but the prompt did not say which one, so the
+mode was left to chance at inference.
+
+- `distill_sft.format_example(..., mode_switch=True)` / `build(...,
+  mode_switch=True)`: the last user turn ends in ` /think` when the
+  target carries reasoning and ` /no_think` when its think block is
+  empty (Qwen3's soft-switch convention). Off by default; prompts are
+  unchanged without it.
+- `examples/distill_sft.py prepare --mode-switch` (also a preset key);
+  recorded in the shard `meta.json`.
+- `tests/test_distill_sft.py::test_mode_switch`: tags match the target
+  in all / none / mix, multi-turn tags the last user turn only, default
+  off.
+## v5.117 (2026-10-23) - LB6: RL length schedule and DAPO overlong handling
+
+From the 2026-10-23 leaderboard review (LB1–LB9): MiniCPM5-1B's RL uses a
+two-stage length schedule and cut the share of responses hitting the
+max-token limit by 29 points. GRPO had one fixed `max_new_tokens` and
+no handling of truncated rollouts. Every default reproduces the previous
+update bit for bit.
+
+- `GRPOConfig.length_stages`: `[(from_step, max_new_tokens), ...]`; the
+  trainer's update counter (`GRPOTrainer.rl_step`) picks the stage and
+  `train_step` records the limit on each sample. `two_stage_lengths`
+  builds a short-then-long schedule.
+- `GRPOConfig.overlong_buffer`: DAPO soft overlong punishment
+  (`overlong_penalty`, arXiv 2503.14476 eq. 13) added to the rewards of
+  samples that carry a limit.
+- `GRPOConfig.overlong_filter`: DAPO overlong filtering; truncated
+  samples (limit reached without EOS) leave the loss and its
+  normalization.
+- The update stats add `mean_response_tokens` and `truncated_frac`.
+- The hybrid-thinking half of LB6 (an explicit think / no-think switch in
+  the SFT format) waits for D3 (#90), whose `keep_thinking="mix"` already
+  trains both modes.
+- T124 `tests/test_grpo_length.py` (6 tests).
+
+## v5.116 (2026-10-23) - LB3: pretraining data quality filters and mixture manifests
+
+From the 2026-10-23 leaderboard review (LB1–LB9): the 2026 small-model
+leaders win on data (MiniCPM5 on the classifier-filtered Ultra-FineWeb,
+K2 Horizon on ~20T curated tokens), while `pilot_prepare_data.py` only
+streamed and decontaminated. CPU-only, no new dependency (numpy).
+
+- `src/training/data_quality.py`:
+  - `heuristic_check`: Gopher / C4 style rules (length in words + CJK
+    characters, duplicate lines, ellipsis lines, symbol ratio, non-text
+    share); returns every failed rule.
+  - `zh_profile` / `zh_variant`: Traditional vs Simplified without opencc.
+    Big5-but-not-GB2312 characters are Traditional-only, GB2312-but-not-
+    Big5 Simplified-only, shared characters count for neither; labels
+    tw / cn / mixed / none.
+  - `HashedNgramClassifier`: the fastText-style quality classifier of
+    FineWeb-Edu / Ultra-FineWeb as logistic regression over crc32-hashed
+    CJK character 1-2-grams and word 1-2-grams (scores identical across
+    machines); save / load as `.npz` + `.json`.
+  - `filter_docs`: the three filters in order, with per-reason drop counts.
+- `src/training/data_mixture.py`: JSON mixture manifests with per-source
+  licence (allow list, or `review` + note), `license_verified`, phase
+  (`main` / `decay`, matching the LB2 WSD decay-phase data switch),
+  weight (sums to 1 per phase), zh variants and quality threshold;
+  `token_budget`, `usable_sources` (verified licences only),
+  `mixture_sha256`.
+- `data/mixtures/lb3_0p5b_v1.json`: draft #40 corpus (FineWeb-2 cmn
+  filtered to tw/mixed, FineWeb-Edu, Ultra-FineWeb, FineMath, The Stack v2,
+  zh Wikipedia; decay phase: D1 teacher answers, top-scored FineWeb-Edu,
+  FineMath 4+). No licence is verified yet (huggingface.co is blocked in
+  the cloud container), so `usable_sources` is empty.
+- `examples/data_quality.py`: `train` / `score` / `profile` / `budget`.
+- `examples/pilot_prepare_data.py`: `--heuristics`, `--zh-variants`,
+  `--quality-model`, `--quality-threshold`; drop counts in
+  `meta.json["quality_filter"]`.
+- T123 `tests/test_data_quality.py` (7 tests).
+
+## v5.115 (2026-10-23) - LB2: warmup-stable-decay schedule and decay-phase data switch
+
+From the 2026-10-23 leaderboard review (LB1–LB9): MiniCPM5 and other
+2026 small-model leaders pretrain with a stable -> decay schedule and
+anneal on better data in the decay phase. `pretrain.py` only had cosine.
+
+- `src/training/pretrain.py`: `lr_at(..., schedule="wsd", decay_frac,
+  decay_shape)` holds the peak LR after warmup and decays over the last
+  `decay_frac` of the run to `min_ratio`; `decay_shape` is `sqrt`
+  (1 - sqrt(t), the best WSD cooldown in Hagele et al. 2024, default),
+  `linear` or `cosine`. `cosine` stays the default schedule, so existing
+  runs are unchanged. `wsd_decay_start` names the first decay step.
+- `pretrain(..., decay_train=)`: a second shard replaces the training
+  data from the first decay step on (the hook LB5 mid-training uses).
+  Batches remain a function of the step, so resume stays exact.
+- `pretrain(..., schedule_total=)`: the run length the LR plan is laid out
+  for; stop at `steps` < `schedule_total` and resume later on one plan.
+- Log records carry `phase` (`main` / `decay`).
+- `examples/pilot_100m.py`: `--schedule`, `--decay-frac`, `--decay-shape`,
+  `--schedule-total`, `--decay-data` (tokenizer hash must match `--data`).
+- T122 (`tests/test_pretrain_pilot.py`): `test_wsd_schedule` (flat until
+  decay, every shape ends at min_lr and is monotone, the stable phase does
+  not depend on the total, bad arguments refused) and
+  `test_wsd_decay_data_switch` (3 of a planned 6 steps + resume == 6
+  straight, bitwise; phases logged; the decay steps read the second
+  shard; misuse refused).
+## v5.114 (2026-10-23) - D4: agent-trajectory distillation through hsh
+
+- `src/training/distill_agent.py`: the teacher runs as an hsh agent
+  (`minimal` preset: bash, str_replace_editor; thinking on,
+  `keep_thinking="turn"`) on generated tasks with checkable outcomes, in
+  Traditional Chinese: sum a CSV column, fix a bug so a test passes (test
+  file must stay unchanged), rewrite Mainland terms to Taiwanese ones,
+  find the file with a code word, filter and sort JSON. Only verified
+  trajectories are kept. Each model step becomes one SFT record in the
+  student's text protocol: `render_transcript` of the request rebuilt from
+  the session log, and the `@@tool@@` block or final reply as the target.
+  A TextModelAdapter fed those targets replays every task to a pass.
+- `hsh/llm.py`: `assistant_text()` factored out of `render_transcript`;
+  tool arguments are rendered with sorted keys, so a transcript reads the
+  same whether the call came from an API model (teacher) or a text model
+  (student). The replay test failed on the key order before this.
+- `hsh/builtin.py`: the bash environment sets PYTHONDONTWRITEBYTECODE, so
+  an agent that edits a module and reruns it within the same second at the
+  same size no longer imports the stale .pyc (pinned by a test that fails
+  without it); task checks also use a fresh bytecode cache.
+- `distill_sft.format_example` passes `prompt_text` / `target_text`
+  records through. `examples/distill_agent.py tasks | run | to-sft`.
+## v5.113 (2026-10-22) - D3: student SFT on teacher answers (distillation)
+
+- `src/training/distill_sft.py`: formats filtered teacher records as the
+  repo's `##user##` / `##assistant##` transcript with a `<think>` block
+  (`keep_thinking` all / none / mix; mix keeps a fixed share chosen by a
+  hash of the record id), encodes prompt and target apart so the loss mask
+  boundary is exact, packs whole examples into seq + 1 windows (too-long
+  examples dropped and counted, never cut), splits train / val by prompt,
+  and writes uint16 token + uint8 mask shards read by `SFTShard`.
+- `pretrain()`: a shard yielding (x, y, mask) trains and evaluates on the
+  masked tokens only; `init_from` starts a new run from a checkpoint's
+  weights (ignored on resume). Unmasked shards take the old code path.
+- Presets `pilot_100m` (seq 2048, lr 1e-4) and `v1_0p5b` (seq 4096, lr
+  5e-5), both 2 epochs, mix 0.7.
+- `examples/distill_sft.py prepare | train` (train reads the base run's
+  run.json and ckpt.pt from pilot_100m.py).
+## v5.112 (2026-10-22) - D2: filtering teacher answers for distillation
+
+- `src/training/distill_filter.py`: drops D1 records, counting each reason:
+  not finished with "stop" (truncated), empty or leaked think tag, over the
+  reasoning / answer token caps (4096 each by default, for small students),
+  simplified Chinese above 2% of Han characters in the answer or 5% in the
+  reasoning (fixed simplified-only list, no opencc; characters valid in
+  Taiwan such as 台 and 着 excluded), n-gram overlap with evaluation items
+  (`eval/decontam.EvalIndex`), unparsable ```python blocks, math samples
+  outside the majority final answer (self-consistency), and near-duplicate
+  prompts (8-gram containment >= 0.8; samples of one prompt are kept).
+- Checked against the repo's own Traditional Chinese docs: 9 hits in 10k
+  Han characters, all real simplified leaks (断, 静, ...).
+- `examples/distill_filter.py` writes the kept records and a report.
 
 ## v5.111 (2026-10-22) - D1: DeepSeek teacher data generation for distillation
 
@@ -215,6 +372,7 @@ POSIX CI never saw; each fix is locked by a new test in
   parameter's gradient match blocked for each expert variant, skewed
   routing with idle experts, identical routing statistics, the fallback,
   a whole model, and bf16 autocast.
+
 ## v5.105 (2026-10-22) - cuda_smoke: train_parity_fp32 gates on the 99.9th percentile
 
 - A fresh pod (RTX 6000 Ada, torch 2.8.0+cu128, main @ v5.92) gave 22/23
@@ -230,6 +388,7 @@ POSIX CI never saw; each fix is locked by a new test in
   the weight difference below 1e-4 (a real device bug moves many weights),
   and the max within AdamW's own bound of 2 * lr * steps. It also reports
   the percentile and how many weights differ by more than 1e-4.
+
 ## v5.104 (2026-10-22) - OS7: long-context layout probe (RULER-lite)
 
 - `eval/ruler_lite.py`: three synthetic tasks in token-id space after

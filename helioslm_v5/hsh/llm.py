@@ -123,6 +123,20 @@ ROLE_TAG = {"system": "##system##", "user": "##user##",
             "assistant": "##assistant##", "tool": "##tool##"}
 
 
+def assistant_text(message):
+    """What a text model writes for an assistant message: a ``@@tool@@``
+    block when it calls tools, else its content. Argument keys are sorted,
+    as ``TextModelAdapter`` stores them, so a transcript reads the same
+    whether a call came from an API model or a text model (distillation
+    trains a text model on an API model's transcripts)."""
+    if message.get("tool_calls"):
+        calls = [{"name": c["name"], "args": json.loads(c["arguments"] or "{}")}
+                 for c in message["tool_calls"]]
+        return "@@tool@@" + json.dumps({"calls": calls}, ensure_ascii=False,
+                                       sort_keys=True) + "@@end@@"
+    return message.get("content", "")
+
+
 def render_transcript(request):
     """Flatten a request into the ##role## transcript a text model reads."""
     tools = request["header"].get("tools") or []
@@ -131,10 +145,8 @@ def render_transcript(request):
         lines.append("##tools##" + json.dumps(tools, ensure_ascii=False, sort_keys=True))
     for m in request["messages"]:
         body = m.get("content", "")
-        if m["role"] == "assistant" and m.get("tool_calls"):
-            calls = [{"name": c["name"], "args": json.loads(c["arguments"] or "{}")}
-                     for c in m["tool_calls"]]
-            body = "@@tool@@" + json.dumps({"calls": calls}, ensure_ascii=False) + "@@end@@"
+        if m["role"] == "assistant":
+            body = assistant_text(m)
         lines.append(ROLE_TAG[m["role"]] + body)
     lines.append(ROLE_TAG["assistant"])
     return "\n".join(lines)

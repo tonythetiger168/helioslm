@@ -16,7 +16,7 @@ Plan fields (all required unless marked optional):
   harness        {"name", "version"}    seeds        list of ints
   tasks          [{"name", "revision", "split", "n_shot", "metric"}]
   gates          [{"task", "metric", "op": ">=" | "<=", "threshold"}]
-                 or, relative to a registered baseline (v5.114):
+                 or, relative to a registered baseline (v5.119):
                  [{"task", "metric", "vs": baseline name, "margin"}]
   baselines      optional: [{"name", "revision"}] run under the same plan
   notes          optional free text
