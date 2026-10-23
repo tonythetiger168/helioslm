@@ -70,7 +70,11 @@ def test_pending_rows_are_not_usable_until_pinned():
     for rid in ta.PENDING_TEACHERS:
         assert not ta.usable(rid), rid
     assert ta.usable("deepseek-ai/DeepSeek-V4.1-Flash")
-    assert not ta.usable("nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16")
+    # Nemotron 3 Ultra: OpenMDW-1.1 read from its canonical text (v5.128)
+    nemo = ta.REVIEWS["nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16"]
+    assert ta.usable("nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16")
+    assert len(nemo["license_text_sha256"]) == 64
+    assert not any(r["verdict"] == "unclear" for r in ta.REVIEWS.values())
     assert not ta.usable("someone/new-model")
     # a live audit of pending rows records the hash without refusing, and
     # pin_pending hands back entries with the reading unchanged
