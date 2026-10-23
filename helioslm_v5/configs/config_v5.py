@@ -417,7 +417,7 @@ class GRPOConfig:
     # (MTPDecoder; exact speculative sampling, so the emitted tokens follow
     # the main model's distribution). Needs mtp.enabled. False = plain.
     rollout_use_mtp: bool = False
-    # v5.116 LB6: rollout length schedule. [(from_step, max_new_tokens),
+    # v5.117 LB6: rollout length schedule. [(from_step, max_new_tokens),
     # ...], first from_step 0, steps strictly increasing; the trainer's
     # update counter picks the stage (e.g. short then long, the staged
     # context lengthening of small-model RL). None = the fixed

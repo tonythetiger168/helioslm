@@ -83,7 +83,7 @@ class GRPOTrainer:
         self.filter_zero_adv_groups = getattr(g, "filter_zero_adv_groups", False)
         self.tis_cap = getattr(g, "tis_cap", None)
         self.max_new_tokens = getattr(config.grpo, "max_new_tokens", 16)
-        # v5.116 LB6: length schedule and DAPO overlong handling. Samples
+        # v5.117 LB6: length schedule and DAPO overlong handling. Samples
         # that carry "max_new_tokens" (train_step's do) are scored and
         # filtered against it; others (env / async paths) are untouched.
         self.length_stages = getattr(g, "length_stages", None)
@@ -368,7 +368,7 @@ class GRPOTrainer:
                     f"sample: got {rewards.numel()} for {n_samples} "
                     f"samples (batch {batch_size} x group {self.group_size})")
 
-        # v5.116 LB6: response lengths against each sample's rollout limit.
+        # v5.117 LB6: response lengths against each sample's rollout limit.
         eos = getattr(getattr(self.model, "config", None), "eos_token_id", None)
         n_tok = [int(s["full_ids"].shape[1] - s["prompt_len"]) for s in samples]
         limits = [s.get("max_new_tokens") for s in samples]

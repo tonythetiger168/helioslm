@@ -1,6 +1,6 @@
 # HeliosLM v5 Changelog
 
-## v5.116 (2026-10-23) - LB6: RL length schedule and DAPO overlong handling
+## v5.117 (2026-10-23) - LB6: RL length schedule and DAPO overlong handling
 
 From the 2026-10-23 leaderboard review (LB1–LB9): MiniCPM5-1B's RL uses a
 two-stage length schedule and cut the share of responses hitting the
@@ -24,6 +24,91 @@ update bit for bit.
   trains both modes.
 - T124 `tests/test_grpo_length.py` (6 tests).
 
+## v5.116 (2026-10-23) - LB3: pretraining data quality filters and mixture manifests
+
+From the 2026-10-23 leaderboard review (LB1–LB9): the 2026 small-model
+leaders win on data (MiniCPM5 on the classifier-filtered Ultra-FineWeb,
+K2 Horizon on ~20T curated tokens), while `pilot_prepare_data.py` only
+streamed and decontaminated. CPU-only, no new dependency (numpy).
+
+- `src/training/data_quality.py`:
+  - `heuristic_check`: Gopher / C4 style rules (length in words + CJK
+    characters, duplicate lines, ellipsis lines, symbol ratio, non-text
+    share); returns every failed rule.
+  - `zh_profile` / `zh_variant`: Traditional vs Simplified without opencc.
+    Big5-but-not-GB2312 characters are Traditional-only, GB2312-but-not-
+    Big5 Simplified-only, shared characters count for neither; labels
+    tw / cn / mixed / none.
+  - `HashedNgramClassifier`: the fastText-style quality classifier of
+    FineWeb-Edu / Ultra-FineWeb as logistic regression over crc32-hashed
+    CJK character 1-2-grams and word 1-2-grams (scores identical across
+    machines); save / load as `.npz` + `.json`.
+  - `filter_docs`: the three filters in order, with per-reason drop counts.
+- `src/training/data_mixture.py`: JSON mixture manifests with per-source
+  licence (allow list, or `review` + note), `license_verified`, phase
+  (`main` / `decay`, matching the LB2 WSD decay-phase data switch),
+  weight (sums to 1 per phase), zh variants and quality threshold;
+  `token_budget`, `usable_sources` (verified licences only),
+  `mixture_sha256`.
+- `data/mixtures/lb3_0p5b_v1.json`: draft #40 corpus (FineWeb-2 cmn
+  filtered to tw/mixed, FineWeb-Edu, Ultra-FineWeb, FineMath, The Stack v2,
+  zh Wikipedia; decay phase: D1 teacher answers, top-scored FineWeb-Edu,
+  FineMath 4+). No licence is verified yet (huggingface.co is blocked in
+  the cloud container), so `usable_sources` is empty.
+- `examples/data_quality.py`: `train` / `score` / `profile` / `budget`.
+- `examples/pilot_prepare_data.py`: `--heuristics`, `--zh-variants`,
+  `--quality-model`, `--quality-threshold`; drop counts in
+  `meta.json["quality_filter"]`.
+- T123 `tests/test_data_quality.py` (7 tests).
+
+## v5.115 (2026-10-23) - LB2: warmup-stable-decay schedule and decay-phase data switch
+
+From the 2026-10-23 leaderboard review (LB1–LB9): MiniCPM5 and other
+2026 small-model leaders pretrain with a stable -> decay schedule and
+anneal on better data in the decay phase. `pretrain.py` only had cosine.
+
+- `src/training/pretrain.py`: `lr_at(..., schedule="wsd", decay_frac,
+  decay_shape)` holds the peak LR after warmup and decays over the last
+  `decay_frac` of the run to `min_ratio`; `decay_shape` is `sqrt`
+  (1 - sqrt(t), the best WSD cooldown in Hagele et al. 2024, default),
+  `linear` or `cosine`. `cosine` stays the default schedule, so existing
+  runs are unchanged. `wsd_decay_start` names the first decay step.
+- `pretrain(..., decay_train=)`: a second shard replaces the training
+  data from the first decay step on (the hook LB5 mid-training uses).
+  Batches remain a function of the step, so resume stays exact.
+- `pretrain(..., schedule_total=)`: the run length the LR plan is laid out
+  for; stop at `steps` < `schedule_total` and resume later on one plan.
+- Log records carry `phase` (`main` / `decay`).
+- `examples/pilot_100m.py`: `--schedule`, `--decay-frac`, `--decay-shape`,
+  `--schedule-total`, `--decay-data` (tokenizer hash must match `--data`).
+- T122 (`tests/test_pretrain_pilot.py`): `test_wsd_schedule` (flat until
+  decay, every shape ends at min_lr and is monotone, the stable phase does
+  not depend on the total, bad arguments refused) and
+  `test_wsd_decay_data_switch` (3 of a planned 6 steps + resume == 6
+  straight, bitwise; phases logged; the decay steps read the second
+  shard; misuse refused).
+## v5.114 (2026-10-23) - D4: agent-trajectory distillation through hsh
+
+- `src/training/distill_agent.py`: the teacher runs as an hsh agent
+  (`minimal` preset: bash, str_replace_editor; thinking on,
+  `keep_thinking="turn"`) on generated tasks with checkable outcomes, in
+  Traditional Chinese: sum a CSV column, fix a bug so a test passes (test
+  file must stay unchanged), rewrite Mainland terms to Taiwanese ones,
+  find the file with a code word, filter and sort JSON. Only verified
+  trajectories are kept. Each model step becomes one SFT record in the
+  student's text protocol: `render_transcript` of the request rebuilt from
+  the session log, and the `@@tool@@` block or final reply as the target.
+  A TextModelAdapter fed those targets replays every task to a pass.
+- `hsh/llm.py`: `assistant_text()` factored out of `render_transcript`;
+  tool arguments are rendered with sorted keys, so a transcript reads the
+  same whether the call came from an API model (teacher) or a text model
+  (student). The replay test failed on the key order before this.
+- `hsh/builtin.py`: the bash environment sets PYTHONDONTWRITEBYTECODE, so
+  an agent that edits a module and reruns it within the same second at the
+  same size no longer imports the stale .pyc (pinned by a test that fails
+  without it); task checks also use a fresh bytecode cache.
+- `distill_sft.format_example` passes `prompt_text` / `target_text`
+  records through. `examples/distill_agent.py tasks | run | to-sft`.
 ## v5.113 (2026-10-22) - D3: student SFT on teacher answers (distillation)
 
 - `src/training/distill_sft.py`: formats filtered teacher records as the

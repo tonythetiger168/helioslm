@@ -1,4 +1,4 @@
-"""T124 — LB6 RL length schedule and DAPO overlong handling (v5.116).
+"""T124 — LB6 RL length schedule and DAPO overlong handling (v5.117).
 
 Pins:
 
