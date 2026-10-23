@@ -50,6 +50,18 @@ def main():
     ap.add_argument("--grad-accum", type=int, default=8)
     ap.add_argument("--lr", type=float, default=6e-4)
     ap.add_argument("--warmup", type=int, default=500)
+    ap.add_argument("--schedule", choices=["cosine", "wsd"], default="cosine",
+                    help="LR schedule; wsd = warmup-stable-decay (LB2)")
+    ap.add_argument("--decay-frac", type=float, default=0.2,
+                    help="wsd: fraction of steps in the decay phase")
+    ap.add_argument("--decay-shape", choices=["sqrt", "linear", "cosine"],
+                    default="sqrt", help="wsd: decay curve (1-sqrt default)")
+    ap.add_argument("--schedule-total", type=int,
+                    help="steps the LR plan is laid out for (default "
+                         "--steps); stop early and resume with more --steps")
+    ap.add_argument("--decay-data",
+                    help="wsd: shard directory whose train.bin replaces the "
+                         "main data in the decay phase (same tokenizer)")
     ap.add_argument("--eval-every", type=int, default=250)
     ap.add_argument("--eval-windows", type=int, default=100)
     ap.add_argument("--ckpt-every", type=int, default=250)
@@ -88,6 +100,13 @@ def main():
     run = {k: v for k, v in vars(args).items() if k != "dry_run"}
     run.update(device=device, dtype=str(dtype), params=params,
                tokenizer_sha256=meta["tokenizer_sha256"])
+    decay_train = None
+    if args.decay_data:
+        dmeta = json.loads((Path(args.decay_data) / "meta.json").read_text())
+        if dmeta["tokenizer_sha256"] != meta["tokenizer_sha256"]:
+            raise SystemExit("--decay-data was tokenized with a different "
+                             "tokenizer than --data")
+        decay_train = TokenShard(Path(args.decay_data) / "train.bin")
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out / "run.json").write_text(json.dumps(run, indent=2) + "\n")
@@ -96,6 +115,9 @@ def main():
         TokenShard(Path(args.data) / "val.bin"), out,
         steps=args.steps, batch=args.batch, seq=args.seq,
         grad_accum=args.grad_accum, lr=args.lr, warmup=args.warmup,
+        schedule=args.schedule, decay_frac=args.decay_frac,
+        decay_shape=args.decay_shape, decay_train=decay_train,
+        schedule_total=args.schedule_total,
         eval_every=args.eval_every, eval_windows=args.eval_windows,
         ckpt_every=args.ckpt_every, seed=args.seed, device=device,
         dtype=dtype, bytes_per_token=meta["val_bytes_per_token"],

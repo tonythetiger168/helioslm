@@ -1,5 +1,31 @@
 # HeliosLM v5 Changelog
 
+## v5.114 (2026-10-23) - LB2: warmup-stable-decay schedule and decay-phase data switch
+
+From the 2026-10-23 leaderboard review (LB1–LB9): MiniCPM5 and other
+2026 small-model leaders pretrain with a stable -> decay schedule and
+anneal on better data in the decay phase. `pretrain.py` only had cosine.
+
+- `src/training/pretrain.py`: `lr_at(..., schedule="wsd", decay_frac,
+  decay_shape)` holds the peak LR after warmup and decays over the last
+  `decay_frac` of the run to `min_ratio`; `decay_shape` is `sqrt`
+  (1 - sqrt(t), the best WSD cooldown in Hagele et al. 2024, default),
+  `linear` or `cosine`. `cosine` stays the default schedule, so existing
+  runs are unchanged. `wsd_decay_start` names the first decay step.
+- `pretrain(..., decay_train=)`: a second shard replaces the training
+  data from the first decay step on (the hook LB5 mid-training uses).
+  Batches remain a function of the step, so resume stays exact.
+- `pretrain(..., schedule_total=)`: the run length the LR plan is laid out
+  for; stop at `steps` < `schedule_total` and resume later on one plan.
+- Log records carry `phase` (`main` / `decay`).
+- `examples/pilot_100m.py`: `--schedule`, `--decay-frac`, `--decay-shape`,
+  `--schedule-total`, `--decay-data` (tokenizer hash must match `--data`).
+- T122 (`tests/test_pretrain_pilot.py`): `test_wsd_schedule` (flat until
+  decay, every shape ends at min_lr and is monotone, the stable phase does
+  not depend on the total, bad arguments refused) and
+  `test_wsd_decay_data_switch` (3 of a planned 6 steps + resume == 6
+  straight, bitwise; phases logged; the decay steps read the second
+  shard; misuse refused).
 ## v5.113 (2026-10-22) - D3: student SFT on teacher answers (distillation)
 
 - `src/training/distill_sft.py`: formats filtered teacher records as the
