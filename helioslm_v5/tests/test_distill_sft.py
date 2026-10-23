@@ -1,4 +1,4 @@
-"""D3 (v5.112): student SFT on teacher answers (src/training/distill_sft.py
+"""D3 (v5.113): student SFT on teacher answers (src/training/distill_sft.py
 and the masked / init_from path of src/training/pretrain.py).
 
 Pins:

@@ -192,7 +192,7 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
     the step counter are restored; batches are a function of the step, so
     the continuation is identical to an uninterrupted run (bitwise on CPU).
 
-    Fine-tuning (v5.112, distillation SFT): ``init_from`` names a
+    Fine-tuning (v5.113, distillation SFT): ``init_from`` names a
     checkpoint whose model weights start a NEW run (ignored on resume,
     optimizer fresh). A shard whose ``batch`` / ``eval_windows`` yield a
     third tensor, a 0/1 loss mask aligned with ``y`` (``distill_sft.
