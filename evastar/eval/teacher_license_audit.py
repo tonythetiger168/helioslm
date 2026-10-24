@@ -176,6 +176,35 @@ REVIEWS.update({
                        "over US$10B MaaS revenue), 5.2 is plain MIT"],
     },
 })
+# 2026-10-24 re-survey of the whitelist: three newer MIT releases, each
+# LICENSE text read and hashed from a live audit of the Hub before pinning.
+REVIEWS.update({
+    "deepseek-ai/DeepSeek-V4.1-Flash-1017": {
+        "reviewed_sha256": "f2c6c602815669d292889e5be8c802f2ed950653b77999b1584e8e6aed25d040",
+        "license": "MIT",
+        "verdict": "allowed",
+        "conditions": ["keep the copyright and permission notice",
+                       "same text as V4.1-Flash (same hash)",
+                       "the release ships no Jinja chat template: prompts "
+                       "go through the repository's encoding scripts"],
+    },
+    "deepseek-ai/DeepSeek-V4-Pro-0813": {
+        "reviewed_sha256": "f2c6c602815669d292889e5be8c802f2ed950653b77999b1584e8e6aed25d040",
+        "license": "MIT",
+        "verdict": "allowed",
+        "conditions": ["keep the copyright and permission notice",
+                       "same text as V4.1-Flash (same hash); the official "
+                       "release that supersedes the V4-Pro preview"],
+    },
+    "zai-org/GLM-5.3-Flash": {
+        "reviewed_sha256": "30b85b6b9659f2e78aa259f8faf5d920a68dee7c9ced3fa6dba1f19f2bc4fca1",
+        "license": "MIT (Copyright (c) 2026 Z.AI Co., Ltd)",
+        "verdict": "allowed",
+        "conditions": ["keep the copyright and permission notice",
+                       "unlike GLM-5.3 (GLM-5.3 License), the Flash "
+                       "release is plain MIT"],
+    },
+})
 TEACHERS = tuple(r for r, v in REVIEWS.items()
                  if v["reviewed_sha256"] != PENDING)
 PENDING_TEACHERS = tuple(r for r, v in REVIEWS.items()
