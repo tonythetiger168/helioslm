@@ -109,11 +109,14 @@ def test_self_check():
 def test_score():
     rows, _ = cb.load(OSS)
     gold = rows[0]["output"]["context"]["rtl/lfsr_8bit.sv"]
+    # a constant 0 would satisfy the upstream LFSR test (0 maps to 0);
+    # a constant 8'hFF does not
     wrong = ("module lfsr_8bit(input clock, reset, input [7:0] lfsr_seed, "
              "output reg [7:0] lfsr_out);\n  always @(posedge clock) "
-             "lfsr_out <= 8'd0;\nendmodule\n")
-    texts = {rows[0]["id"]: [f"```verilog\n{gold}\n```", wrong]}
-    out = cb.score(rows, texts, ks=(1, 2), workers=2)
-    assert out["pass@1"] == pytest.approx(0.5)
-    assert out["pass@2"] == pytest.approx(1.0)
-    assert out["pass@1_by_category"] == {"cid003": pytest.approx(0.5)}
+             "lfsr_out <= 8'hFF;\nendmodule\n")
+    broken = "module lfsr_8bit(input clock\nendmodule\n"
+    texts = {rows[0]["id"]: [f"```verilog\n{gold}\n```", wrong, broken, "x"]}
+    out = cb.score(rows, texts, ks=(1, 4), workers=2)
+    assert out["pass@1"] == pytest.approx(0.25)
+    assert out["pass@4"] == pytest.approx(1.0)
+    assert out["pass@1_by_category"] == {"cid003": pytest.approx(0.25)}
