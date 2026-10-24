@@ -200,7 +200,8 @@ def _parallel(a, report, scores, save):
     procs = []
     for i, grp in enumerate(assign(a.models, len(gpus))):
         cmd = [sys.executable, str(Path(__file__).resolve()),
-               "--models", *grp, "--benches", *a.benches, "--data", a.data,
+               "--models", *grp, "--base", a.base, "--rivals", *a.rivals,
+               "--benches", *a.benches, "--data", a.data,
                "--device", "cuda", "--max-length", str(a.max_length),
                "--part-out", str(parts / f"part{i}.json")]
         if a.limit:
@@ -244,6 +245,10 @@ def _free(model_id, cleanup):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--models", nargs="*", default=[BASE, *RIVALS])
+    ap.add_argument("--base", default=BASE,
+                    help="model the gaps are measured from (e.g. a "
+                         "cpt_hf.py checkpoint for the pilot, v5.131)")
+    ap.add_argument("--rivals", nargs="*", default=list(RIVALS))
     ap.add_argument("--benches", nargs="+", default=list(TASKS),
                     choices=list(TASKS))
     ap.add_argument("--data", default="data/tw_bench")
@@ -266,12 +271,13 @@ def main(argv=None):
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out = (Path(a.part_out) if a.part_out
            else out_dir / f"base_gap_{stamp}.json")
-    report = {"schema": "base-gap/1", "started": stamp, "base": BASE,
+    report = {"schema": "base-gap/1", "started": stamp, "base": a.base,
+              "rivals": a.rivals,
               "limit": a.limit, "fetch": None, "models": {}, "gaps": {}}
     scores = {}
 
     def save():
-        report["gaps"] = gap_table(scores)
+        report["gaps"] = gap_table(scores, a.base, a.rivals)
         report["scores"] = scores
         out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n",
                        encoding="utf-8")
@@ -318,7 +324,7 @@ def main(argv=None):
                 save()
             row["status"] = "done"
             del model, tok, score
-        except Exception as e:
+        except Exception:
             row["status"] = "FAILED"
             row["error"] = traceback.format_exc()[-1500:]
         row["seconds"] = round(time.time() - t0)
