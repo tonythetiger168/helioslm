@@ -81,6 +81,16 @@ def _situ_cap(x, softcap):
     return softcap * torch.tanh(x / softcap)
 
 
+def k3_situ(a, b, beta, linear_beta):
+    """Kimi K3 situ GLU (v5.142), as llama.cpp's kimi-k3 graph computes it:
+    beta * tanh(a / beta) * sigmoid(a) * b', with b' = linear_beta *
+    tanh(b / linear_beta) when linear_beta > 0, else b."""
+    h = beta * torch.tanh(a / beta) * torch.sigmoid(a)
+    if linear_beta > 0:
+        b = linear_beta * torch.tanh(b / linear_beta)
+    return h * b
+
+
 class SwiGLUExpert(nn.Module):
     """SiLU-gated GLU expert MLP: w2(silu(a) * b) with w13(x) = (a, b).
 
@@ -95,8 +105,10 @@ class SwiGLUExpert(nn.Module):
     """
 
     def __init__(self, in_dim, hidden_dim, out_dim, limit=None, alpha=1.0,
-                 up_offset=0.0):
+                 up_offset=0.0, situ=None):
         super().__init__()
+        # v5.142: situ = (beta, linear_beta) swaps in k3_situ
+        self.situ = situ
         self.w13 = nn.Linear(in_dim, 2 * hidden_dim, bias=False)
         self.w2 = nn.Linear(hidden_dim, out_dim, bias=False)
         self.limit = None if limit is None else float(limit)
@@ -107,6 +119,8 @@ class SwiGLUExpert(nn.Module):
 
     def forward(self, x):
         a, b = self.w13(x).chunk(2, dim=-1)
+        if self.situ is not None:
+            return self.w2(k3_situ(a, b, *self.situ))
         if not self.clamped:
             return self.w2(F.silu(a) * b)
         if self.limit is not None:
@@ -149,7 +163,16 @@ def build_expert(config, in_dim, out_dim):
     return SwiGLUExpert(in_dim, hidden_dim, out_dim,
                         limit=getattr(m, "swiglu_limit", None),
                         alpha=getattr(m, "swiglu_alpha", 1.0),
-                        up_offset=getattr(m, "swiglu_up_offset", 0.0))
+                        up_offset=getattr(m, "swiglu_up_offset", 0.0),
+                        situ=situ_params(config))
+
+
+def situ_params(config):
+    """(beta, linear_beta) for moe.activation "situ_k3", else None."""
+    m = config.moe
+    if m.activation != "situ_k3":
+        return None
+    return float(m.situ_beta), float(m.situ_linear_beta)
 
 
 class DeviceLimitedMoE(nn.Module):
@@ -195,8 +218,12 @@ class DeviceLimitedMoE(nn.Module):
             self.down_proj = None
             self.up_proj = None
 
-        # Router: sigmoid activation (NOT softmax).
-        self.router = nn.Linear(self.router_dim, self.num_experts, bias=False)
+        # Router: sigmoid activation (NOT softmax). v5.142
+        # moe.router_input="full" scores the full-width input instead of the
+        # latent (Kimi K3 / llama.cpp kimi-k3); experts stay in the latent.
+        self.route_full = config.moe.router_input == "full"
+        self.router = nn.Linear(self.hidden_size if self.route_full else self.router_dim,
+                                self.num_experts, bias=False)
 
         # Aux-free load-balancing bias: used ONLY for top-k selection, never
         # in the gating weights, and never updated by gradient descent.
@@ -406,7 +433,7 @@ class DeviceLimitedMoE(nn.Module):
         # routed experts all operate there.
         z = self.down_proj(flat) if self.down_proj is not None else flat
 
-        topk_indices, topk_gates = self._route(z)
+        topk_indices, topk_gates = self._route(flat if self.route_full else z)
 
         # Accumulate routing-load statistics for aux-free bias updates.
         # Training-only (M-C2): eval / inference forwards (e.g. RL rollouts)
@@ -552,6 +579,8 @@ class DeviceLimitedMoE(nn.Module):
                 g = 1.0 + g
             h = h * torch.rsqrt(h.pow(2).mean(-1, keepdim=True)
                                 + e0.norm.eps) * g[:, None, :]
+        elif e0.situ is not None:
+            h = k3_situ(a, b, *e0.situ)
         elif not e0.clamped:
             h = F.silu(a) * b
         else:

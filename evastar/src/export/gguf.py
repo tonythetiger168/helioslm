@@ -104,7 +104,9 @@ _KEEP_F32_SUFFIXES = ("router.weight", "ffn_gate_inp.weight")
 # raises loudly rather than being silently re-typed.
 _SRC_DTYPES = {torch.float32, torch.float16, torch.bfloat16, torch.float64}
 
-_KEY_RE = re.compile(r"^[a-z0-9_]+(\.[a-z0-9_]+)*$")
+# '-' is allowed too: llama.cpp architecture names such as "kimi-k3" are
+# the first key segment ("kimi-k3.block_count").
+_KEY_RE = re.compile(r"^[a-z0-9_-]+(\.[a-z0-9_-]+)*$")
 
 
 # ---------------------------------------------------------------------------
@@ -127,7 +129,7 @@ def _validate_key(key):
     if not _KEY_RE.match(key):
         raise ValueError(
             f"metadata key {key!r} is not valid GGUF lower_snake_case dotted "
-            "ASCII (segments of [a-z0-9_] joined by '.')"
+            "ASCII (segments of [a-z0-9_-] joined by '.')"
         )
 
 

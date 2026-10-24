@@ -79,9 +79,14 @@ class DenseFFN(nn.Module):
         h, i = config.hidden_size, config.intermediate_size
         self.w13 = nn.Linear(h, 2 * i, bias=False)
         self.w2 = nn.Linear(i, h, bias=False)
+        from evastar.src.moe.sigmoid_moe import situ_params
+        self.situ = situ_params(config)     # v5.142 "situ_k3" (else SwiGLU)
 
     def forward(self, x):
         a, b = self.w13(x).chunk(2, dim=-1)
+        if self.situ is not None:
+            from evastar.src.moe.sigmoid_moe import k3_situ
+            return self.w2(k3_situ(a, b, *self.situ))
         return self.w2(F.silu(a) * b)
 
 
@@ -213,10 +218,17 @@ class HeliosLMv5Layer(nn.Module):
                     n.weight.fill_(g - 1.0 if zc else g)
         else:
             self.post_attn_norm = self.post_moe_norm = None
-        if bool(config.use_attention_residuals):
+        self.res_block = (bool(config.use_attention_residuals)
+                          and config.attention_residual_style == "block")
+        self.attn_res_gate = None
+        if self.res_block:
+            # v5.142 block attention residuals (see block_res_mix)
+            self.res_bank = layer_idx % config.attn_res_block_size == 0
+            self.res_eps = config.rms_norm_eps
+            self.attn_res_score = nn.Parameter(torch.zeros(config.hidden_size))
+            self.ffn_res_score = nn.Parameter(torch.zeros(config.hidden_size))
+        elif bool(config.use_attention_residuals):
             self.attn_res_gate = nn.Parameter(torch.tensor(0.1))
-        else:
-            self.attn_res_gate = None
 
         # Hyper-Connections (v5.7, simplified HC/mHC): the residual stream
         # is widened to n virtual branches. Each sublayer reads through a
@@ -364,6 +376,11 @@ class HeliosLMv5Layer(nn.Module):
                 past_key_value=past_key_value, use_cache=use_cache,
                 position_ids=position_ids, shared_kv=shared_kv)
             return streams, present_kv, None
+        if self.res_block:
+            return self._forward_block_res(
+                hidden_states, attn_res, attention_mask=attention_mask,
+                past_key_value=past_key_value, use_cache=use_cache,
+                position_ids=position_ids, shared_kv=shared_kv)
         attn_in = self.pre_attn_norm(hidden_states)
         if self.attn_res_gate is not None and attn_res is not None:
             attn_in = attn_in + self.attn_res_gate * attn_res
@@ -389,6 +406,44 @@ class HeliosLMv5Layer(nn.Module):
             moe_out = self.post_moe_norm(moe_out)      # v5.72 sandwich norm
         hidden_states = hidden_states + moe_out
         return hidden_states, present_kv, attn_res_new
+
+    def _forward_block_res(self, prefix, bank, attention_mask=None,
+                           past_key_value=None, use_cache=False,
+                           position_ids=None, shared_kv=None):
+        """Block attention residuals (v5.142): ``bank`` is the list of
+        banked layer inputs, shared by all layers of one forward and
+        returned as the third output."""
+        cur = block_res_mix(bank, prefix, self.attn_res_score, self.res_eps)
+        if self.res_bank:
+            bank = bank + [prefix]          # the RAW layer input
+        attn_out, present_kv = self.attention(
+            self.pre_attn_norm(cur), attention_mask=attention_mask,
+            past_key_value=past_key_value, use_cache=use_cache,
+            position_ids=position_ids, **_shared_kv_kw(shared_kv))
+        if self.post_attn_norm is not None:
+            attn_out = self.post_attn_norm(attn_out)
+        prefix = attn_out if self.res_bank else prefix + attn_out
+        cur = block_res_mix(bank, prefix, self.ffn_res_score, self.res_eps)
+        moe_out = self.moe(self.pre_moe_norm(cur))
+        if self.post_moe_norm is not None:
+            moe_out = self.post_moe_norm(moe_out)
+        return prefix + moe_out, present_kv, bank
+
+
+def block_res_mix(bank, cur, score, eps):
+    """Softmax mix of the banked states and ``cur`` (v5.142).
+
+    Each candidate is scored as ``sum(rms_norm(x) * score)`` (no learned
+    norm gain: the gain and the projection fold into ``score``); the mix
+    sums the RAW candidates. An empty bank returns ``cur``.
+    """
+    if not bank:
+        return cur
+    xs = torch.stack(bank + [cur], dim=-2)                  # [B, T, n+1, d]
+    xf = xs.float()
+    normed = xf * torch.rsqrt(xf.pow(2).mean(-1, keepdim=True) + eps)
+    probs = (normed * score.float()).sum(-1).softmax(-1)    # [B, T, n+1]
+    return (probs[..., None] * xf).sum(-2).to(cur.dtype)
 
 
 class PerLayerEmbedding(nn.Module):
@@ -479,6 +534,9 @@ class EvastarV5(nn.Module):
 
         self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps,
             zero_centered=bool(config.zero_centered_norm))
+        if (bool(config.use_attention_residuals)
+                and config.attention_residual_style == "block"):
+            self.output_res_score = nn.Parameter(torch.zeros(config.hidden_size))
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
         # P0: MTP modules — share the main model's embedding and LM head
@@ -677,7 +735,11 @@ class EvastarV5(nn.Module):
                 streams.dtype)
         else:
             use_attn_res = bool(self.config.use_attention_residuals)
-            attn_res = torch.zeros_like(hidden_states) if use_attn_res else None
+            res_block = use_attn_res and self.config.attention_residual_style == "block"
+            if res_block:
+                attn_res = []                  # the bank of block residuals
+            else:
+                attn_res = torch.zeros_like(hidden_states) if use_attn_res else None
             for i, layer in enumerate(self.layers):
                 past_kv = past_key_values[i] if past_key_values is not None else None
                 hidden_states, present_kv, attn_res = layer(
@@ -696,6 +758,10 @@ class EvastarV5(nn.Module):
                     kv_saved[i] = present_kv
                 if use_cache:
                     present_key_values.append(present_kv)
+            if res_block:
+                hidden_states = block_res_mix(
+                    attn_res, hidden_states, self.output_res_score,
+                    self.config.rms_norm_eps)
 
         hidden_states = self.norm(hidden_states)
         logits = self.lm_head(hidden_states)

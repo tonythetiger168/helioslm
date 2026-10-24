@@ -41,7 +41,7 @@ from evastar.configs.config_v5 import (
     MTPConfig)
 from evastar.src.model_v5 import EvastarV5
 
-ARCHS = ("dense", "moe", "k3_block", "mimo_hybrid", "lfm_conv")
+ARCHS = ("dense", "moe", "k3_block", "k3_llamacpp", "mimo_hybrid", "lfm_conv")
 
 
 def pilot_config(arch="dense", vocab_size=32768, hidden_size=640,
@@ -71,6 +71,26 @@ def pilot_config(arch="dense", vocab_size=32768, hidden_size=640,
                       enabled=True, full_attention_every=4,
                       first_layer_full=False, per_channel_decay=True,
                       chunk_size=kda_chunk))
+    elif arch == "k3_llamacpp":
+        # v5.142: k3_block as llama.cpp's kimi-k3 graph runs it (exports
+        # with export_llamacpp_gguf): "k3" KDA layer with a 4-tap short
+        # conv, nope MLA, block attention residuals, full-width LatentMoE
+        # router, situ activation; KDA heads = MLA heads (llama.cpp shares
+        # the head count), KDA head dim = hidden / heads
+        heads = EvastarV5Config(size="mid").attention.num_attention_heads
+        moe = MoEConfig(balance_strategy=balance, latent_dim=hidden_size // 2,
+                        expert_hidden_size=intermediate_size // 2,
+                        dispatch=moe_dispatch, router_input="full",
+                        activation="situ_k3")
+        kw.update(use_attention_residuals=True,
+                  attention_residual_style="block", attn_res_block_size=4,
+                  attention=AttentionConfig(output_gate=True, nope=True),
+                  hybrid_attention=HybridAttentionConfig(
+                      enabled=True, full_attention_every=4,
+                      first_layer_full=False, per_channel_decay=True,
+                      chunk_size=kda_chunk, style="k3", short_conv_kernel=4,
+                      linear_num_heads=heads,
+                      linear_head_dim=hidden_size // heads))
     elif arch == "lfm_conv":
         # LB9 (LFM2): dense FFN; MLA on every third layer and the last,
         # gated short convolutions elsewhere (6 of 16 attention in LFM2)

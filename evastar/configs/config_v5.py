@@ -259,6 +259,9 @@ class MoEConfig:
     # None -> size default (full: 1024, lite: full-width, i.e. v5.4);
     # a non-positive value explicitly selects full-width routed experts.
     latent_dim: Optional[int] = None
+    # v5.142: what the router scores under LatentMoE: "latent" (v5.5) or
+    # "full" (the full-width input, as Kimi K3 / llama.cpp kimi-k3 do).
+    router_input: str = "latent"
     # Aux-free balancing strategy for update_bias():
     #   "heuristic": v5.4 sign-of-deviation fixed-step update.
     #   "quantile":  bias tracks the (1 - target_frac) quantile of a sliding
@@ -286,6 +289,12 @@ class MoEConfig:
     # before the output projection).
     activation: str = "swiglu"
     situ_softcap: float = 10.0  # tanh soft-cap magnitude for "situ"
+    # v5.142 "situ_k3": Kimi K3's situ GLU, beta * tanh(a / beta) *
+    # sigmoid(a) * linear_beta * tanh(b / linear_beta) (linear_beta <= 0
+    # leaves b as is), in the routed, shared AND dense FFNs, as llama.cpp's
+    # kimi-k3 graph computes it.
+    situ_beta: float = 10.0
+    situ_linear_beta: float = 10.0
     # v5.68 (roadmap U5, gpt-oss clamped SwiGLU), "swiglu" experts only:
     # a = min(a, limit), b = clamp(b, -limit, limit),
     # out = w2(a * sigmoid(alpha * a) * (b + up_offset)).
@@ -355,6 +364,17 @@ class HybridAttentionConfig:
     # per-token loop (default, unchanged). Equal to the loop to float
     # tolerance; single-token decode always uses the loop.
     chunk_size: int = 0
+    # v5.141: "default" keeps the layer above. "k3" is the KDA layer of
+    # llama.cpp's kimi-k3 graph, so the layer exports to GGUF: the decay is
+    # applied before the retrieval, a sigmoid write strength (beta) per
+    # head, L2-normalized q and k, a low-rank log-decay gate
+    # ``gate_lower_bound * sigmoid(exp(A_log) * (f_b(f_a(x)) + dt_bias))``,
+    # and an RMS-normed output times a sigmoid gate. Needs
+    # per_channel_decay=True and short_conv_kernel >= 2.
+    style: str = "default"
+    gate_lower_bound: float = -5.0
+    # rank of the f_a / f_b decay projection; None = linear_head_dim
+    gate_rank: Optional[int] = None
 
 
 @dataclass
@@ -667,6 +687,15 @@ class EvastarV5Config:
     # the accumulated sum of previous layers' attention outputs into the
     # attention input. None -> follow size (full: True, lite: False = v5.4).
     use_attention_residuals: Optional[bool] = None
+    # v5.142: "gate" = the v5.5 mechanism above. "block" = Kimi K3's block
+    # attention residuals, as llama.cpp's kimi-k3 graph computes them: every
+    # attn_res_block_size layers the raw layer input is banked and the
+    # residual stream restarts from that layer's attention output; each
+    # sublayer (and the final norm) reads a softmax mix of the banked
+    # inputs and the current stream, scored by a learned [hidden] vector
+    # against each RMS-normalized candidate (zero init = uniform mix).
+    attention_residual_style: str = "gate"
+    attn_res_block_size: int = 4
 
     # Hyper-Connections (v5.7, simplified mHC/HC): replace the single
     # residual stream with N virtual branches per token. Each sublayer reads
@@ -924,6 +953,32 @@ class EvastarV5Config:
             raise ValueError(
                 f"hybrid_attention.short_conv_kernel must be 0 (off) or an "
                 f"int >= 2, got {k!r}")
+        if h.style not in ("default", "k3"):
+            raise ValueError(
+                f"hybrid_attention.style must be 'default' or 'k3', got "
+                f"{h.style!r}")
+        if h.style == "k3":
+            if not h.per_channel_decay or not k:
+                raise ValueError(
+                    "hybrid_attention.style='k3' needs per_channel_decay=True "
+                    "and short_conv_kernel >= 2 (the kimi-k3 KDA layer)")
+            if not float(h.gate_lower_bound) < 0:
+                raise ValueError(
+                    f"hybrid_attention.gate_lower_bound must be < 0, got "
+                    f"{h.gate_lower_bound!r}")
+            r = h.gate_rank
+            if r is not None and (isinstance(r, bool) or not isinstance(r, int) or r < 1):
+                raise ValueError(
+                    f"hybrid_attention.gate_rank must be None or an int >= 1, "
+                    f"got {r!r}")
+        if self.attention_residual_style not in ("gate", "block"):
+            raise ValueError(
+                f"attention_residual_style must be 'gate' or 'block', got "
+                f"{self.attention_residual_style!r}")
+        bs = self.attn_res_block_size
+        if isinstance(bs, bool) or not isinstance(bs, int) or bs < 1:
+            raise ValueError(
+                f"attn_res_block_size must be an int >= 1, got {bs!r}")
         c = h.chunk_size
         if isinstance(c, bool) or not isinstance(c, int) or c < 0:
             raise ValueError(
@@ -1064,9 +1119,15 @@ class EvastarV5Config:
         if not isinstance(self.sandwich_norm, bool):
             raise ValueError(
                 f"sandwich_norm must be a bool, got {self.sandwich_norm!r}")
-        if m.activation not in ("swiglu", "situ"):
+        if m.router_input not in ("latent", "full"):
             raise ValueError(
-                f"moe.activation must be 'swiglu' or 'situ', got "
+                f"moe.router_input must be 'latent' or 'full', got "
+                f"{m.router_input!r}")
+        if m.activation == "situ_k3" and not float(m.situ_beta) > 0:
+            raise ValueError(f"moe.situ_beta must be > 0, got {m.situ_beta!r}")
+        if m.activation not in ("swiglu", "situ", "situ_k3"):
+            raise ValueError(
+                f"moe.activation must be 'swiglu', 'situ' or 'situ_k3', got "
                 f"{m.activation!r}"
             )
         if m.swiglu_limit is not None and not (
@@ -1219,7 +1280,7 @@ class EvastarV5Config:
                 raise OptionConflictError(rule.name, rule.message(self))
 
 
-def k3_block_config(size="lite", num_hidden_layers=None):
+def k3_block_config(size="lite", num_hidden_layers=None, llamacpp=False):
     """Kimi-K3-style block preset (v5.57, roadmap Phase B).
 
     Sets the four K3 ingredients this stack implements (Kimi K3
@@ -1239,21 +1300,37 @@ def k3_block_config(size="lite", num_hidden_layers=None):
     defaults to the size preset, except "lite" (2 layers) is raised to 4
     so one full K3 block exists. Everything else follows ``size``;
     mutate the returned config and call ``_validate()`` to adjust.
+
+    ``llamacpp=True`` (v5.142) builds the variant llama.cpp's ``kimi-k3``
+    graph runs (``export_llamacpp_gguf`` writes it): the "k3" KDA layer
+    with a 4-tap short conv and as many heads as MLA, nope MLA, block
+    attention residuals (block size 4), the LatentMoE router on the full
+    input, and Kimi K3's situ activation.
     """
     if size == "lite" and num_hidden_layers is None:
         num_hidden_layers = 4
+    attn = AttentionConfig(output_gate=True, nope=llamacpp)
+    hybrid = HybridAttentionConfig(
+        enabled=True, full_attention_every=4, first_layer_full=False,
+        per_channel_decay=True)
+    extra = {}
+    if llamacpp:
+        hybrid.style, hybrid.short_conv_kernel = "k3", 4
+        extra = dict(attention_residual_style="block", attn_res_block_size=4)
     cfg = EvastarV5Config(
         size=size,
         num_hidden_layers=num_hidden_layers,
         use_attention_residuals=True,
-        attention=AttentionConfig(output_gate=True),
-        hybrid_attention=HybridAttentionConfig(
-            enabled=True, full_attention_every=4, first_layer_full=False,
-            per_channel_decay=True),
+        attention=attn,
+        hybrid_attention=hybrid,
+        **extra,
     )
     if cfg.moe.latent_dim is None:
         cfg.moe.latent_dim = cfg.hidden_size // 2
-        cfg._validate()
+    if llamacpp:
+        cfg.hybrid_attention.linear_num_heads = cfg.attention.num_attention_heads
+        cfg.moe.router_input, cfg.moe.activation = "full", "situ_k3"
+    cfg._validate()
     return cfg
 
 
