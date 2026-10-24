@@ -194,6 +194,67 @@ class KDShard(TokenShard):
                 torch.from_numpy(p.astype(np.float32)))
 
 
+class _ChunkedLinearCE(torch.autograd.Function):
+    """Fused output head + cross-entropy, ``chunk`` rows at a time: the
+    forward also computes the gradients, so neither pass holds more than
+    one chunk's logits and nothing is recomputed."""
+
+    @staticmethod
+    def forward(ctx, h, weight, targets, mask, softcap, chunk):
+        w = weight.to(h.dtype)
+        n = mask.sum().clamp(min=1) if mask is not None else targets.new_tensor(
+            targets.numel(), dtype=torch.float32)
+        total = torch.zeros((), dtype=torch.float32, device=h.device)
+        grad_h = torch.empty_like(h)
+        grad_w = torch.zeros_like(weight, dtype=torch.float32)
+        for i in range(0, h.shape[0], chunk):
+            hc, tc = h[i:i + chunk], targets[i:i + chunk]
+            z = (hc @ w.T).float()
+            if softcap is not None:
+                t = torch.tanh(z / softcap)
+                z = softcap * t
+            lse = torch.logsumexp(z, -1)
+            ce = lse - z.gather(1, tc[:, None])[:, 0]
+            g = torch.softmax(z, -1)
+            g[torch.arange(len(tc), device=g.device), tc] -= 1.0
+            if mask is not None:
+                mc = mask[i:i + chunk]
+                ce, g = ce * mc, g * mc[:, None]
+            total += ce.sum()
+            if softcap is not None:
+                g = g * (1.0 - t * t)
+            g = g / n
+            grad_h[i:i + chunk] = (g.to(h.dtype) @ w).to(h.dtype)
+            grad_w += g.T @ hc.float()
+        ctx.save_for_backward(grad_h, grad_w)
+        ctx.weight_dtype = weight.dtype
+        return total / n
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        grad_h, grad_w = ctx.saved_tensors
+        return (grad_h * grad_out.to(grad_h.dtype),
+                (grad_w * grad_out).to(ctx.weight_dtype), None, None, None, None)
+
+
+def chunked_lm_loss(hidden, weight, targets, mask=None, softcap=None,
+                    chunk=2048):
+    """Cross-entropy of ``hidden @ weight.T`` against ``targets`` without
+    the full [N, vocab] logits (v5.142).
+
+    The output head and the loss run ``chunk`` rows at a time and the
+    forward computes the gradients too (one fused pass, nothing
+    recomputed), so only one chunk's fp32 logits exist; at 262k vocab
+    the full logits of a 8 x 1024 micro-batch are 8.6 GB in fp32.
+    ``mask`` (0/1, same shape as targets) scores target tokens only;
+    ``softcap`` is the final logit soft cap. Returns the mean over scored
+    tokens, equal to the full-logits loss to float tolerance.
+    """
+    h = hidden.reshape(-1, hidden.shape[-1])
+    m = None if mask is None else mask.reshape(-1).to(torch.float32)
+    return _ChunkedLinearCE.apply(h, weight, targets.reshape(-1), m, softcap, chunk)
+
+
 def sparse_kd_loss(logits, idx, p):
     """Cross-entropy to the teacher's top-k: mean over positions with a
     target (p sums to > 0) of -sum_k p_k log p_student(idx_k). Returns
@@ -323,7 +384,7 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
              clip=1.0, eval_every=100, eval_windows=50, ckpt_every=100,
              seed=0, device="cpu", dtype=torch.float32, bytes_per_token=1.0,
              peak_flops=None, compile_model=False, init_from=None,
-             kd_alpha=0.5, log=print):
+             kd_alpha=0.5, ce_chunk=0, log=print):
     """Train (or resume) to ``steps`` optimizer steps. Returns the summary.
 
     Resume: if ``<out_dir>/ckpt.pt`` exists, model and optimizer state and
@@ -352,6 +413,8 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
     """
     if not 0.0 <= kd_alpha <= 1.0:
         raise ValueError(f"kd_alpha must be in [0, 1], got {kd_alpha}")
+    if isinstance(ce_chunk, bool) or not isinstance(ce_chunk, int) or ce_chunk < 0:
+        raise ValueError(f"ce_chunk must be an int >= 0, got {ce_chunk!r}")
     if decay_train is not None and schedule != "wsd":
         raise ValueError("decay_train needs schedule='wsd'")
     plan = steps if schedule_total is None else schedule_total
@@ -413,8 +476,19 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
             x, y = b[0].to(device), b[1].to(device)
             with torch.autocast(device.type, dtype=dtype,
                                 enabled=dtype != torch.float32):
-                logits = fwd(x)[0]
-                if len(b) > 4:
+                if ce_chunk and len(b) <= 4:
+                    # v5.142: loss from hidden states, no full logits
+                    hidden = fwd(x, return_logits=False)[1]
+                    mask = b[2].to(device) if len(b) > 2 else None
+                    loss = chunked_lm_loss(
+                        hidden, model.lm_head.weight, y, mask,
+                        model.config.final_logit_soft_cap, ce_chunk) / grad_accum
+                    logits = None
+                else:
+                    logits = fwd(x)[0]
+                if logits is None:
+                    pass
+                elif len(b) > 4:
                     loss, kd = mixed_kd_loss(logits, y, b[2], b[3],
                                              b[4], kd_alpha)
                     loss = loss / grad_accum
