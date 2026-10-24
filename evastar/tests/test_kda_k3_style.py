@@ -121,7 +121,7 @@ def test_chunked_matches_loop(layout):
     b = copy.deepcopy(a)
     b.chunk_size = 16
     B, T = 2, 45
-    x = torch.randn(B, T, a.hidden_size)
+    x = torch.randn(B, T, a.hidden_size, generator=torch.Generator().manual_seed(1))
     kw = {}
     if layout == "mask":
         mask = torch.ones(B, T)
@@ -137,7 +137,9 @@ def test_chunked_matches_loop(layout):
         assert torch.allclose(sa, sb, atol=1e-5)
     assert torch.allclose(gxa, gxb, atol=1e-5)
     for ga, gb in zip(gpa, gpb):
-        assert torch.allclose(ga, gb, atol=1e-5)
+        # parameter gradients reach ~20 and fp32 sum order differs between
+        # the loop and the chunked form: compare against the gradient scale
+        assert (ga - gb).abs().max() <= 1e-5 * ga.abs().max().clamp_min(1)
 
 
 def test_prefill_then_decode():
