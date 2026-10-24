@@ -1,5 +1,27 @@
 # Evastar v5 Changelog
 
+## v5.151 (2026-10-24) - HDL track H0: CVDP harness without docker
+
+Third HDL benchmark. `evastar/eval/cvdp_bench.py` runs NVIDIA CVDP
+v1.1.0 non-agentic code generation (open-source flow only) on a pod that
+has no docker:
+
+- `load` keeps datapoints whose harness uses the stock simulator image
+  and a code-generation category, and lists every other id with a reason;
+- prompts and response parsing follow upstream (plain text for one
+  output file, the `{"code": [...]}` JSON schema for several);
+- `run` writes the repo and harness files to a temp dir, points the
+  harness's `/code`, `/src` and `/rundir` paths there, and runs each
+  docker-compose service's command with its `.env`; pass = every command
+  exits 0, as upstream; model-chosen file names cannot leave the repo dir;
+- `score` takes responses (generation and simulation are separate, so
+  simulation can run on CPU after GPU time) and reports pass@k overall
+  and per category; `self-check` runs golden outputs.
+
+CI gains a step that installs cocotb 2.0.1 and runs T144
+(test_cvdp_bench.py) against one upstream example datapoint; the main
+suite still runs without cocotb.
+
 ## v5.149 (2026-10-24) - grouped-GEMM MoE dispatch
 
 `moe.dispatch="grouped"` (`pilot_100m.py --moe-dispatch grouped`) runs

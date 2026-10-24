@@ -25,3 +25,23 @@ python examples/hdl_bench_run.py --model <hf-id> --out results/hdl/<name>.json
 
 Samples are untrusted code; run them only inside the pod or another
 container. Next in H0: CVDP (CC-BY-4.0 + Apache-2.0) and RTLLM.
+
+## CVDP v1.1.0, non-agentic code generation (v5.151)
+
+NVIDIA's CVDP (`nvidia/cvdp-benchmark-dataset`, text CC BY 4.0, code
+Apache-2.0). Only the open-source flow: the `no_commercial` file and
+datapoints whose harness uses the stock simulator image; `list` prints
+every skipped id with its reason. The pod has no docker, so each harness
+runs directly with its paths pointed at a temp dir; a datapoint passes
+when every harness command exits 0, as upstream.
+
+```bash
+pip install cocotb==2.0.1 pytest==8.3.2 cocotb-bus==0.3.0 cocotbext-axi==0.1.28
+python -m evastar.eval.cvdp_bench fetch          # needs HF access
+python -m evastar.eval.cvdp_bench list           # runnable vs skipped
+# golden check needs the *_with_solutions file, if you have it:
+python -m evastar.eval.cvdp_bench self-check --file <with_solutions.jsonl>
+```
+
+Generation and scoring are separate (`cvdp_bench.score(rows, texts)`),
+so simulations can run on CPU after the GPU time ends.
