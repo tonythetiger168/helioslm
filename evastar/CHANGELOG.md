@@ -12,6 +12,9 @@ compare directly with other models. Recorded only; the pass rule in
 - Tasks and shots: mmlu / mmmlu_zh_cn / winogrande 5, arc_challenge 25,
   hellaswag 10, truthfulqa_mc2 0, gsm8k 5, bbh_cot_fewshot 3,
   minerva_math500 4, humaneval 0, mbpp 3.
+- Medicine and science, 0-shot: medqa_4options, medmcqa, sciq, AGIEval
+  gaokao physics / chemistry / biology / mathqa, sat_math, math. PubMedQA
+  is left out (its dataset is a loading script; datasets>=4 refuses it).
 - `EVAL_RESERVE_H` (default 2.0 h, was a fixed 1 h) is kept after training
   for saving and steps 3-4; step 4 is time-boxed to what is left.
 - Results: `/workspace/results/std_bench/{e2b_base,pilot_b0}/`.

@@ -87,6 +87,11 @@ std_bench() {  # $1 model, $2 GPU list, $3 output dir
       "${common[@]}" --tasks arc_challenge --num_fewshot 25
   CUDA_VISIBLE_DEVICES=$2 accelerate launch --num_processes "$n" -m lm_eval \
       "${common[@]}" --tasks hellaswag --num_fewshot 10
+  # medicine and science, 0-shot (their defaults). PubMedQA is left out:
+  # its dataset (bigbio/pubmed_qa) is a loading script, which datasets>=4
+  # no longer runs.
+  CUDA_VISIBLE_DEVICES=$2 accelerate launch --num_processes "$n" -m lm_eval \
+      "${common[@]}" --tasks medqa_4options,medmcqa,sciq,agieval_gaokao_physics,agieval_gaokao_chemistry,agieval_gaokao_biology,agieval_gaokao_mathqa,agieval_sat_math,agieval_math
   # each task's own default shots: truthfulqa_mc2 0, gsm8k 5,
   # bbh_cot_fewshot 3, minerva_math500 4, humaneval 0, mbpp 3
   HF_ALLOW_CODE_EVAL=1 CUDA_VISIBLE_DEVICES=$2 accelerate launch \

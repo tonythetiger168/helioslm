@@ -65,9 +65,14 @@ PER_HOUR=<pod 實際每小時美金> bash helioslm/examples/pilot_b0_pod.sh 2>&1
 | MATH-500 | `minerva_math500` | 4 |
 | HumanEval | `humaneval` | 0 |
 | MBPP | `mbpp` | 3 |
+| MedQA（USMLE 4 選 1） | `medqa_4options` | 0 |
+| MedMCQA | `medmcqa` | 0 |
+| SciQ | `sciq` | 0 |
+| AGIEval 高考物理 / 化學 / 生物 / 數學 | `agieval_gaokao_physics` / `_chemistry` / `_biology` / `_mathqa` | 0 |
+| AGIEval SAT 數學、MATH | `agieval_sat_math`、`agieval_math` | 0 |
 
 HumanEval / MBPP 會在 pod 上執行模型寫的程式（`HF_ALLOW_CODE_EVAL=1`、`--confirm_run_unsafe_code`）。
-MMLU-Pro、GPQA、IFEval 等要等 instruct 模型再跑。這一步只記錄分數，不列入過關規則。
+PubMedQA 的資料集（bigbio/pubmed_qa）是載入腳本，datasets 4 以後不能跑，先不放。MMLU-Pro、GPQA、AIME、IFEval 等要等 instruct 模型再跑。這一步只記錄分數，不列入過關規則。
 
 ## 過關規則
 
