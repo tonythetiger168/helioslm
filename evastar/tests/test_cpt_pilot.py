@@ -8,7 +8,8 @@ Pins:
    families;
 2. fetch_mixture.plan: review licences, non-hf sources, unreadable and
    mismatched cards are skipped with a reason; the usable sources share
-   each phase's tokens by renormalised weight;
+   each phase's tokens by renormalised weight; sources without download
+   access (v5.144) are skipped and listed by blocked();
 3. write_source: heuristics + zh_variants filter, BOS + ids + EOS rows
    as uint32 (ids above 65,535 survive), stops at the budget;
 4. cpt_hf.MixedSource: deterministic per (seed, step), draws sources by
@@ -78,6 +79,18 @@ def test_plan():
     assert rows["a"]["weight"] == 1.0
     with pytest.raises(SystemExit):
         fm.plan(_mix(), 1000, 0.2, {})
+    assert fm.blocked(rows) == []
+
+
+def test_plan_no_access():
+    cards = {"a": "mit", "b": "mit", "d": "mit"}
+    rows = fm.plan(_mix(), 1000, 0.2, cards, {"a": "GatedRepoError"})
+    assert not rows["a"]["usable"] and rows["a"]["budget"] == 0
+    assert rows["a"]["reason"] == "no download access (GatedRepoError)"
+    assert rows["b"]["budget"] == 800          # a's share moves to b
+    assert fm.blocked(rows) == ["a"]
+    with pytest.raises(SystemExit):           # no main source left
+        fm.plan(_mix(), 1000, 0.2, cards, {"a": "x", "b": "x"})
 
 
 def _enc(batch):

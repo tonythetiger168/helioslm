@@ -20,6 +20,7 @@ PER_HOUR=<pod 實際每小時美金> bash helioslm/examples/pilot_b0_pod.sh 2>&1
 
 | 步驟 | 內容 | 大約時間 |
 |---|---|---|
+| 0 | 預檢（約 1 分鐘，只用 CPU）：`base_gap_eval.py --check-access` 檢查評測集與模型、`fetch_mixture.py --check-only` 檢查配方每個來源的授權和下載權限；任何一個沒權限就直接停 pod | 約 1 min |
 | 1a | `base_gap_eval.py`：E4B 對四個台灣參考模型（`docs/BASE_GAP_EVAL.md`），用全部 GPU | 1.5–2.5 h |
 | 1b | 同時 `fetch_mixture.py`：串流下載配方內的 `hf:` 來源，篩選後用 E2B tokenizer 切成 uint32 shard，共 3B token | 1–2 h |
 | 2 | `torchrun cpt_hf.py`：E2B 續訓 3B token，WSD，最後 20% 換 decay 來源 | 約 4.8 h |
@@ -35,6 +36,8 @@ PER_HOUR=<pod 實際每小時美金> bash helioslm/examples/pilot_b0_pod.sh 2>&1
 - 每個來源先讀 HF dataset card 的授權，和配方上寫的比對（同一授權家族即可，例如 Wikipedia card 的 cc-by-sa-3.0 對 CC-BY-SA-4.0）。
   不一致、配方標 `review`、或不是 `hf:` 來源，一律跳過並寫進 manifest，不會拿來訓練。
 - 跳過的來源，份額依權重分給同一階段的其他來源。
+- 也會用 pod 的 HF 帳號檢查每個來源能不能下載（gated 資料集要先在 Hub 申請）。有來源沒權限時預設直接停下，不會用少掉的資料默默訓練；確定要照樣訓練才加 `--allow-blocked`。
+- pod 上的套件版本固定（transformers 5.20.2、accelerate 1.15.0、datasets 5.1.0、huggingface_hub 2.3.0、tokenizers 0.23.3）。
 - 每份文件經過 LB3 heuristics 和該來源的 `zh_variants` 篩選，包成 BOS + ids + EOS。
 - 還沒有訓練好的品質分類器，所以 `quality_threshold` 這次不套用。
 - `manifest.json` 記錄每個來源的授權比對、dataset revision、token 數、保留/看過的文件數、篩選統計。
