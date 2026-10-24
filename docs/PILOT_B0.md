@@ -43,6 +43,8 @@ PER_HOUR=<pod 實際每小時美金> bash helioslm/examples/pilot_b0_pod.sh 2>&1
 - fp32 主權重＋bf16 autocast，AdamW(0.9, 0.95)，gradient checkpointing，DDP。
 - 每步約 1M token（`--batch-tokens`），lr 5e-5，warmup 100 步，WSD 最後 20% 衰減，同時換到 decay 來源。
 - 預設凍結 per-layer embedding 表和視覺/音訊塔（純文字訓練用不到）。
+  正式續訓前，pod 腳本先跑一次 `cpt_hf.py --dry-run`：只載入模型、套用凍結規則，把模型類別、可訓練/凍結參數量和被凍結的參數群組寫進 `runs/b0/dry_run.json`，確認多模態的 E2B 能當 causal LM 載入、凍結規則有對到正確的塔（v5.138）。
+- 總步數少於 warmup 時（例如冒煙測試），warmup 會自動縮短，decay 和換來源仍然在最後 20% 發生（v5.138）。
 - 輸出：`run.json`、`log.jsonl`（每步 loss / lr / 階段 / token/s）、`final/`（bf16 權重＋tokenizer）、`result.json`。
 
 ## 過關規則
