@@ -1,5 +1,5 @@
 #!/bin/bash
-# Route B pilot (v5.137, common benchmarks v5.141): base-gap eval + Gemma 4 E2B continued-pretraining
+# Route B pilot (v5.137, common benchmarks v5.143): base-gap eval + Gemma 4 E2B continued-pretraining
 # pilot on one RunPod pod, then stop the pod. docs/PILOT_B0.md has the
 # steps and the pass rule. Approved spend: US$320 in total (2026-10-24).
 #
