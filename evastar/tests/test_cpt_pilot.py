@@ -16,6 +16,8 @@ Pins:
 5. cpt_hf.load_phases + train on a tiny torch LM: the loss falls, the
    WSD schedule switches to the decay sources at the decay step,
    max_hours stops early, freeze() leaves matching parameters untouched;
+   fit_warmup (v5.138) keeps the decay switch in a run shorter than the
+   default warmup; dry_run_report lists the frozen parameter groups;
 6. base_gap_eval --base / --refs measure gaps from a checkpoint.
 
 Run from repo root: python3 -m pytest evastar/tests/test_cpt_pilot.py
@@ -183,6 +185,32 @@ def test_train_loop():
                            grad_accum=1, lr=1e-3, warmup=1, max_hours=0.0,
                            autocast=False)
         assert res["stopped"] == "max_hours" and res["steps"] == 0
+
+
+@needs_torch
+def test_short_run_still_decays():
+    assert cpt_hf.fit_warmup(2860, 100, 0.2) == 100       # pod run unchanged
+    assert cpt_hf.fit_warmup(20, 100, 0.2) == 16
+    assert cpt_hf.fit_warmup(1, 100, 0.2) == 0
+    with tempfile.TemporaryDirectory() as d:
+        _data(d)
+        phases = cpt_hf.load_phases(d, seq=16)
+        rows = []
+        cpt_hf.train(_LM(), phases, steps=20, micro_batch=1, seq=16,
+                     grad_accum=1, lr=1e-3, warmup=cpt_hf.fit_warmup(20, 100, 0.2),
+                     log=rows.append, autocast=False)
+        assert [r["phase"] for r in rows].index("decay") == 16
+
+
+@needs_torch
+def test_dry_run_report():
+    model = _LM()
+    tr, fr = cpt_hf.freeze(model, ["per_layer"])
+    with tempfile.TemporaryDirectory() as d:
+        rep = cpt_hf.dry_run_report(model, d, tr, fr)
+        assert json.loads((Path(d) / "dry_run.json").read_text()) == rep
+    assert rep["frozen_groups"] == {"per_layer_table.weight": 32 * 16}
+    assert rep["trainable_params"] == tr and rep["model_class"] == "LM"
 
 
 def test_gap_from_checkpoint():

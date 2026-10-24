@@ -162,6 +162,15 @@ class _null:
         return False
 
 
+def fit_warmup(steps, warmup, decay_frac):
+    """Warmup clamped so the WSD decay (and the switch to the decay-phase
+    sources) still starts at the last ``decay_frac`` of the run.
+    ``wsd_decay_start`` never starts decay before warmup ends, so a short
+    run with the default warmup of 100 would otherwise never decay."""
+    decay_len = max(1, round(decay_frac * steps))
+    return min(warmup, max(0, steps - decay_len))
+
+
 def freeze(model, patterns):
     """requires_grad False for parameters whose name contains any pattern;
     returns (trainable, frozen) parameter counts."""
@@ -173,6 +182,27 @@ def freeze(model, patterns):
         else:
             tr += p.numel()
     return tr, fr
+
+
+def frozen_groups(model, depth=3):
+    """{name prefix: frozen parameter count}, so a run can confirm its
+    --freeze patterns hit the towers they were meant for."""
+    groups = {}
+    for name, p in model.named_parameters():
+        if not p.requires_grad:
+            key = ".".join(name.split(".")[:depth])
+            groups[key] = groups.get(key, 0) + p.numel()
+    return groups
+
+
+def dry_run_report(model, out, trainable, frozen):
+    rep = {"model_class": type(model).__name__, "trainable_params": trainable,
+           "frozen_params": frozen, "frozen_groups": frozen_groups(model)}
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "dry_run.json").write_text(json.dumps(rep, indent=2))
+    print(json.dumps(rep, indent=2), flush=True)
+    return rep
 
 
 def main(argv=None):
@@ -191,6 +221,10 @@ def main(argv=None):
     ap.add_argument("--max-hours", type=float, default=None)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--dry-run", action="store_true",
+                    help="load the model, apply --freeze, write "
+                         "<out>/dry_run.json (model class, trainable / "
+                         "frozen counts, frozen parameter groups) and exit")
     a = ap.parse_args(argv)
 
     import torch.distributed as dist
@@ -206,8 +240,10 @@ def main(argv=None):
         torch.backends.cuda.matmul.allow_tf32 = True
 
     model = AutoModelForCausalLM.from_pretrained(
-        a.model, torch_dtype=torch.float32, trust_remote_code=True)
+        a.model, dtype=torch.float32, trust_remote_code=True)
     trainable, frozen = freeze(model, a.freeze)
+    if a.dry_run:
+        return dry_run_report(model, a.out, trainable, frozen)
     model.gradient_checkpointing_enable(
         gradient_checkpointing_kwargs={"use_reentrant": False})
     model.config.use_cache = False
@@ -220,25 +256,31 @@ def main(argv=None):
     per_micro = a.micro_batch * a.seq * world
     grad_accum = max(1, round(a.batch_tokens / per_micro))
     steps = max(1, int(a.tokens // (per_micro * grad_accum)))
+    warmup = fit_warmup(steps, a.warmup, a.decay_frac)
+    if warmup != a.warmup and rank == 0:
+        print(f"warmup {a.warmup} >= decay start of a {steps}-step run; "
+              f"using warmup {warmup}", flush=True)
     out = Path(a.out)
     if rank == 0:
         out.mkdir(parents=True, exist_ok=True)
         (out / "run.json").write_text(json.dumps(dict(
             vars(a), world=world, grad_accum=grad_accum, steps=steps,
+            warmup_used=warmup,
             trainable_params=trainable, frozen_params=frozen), indent=2))
     logf = open(out / "log.jsonl", "a") if rank == 0 else None
 
     def log(row):
         logf.write(json.dumps(row) + "\n")
         logf.flush()
-        if row["step"] % 20 == 0:
+        if row["step"] % 20 == 0 or row["step"] == steps - 1:
             print(json.dumps(row), flush=True)
 
     res = train(net, phases, steps=steps, micro_batch=a.micro_batch,
-                seq=a.seq, grad_accum=grad_accum, lr=a.lr, warmup=a.warmup,
+                seq=a.seq, grad_accum=grad_accum, lr=a.lr, warmup=warmup,
                 decay_frac=a.decay_frac, seed=a.seed, rank=rank, world=world,
                 device=device, max_hours=a.max_hours, log=log)
     if rank == 0:
+        logf.close()
         final = out / "final"
         model.to(torch.bfloat16).save_pretrained(final,
                                                  safe_serialization=True)

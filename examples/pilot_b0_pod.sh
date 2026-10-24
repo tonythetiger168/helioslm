@@ -45,6 +45,12 @@ wait $GAP; echo "base_gap_eval exit $?"; tail -3 /workspace/base_gap.log
 
 # 2. Pilot continued pretraining, stopped early if the ceiling is near
 #    (one hour is kept for saving and the pilot eval).
+# Check first that the multimodal E2B loads for causal LM and that the
+# default --freeze hits its per-layer tables and vision / audio towers.
+python examples/cpt_hf.py --model google/gemma-4-E2B --data /workspace/cpt_data \
+    --tokens "$TOKENS" --out /workspace/runs/b0 --dry-run \
+    > /workspace/cpt_dry_run.log 2>&1
+echo "cpt_hf dry run exit $?"; tail -20 /workspace/cpt_dry_run.log
 MAXH=$(left_h)
 echo "training for at most ${MAXH} h"
 torchrun --nproc_per_node "$NGPU" examples/cpt_hf.py --model google/gemma-4-E2B \

@@ -1,5 +1,38 @@
 # Evastar v5 Changelog
 
+## v5.138 (2026-10-24) - cpt_hf fixes from the RTX 4060 smoke run
+
+`examples/cpt_hf.py` was run once on an RTX 4060 before any pod opened:
+a tiny random `Gemma4ForCausalLM` (same family as gemma-4-E2B, 2 layers,
+local tokenizer, no downloads) on a fetch_mixture-style data dir, 20
+steps. It passed: it trained on CUDA, the loss fell 6.26 to 5.31, the
+decay source switch came at step 16, the outputs were written, and
+`final/` reloaded and generated. Fixes for what the run turned up:
+
+- `fit_warmup`: `wsd_decay_start` never starts decay before warmup
+  ends, so any run shorter than the default warmup (100 steps) silently
+  skipped the decay phase and never switched to the decay sources.
+  `main()` now clamps warmup to the decay start, prints that it did, and
+  records `warmup_used` in `run.json`. The 3B-token pod run (about 2,860
+  steps) is unchanged.
+- `from_pretrained(dtype=...)` replaces the `torch_dtype=` keyword, which
+  transformers 5 deprecates.
+- `--dry-run` loads the model, applies `--freeze`, writes
+  `<out>/dry_run.json` (model class, trainable / frozen counts, frozen
+  parameter groups) and exits. `pilot_b0_pod.sh` runs it before
+  training, to confirm that the multimodal gemma-4-E2B loads for causal
+  LM and that the default freeze reaches its per-layer tables and its
+  vision / audio towers. The smoke run could not check this offline.
+- `log.jsonl` is closed before the final save, and the console prints
+  the last step as well.
+- `tests/test_cpt_pilot.py` (T134) adds two tests. A 20-step run with
+  warmup 100 still switches to the decay sources at step 16, and
+  `dry_run_report` lists the frozen groups.
+
+Not changed yet: `lm_loss` upcasts the full-vocabulary logits to fp32,
+about 4.3 GB per micro-batch at vocab 262k and seq 4096. A chunked
+cross-entropy would free that memory on the pod.
+
 ## v5.137 (2026-10-24) - Route B pilot B0: Gemma 4 E2B continued pretraining
 
 The owner approved the base-gap eval plus a Gemma 4 E2B pilot, US$320 in
