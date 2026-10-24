@@ -76,11 +76,12 @@ def main():
     ap.add_argument("--dtype", choices=["bf16", "fp32"], default="bf16")
     ap.add_argument("--peak-tflops", type=float)
     ap.add_argument("--compile", action="store_true")
-    ap.add_argument("--moe-dispatch", choices=["blocked", "batched"],
+    ap.add_argument("--moe-dispatch", choices=["blocked", "batched", "grouped"],
                     default="batched",
                     help="routed-expert dispatch (v5.106); batched runs all "
                          "experts in two bmm calls (default since v5.139: "
-                         "2.95x faster on an RTX 4060)")
+                         "2.95x faster on an RTX 4060); grouped (v5.149) "
+                         "uses F.grouped_mm with no padding")
     ap.add_argument("--ce-chunk", type=int, default=0,
                     help="v5.141: compute the output head + cross-entropy "
                          "this many tokens at a time (fused, no full "

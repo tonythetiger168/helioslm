@@ -320,7 +320,9 @@ class MoEConfig:
     # [E, C, D] tensor, one Python-level call instead of one per expert
     # and block. Batched equals blocked to float tolerance, not bit for
     # bit, and needs plain nn.Linear experts (it falls back to "blocked"
-    # after quantization / FP8 conversion).
+    # after quantization / FP8 conversion). v5.149 "grouped": the same two
+    # GEMMs as torch.nn.functional.grouped_mm over the expert-sorted rows,
+    # no capacity padding (same fallback as "batched").
     dispatch: str = "blocked"
 
 
@@ -1050,9 +1052,9 @@ class EvastarV5Config:
         if f is not None and (isinstance(f, bool) or not isinstance(f, int) or f < 1):
             raise ValueError(
                 f"mtp.light_ffn_size must be a positive int or None, got {f!r}")
-        if self.moe.dispatch not in ("blocked", "batched"):
+        if self.moe.dispatch not in ("blocked", "batched", "grouped"):
             raise ValueError(
-                f"moe.dispatch must be 'blocked' or 'batched', "
+                f"moe.dispatch must be 'blocked', 'batched' or 'grouped', "
                 f"got {self.moe.dispatch!r}")
         if self.moe.balance_loss_scope not in (None, "micro", "global"):
             raise ValueError(
