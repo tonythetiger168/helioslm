@@ -72,6 +72,13 @@ class AttentionConfig:
     v_head_dim: Optional[int] = None           # full: 128 (per-head value dim, never rotated)
     attention_dropout: float = 0.0
     use_absorption: bool = True    # MLA weight absorption (latent KV cache)
+    # v5.139: with use_absorption, a cache-free TRAINING forward (no past,
+    # use_cache=False) runs the expanded K/V + SDPA path instead: same
+    # weights and math, but no [B, H, T, T] score tensor in eager memory
+    # (RTX 4060: 2.1x tok/s, -40% memory at seq 1024). Decode, prefill
+    # with a cache, eval forwards, fp8 caches, sparse top-k and KV-sharing
+    # layers keep the absorbed path. False restores v5.138 training.
+    expanded_training: bool = True
     # RoPE position scaling (v5.7): None = vanilla RoPE; otherwise a dict
     # {"type": "linear" | "ntk" | "yarn", "factor": float >= 1}. All stretch
     # the effective context by ``factor`` so a checkpoint trained at L

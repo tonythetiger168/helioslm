@@ -213,11 +213,11 @@ def test_exact_resume_and_learning():
                 assert torch.equal(v, sb["model"][k]), (arch, k)
             la = (straight / "log.jsonl").read_text().splitlines()
             lb = (resumed / "log.jsonl").read_text().splitlines()
-            strip = [json.loads(x) for x in la]
-            for x in strip + [json.loads(x) for x in lb]:
-                x.pop("tokens_per_s", None)
+            timing = ("tokens_per_s", "step_tokens_per_s", "peak_mem_gb")
+            strip = [{k: v for k, v in json.loads(x).items() if k not in timing}
+                     for x in la]
             assert strip == [
-                {k: v for k, v in json.loads(x).items() if k != "tokens_per_s"}
+                {k: v for k, v in json.loads(x).items() if k not in timing}
                 for x in lb]
             if arch == "moe":
                 biases = [v for k, v in sa["model"].items()

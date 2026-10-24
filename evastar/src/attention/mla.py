@@ -316,6 +316,7 @@ class MLA(nn.Module):
         self.use_absorption = bool(
             config.attention.use_absorption
         )
+        self.expanded_training = bool(config.attention.expanded_training)
 
         # v5.22 NoPE (Kimi-K3 direction): skip RoPE entirely; q_rope /
         # k_rope keep their projected (unrotated) values and position_ids
@@ -736,7 +737,8 @@ class MLA(nn.Module):
                     "through EvastarV5.forward")
         elif shared_kv is not None:
             raise ValueError("shared_kv given to a layer that does not share KV")
-        if self.use_absorption:
+        if self.use_absorption and not self._train_expanded(
+                past_key_value, use_cache, shared_kv):
             return self._forward_absorbed(
                 hidden_states, attention_mask, past_key_value, use_cache,
                 position_ids, shared_kv,
@@ -745,6 +747,20 @@ class MLA(nn.Module):
             hidden_states, attention_mask, past_key_value, use_cache,
             position_ids, shared_kv,
         )
+
+    def _train_expanded(self, past_key_value, use_cache, shared_kv):
+        """v5.139: True when an absorbed-mode layer may compute this forward
+        on the expanded SDPA path. Only cache-free training forwards
+        qualify, and only when the absorbed path would compute the same
+        thing: an fp8 cache quantizes c_kv even without a cache, sparse
+        top-k selects over latents, and a KV-sharing layer reads its
+        source's latent cache."""
+        return (self.expanded_training and self.training
+                and past_key_value is None and not use_cache
+                and shared_kv is None
+                and getattr(self, "_kv_src", None) is None
+                and self.kv_cache_dtype != "fp8"
+                and self.sparse_top_k is None)
 
     def _forward_expanded(self, hidden_states, attention_mask, past_key_value,
                           use_cache, position_ids, shared_kv=None):

@@ -131,7 +131,10 @@ def test_no_std_normalization():
     adv = (r - r.mean(1, keepdim=True)).reshape(-1)
     trainer.optimizer.step = lambda: None
     stats = trainer._learn_from_samples(samples, None, rewards=REWARDS)
-    assert abs(stats["policy_loss"] - (-adv.sum().item() / 8)) < 1e-7
+    # 1e-6 like test_token_level_loss: since v5.139 the rollout logprobs
+    # (eval, absorbed MLA) and the training ones (expanded MLA) can differ
+    # by one float32 ulp, so the importance ratio is 1 only to ~1e-7.
+    assert abs(stats["policy_loss"] - (-adv.sum().item() / 8)) < 1e-6
     print("PASS test_no_std_normalization")
 
 
