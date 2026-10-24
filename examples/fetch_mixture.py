@@ -1,5 +1,5 @@
 """fetch_mixture.py — route B: download and tokenise a mixture's sources
-into per-source token shards (v5.135).
+into per-source token shards (v5.137).
 
   python examples/fetch_mixture.py \\
       --mixture data/mixtures/b1_gemma4_e4b_cpt_v1.json \\

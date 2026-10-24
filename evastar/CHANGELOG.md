@@ -1,6 +1,6 @@
 # Evastar v5 Changelog
 
-## v5.135 (2026-10-24) - Route B pilot B0: Gemma 4 E2B continued pretraining
+## v5.137 (2026-10-24) - Route B pilot B0: Gemma 4 E2B continued pretraining
 
 The owner approved the base-gap eval plus a Gemma 4 E2B pilot, US$320 in
 total; B1 does not run. One pod script fetches and tokenises the CPT
@@ -25,7 +25,44 @@ against its own base. Runbook and pass rule: `docs/PILOT_B0.md`.
   `MAX_COST`.
 - `examples/base_gap_eval.py --base / --rivals`: measure gaps for any
   model pair (here the pilot checkpoint against `google/gemma-4-E2B`).
-- `evastar/tests/test_cpt_pilot.py` (T133).
+- `evastar/tests/test_cpt_pilot.py` (T134).
+## v5.135 (2026-10-24) - Text in for llama.cpp / Ollama: GGUF vocabulary
+
+v5.130 files carry no vocabulary, so llama.cpp and Ollama need token ids.
+The pretraining tokenizer (`examples/pilot_prepare_data.py`: Hugging Face
+BPE with a `ByteLevel` pre-tokenizer, no prefix space) is GPT-2's
+scheme, which llama.cpp implements as its `gpt2` vocabulary with the
+`gpt-2` pre-tokenizer (same split regex, byte map and merge ranks).
+
+- `src/export/llamacpp.py`:
+  - `gpt2_tokenizer_metadata(tokenizer, vocab_size)` accepts a
+    `tokenizers.Tokenizer`, a `tokenizer.json` path or its parsed JSON,
+    and writes `tokenizer.ggml.{model, pre, tokens, token_type, merges}`.
+    Special tokens are CONTROL and `[UNK]` is UNKNOWN. Embedding rows past
+    the tokenizer become unused `[PAD{id}]` entries. `<|endoftext|>` is
+    EOS and BOS (GPT-2 convention), and no BOS/EOS is added.
+  - It refuses any tokenizer that llama.cpp would split or merge
+    differently: a normalizer, another pre-tokenizer, a prefix space,
+    byte fallback, ignore_merges, a template post-processor, or more ids
+    than embedding rows.
+  - `export_llamacpp_gguf(..., tokenizer=...)` and
+    `deepseek2_metadata(..., tokenizer=...)` take it. Without it the
+    file is id-only as before.
+  - HeliosBPE (space-only splitting) has no llama.cpp pre-tokenizer and
+    stays id-only.
+- `gguf._pack_value` joins array items once instead of growing a bytes
+  object per item (a 50k-token vocabulary was quadratic).
+- Checked with llama.cpp f5027fb (`llama-tokenize --no-escape`) on a
+  6k-token tokenizer trained on repo text plus the zh-TW seed: 320
+  samples (zh-TW, Japanese, Korean, Arabic, code, emoji, full-width
+  spaces, runs of spaces/tabs/newlines, `<|endoftext|>`) give identical
+  ids to `tokenizers`. With a text prompt, `llama-simple` greedy decoding
+  of an f32 export reproduces the model's own greedy continuation for
+  zh-TW, code and English prompts.
+- `tests/test_llamacpp_tokenizer.py` (T133) re-encodes text from the
+  GGUF arrays alone (tokens + merge ranks) and requires the tokenizer's
+  ids. It also checks padding, token types, special ids and merge
+  format, and that each unsupported tokenizer shape is refused.
 ## v5.134 (2026-10-24) - Rename the code to evastar, old names kept as aliases
 
 - Package `helioslm_v5/` moved to `evastar/` (git mv, history kept); every

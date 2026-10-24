@@ -1,5 +1,5 @@
 """cpt_hf.py — route B: continued pretraining of a Hugging Face base on
-per-source token shards (v5.135).
+per-source token shards (v5.137).
 
   # one GPU
   python examples/cpt_hf.py --model google/gemma-4-E2B \\

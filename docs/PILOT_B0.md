@@ -1,4 +1,4 @@
-# B 路線先導 B0：Gemma 4 E2B 續訓（`examples/pilot_b0_pod.sh`，v5.135）
+# B 路線先導 B0：Gemma 4 E2B 續訓（`examples/pilot_b0_pod.sh`，v5.137）
 
 擁有者 2026-10-24 批准：底模差距評測＋E2B 先導，總上限 US$320。
 正式 B1（E4B，約 US$3.8k）不跑。

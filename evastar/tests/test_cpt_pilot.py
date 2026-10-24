@@ -1,5 +1,5 @@
-"""T133 — route B pilot: mixture fetch and continued-pretraining loop
-(v5.135).
+"""T134 — route B pilot: mixture fetch and continued-pretraining loop
+(v5.137).
 
 Pins:
 
