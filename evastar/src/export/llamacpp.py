@@ -1,5 +1,10 @@
 """Export HeliosLM checkpoints as llama.cpp ``deepseek2`` GGUF files.
 
+v5.142: hybrid KDA + MLA configs (``hybrid_attention.style="k3"``, nope
+MLA) export to llama.cpp's ``kimi-k3`` architecture instead; see
+:func:`llamacpp_arch` and :func:`to_kimi_k3_tensors` at the end of this
+module.
+
 ``gguf.export_gguf`` writes a self-describing ``helioslm`` container that no
 GGML executor runs. This module maps the same weights onto llama.cpp's
 existing ``deepseek2`` architecture (MLA + sigmoid-routed MoE with shared
@@ -374,7 +379,268 @@ def export_llamacpp_gguf(model, path, config, *, dtype="f16", name=None,
     embeds the vocabulary so llama.cpp / Ollama take text; without it the
     file takes token ids. Returns the path written.
     """
-    tensors = to_deepseek2_tensors(model, config)
-    kv = deepseek2_metadata(config, dtype=dtype, name=name, tokenizer=tokenizer)
-    return write_gguf(path, kv,
-                      tensors, dtype, keep_1d_f32=True, keep_f32=KEEP_F32)
+    if llamacpp_arch(config) == KIMI_K3:
+        tensors, kda = to_kimi_k3_tensors(model, config)
+        kv = kimi_k3_metadata(config, kda, dtype=dtype, name=name, tokenizer=tokenizer)
+        keep = KEEP_F32 + K3_KEEP_F32
+    else:
+        tensors = to_deepseek2_tensors(model, config)
+        kv = deepseek2_metadata(config, dtype=dtype, name=name, tokenizer=tokenizer)
+        keep = KEEP_F32
+    return write_gguf(path, kv, tensors, dtype, keep_1d_f32=True, keep_f32=keep)
+
+
+# ---------------------------------------------------------------------------
+# kimi-k3: hybrid KDA + MLA models (v5.142)
+# ---------------------------------------------------------------------------
+
+KIMI_K3 = "kimi-k3"
+# llama.cpp's kimi-k3 graph only has the situ activation,
+# beta * tanh(g / beta) * sigmoid(g) * up (linear_beta <= 0 leaves up as is).
+# With a huge beta, tanh(g / beta) * beta is g to float rounding, so the
+# activation is SwiGLU's silu(g) * up.
+SWIGLU_SITU_BETA = 1e30
+# the short-conv taps and the low-rank decay gate stay F32 (small, and the
+# decay is exponentiated)
+K3_KEEP_F32 = ("ssm_conv1d_q.weight", "ssm_conv1d_k.weight", "ssm_conv1d_v.weight",
+               "ssm_f_a.weight", "ssm_f_b.weight")
+
+# features the deepseek2 list refuses that the kimi-k3 graph computes
+_K3_OK = {"hybrid_attention.enabled", "attention.nope", "attention.output_gate",
+          "moe.latent_dim", "moe.activation", "use_attention_residuals",
+          "multimodal.enabled"}
+# text only, as llama.cpp's own Kimi-K3 converter: the vision / audio
+# encoders and their projections are left out of the GGUF file
+_K3_TEXT_ONLY = ("mtp_modules.", "vision_encoder.", "vision_proj.",
+                 "audio_encoder.", "audio_proj.")
+
+
+def kimi_k3_incompatibilities(config):
+    """Reasons ``config`` cannot run as llama.cpp kimi-k3 ([] = exportable)."""
+    out = []
+    for path, bad, reason in _CHECKS:
+        if path in _K3_OK:
+            continue
+        value = _get(config, path)
+        if value is not None and bad(value):
+            out.append(f"{path}={value!r}: {reason}")
+    a, h, m = config.attention, config.hybrid_attention, config.moe
+    if m.latent_dim is not None and getattr(m, "router_input", "latent") != "full":
+        out.append("moe.router_input='latent': kimi-k3 routes LatentMoE on the "
+                   "full-width input (router_input='full')")
+    if m.activation not in ("swiglu", "situ_k3"):
+        out.append(f"moe.activation={m.activation!r}: kimi-k3 computes SwiGLU or situ_k3")
+    if (config.use_attention_residuals
+            and getattr(config, "attention_residual_style", "gate") != "block"):
+        out.append("use_attention_residuals=True with attention_residual_style='gate': "
+                   "kimi-k3 computes the 'block' style")
+    if not a.nope:
+        out.append("attention.nope=False: kimi-k3 MLA is nope-only (no RoPE)")
+    if a.nope_attn_temperature:
+        out.append("attention.nope_attn_temperature=True: NoPE attention temperature")
+    if h.enabled:
+        if getattr(h, "style", "default") != "k3":
+            out.append(f"hybrid_attention.style={h.style!r}: only the 'k3' KDA layer "
+                       "matches llama.cpp")
+        if h.linear_num_heads != a.num_attention_heads:
+            out.append(f"hybrid_attention.linear_num_heads={h.linear_num_heads}: "
+                       "llama.cpp shares one head count between KDA and MLA layers "
+                       f"(attention.num_attention_heads={a.num_attention_heads})")
+        if h.gate_rank not in (None, h.linear_head_dim):
+            out.append(f"hybrid_attention.gate_rank={h.gate_rank}: llama.cpp's "
+                       "f_a/f_b rank is the KDA head dim")
+    return out
+
+
+def llamacpp_arch(config):
+    """The llama.cpp architecture ``config`` exports to, or None."""
+    if not llamacpp_incompatibilities(config):
+        return ARCHITECTURE
+    if not kimi_k3_incompatibilities(config):
+        return KIMI_K3
+    return None
+
+
+def _kda_layers(model, config):
+    if hasattr(model, "layers"):
+        return [bool(getattr(layer.attention, "is_recurrent_attention", False))
+                for layer in model.layers]
+    sd = model
+    return [f"layers.{i}.attention.beta_proj.weight" in sd
+            for i in range(config.num_hidden_layers)]
+
+
+def to_kimi_k3_tensors(model, config):
+    """Map a hybrid EvastarV5 model to llama.cpp kimi-k3 tensors.
+
+    Returns ``(tensors, kda_layers)``; raises ValueError on an incompatible
+    config or an unmapped parameter.
+    """
+    problems = kimi_k3_incompatibilities(config)
+    if problems:
+        raise ValueError("config cannot run as llama.cpp kimi-k3:\n  - "
+                         + "\n  - ".join(problems))
+    kda = _kda_layers(model, config)
+    sd = model.state_dict() if not isinstance(model, Mapping) else dict(model)
+    params = ({n for n, _ in model.named_parameters()}
+              if hasattr(model, "named_parameters") else set(sd))
+    used = set()
+
+    def take(name):
+        if name not in sd:
+            raise ValueError(f"expected tensor {name!r} is missing")
+        used.add(name)
+        return sd[name].detach().float()
+
+    a = config.attention
+    H = a.num_attention_heads
+    nope, v_dim = a.no_rope_head_dim, a.v_head_dim
+    zc = bool(getattr(config, "zero_centered_norm", False))
+    n_dense = int(config.moe.first_k_dense or 0)
+    res = bool(config.use_attention_residuals)
+    out = [("token_embd.weight", take("embed_tokens.weight"))]
+    if res:
+        out.append(("output_res_score.weight", take("output_res_score")))
+
+    for i in range(config.num_hidden_layers):
+        p, b = f"layers.{i}.", f"blk.{i}."
+        att = p + "attention."
+        out.append((b + "attn_norm.weight", _norm_weight(take(p + "pre_attn_norm.weight"), zc)))
+        if res:
+            out += [(b + "attn_res_score.weight", take(p + "attn_res_score")),
+                    (b + "ffn_res_score.weight", take(p + "ffn_res_score"))]
+        if kda[i]:
+            for x in "qkv":
+                out.append((b + f"attn_{x}.weight", take(att + f"{x}_proj.weight")))
+            conv = take(att + "conv_weight")                      # [3 * inner, K]
+            for x, w in zip("qkv", conv.chunk(3, 0)):
+                out.append((b + f"ssm_conv1d_{x}.weight", w[:, None, :].contiguous()))
+            out += [(b + "ssm_f_a.weight", take(att + "f_a.weight")),
+                    (b + "ssm_f_b.weight", take(att + "f_b.weight")),
+                    (b + "ssm_beta.weight", take(att + "beta_proj.weight")),
+                    (b + "ssm_a", -torch.exp(take(att + "A_log"))),
+                    (b + "ssm_dt.bias", take(att + "dt_bias")),
+                    (b + "ssm_g.weight", take(att + "out_gate.weight")),
+                    (b + "ssm_norm.weight", take(att + "o_norm")),
+                    (b + "attn_output.weight", take(att + "o_proj.weight"))]
+        else:
+            out.append((b + "attn_q_a.weight", take(att + "q_a_proj.weight")))
+            out.append((b + "attn_q_a_norm.weight", _norm_weight(take(att + "norm_q.weight"), zc)))
+            out.append((b + "attn_q_b.weight", take(att + "q_b_proj.weight")))
+            kv_a = torch.cat([take(att + "kv_a_proj.weight"), take(att + "k_rope_proj.weight")], 0)
+            out.append((b + "attn_kv_a_mqa.weight", kv_a))
+            out.append((b + "attn_kv_a_norm.weight", _norm_weight(take(att + "norm_kv.weight"), zc)))
+            kv_b = take(att + "kv_b_proj.weight").view(H, nope + v_dim, -1)
+            out.append((b + "attn_k_b.weight", kv_b[:, :nope, :].transpose(1, 2).contiguous()))
+            out.append((b + "attn_v_b.weight", kv_b[:, nope:, :].contiguous()))
+            if a.output_gate:
+                out.append((b + "attn_gate.weight", take(att + "o_gate_proj.weight")))
+            out.append((b + "attn_output.weight", take(att + "o_proj.weight")))
+        out.append((b + "ffn_norm.weight", _norm_weight(take(p + "pre_moe_norm.weight"), zc)))
+        out += _ffn_tensors(take, config, p, b, i < n_dense)
+
+    out.append(("output_norm.weight", _norm_weight(take("norm.weight"), zc)))
+    out.append(("output.weight", take("lm_head.weight")))
+    unmapped = sorted(n for n in params - used if not n.startswith(_K3_TEXT_ONLY))
+    if unmapped:
+        raise ValueError(
+            "parameters with no kimi-k3 counterpart (refusing to drop them): "
+            + ", ".join(unmapped[:8]) + (" ..." if len(unmapped) > 8 else ""))
+    return out, kda
+
+
+def _ffn_tensors(take, config, p, b, dense):
+    if dense:
+        gate, up = _split_w13(take(p + "moe.w13.weight"))
+        return [(b + "ffn_gate.weight", gate), (b + "ffn_up.weight", up),
+                (b + "ffn_down.weight", take(p + "moe.w2.weight"))]
+    out = [(b + "ffn_gate_inp.weight", take(p + "moe.router.weight")),
+           (b + "exp_probs_b.bias", take(p + "moe.route_bias"))]
+    if config.moe.latent_dim is not None:
+        out += [(b + "ffn_routed_down.weight", take(p + "moe.down_proj.weight")),
+                (b + "ffn_routed_up.weight", take(p + "moe.up_proj.weight"))]
+    gates, ups, downs = [], [], []
+    for e in range(config.moe.num_experts):
+        gate, up = _split_w13(take(p + f"moe.experts.{e}.w13.weight"))
+        gates.append(gate)
+        ups.append(up)
+        downs.append(take(p + f"moe.experts.{e}.w2.weight"))
+    out += [(b + "ffn_gate_exps.weight", torch.stack(gates)),
+            (b + "ffn_up_exps.weight", torch.stack(ups)),
+            (b + "ffn_down_exps.weight", torch.stack(downs))]
+    sg, su, sdn = [], [], []
+    for s in range(config.moe.num_shared_experts):
+        gate, up = _split_w13(take(p + f"moe.shared_experts.{s}.w13.weight"))
+        sg.append(gate)
+        su.append(up)
+        sdn.append(take(p + f"moe.shared_experts.{s}.w2.weight"))
+    out += [(b + "ffn_gate_shexp.weight", torch.cat(sg, 0)),
+            (b + "ffn_up_shexp.weight", torch.cat(su, 0)),
+            (b + "ffn_down_shexp.weight", torch.cat(sdn, 1))]
+    return out
+
+
+def kimi_k3_metadata(config, kda_layers, *, dtype="f16", name=None, tokenizer=None):
+    """Typed GGUF keys for llama.cpp's kimi-k3 loader."""
+    a, m, h = config.attention, config.moe, config.hybrid_attention
+    arch = KIMI_K3
+    kv = []
+
+    def u32(key, value):
+        kv.append((key, _VAL_UINT32, int(value)))
+
+    def f32(key, value):
+        kv.append((key, _VAL_FLOAT32, float(value)))
+
+    kv.append(("general.architecture", _VAL_STRING, arch))
+    u32("general.alignment", DEFAULT_ALIGNMENT)
+    kv.append(("general.name", _VAL_STRING, name or getattr(config, "model_name", "Evastar")))
+    kv.append(("general.license", _VAL_STRING, "Apache-2.0"))
+    u32("general.file_type", _FILE_TYPE_ENUM[dtype])
+    u32(f"{arch}.context_length", config.max_position_embeddings)
+    u32(f"{arch}.embedding_length", config.hidden_size)
+    u32(f"{arch}.block_count", config.num_hidden_layers)
+    u32(f"{arch}.feed_forward_length", config.intermediate_size)
+    u32(f"{arch}.vocab_size", config.vocab_size)
+    u32(f"{arch}.attention.head_count", a.num_attention_heads)
+    kv.append((f"{arch}.attention.head_count_kv", _VAL_ARRAY,
+               (_VAL_UINT32, [0 if r else 1 for r in kda_layers])))
+    u32(f"{arch}.attention.key_length", a.kv_latent_dim + a.rope_head_dim)
+    u32(f"{arch}.attention.value_length", a.kv_latent_dim)
+    u32(f"{arch}.attention.key_length_mla", a.no_rope_head_dim + a.rope_head_dim)
+    u32(f"{arch}.attention.value_length_mla", a.v_head_dim)
+    u32(f"{arch}.attention.q_lora_rank", a.q_lora_rank)
+    u32(f"{arch}.attention.kv_lora_rank", a.kv_latent_dim)
+    f32(f"{arch}.attention.layer_norm_rms_epsilon", config.rms_norm_eps)
+    u32(f"{arch}.rope.dimension_count", a.rope_head_dim)
+    u32(f"{arch}.ssm.conv_kernel", h.short_conv_kernel if h.enabled else 4)
+    u32(f"{arch}.kda.head_dim", h.linear_head_dim if h.enabled else 1)
+    if h.enabled:
+        f32(f"{arch}.kda.gate_lower_bound", h.gate_lower_bound)
+    u32(f"{arch}.leading_dense_block_count", int(m.first_k_dense or 0))
+    u32(f"{arch}.expert_count", m.num_experts)
+    u32(f"{arch}.expert_used_count", m.num_activated_experts)
+    u32(f"{arch}.expert_shared_count", m.num_shared_experts)
+    u32(f"{arch}.expert_feed_forward_length", m.expert_hidden_size)
+    f32(f"{arch}.expert_weights_scale", 1.0)
+    kv.append((f"{arch}.expert_weights_norm", _VAL_BOOL, False))
+    u32(f"{arch}.expert_gating_func", GATING_SIGMOID)
+    if m.latent_dim is not None:
+        u32(f"{arch}.expert_latent_length", m.latent_dim)
+    u32(f"{arch}.attn_res.block_size",
+        config.attn_res_block_size if config.use_attention_residuals else 0)
+    if m.activation == "situ_k3":
+        f32(f"{arch}.activation.situ_beta", m.situ_beta)
+        f32(f"{arch}.activation.situ_linear_beta", m.situ_linear_beta)
+    else:
+        f32(f"{arch}.activation.situ_beta", SWIGLU_SITU_BETA)
+        f32(f"{arch}.activation.situ_linear_beta", 0.0)
+    if tokenizer is not None:
+        kv.extend(gpt2_tokenizer_metadata(tokenizer, config.vocab_size))
+        return kv
+    kv.append(("tokenizer.ggml.model", _VAL_STRING, "none"))
+    for key in ("bos_token_id", "eos_token_id", "pad_token_id"):
+        value = getattr(config, key, None)
+        if value is not None:
+            u32(f"tokenizer.ggml.{key}", value)
+    return kv

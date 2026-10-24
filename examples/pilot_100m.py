@@ -82,7 +82,7 @@ def main():
                          "experts in two bmm calls (default since v5.139: "
                          "2.95x faster on an RTX 4060)")
     ap.add_argument("--ce-chunk", type=int, default=0,
-                    help="v5.142: compute the output head + cross-entropy "
+                    help="v5.141: compute the output head + cross-entropy "
                          "this many tokens at a time (fused, no full "
                          "[tokens, vocab] logits); 0 = full logits. KD "
                          "batches always use full logits")

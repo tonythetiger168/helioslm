@@ -109,7 +109,8 @@ def past_seq_len(past_key_values) -> int:
     return 0
 
 
-def chunked_delta_rule(q, k, v, decay, keep, seg_start, state, chunk, sub=16):
+def chunked_delta_rule(q, k, v, decay, keep, seg_start, state, chunk, sub=16,
+                       log_decay=False, decay_first=False):
     """Chunked-parallel form of the recurrence in the module docstring
     (v5.107, ``hybrid_attention.chunk_size``); same results as the
     per-token loop up to float rounding.
@@ -141,6 +142,12 @@ def chunked_delta_rule(q, k, v, decay, keep, seg_start, state, chunk, sub=16):
     with earlier columns factor through the log-decay R at the end of the
     previous sub-chunk, ``exp(G_t - G_j) = exp(G_t - R) exp(R - G_j)``,
     where both factors are <= 1 (plain matmuls, no overflow).
+
+    v5.142 (``hybrid_attention.style="k3"``): ``log_decay`` takes ``decay``
+    as the log-decay itself; ``decay_first`` decays the state before the
+    retrieval (``u_t = keep_t (v_t - (Lam_t S_{t-1})^T k_t)``, llama.cpp's
+    gated delta net), so the k-side decays run to t instead of t - 1;
+    ``keep`` may then be [B, H, T] (write strength beta times the mask).
     """
     out_dtype, state_dtype = q.dtype, state.dtype
     ct = torch.promote_types(q.dtype, torch.float32)   # fp64 stays fp64
@@ -148,7 +155,7 @@ def chunked_delta_rule(q, k, v, decay, keep, seg_start, state, chunk, sub=16):
     B, H, T, _ = q.shape
     dev = q.device
     per_channel = decay.dim() == 4
-    g = torch.log(decay.to(ct))
+    g = decay.to(ct) if log_decay else torch.log(decay.to(ct))
     if not per_channel:
         g = g[..., None]                                     # [B, H, T, 1]
     keep = keep.to(ct) if keep is not None else None
@@ -181,13 +188,14 @@ def chunked_delta_rule(q, k, v, decay, keep, seg_start, state, chunk, sub=16):
 
     lower = torch.ones(n, n, dtype=torch.bool, device=dev).tril()
     strict = lower.tril(-1)
+    Gk = G if decay_first else Gp                            # k-side row decay
     if not per_channel:
         def pair(Ga, mask):
             m = mask if same is None else mask & same
             d = Ga - G.transpose(-1, -2)                         # [.., n, n]
             return torch.exp(d.masked_fill(~m, float("-inf")))
         kk = kc @ kc.transpose(-1, -2)
-        A = kk * pair(Gp, strict)
+        A = kk * pair(Gk, strict)
         Qm = (qc @ kc.transpose(-1, -2)) * pair(G, lower)
     else:
         A = q.new_zeros(B, H, nc, n, n)
@@ -207,7 +215,7 @@ def chunked_delta_rule(q, k, v, decay, keep, seg_start, state, chunk, sub=16):
 
             kr = kc[:, :, :, rows]
             A[..., rows, rows] = torch.einsum(
-                "bhntc,bhnjc,bhntjc->bhntj", kr, kr, pair(Gp[:, :, :, rows], d_st))
+                "bhntc,bhnjc,bhntjc->bhntj", kr, kr, pair(Gk[:, :, :, rows], d_st))
             Qm[..., rows, rows] = torch.einsum(
                 "bhntc,bhnjc,bhntjc->bhntj", qc[:, :, :, rows], kr, pair(Gr, d_lo))
             if a0 == 0:
@@ -215,7 +223,7 @@ def chunked_delta_rule(q, k, v, decay, keep, seg_start, state, chunk, sub=16):
             # pairs with earlier columns, factored through R = G_{a0-1}
             R = G[:, :, :, a0 - 1:a0]                            # [.., 1, C]
             kcol = kc[:, :, :, :a0] * torch.exp(R - G[:, :, :, :a0])
-            Ab = (kr * torch.exp(Gp[:, :, :, rows] - R)) @ kcol.transpose(-1, -2)
+            Ab = (kr * torch.exp(Gk[:, :, :, rows] - R)) @ kcol.transpose(-1, -2)
             Qb = (qc[:, :, :, rows] * torch.exp(Gr - R)) @ kcol.transpose(-1, -2)
             if same is not None:
                 sb = same[..., rows, :a0].to(ct)
@@ -223,12 +231,12 @@ def chunked_delta_rule(q, k, v, decay, keep, seg_start, state, chunk, sub=16):
             A[..., rows, :a0] = Ab
             Qm[..., rows, :a0] = Qb
 
-    kdec, qdec = kc * torch.exp(Gp), qc * torch.exp(G)
+    kdec, qdec = kc * torch.exp(Gk), qc * torch.exp(G)
     if inh is not None:
         kdec, qdec = kdec * inh, qdec * inh
     rv = vc
     if keep is not None:
-        kp = keep.view(B, 1, nc, n, 1)
+        kp = keep.view(B, keep.shape[1], nc, n, 1)
         rv, kdec, A = rv * kp, kdec * kp, A * kp
     eye = torch.eye(n, dtype=ct, device=dev)
     # u = U0 - Kd S_0 with (I + A) U0 = keep v, (I + A) Kd = keep kdec
@@ -292,12 +300,33 @@ class GatedDeltaAttention(nn.Module):
             config.hybrid_attention.per_channel_decay)
         gate_width = self.num_heads * self.head_dim \
             if self.per_channel_decay else self.num_heads
-        # Bias-free Linear + a raw bias parameter initialized to +4 so
-        # decay ~= sigmoid(4) ~= 0.982 at init. A raw Parameter is used
-        # because EvastarV5._init_weights zeroes every Linear bias.
-        self.g_proj = nn.Linear(self.hidden_size, gate_width, bias=False)
-        self.decay_bias = nn.Parameter(
-            torch.full((gate_width,), 4.0))
+        # v5.142: style "k3" = llama.cpp's kimi-k3 KDA layer (see
+        # HybridAttentionConfig.style); "default" keeps the v5.5 layer.
+        self.style = hc.style
+        self.norm_eps = config.rms_norm_eps
+        if self.style == "k3":
+            inner = self.num_heads * self.head_dim
+            rank = hc.gate_rank or self.head_dim
+            self.gate_lower_bound = float(hc.gate_lower_bound)
+            self.f_a = nn.Linear(self.hidden_size, rank, bias=False)
+            self.f_b = nn.Linear(rank, inner, bias=False)
+            # raw Parameters (EvastarV5._init_weights zeroes Linear biases).
+            # At init exp(A_log) = 1 and the log-decay is about
+            # lower_bound * sigmoid(dt_bias) = log(0.982), as in v5.5.
+            self.A_log = nn.Parameter(torch.zeros(self.num_heads))
+            dt = math.log(math.log(0.982) / self.gate_lower_bound)
+            self.dt_bias = nn.Parameter(torch.full(
+                (inner,), dt - math.log1p(-math.exp(dt))))
+            self.beta_proj = nn.Linear(self.hidden_size, self.num_heads, bias=False)
+            self.out_gate = nn.Linear(self.hidden_size, inner, bias=False)
+            self.o_norm = nn.Parameter(torch.ones(self.head_dim))
+        else:
+            # Bias-free Linear + a raw bias parameter initialized to +4 so
+            # decay ~= sigmoid(4) ~= 0.982 at init. A raw Parameter is used
+            # because EvastarV5._init_weights zeroes every Linear bias.
+            self.g_proj = nn.Linear(self.hidden_size, gate_width, bias=False)
+            self.decay_bias = nn.Parameter(
+                torch.full((gate_width,), 4.0))
 
         self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False)
         self.q_scale = 1.0 / math.sqrt(self.head_dim)
@@ -329,6 +358,13 @@ class GatedDeltaAttention(nn.Module):
         upper bound would round to exactly 1.0; fp32 keeps the historical
         [1e-6, 1 - 1e-6] bounds.
         """
+        if self.style == "k3":
+            # log-decay in (lower_bound, 0): [B, seq, H, Dk]
+            B, seq, _ = hidden_states.shape
+            z = (self.f_b(self.f_a(hidden_states)) + self.dt_bias).view(
+                B, seq, self.num_heads, self.head_dim)
+            return self.gate_lower_bound * torch.sigmoid(
+                torch.exp(self.A_log)[:, None] * z)
         g = torch.sigmoid(self.g_proj(hidden_states) + self.decay_bias)
         if self.per_channel_decay:
             B, seq, _ = g.shape
@@ -443,13 +479,27 @@ class GatedDeltaAttention(nn.Module):
         k = k.view(B, seq, self.num_heads, self.head_dim)
         v = v.view(B, seq, self.num_heads, self.head_dim)
         # k is L2-normalized (delta rule); q is scaled like attention scores.
-        k = F.normalize(k.transpose(1, 2), dim=-1)          # [B, H, seq, Dk]
-        q = q.transpose(1, 2) * self.q_scale                # [B, H, seq, Dk]
+        if self.style == "k3":
+            # llama.cpp build_gdn_l2_norm: x / sqrt(sum x^2 + eps), q and k
+            k = self._l2(k.transpose(1, 2))
+            q = self._l2(q.transpose(1, 2)) * self.q_scale
+        else:
+            k = F.normalize(k.transpose(1, 2), dim=-1)      # [B, H, seq, Dk]
+            q = q.transpose(1, 2) * self.q_scale            # [B, H, seq, Dk]
         v = v.transpose(1, 2)                               # [B, H, seq, Dv]
         decay = self.decay_gate(hidden_states).transpose(1, 2)
-        # [B, H, seq] (per-head) or [B, H, seq, Dk] (per-channel)
+        # [B, H, seq] (per-head) or [B, H, seq, Dk] (per-channel);
+        # style "k3": the log-decay [B, H, seq, Dk]
 
-        if attention_mask is not None:
+        if self.style == "k3":
+            # write strength beta (times the mask); a masked token gets
+            # log-decay 0 and no write, so the state passes through.
+            keep = torch.sigmoid(self.beta_proj(hidden_states)).transpose(1, 2)
+            if attention_mask is not None:
+                m = attention_mask[:, -seq:].to(decay.dtype)[:, None, :]
+                keep = keep * m
+                decay = decay * m[..., None]
+        elif attention_mask is not None:
             keep = attention_mask[:, -seq:].to(decay.dtype)  # [B, seq]
             keep = keep[:, None, :]                          # [B, 1, seq]
             # Masked token: decay -> 1 (no forgetting) and no write; the
@@ -468,12 +518,22 @@ class GatedDeltaAttention(nn.Module):
         # the state is zeroed before the boundary token is processed. With
         # chunk_size set, multi-token forwards use the chunked-parallel
         # form instead (same math, see chunked_delta_rule).
+        k3 = self.style == "k3"
         if self.chunk_size and seq > 1:
             out, state = chunked_delta_rule(
                 q, k, v, decay, keep, seg_start,
-                state.as_subclass(torch.Tensor), self.chunk_size)
+                state.as_subclass(torch.Tensor), self.chunk_size,
+                log_decay=k3, decay_first=k3)
         else:
             out, state = self._sequential(q, k, v, decay, keep, seg_start, state)
+        if k3:
+            # RMS norm over each head's output, times sigmoid(out_gate(x))
+            o = out.as_subclass(torch.Tensor).float()
+            o = o * torch.rsqrt(o.pow(2).mean(-1, keepdim=True) + self.norm_eps)
+            o = o.to(out.dtype) * self.o_norm.to(out.dtype)
+            gate = torch.sigmoid(self.out_gate(hidden_states)).view(
+                B, seq, self.num_heads, self.head_dim).transpose(1, 2)
+            out = o * gate
 
         # Subclass hygiene: when the incoming state was a StateTensor, plain
         # torch ops keep the subclass (Tensor subclasses are "sticky"), so
@@ -491,11 +551,27 @@ class GatedDeltaAttention(nn.Module):
                 present = present + (new_conv_state.as_subclass(StateTensor),)
         return output, present
 
+    def _l2(self, x):
+        return x * torch.rsqrt(x.pow(2).sum(-1, keepdim=True) + self.norm_eps)
+
     def _sequential(self, q, k, v, decay, keep, seg_start, state):
         """The per-token recurrence (default; always used for decode)."""
         B = q.shape[0]
         seq = q.shape[2]
         outs = []
+        if getattr(self, "style", "default") == "k3":
+            # decay first, then retrieve and write (llama.cpp gated delta
+            # net); decay is the log-decay, keep the write strength [B, H, T]
+            for t in range(seq):
+                if seg_start is not None and bool(seg_start[:, t].any()):
+                    state = state * (~seg_start[:, t]).view(B, 1, 1, 1).to(state.dtype)
+                k_t = k[:, :, t]
+                state = torch.exp(decay[:, :, t, :, None]) * state
+                r_t = torch.einsum("bhk,bhkv->bhv", k_t, state)
+                delta = (v[:, :, t] - r_t) * keep[:, :, t, None]
+                state = state + k_t.unsqueeze(-1) * delta.unsqueeze(-2)
+                outs.append(torch.einsum("bhk,bhkv->bhv", q[:, :, t], state))
+            return torch.stack(outs, dim=2), state
         for t in range(seq):
             if seg_start is not None and bool(seg_start[:, t].any()):
                 state = state * (~seg_start[:, t]).view(B, 1, 1, 1).to(state.dtype)

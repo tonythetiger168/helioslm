@@ -1,4 +1,4 @@
-"""T140 — fused chunked output head + cross-entropy, v5.142.
+"""T140 — fused chunked output head + cross-entropy, v5.141.
 
 ``chunked_lm_loss`` computes the LM loss (and, in the same pass, its
 gradients) ``chunk`` tokens at a time, so the [tokens, vocab] logits never

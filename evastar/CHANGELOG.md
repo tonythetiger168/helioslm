@@ -1,6 +1,96 @@
 # Evastar v5 Changelog
 
-## v5.142 (2026-10-24) - Fused chunked output head + cross-entropy
+## v5.142 (2026-10-24) - hybrid (KDA + MLA) and K3-block models run in llama.cpp
+
+Until now only the dense / MoE MLA configs exported to llama.cpp
+(`deepseek2`); everything with KDA layers was refused. llama.cpp f5027fb
+already ships a `kimi-k3` graph (KDA + nope MLA + MoE, plus LatentMoE and
+attention residuals), so the KDA layer is aligned to it and exported to
+it, with no C++ to maintain.
+
+`hybrid_attention.style="k3"` (default "default", unchanged) makes
+`GatedDeltaAttention` compute that graph's KDA layer:
+
+- the state decays before the retrieval, and the write has a sigmoid
+  strength per head: `S' = exp(g) S`, `u = beta (v - S'^T k)`,
+  `S = S' + k u^T`, `o = S^T q`;
+- q and k are L2-normalized as `x / sqrt(sum x^2 + eps)` (q then scaled
+  by 1/sqrt(Dk));
+- log-decay `g = lower_bound * sigmoid(exp(A_log) * (f_b(f_a(x)) +
+  dt_bias))` with `gate_lower_bound` (default -5) and a rank `gate_rank`
+  (default the head dim) projection, initialized to decay 0.982 like the
+  default style;
+- output: RMS norm over each head (learned [Dk] weight) times
+  `sigmoid(out_gate(x))`, then `o_proj`.
+
+It needs `per_channel_decay=True` and a short conv. `chunked_delta_rule`
+takes `log_decay` / `decay_first` and a per-head write strength.
+
+The rest of the K3 block is aligned the same way (all opt-in, defaults
+unchanged):
+
+- `attention_residual_style="block"` (with `use_attention_residuals`):
+  Kimi K3's block attention residuals. Every `attn_res_block_size`
+  layers the raw layer input is banked and the residual stream restarts
+  from that layer's attention output; each sublayer and the final norm
+  read a softmax mix of the bank and the current stream, scored by a
+  learned [hidden] vector against each RMS-normalized candidate (zero
+  init = uniform mix). `block_res_mix` in `model_v5.py`.
+- `moe.router_input="full"`: LatentMoE routes on the full-width input;
+  the experts stay in the latent space.
+- `moe.activation="situ_k3"`: K3's situ GLU, `beta * tanh(a / beta) *
+  sigmoid(a) * linear_beta * tanh(b / linear_beta)` (`situ_beta`,
+  `situ_linear_beta`; linear beta <= 0 leaves b as is), in the routed,
+  shared and dense FFNs, blocked and batched dispatch.
+- `k3_block_config(size, llamacpp=True)` and the pilot arch
+  `k3_llamacpp` (`pilot_100m.py --arch k3_llamacpp`): the K3 block with
+  all of the above, nope MLA, a 4-tap short conv and as many KDA heads
+  as MLA heads. The lite, mid and full presets all export; multimodal
+  configs export their text model only, as llama.cpp's own Kimi-K3
+  converter does.
+
+`export_llamacpp_gguf` now picks the architecture
+(`llamacpp_arch(config)`): `deepseek2` as before, or `kimi-k3` for
+configs that pass `kimi_k3_incompatibilities` (style "k3", nope MLA, one
+head count for KDA and MLA layers; LatentMoE with `router_input="full"`,
+attention residuals in the "block" style, SwiGLU or `situ_k3`). KDA
+layers write `attn_{q,k,v}`, split `ssm_conv1d_{q,k,v}`,
+`ssm_f_a/f_b`, `ssm_beta`, `ssm_a = -exp(A_log)`, `ssm_dt.bias`,
+`ssm_g`, `ssm_norm`; MLA layers write the deepseek2 tensors without the
+RoPE permutation, plus `attn_gate` for the output gate; per-layer
+`head_count_kv` (0 = KDA). The graph only has the situ activation, so
+SwiGLU is written as situ with beta 1e30 (`beta * tanh(g / beta)` is `g`
+to float rounding) and linear beta 0. GGUF keys may now contain `-`
+(llama.cpp architecture names).
+
+Checked in llama.cpp f5027fb (CPU, `llama_decode` logits of every
+position, lite shapes, 4 layers = 3 KDA + 1 MLA unless noted), max abs
+difference to Evastar's logits (scale ~1.5), f32: plain 4.5e-5; token by
+token (ubatch 1) 4.7e-5; 300 tokens 5.4e-5 (ubatch 7: same); MLA output
+gate 2.9e-5; Evastar chunk 16 3.8e-5; first_k_dense 1 6.1e-5; two shared
+experts 5.3e-5; zero-centered norms 4.9e-5; 8 layers alternating 4.1e-4;
+f16 2.3e-3 (top-1 1.000). q8_0 / q4_k on these random 128-wide
+weights: cosine 0.998 / 0.875. With the K3 parts: LatentMoE 5.6e-5;
+situ_k3 + a dense layer 5.0e-5; block residuals (block 2, scores std
+0.1) 1.8e-4; `k3_block_config("lite", 8 layers, llamacpp=True)` 6.3e-5;
+the `k3_llamacpp` pilot shape (hidden 640, 16 heads, vocab 32768, 4
+layers) 1.3e-4, token by token 1.5e-4. Larger residual scores (std 1)
+give up to 1e-2, but Evastar's own fp32 vs fp64 logits already differ
+by 1e-3 there (the score softmax amplifies rounding); breaking the bank
+restart or the score norm gives O(1) differences.
+
+Tests: `tests/test_kda_k3_style.py` (T137) checks the layer against a
+reference written from `src/models/kimi-k3.cpp`, chunked against the loop
+(padding, packed documents, gradients), prefill then decode, and the fp64
+chunk form. `tests/test_llamacpp_kimi_k3.py` (T138) recomputes the
+kimi-k3 graph from the exported GGUF tensors and metadata only and
+matches Evastar's logits on 12 variants, and checks metadata, the
+architecture choice and the refusals. `tests/test_k3_llamacpp_parts.py`
+(T139) pins block residuals (layout, restart, uniform zero init, cached
+decode, score gradients), the full-width router, situ_k3 (formula,
+blocked = batched) and the presets (export for every size; the
+llama.cpp k3 block trains).
+## v5.141 (2026-10-24) - Fused chunked output head + cross-entropy
 
 The RTX 4060 MFU sweep spent 14-20% of GPU time in dtype copies, much of
 it the fp32 copy of the [tokens, vocab] logits, and the logits are what
