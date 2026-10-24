@@ -1,4 +1,4 @@
-# Contributing to HeliosLM
+# Contributing to Evastar
 
 Thanks for your interest in contributing! This project values **correctness you can verify** over feature velocity. If that sounds like your kind of codebase, you're in the right place.
 
@@ -55,7 +55,7 @@ Maintainer priorities — comment on the issue (or open one) before starting:
 | CUDA verification | Run the static-checked CUDA paths end-to-end on real hardware | Medium |
 | Fused quantization kernels | Speed up GPTQ/AWQ packing paths | Hard |
 | HF Hub integration | Load/save configs and checkpoints from Hugging Face | Easy–medium |
-| Example notebooks | "Train a tiny HeliosLM on your laptop", "Add an attention variant in 30 lines" | Easy |
+| Example notebooks | "Train a tiny Evastar on your laptop", "Add an attention variant in 30 lines" | Easy |
 | Benchmarks | Standardized CPU benchmark suite for engine + quantization | Easy–medium |
 | GGUF / llama.cpp export | Export MLA-variant weights to GGUF for the LocalLLaMA community | Hard |
 

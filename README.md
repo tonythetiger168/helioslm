@@ -1,6 +1,7 @@
 ---
 license: apache-2.0
 tags:
+- evastar
 - helioslm
 - rlcd
 - calibrated-decisions
@@ -11,11 +12,11 @@ tags:
 pipeline_tag: text-generation
 ---
 
-# HeliosLM（羲和）— Verifiable DeepSeek-V3/V4 and Kimi-K3-Style LLM Architectures in Pure PyTorch
+# Evastar（恆星）— Verifiable DeepSeek-V3/V4 and Kimi-K3-Style LLM Architectures in Pure PyTorch
 
-> 中文名「羲和」：中國神話中駕日車的太陽神，對應希臘的 Helios。標語「知止」（《大學》「知止而后有定」）：可驗證的機制，加上知道自己何時可能出錯、該停下來的決策層。
+> 中文名「恆星」：字面意思是「永恆的星」。本專案原名 HeliosLM，2026-10-24 改名，程式套件名 `helioslm_v5`、GitHub／Hugging Face 網址暫時不變。標語「知止」（《大學》「知止而后有定」）：可驗證的機制，加上知道自己何時可能出錯、該停下來的決策層。
 
-**Every mechanism ships with an oracle test.** HeliosLM is a hackable, CPU-runnable reference for frontier LLM designs — MLA, sigmoid-gated MoE, hybrid linear attention, compressed sparse attention — plus a calibrated decision layer that measures whether a model knows when it is wrong.
+**Every mechanism ships with an oracle test.** Evastar is a hackable, CPU-runnable reference for frontier LLM designs — MLA, sigmoid-gated MoE, hybrid linear attention, compressed sparse attention — plus a calibrated decision layer that measures whether a model knows when it is wrong.
 
 A from-scratch PyTorch reference implementation of a modern LLM stack: MLA attention with weight absorption, sigmoid-gated MoE with auxiliary-loss-free load balancing, hybrid linear attention, speculative decoding, FP8 training, a DualPipe schedule simulation, a vLLM-style serving engine, a **verifiable agent layer** (strict tool schema, bitwise-replay oracle), DSA sparse attention, Mooncake-style prefill/decode disaggregation, and tool-tuned checkpoints. Built to be **read, modified, and verified** — every core path is unit-tested and many are checked with bitwise-equivalence tests. Everything runs on CPU.
 
@@ -32,7 +33,7 @@ A from-scratch PyTorch reference implementation of a modern LLM stack: MLA atten
 
 ## Who is this for?
 
-| You are... | What HeliosLM gives you |
+| You are... | What Evastar gives you |
 |---|---|
 | **A learner** who wants to understand MLA, MoE routing, DualPipe, speculative decoding | Annotated, review-hardened PyTorch with 120+ tests (T11-T75) that act as executable documentation |
 | **A researcher** who wants a stack to modify, ablate, and extend quickly | Single-process, CPU-iterable training + serving code — change one file, run one test |
@@ -50,7 +51,7 @@ azure-storage-blob pyttsx3 speech_recognition ultralytics transformers`
 ### Core (always available)
 | Plugin | Namespace | Key ops |
 |---|---|---|
-| ModelPlugin | `ctx.model.*` | mid (360M HeliosLM), qwen (Qwen3-0.6B) |
+| ModelPlugin | `ctx.model.*` | mid (360M Evastar), qwen (Qwen3-0.6B) |
 | ToolPlugin | `ctx.tools.*` | registry, impls (calc/str/file_read/file_write/finish) |
 | SessionPlugin | `ctx.session.*` | new (append-only, replay-verified) |
 | DecisionPlugin | `ctx.decision.*` | grounding, trust, prefetcher |
@@ -163,7 +164,7 @@ calibrated confidence on acting models, measured across three scales
   AUROC and beats the commercial Jev detector's zero-shot numbers on
   11/41 benchmarks. The open audit is 15x cheaper than the commercial
   detector it audits.
-- HeliosLM's policy-in-code route (GroundingGate, CalibratedPrefetcher)
+- Evastar's policy-in-code route (GroundingGate, CalibratedPrefetcher)
   is the engineering embodiment of the vendor's own finding: prompt
   engineering adds only +0.006 AUROC (p=0.055) -- retaining full
   probability and routing decisions in code is what works.
@@ -368,9 +369,9 @@ print(out)
 | **Eval** | Log-likelihood harness (`helioslm_v5/eval/harness.py`): `loglikelihood` / `multiple_choice` / `run_harness` + built-in synthetic tasks (v5.11), token-id based, lm-eval-harness spirit |
 | **Multimodal** | NaViT vision encoder (row/col position decomposition, mixed-resolution packing), streaming audio encoder (causal, sliding-window memory, bit-equivalent to one-shot). |
 
-## Why HeliosLM vs. alternatives?
+## Why Evastar vs. alternatives?
 
-| | HeliosLM | `transformers` | `vLLM` | nanoGPT-style |
+| | Evastar | `transformers` | `vLLM` | nanoGPT-style |
 |---|---|---|---|---|
 | Purpose | Understand + hack the full stack | Run pre-trained models | Max serving throughput | Learn basics |
 | Runs on CPU end-to-end | ✅ | partial | ❌ | ✅ |
@@ -424,7 +425,7 @@ See the [GitHub Project board](https://github.com/tonythetiger168/helioslm/proje
 - [ ] Fused quantization kernels
 - [ ] CUDA end-to-end verification (paths are currently static-checked; CPU-verified)
 - [x] Hugging Face Hub: `chienhsinlin/helioslm-agent` hosts the agent layer + tool-tuned artifacts
-- [ ] Example notebooks: "Train a tiny HeliosLM on your laptop" / "Add a new attention variant in 30 lines"
+- [ ] Example notebooks: "Train a tiny Evastar on your laptop" / "Add a new attention variant in 30 lines"
 
 ## Contributing
 
@@ -450,7 +451,7 @@ Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/hel
 - **v5.76** — B2-6: multi-teacher on-policy distillation (MOPD); routed teachers keep the student's inc skill (1.00) and halve its KL to the rev teacher, one teacher for everything erases inc — T115
 - **v5.77** — Stable LatentMoE: Kimi K3 Quantile Balancing router bias; fastest from a skewed start and after a drift, no bias drift; SMEBU stays lower in steady state — T116
 - **v5.78** — Phase B: 16x CSA compressor by curriculum (4x weights, fine-tuned at 16x): passkey recall 0.375/0.390 -> 0.790/0.740, 92%/88% of the oracle ceiling — T117
-- **v5.130** — llama.cpp-runnable GGUF: `export_llamacpp_gguf` writes llama.cpp's `deepseek2` architecture (MLA as MQA, sigmoid MoE with shared experts, RoPE rows reordered) and `llamacpp_incompatibilities` lists the features it cannot express (KDA, NoPE, cross-layer KV, LatentMoE, LB8 PLE, LB9 conv, ...); f32/f16 logits match HeliosLM in llama.cpp f5027fb; token-id input only, tokenizer is a follow-up — T131
+- **v5.130** — llama.cpp-runnable GGUF: `export_llamacpp_gguf` writes llama.cpp's `deepseek2` architecture (MLA as MQA, sigmoid MoE with shared experts, RoPE rows reordered) and `llamacpp_incompatibilities` lists the features it cannot express (KDA, NoPE, cross-layer KV, LatentMoE, LB8 PLE, LB9 conv, ...); f32/f16 logits match Evastar in llama.cpp f5027fb; token-id input only, tokenizer is a follow-up — T131
 - **v5.129** — Route B base-gap eval: `examples/base_gap_eval.py` scores `google/gemma-4-E4B` against Breexe-8x7B, Breeze 2 8B / 3B and Breeze-7B on TMMLU+ / TW-JusticeBench / C-Eval / CMMLU with one scorer and reports paired-bootstrap gaps (`tw_bench.hf_score_fn`, `tw_bench_run.py --hf`; runbook `docs/BASE_GAP_EVAL.md`) — T132
 - **v5.127** — Route B: continued-pretraining plan on `google/gemma-4-E4B` (Apache-2.0) to beat every MediaTek text model (`docs/CPT_PLAN_B.md`; `cpt_plan.py` cost model, B1 ≈ US$3.8k / 1,360 H100-h, E2B pilot ≈ US$200; `prereg/b1.0.json`; CPT mixture; uint32 token shards) — T130
 - **v5.126** — LB9: LFM2-style gated short-convolution layers (`attention/gated_conv.py` `GatedShortConv`, `gated_conv_layers` / `gated_conv_kernel`, fixed-size StateTensor cache; pilot arch `lfm_conv`) — T129
@@ -540,14 +541,14 @@ Apache License 2.0 — see [LICENSE](https://github.com/tonythetiger168/helioslm
 
 ### Vision and product portfolio
 
-HeliosLM aims to evolve from a verifiable, modifiable LLM research stack into an independent model and agent platform. Commercial rollout priority: **Helios Code → Helios Cloud → Helios Enterprise → Frontier research commercialization**.
+Evastar aims to evolve from a verifiable, modifiable LLM research stack into an independent model and agent platform. Commercial rollout priority: **Evastar Code → Evastar Cloud → Evastar Enterprise → Frontier research commercialization**.
 
 | Product | Audience | Proposed offering |
 | --- | --- | --- |
-| **HeliosLM Models** | Researchers and developers | Open research components, independent model weights when trained and licensed, SDK and inference |
-| **Helios Code** | Software engineers and teams | Auditable GitHub coding agent, sandboxed tools, tests, patch review and rollback |
-| **Helios Cloud** | AI application builders | Model-serving API, routing, metering, monitoring and usage-based billing |
-| **Helios Enterprise** | Organizations | Private deployment, RBAC, audit trails, enterprise integrations and support |
+| **Evastar Models** | Researchers and developers | Open research components, independent model weights when trained and licensed, SDK and inference |
+| **Evastar Code** | Software engineers and teams | Auditable GitHub coding agent, sandboxed tools, tests, patch review and rollback |
+| **Evastar Cloud** | AI application builders | Model-serving API, routing, metering, monitoring and usage-based billing |
+| **Evastar Enterprise** | Organizations | Private deployment, RBAC, audit trails, enterprise integrations and support |
 
 ### Six proposed product generations and parameter targets
 
@@ -555,12 +556,12 @@ HeliosLM aims to evolve from a verifiable, modifiable LLM research stack into an
 
 | Product generation | Target model | Total parameters | Active parameters / token | Architecture | Proposed deliverable |
 | --- | --- | ---: | ---: | --- | --- |
-| **v1.0 — Foundation** | HeliosLM Lite | **0.5B** | 0.5B | Dense | Reproducible training/inference, CLI, tests, developer preview |
-| **v2.0 — Training & API** | HeliosLM Base | **3B** | 3B | Dense | Data pipeline, SFT/LoRA, checkpoints, evaluation, SDK/API |
-| **v3.0 — Advanced MoE / Code** | HeliosLM MoE | **30B** | ~3B | MoE | Expert routing, quantized serving, Helios Code beta |
-| **v4.0 — Reasoning / Cloud** | HeliosLM Reasoner | **100B** | ~10B | MoE | Reasoning, coding agent, cloud API, metering and safety gates |
-| **v5.0 — Pro / Enterprise** | HeliosLM Pro | **300B** | ~20B | MoE | Multimodal/long-context R&D, enterprise pilot, distributed serving |
-| **v6.0 — Frontier** | HeliosLM Frontier | **1T (1,000B)** | ~40B | MoE | Frontier research candidate; competitive performance on defined evaluations |
+| **v1.0 — Foundation** | Evastar Lite | **0.5B** | 0.5B | Dense | Reproducible training/inference, CLI, tests, developer preview |
+| **v2.0 — Training & API** | Evastar Base | **3B** | 3B | Dense | Data pipeline, SFT/LoRA, checkpoints, evaluation, SDK/API |
+| **v3.0 — Advanced MoE / Code** | Evastar MoE | **30B** | ~3B | MoE | Expert routing, quantized serving, Evastar Code beta |
+| **v4.0 — Reasoning / Cloud** | Evastar Reasoner | **100B** | ~10B | MoE | Reasoning, coding agent, cloud API, metering and safety gates |
+| **v5.0 — Pro / Enterprise** | Evastar Pro | **300B** | ~20B | MoE | Multimodal/long-context R&D, enterprise pilot, distributed serving |
+| **v6.0 — Frontier** | Evastar Frontier | **1T (1,000B)** | ~40B | MoE | Frontier research candidate; competitive performance on defined evaluations |
 
 These are **stretch targets, not mandatory training commitments**. A version may ship with a smaller verified model if quality, economics or safety gates are not met. The 1T target is contingent on major external funding, training data rights, infrastructure and distributed-systems validation; matching parameter count alone does not imply matching DeepSeek, Kimi, OpenAI or Anthropic capabilities.
 
@@ -595,8 +596,8 @@ Context sizes assume the default MLA cache (latent 512 + RoPE 64, about 37 KB pe
 | --- | --- | --- |
 | **2026 Q4** | Foundation developer preview | Windows/Linux CI, reproducible test suite, documented local inference |
 | **2027 Q1** | Training & SDK/API | End-to-end train → save → restore → evaluate reproducibility |
-| **2027 Q2** | Helios Code beta | Auditable tool execution, human approval for writes, benchmarked real-repo tasks |
-| **2027 H2** | Helios Cloud pilot | API reliability, authentication, tenant isolation, billing reconciliation |
+| **2027 Q2** | Evastar Code beta | Auditable tool execution, human approval for writes, benchmarked real-repo tasks |
+| **2027 H2** | Evastar Cloud pilot | API reliability, authentication, tenant isolation, billing reconciliation |
 | **2028 (tentative)** | Enterprise pilots and Pro research | Private deployment security review and paid pilot validation |
 | **2029+ (conditional)** | Frontier challenger research | Pre-registered, reproducible domain-specific evaluation against current baselines |
 
@@ -613,7 +614,7 @@ Context sizes assume the default MLA cache (latent 512 + RoPE 64, about 37 KB pe
 - **Local RTX 4060:** development, CPU/CUDA oracles, tiny-model training and CI reproduction.
 - **On-demand RTX PRO 6000 Blackwell 96GB:** prototyping, fine-tuning/quantized inference for suitably sized models, memory and performance measurements; **not** a single-GPU path to training 300B–1T models.
 - **Multi-GPU clusters:** only after measured throughput, interconnect, memory, data, reliability and cost justify the scale.
-- **Independent model + optional external APIs:** research open architectures (including DeepSeek/Kimi ideas) while using properly licensed OpenAI/Anthropic or other APIs for routing/benchmarks where permitted. Do not present external model output as an independently trained HeliosLM model or assume API outputs may be used for competitive training.
+- **Independent model + optional external APIs:** research open architectures (including DeepSeek/Kimi ideas) while using properly licensed OpenAI/Anthropic or other APIs for routing/benchmarks where permitted. Do not present external model output as an independently trained Evastar model or assume API outputs may be used for competitive training.
 
 ### Roadmap governance
 

@@ -377,7 +377,7 @@ def test_version_never_ahead_of_changelog():
     import re
     cfg = (_REPO_ROOT / "helioslm_v5" / "configs" / "config_v5.py") \
         .read_text(encoding="utf-8")
-    m = re.search(r'model_name:\s*str\s*=\s*"HeliosLM-v(\d+)\.(\d+)"', cfg)
+    m = re.search(r'model_name:\s*str\s*=\s*"(?:Evastar|HeliosLM)-v(\d+)\.(\d+)"', cfg)
     assert m, "model_name not found or unparseable in config_v5.py"
     ch = (_REPO_ROOT / "helioslm_v5" / "CHANGELOG.md") \
         .read_text(encoding="utf-8")

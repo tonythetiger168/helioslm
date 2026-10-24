@@ -1,6 +1,6 @@
-# HeliosLM Milestones
+# Evastar Milestones
 
-Single tracker for every HeliosLM plan, oldest first:
+Single tracker for every Evastar plan, oldest first:
 
 1. [Phase 0–3](#phase-03--local-decision-engine-plan-2026-10-06) of the
    Local Decision Engine plan ([`PHASE0_3_PLAN.md`](PHASE0_3_PLAN.md)) —
