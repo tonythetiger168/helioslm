@@ -51,7 +51,7 @@ Why Gemma 4 E4B:
   covers the L8 and L16 local tiers from the product-line review without
   a custom GGUF architecture.
 - **Architecture.** It uses the per-layer embeddings that LB8 added to
-  HeliosLM, so the team already knows the design.
+  Evastar, so the team already knows the design.
 
 The main risk is the base's Chinese. Gemma 4 is weaker in Traditional
 Chinese than some other open 4B models, so continued pretraining carries
@@ -77,7 +77,7 @@ in the pre-registration are filled in.
 - **#40 (0.5B).** Unchanged. It stays a research line with its v1.0 gate.
 - **#42–#45 (MoE).** Unchanged. They are later and would also start
   from open bases if route B works.
-- **HeliosLM components.** Architecture features such as MLA, KDA and
+- **Evastar components.** Architecture features such as MLA, KDA and
   LatentMoE do not apply to a continued Gemma model. The data,
   distillation and RL work does carry over: LB2 WSD schedule, LB3
   mixtures and quality filter, LB5 decay traces, LB6 thinking switch and

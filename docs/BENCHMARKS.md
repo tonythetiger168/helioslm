@@ -1,4 +1,4 @@
-# HeliosLM Benchmarks
+# Evastar Benchmarks
 
 All numbers reproducible on CPU:
 
@@ -13,7 +13,7 @@ tracked across versions. Suite introduced in **v5.10** (2026-09-15).
 
 ## KV-cache memory (analytic structural counts, bf16 unless noted)
 
-| Config | seq_len | HeliosLM | MHA reference | savings |
+| Config | seq_len | Evastar | MHA reference | savings |
 |---|---|---|---|---|
 | full (48L, hybrid MLA+GDA) | 1k | 52.0 MB | 2013.3 MB | 97.4% |
 | full | 8k | 159.4 MB | 16.1 GB | 99.0% |

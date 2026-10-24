@@ -1,6 +1,7 @@
-# HeliosLM v5.132 - DeepSeek/K3-Style Architecture
+# Evastar v5.133 - DeepSeek/K3-Style Architecture
 
-v5.132 (2026-10-24): Windows test_sandbox_limits repair, CI LF guard,
+v5.133 (2026-10-24): project renamed HeliosLM -> Evastar (display name only;
+package `helioslm_v5`, class names and URLs unchanged). v5.132 (2026-10-24): Windows test_sandbox_limits repair, CI LF guard,
 version-drift lock. v5.110 (2026-10-23): Windows checkout repairs — repo-wide LF policy
 (.gitattributes), sandbox python3 PATH resolution and timeout
 process-tree kill in `eval/term_bench.py`, base64 patch transport in
@@ -206,7 +207,7 @@ Kimi-K3 direction; GDA layers were already position-free. Unit suite
 
 Landscape-driven (2026-09-21 scan): Kimi K3 (KDA at 3:1 interleave) and
 GLM-5.3-Flash (34 KDA + 11 sparse MLA) both ship per-channel fine-grained
-decay in their linear-attention layers. HeliosLM's hybrid stack now exposes
+decay in their linear-attention layers. Evastar's hybrid stack now exposes
 the same knob: `hybrid_attention.per_channel_decay` (default False keeps
 the v5.5 per-head scalar gate bit-identical; True widens the gate to one
 sigmoid per head per key channel so state rows forget at independent
@@ -697,4 +698,4 @@ test fails.
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE) (also at the repository root).
-Copyright 2026 tonythetiger168 and HeliosLM contributors.
+Copyright 2026 tonythetiger168 and Evastar contributors.

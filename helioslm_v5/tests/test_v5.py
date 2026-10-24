@@ -197,7 +197,7 @@ if os.environ.get("GITHUB_ACTIONS") == "true":
 
 
 def main():
-    print("HeliosLM v5.132 Test Suite (lite config, CPU)")
+    print("Evastar v5.133 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:
