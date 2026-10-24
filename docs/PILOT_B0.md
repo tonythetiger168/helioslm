@@ -24,9 +24,10 @@ PER_HOUR=<pod 實際每小時美金> bash helioslm/examples/pilot_b0_pod.sh 2>&1
 | 1b | 同時 `fetch_mixture.py`：串流下載配方內的 `hf:` 來源，篩選後用 E2B tokenizer 切成 uint32 shard，共 3B token | 1–2 h |
 | 2 | `torchrun cpt_hf.py`：E2B 續訓 3B token，WSD，最後 20% 換 decay 來源 | 約 4.8 h |
 | 3 | `base_gap_eval.py --base <續訓後> --refs google/gemma-4-E2B`：先導對它自己的底模 | 約 0.5 h |
+| 4 | lm-evaluation-harness 0.4.13 常用 benchmark，E2B 原版與先導各用一半 GPU 同時跑（見下） | 約 1 h（估計） |
 
 花費上限有兩道：腳本開頭的 watchdog 在 `MAX_COST`（預設 US$300）時直接停 pod；
-續訓用 `--max-hours` 預留一小時給存檔和評測，時間不夠會提早停下並照常存檔。
+續訓用 `--max-hours` 預留 `EVAL_RESERVE_H`（預設 2 小時）給存檔和步驟 3–4，時間不夠會提早停下並照常存檔。
 腳本結束時也會停 pod。
 
 ## 資料（`fetch_mixture.py`）
@@ -47,6 +48,32 @@ PER_HOUR=<pod 實際每小時美金> bash helioslm/examples/pilot_b0_pod.sh 2>&1
 - 總步數少於 warmup 時（例如冒煙測試），warmup 會自動縮短，decay 和換來源仍然在最後 20% 發生（v5.138）。
 - 輸出：`run.json`、`log.jsonl`（每步 loss / lr / 階段 / token/s）、`final/`（bf16 權重＋tokenizer）、`result.json`。
 
+## 常用 benchmark（步驟 4）
+
+模型卡和排行榜常報的分數，讓先導的數字能和其他模型直接比。shots 用 base 模型的慣例：
+
+| Benchmark | lm-eval task | shots |
+|---|---|---|
+| MMLU | `mmlu` | 5 |
+| MMMLU 簡中 | `mmmlu_zh_cn` | 5 |
+| Winogrande | `winogrande` | 5 |
+| ARC-Challenge | `arc_challenge` | 25 |
+| HellaSwag | `hellaswag` | 10 |
+| TruthfulQA MC2 | `truthfulqa_mc2` | 0 |
+| GSM8K | `gsm8k` | 5 |
+| BBH（CoT） | `bbh_cot_fewshot` | 3 |
+| MATH-500 | `minerva_math500` | 4 |
+| HumanEval | `humaneval` | 0 |
+| MBPP | `mbpp` | 3 |
+| MedQA（USMLE 4 選 1） | `medqa_4options` | 0 |
+| MedMCQA | `medmcqa` | 0 |
+| SciQ | `sciq` | 0 |
+| AGIEval 高考物理 / 化學 / 生物 / 數學 | `agieval_gaokao_physics` / `_chemistry` / `_biology` / `_mathqa` | 0 |
+| AGIEval SAT 數學、MATH | `agieval_sat_math`、`agieval_math` | 0 |
+
+HumanEval / MBPP 會在 pod 上執行模型寫的程式（`HF_ALLOW_CODE_EVAL=1`、`--confirm_run_unsafe_code`）。
+PubMedQA 的資料集（bigbio/pubmed_qa）是載入腳本，datasets 4 以後不能跑，先不放。MMLU-Pro、GPQA、AIME、IFEval 等要等 instruct 模型再跑。這一步只記錄分數，不列入過關規則。
+
 ## 過關規則
 
 先導對 `google/gemma-4-E2B` 原版（同一評分器、同樣 shots）：
@@ -63,6 +90,7 @@ B1 不跑，這次只把結果和建議帶回來。
 |---|---|
 | `/workspace/results/base_gap_<時間>.json` | E4B 對四個台灣參考模型的差距 |
 | `/workspace/results/pilot_b0/base_gap_<時間>.json` | 先導對 E2B 原版的差距 |
+| `/workspace/results/std_bench/{e2b_base,pilot_b0}/` | 常用 benchmark 的 lm-eval 結果 |
 | `/workspace/cpt_data/manifest.json` | 實際用到的資料 |
 | `/workspace/runs/b0/` | 續訓紀錄與權重 |
 | `/workspace/*.log` | 各步驟 log |
