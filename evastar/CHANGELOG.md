@@ -14,7 +14,8 @@
   - zai-org/GLM-5.3-Flash: MIT, Copyright (c) 2026 Z.AI Co., Ltd (unlike
     GLM-5.3, which carries the GLM-5.3 License).
   The re-survey also found every already-pinned licence hash unchanged.
-- `benchmarks/teacher_license_audit_2026-10-24.json`: the live audit of
+- `benchmarks/teacher_license_audit_2026-10-24.json` (registered in
+  `benchmarks/verification_tiers.json`): the live audit of
   the three rows (Hub revision, LICENSE hash equal to the pin). Taken with
   a REST fetch equivalent to `hub_fetch` (huggingface_hub is not installed
   in the build container).
