@@ -74,6 +74,8 @@ def cfg(**kw):
 
 def test_licence_gate(monkeypatch):
     assert dg.check_teacher("deepseek-v4.1-flash")["repo"] == "deepseek-ai/DeepSeek-V4.1-Flash"
+    assert dg.check_teacher("deepseek-v4.1-flash-1017")["repo"] == \
+        "deepseek-ai/DeepSeek-V4.1-Flash-1017"
     with pytest.raises(dg.TeacherNotAllowed):
         dg.check_teacher("gpt-x")
     monkeypatch.setitem(dg.TEACHERS, "v4-flash", {"repo": "deepseek-ai/DeepSeek-V4-Flash",

@@ -6,7 +6,7 @@ from the reviewed one is refused (a changed licence must be re-read); an
 unreviewed teacher is refused; and the committed live audit (hashes equal
 the reviewed ones, only unreadable licences left unclear, no closed
 model among the teachers, scope notes); the OS4 rows pinned from the
-2026-10-23 live audit.
+2026-10-23 live audit; the three MIT rows pinned from the 2026-10-24 one.
 
 Run from repo root: python3 evastar/tests/test_teacher_license_audit.py
 """
@@ -22,12 +22,15 @@ from evastar.eval import teacher_license_audit as ta  # noqa: E402
 
 _ART = _REPO / "benchmarks" / "teacher_license_audit_2026-10-20.json"
 _ART_OS4 = _REPO / "benchmarks" / "teacher_license_audit_2026-10-23.json"
+_ART_1024 = _REPO / "benchmarks" / "teacher_license_audit_2026-10-24.json"
 OS4 = ("tencent/Hy3", "XiaomiMiMo/MiMo-V2.5-Pro",
        "deepseek-ai/DeepSeek-V4-Flash", "zai-org/GLM-5.2")
+NEW_1024 = ("deepseek-ai/DeepSeek-V4.1-Flash-1017",
+            "deepseek-ai/DeepSeek-V4-Pro-0813", "zai-org/GLM-5.3-Flash")
 
 
 def test_reviews_complete():
-    assert len(ta.TEACHERS) == 14 and len(ta.REVIEWS) == 14
+    assert len(ta.TEACHERS) == 17 and len(ta.REVIEWS) == 17
     for rid, r in ta.REVIEWS.items():
         assert r["verdict"] in ta.VERDICTS, rid
         assert r["conditions"] and r["license"], rid
@@ -102,7 +105,8 @@ def test_pending_rows_are_not_usable_until_pinned():
 def test_committed_audit():
     art = json.loads(_ART.read_text())
     rows = art["rows"]
-    assert [r["id"] for r in rows] == [t for t in ta.TEACHERS if t not in OS4]
+    assert [r["id"] for r in rows] == [t for t in ta.TEACHERS
+                                       if t not in OS4 + NEW_1024]
     for r in rows:
         assert r["license_sha256"] == ta.REVIEWS[r["id"]]["reviewed_sha256"]
         assert r["verdict"] in ta.VERDICTS
@@ -128,8 +132,28 @@ def test_committed_audit():
     print("PASS test_committed_audit")
 
 
+def test_2026_10_24_rows():
+    # the newer MIT releases found by the 2026-10-24 re-survey
+    v41 = ta.REVIEWS["deepseek-ai/DeepSeek-V4.1-Flash"]["reviewed_sha256"]
+    for rid in NEW_1024:
+        assert rid in ta.TEACHERS and ta.usable(rid), rid
+        assert ta.REVIEWS[rid]["verdict"] == "allowed", rid
+    for rid in NEW_1024[:2]:
+        assert ta.REVIEWS[rid]["reviewed_sha256"] == v41, rid
+    assert ta.REVIEWS["zai-org/GLM-5.3-Flash"]["license"].startswith("MIT")
+    art = json.loads(_ART_1024.read_text())
+    assert [r["id"] for r in art["rows"]] == list(NEW_1024)
+    for r in art["rows"]:
+        assert r["pinned"] and len(r["sha"]) == 40, r["id"]
+        assert r["license_sha256"] == ta.REVIEWS[r["id"]]["reviewed_sha256"]
+    assert art["rows_sha256"] == hashlib.sha256(
+        json.dumps(art["rows"], sort_keys=True).encode()).hexdigest()
+    print("PASS test_2026_10_24_rows")
+
+
 if __name__ == "__main__":
     test_reviews_complete()
     test_changed_or_unreviewed_licence_is_refused()
     test_pending_rows_are_not_usable_until_pinned()
     test_committed_audit()
+    test_2026_10_24_rows()

@@ -26,6 +26,30 @@ against its own base. Runbook and pass rule: `docs/PILOT_B0.md`.
 - `examples/base_gap_eval.py --base / --rivals`: measure gaps for any
   model pair (here the pilot checkpoint against `google/gemma-4-E2B`).
 - `evastar/tests/test_cpt_pilot.py` (T134).
+## v5.136 (2026-10-24) - Pin three newer MIT teacher releases
+
+- `eval/teacher_license_audit.py`: a 2026-10-24 re-survey of the teacher
+  whitelist found newer open-weight releases. Three are plain MIT and are
+  added after a live audit of the Hub (each LICENSE text read, then its
+  hash pinned):
+  - deepseek-ai/DeepSeek-V4.1-Flash-1017: a minor update of V4.1-Flash,
+    same architecture, the same MIT text (same hash). It ships no Jinja
+    chat template; prompts go through the repository's encoding scripts.
+  - deepseek-ai/DeepSeek-V4-Pro-0813: the official V4-Pro release that
+    supersedes the preview; the same MIT text (same hash).
+  - zai-org/GLM-5.3-Flash: MIT, Copyright (c) 2026 Z.AI Co., Ltd (unlike
+    GLM-5.3, which carries the GLM-5.3 License).
+  The re-survey also found every already-pinned licence hash unchanged.
+- `benchmarks/teacher_license_audit_2026-10-24.json` (registered in
+  `benchmarks/verification_tiers.json`): the live audit of
+  the three rows (Hub revision, LICENSE hash equal to the pin). Taken with
+  a REST fetch equivalent to `hub_fetch` (huggingface_hub is not installed
+  in the build container).
+- `src/training/distill_gen.py`: new teacher alias
+  `deepseek-v4.1-flash-1017`. The default teacher is unchanged.
+- Tests: `test_teacher_license_audit.py` counts 17 teachers and adds
+  `test_2026_10_24_rows`; `test_distill_gen.py::test_licence_gate` checks
+  the new alias.
 ## v5.135 (2026-10-24) - Text in for llama.cpp / Ollama: GGUF vocabulary
 
 v5.130 files carry no vocabulary, so llama.cpp and Ollama need token ids.

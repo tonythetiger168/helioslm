@@ -49,6 +49,10 @@ from ...hsh.llm import OpenAICompatAdapter
 TEACHERS = {
     "deepseek-v4.1-flash": {"repo": "deepseek-ai/DeepSeek-V4.1-Flash",
                             "served_model": "deepseek-ai/DeepSeek-V4.1-Flash"},
+    # 2026-10-24: minor update of V4.1-Flash, same architecture and licence
+    "deepseek-v4.1-flash-1017": {
+        "repo": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+        "served_model": "deepseek-ai/DeepSeek-V4.1-Flash-1017"},
 }
 
 KEEP_THINKING = ("none", "turn", "all")

@@ -1,0 +1,61 @@
+{
+  "experiment": "distillation teacher licence audit",
+  "audited_at": "2026-10-24T12:21:54Z",
+  "scope_notes": [
+    "weight licences only: outputs from a vendor's own API follow that API's terms of service",
+    "a distilled student is treated as a derivative work (conservative)"
+  ],
+  "rows": [
+    {
+      "id": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+      "card_license": "mit",
+      "card_license_name": null,
+      "sha": "1bae0e1088993b9b82de08f59de5be5a34e42170",
+      "license_file": "LICENSE",
+      "license_sha256": "f2c6c602815669d292889e5be8c802f2ed950653b77999b1584e8e6aed25d040",
+      "reviewed_sha256": "f2c6c602815669d292889e5be8c802f2ed950653b77999b1584e8e6aed25d040",
+      "license": "MIT",
+      "verdict": "allowed",
+      "conditions": [
+        "keep the copyright and permission notice",
+        "same text as V4.1-Flash (same hash)",
+        "the release ships no Jinja chat template: prompts go through the repository's encoding scripts"
+      ],
+      "pinned": true
+    },
+    {
+      "id": "deepseek-ai/DeepSeek-V4-Pro-0813",
+      "card_license": "mit",
+      "card_license_name": null,
+      "sha": "72e1d3230f6c080a530b0a1d46f8eb4602340597",
+      "license_file": "LICENSE",
+      "license_sha256": "f2c6c602815669d292889e5be8c802f2ed950653b77999b1584e8e6aed25d040",
+      "reviewed_sha256": "f2c6c602815669d292889e5be8c802f2ed950653b77999b1584e8e6aed25d040",
+      "license": "MIT",
+      "verdict": "allowed",
+      "conditions": [
+        "keep the copyright and permission notice",
+        "same text as V4.1-Flash (same hash); the official release that supersedes the V4-Pro preview"
+      ],
+      "pinned": true
+    },
+    {
+      "id": "zai-org/GLM-5.3-Flash",
+      "card_license": "mit",
+      "card_license_name": null,
+      "sha": "46a050bec13002ad29ee795c16e61cf4fa3c4a9c",
+      "license_file": "LICENSE",
+      "license_sha256": "30b85b6b9659f2e78aa259f8faf5d920a68dee7c9ced3fa6dba1f19f2bc4fca1",
+      "reviewed_sha256": "30b85b6b9659f2e78aa259f8faf5d920a68dee7c9ced3fa6dba1f19f2bc4fca1",
+      "license": "MIT (Copyright (c) 2026 Z.AI Co., Ltd)",
+      "verdict": "allowed",
+      "conditions": [
+        "keep the copyright and permission notice",
+        "unlike GLM-5.3 (GLM-5.3 License), the Flash release is plain MIT"
+      ],
+      "pinned": true
+    }
+  ],
+  "rows_sha256": "f8285a7a77a73bbf30a6e2af8664b3c927ac756f2f9469b20301e9d202ff4646",
+  "note": "a reviewed reading of the licence text, not legal advice"
+}
