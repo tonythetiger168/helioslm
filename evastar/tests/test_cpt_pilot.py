@@ -16,7 +16,7 @@ Pins:
 5. cpt_hf.load_phases + train on a tiny torch LM: the loss falls, the
    WSD schedule switches to the decay sources at the decay step,
    max_hours stops early, freeze() leaves matching parameters untouched;
-6. base_gap_eval --base / --rivals measure gaps from a checkpoint.
+6. base_gap_eval --base / --refs measure gaps from a checkpoint.
 
 Run from repo root: python3 -m pytest evastar/tests/test_cpt_pilot.py
 """

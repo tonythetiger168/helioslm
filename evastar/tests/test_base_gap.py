@@ -8,7 +8,7 @@ Pins:
 2. hf_score_fn: the one-pass scores equal the per-continuation scores
    (a tiny torch model and a tokenizer that merges " A" into one token),
    and a continuation that does not merge falls back to one pass each;
-3. gap_table: base minus rival per bench over the task ids both scored,
+3. gap_table: base minus reference per bench over the task ids both scored,
    via paired_bootstrap; missing models / benches are skipped;
 4. load_tasks reads a <subject>_<split> directory, applies --limit, runs
    the Phase A gates and takes the shots from the dev split.
@@ -82,7 +82,7 @@ def test_hf_score_fast_equals_slow(monkeypatch):
 
 
 def test_gap_table():
-    base, r1, r2 = bg.BASE, bg.RIVALS[0], bg.RIVALS[1]
+    base, r1, r2 = bg.BASE, bg.REFS[0], bg.REFS[1]
     ids = [f"t/{i}" for i in range(40)]
     scores = {
         base: {"tmmluplus": {i: True for i in ids}},
@@ -115,13 +115,13 @@ def test_load_tasks():
 
 
 def test_assign():
-    groups = bg.assign([bg.BASE, *bg.RIVALS], 4)
+    groups = bg.assign([bg.BASE, *bg.REFS], 4)
     assert len(groups) == 4
-    assert [bg.RIVALS[0]] in groups                # Breexe alone
-    assert sorted(m for g in groups for m in g) == sorted([bg.BASE, *bg.RIVALS])
+    assert [bg.REFS[0]] in groups                # Breexe alone
+    assert sorted(m for g in groups for m in g) == sorted([bg.BASE, *bg.REFS])
     assert bg.assign([bg.BASE], 4) == [[bg.BASE]]
-    assert bg.assign([bg.BASE, *bg.RIVALS], 1) == [
-        sorted([bg.BASE, *bg.RIVALS], key=lambda m: -bg.SIZE_B[m])]
+    assert bg.assign([bg.BASE, *bg.REFS], 1) == [
+        sorted([bg.BASE, *bg.REFS], key=lambda m: -bg.SIZE_B[m])]
 
 
 def test_main_without_models_writes_report():

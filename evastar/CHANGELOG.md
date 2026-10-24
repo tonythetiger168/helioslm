@@ -23,7 +23,7 @@ against its own base. Runbook and pass rule: `docs/PILOT_B0.md`.
 - `examples/pilot_b0_pod.sh`: base-gap eval and data fetch in parallel,
   then training, then the pilot eval; a watchdog stops the pod at
   `MAX_COST`.
-- `examples/base_gap_eval.py --base / --rivals`: measure gaps for any
+- `examples/base_gap_eval.py --base / --refs`: measure gaps for any
   model pair (here the pilot checkpoint against `google/gemma-4-E2B`).
 - `evastar/tests/test_cpt_pilot.py` (T134).
 ## v5.136 (2026-10-24) - Pin three newer MIT teacher releases
@@ -219,11 +219,11 @@ llama.cpp's existing `deepseek2` architecture without new runtime code.
   them to match HeliosLM. It also checks the RoPE reorder, metadata value
   types, tensor shapes, F32 tensors, each incompatible flag, and the
   unmapped-parameter refusal.
-## v5.129 (2026-10-23) - Route B: base-gap eval against every MediaTek model
+## v5.129 (2026-10-23) - Route B: base-gap eval against the Taiwanese reference models
 
 The owner approved about US$20 to measure the untouched route B base
-before any training is paid for: score `google/gemma-4-E4B` and the four
-MediaTek Research text models (Breexe-8x7B, Breeze 2 8B / 3B, Breeze-7B)
+before any training is paid for: score `google/gemma-4-E4B` and four
+Taiwanese reference text models (Breexe-8x7B, Breeze 2 8B / 3B, Breeze-7B)
 on TMMLU+, TW-JusticeBench, C-Eval and CMMLU with one scorer, and report
 the gap. Runbook: `docs/BASE_GAP_EVAL.md`. It runs as step 7b of the
 distillation pod script (4xH200, `--gpus 0,1,2,3`, about an hour), or
@@ -241,7 +241,7 @@ on its own on one H200 (about 3-4 hours).
   - scores each model once over all sets, then frees it (and with
     `--cleanup`, its Hub cache);
   - writes `results/base_gap_<time>.json`, re-written after every model,
-    with per-task accuracy and base-minus-rival `paired_bootstrap` gaps;
+    with per-task accuracy and base-minus-reference `paired_bootstrap` gaps;
   - a failed model or set is recorded and the run goes on;
   - `--gpus 0,1,2,3` runs one worker per GPU (`assign`: largest model
     first, so Breexe gets a GPU of its own) and merges their results;
@@ -263,8 +263,8 @@ on its own on one H200 (about 3-4 hours).
   recorded then. No row is `unclear` any more.
 ## v5.127 (2026-10-23) - Route B: continued-pretraining plan for an open base
 
-The owner chose route B on 2026-10-23: beat every MediaTek Research text
-model (Breexe-8x7B, Breeze 2 8B / 3B, Breeze-7B) by continuing the
+The owner chose route B on 2026-10-23: a strong Traditional Chinese
+model with the least training, by continuing the
 pretraining of an open Apache-2.0 base on Taiwanese data instead of
 training a 4B from scratch. This PR is the CPU-side preparation; nothing
 is spent. Plan and reasoning:
@@ -284,9 +284,10 @@ is spent. Plan and reasoning:
   Traditional Chinese from commercially licensed sources, plus general
   replay; D1 traces in the decay phase.
 - `docs/prereg/b1.0.json`:
-  - B1 must beat all four MediaTek models on TMMLU+, TW-JusticeBench,
-    C-Eval and CMMLU.
-  - It must beat its own base on the two Taiwanese tasks.
+  - B1 is gated against four Taiwanese reference models (Breexe-8x7B,
+    Breeze 2 8B / 3B, Breeze-7B) on TMMLU+, TW-JusticeBench, C-Eval and
+    CMMLU.
+  - It must score above its own base on the two Taiwanese tasks.
   - It may lose at most 2 points to the base on C-Eval / CMMLU.
 - uint32 token shards for vocabularies over 65,536:
   `pretrain.token_dtype`, `write_shards(dtype=...)`,
@@ -482,19 +483,16 @@ Offline targets cost k * 4 bytes per token, which suits the pilot and the
 #41 60B-token gate. At 1T tokens the teacher should run online instead.
 ## v5.119 (2026-10-23) - E5: v1.0 / v2.0 pre-registration, split gate vs Qwen3.5-0.8B and Breeze 2 3B
 
-- Owner's direction: HeliosLM must beat the Taiwanese models, built at the
-  version that can win. No Taiwanese model under 2B exists and the 0.5B is
-  not expected to beat Breeze 2 3B, so the gate is split:
-  - `docs/prereg/v1.0.json` (#40, 0.5B): beat Qwen3.5-0.8B on TMMLU+
+- No Taiwanese model under 2B exists, so the gate is split by size:
+  - `docs/prereg/v1.0.json` (#40, 0.5B): gated against Qwen3.5-0.8B on TMMLU+
     (5-shot) and TW-JusticeBench (0-shot); Breeze 2 3B is reported as the
     Taiwanese reference line, C-Eval / CMMLU as controls;
-  - `docs/prereg/v2.0.json` (#41, 3B, draft): beat Breeze 2 3B
-    (`MediaTek-Research/Llama-Breeze2-3B-Instruct`) on every task the repo
-    can score (TMMLU+, TW-JusticeBench, C-Eval, CMMLU). The Breeze 2 paper
+  - `docs/prereg/v2.0.json` (#41, 3B, draft): gated against Breeze 2 3B
+    on every task the repo can score (TMMLU+, TW-JusticeBench, C-Eval, CMMLU). The Breeze 2 paper
     numbers (TMMLU+ 42.7, MMLU 59.9, MT-Bench-tw 4.26, BFCL 85) are noted for
     orientation; MMLU, MT-Bench-tw and function calling join the gates when
     a scorer exists.
-  - "beat" = the lower end of the 95% paired-bootstrap interval of
+  - "pass" = the lower end of the 95% paired-bootstrap interval of
     (ours - baseline) is above 0, ours averaged over three seeds, every
     model scored by the same E3 scorer. Revisions are PENDING until pinned
     on the pod; the plan is re-locked and committed before training.
