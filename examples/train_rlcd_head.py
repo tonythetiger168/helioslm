@@ -26,7 +26,7 @@ from pathlib import Path
 import torch
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "helioslm_v5" / "agent"))
+sys.path.insert(0, str(ROOT / "evastar" / "agent"))
 
 from decision_data import rlcd_reward_adjustment
 from decision_head import DecisionHead

@@ -1,5 +1,5 @@
 """teacher_license_audit.py — licences of the five open-weight top models
-considered as distillation teachers (helioslm_v5/eval/teacher_license_audit.py).
+considered as distillation teachers (evastar/eval/teacher_license_audit.py).
 
 Needs network access to huggingface.co.
 
@@ -17,7 +17,7 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from helioslm_v5.eval.teacher_license_audit import (  # noqa: E402
+from evastar.eval.teacher_license_audit import (  # noqa: E402
     PENDING_TEACHERS, SCOPE_NOTES, TEACHERS, audit, pin_pending)
 
 

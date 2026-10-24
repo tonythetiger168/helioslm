@@ -22,13 +22,13 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from helioslm_v5.agent.envs import make_envs
-from helioslm_v5.agent.gate import GateViolation, routing_gate
-from helioslm_v5.agent.tools import build_default_registry
-from helioslm_v5.agent.loop import AgentLoop
-from helioslm_v5.agent.gate import FixedGate, OracleGate, Route
-from helioslm_v5.configs.config_v5 import HeliosLMv5Config
-from helioslm_v5.src.model_v5 import HeliosLMv5
+from evastar.agent.envs import make_envs
+from evastar.agent.gate import GateViolation, routing_gate
+from evastar.agent.tools import build_default_registry
+from evastar.agent.loop import AgentLoop
+from evastar.agent.gate import FixedGate, OracleGate, Route
+from evastar.configs.config_v5 import EvastarV5Config
+from evastar.src.model_v5 import EvastarV5
 
 BOS, EOS, MAXC = 1023, 1022, 1021
 TASKS_PER_ENV = 4
@@ -67,7 +67,7 @@ def main():
     torch.set_num_threads(4)
     ckpt = Path(__file__).resolve().parent.parent / "checkpoints" / \
         "tool_tuned_v5.27.pt"
-    model = HeliosLMv5(HeliosLMv5Config(size="lite")).eval()
+    model = EvastarV5(EvastarV5Config(size="lite")).eval()
     model.load_state_dict(torch.load(ckpt, map_location="cpu",
                                      weights_only=True))
 

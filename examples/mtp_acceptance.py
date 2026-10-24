@@ -32,10 +32,10 @@ import torch
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from helioslm_v5.configs.config_v5 import (  # noqa: E402
-    HeliosLMv5Config, qwen_next_config)
-from helioslm_v5.src.inference.mtp import MTPDecoder  # noqa: E402
-from helioslm_v5.src.model_v5 import HeliosLMv5  # noqa: E402
+from evastar.configs.config_v5 import (  # noqa: E402
+    EvastarV5Config, qwen_next_config)
+from evastar.src.inference.mtp import MTPDecoder  # noqa: E402
+from evastar.src.model_v5 import EvastarV5  # noqa: E402
 
 PROMPTS = ["HeliosLM", "The model", "import torch", "def forward",
            "# v5.16", "Attention(", "KV cache", "speculative"]
@@ -50,13 +50,13 @@ def load_models():
     out = []
     if CKPT.exists():
         ckpt = torch.load(CKPT, map_location="cpu", weights_only=False)
-        cfg = HeliosLMv5Config(size="lite")
-        m = HeliosLMv5(cfg)
+        cfg = EvastarV5Config(size="lite")
+        m = EvastarV5(cfg)
         m.load_state_dict(ckpt["state_dict"])
         out.append(("toy_v5.13", m.eval(), cfg))
     torch.manual_seed(0)
     cfg = qwen_next_config()
-    out.append(("qwen_next_lite_untrained", HeliosLMv5(cfg).eval(), cfg))
+    out.append(("qwen_next_lite_untrained", EvastarV5(cfg).eval(), cfg))
     return out
 
 

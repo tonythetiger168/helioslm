@@ -29,10 +29,10 @@ _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 sys.path.insert(0, str(_REPO / "examples"))
 
-from helioslm_v5.eval import multiseed  # noqa: E402
-from helioslm_v5.configs.config_v5 import HeliosLMv5Config, MTPConfig  # noqa: E402
-from helioslm_v5.src.inference.mtp import MTPDecoder, MTPModule  # noqa: E402
-from helioslm_v5.src.model_v5 import HeliosLMv5  # noqa: E402
+from evastar.eval import multiseed  # noqa: E402
+from evastar.configs.config_v5 import EvastarV5Config, MTPConfig  # noqa: E402
+from evastar.src.inference.mtp import MTPDecoder, MTPModule  # noqa: E402
+from evastar.src.model_v5 import EvastarV5  # noqa: E402
 
 CKPT = _REPO / "checkpoints" / "toy_v5.13.pt"
 PROMPTS = ["HeliosLM", "The model", "import torch", "def forward",
@@ -42,8 +42,8 @@ STYLES = ("default", "light")
 
 def load_main():
     ckpt = torch.load(CKPT, map_location="cpu", weights_only=False)
-    cfg = HeliosLMv5Config(size="lite")
-    model = HeliosLMv5(cfg)
+    cfg = EvastarV5Config(size="lite")
+    model = EvastarV5(cfg)
     model.load_state_dict(ckpt["state_dict"])
     for p in model.parameters():
         p.requires_grad_(False)
@@ -51,7 +51,7 @@ def load_main():
 
 
 def fresh_head(model, style, window, seed):
-    cfg = HeliosLMv5Config(size="lite",
+    cfg = EvastarV5Config(size="lite",
                            mtp=MTPConfig(style=style, light_window=window))
     torch.manual_seed(seed)
     head = MTPModule(cfg, 0, embed_tokens=model.embed_tokens,

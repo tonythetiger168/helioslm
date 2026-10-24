@@ -23,7 +23,7 @@
 
 ## 設定
 
-- 環境：`helioslm_v5/src/training/swe_agent_rl.py`。巨集動作：套用候選 patch 0/1/2（正解 + 兩個壞 patch，順序每回合打亂）、REVERT、TEST、DONE；最多 10 步。
+- 環境：`evastar/src/training/swe_agent_rl.py`。巨集動作：套用候選 patch 0/1/2（正解 + 兩個壞 patch，順序每回合打亂）、REVERT、TEST、DONE；最多 10 步。
 - 策略：2 層 lite HeliosLM（寬 128，詞表 16）。更新：`GRPOTrainer._learn_from_samples`（同一套更新數學）加 `action_mask`。
 - 訓練前 10 題、評估另 10 題（貪婪，3 種候選順序）。
 - **參照：** 腳本化「套用 → TEST → 失敗就還原」策略 = 1.00；「套用第 0 個就 DONE」= 0.40；訓練前的貪婪策略 = 0.367（就是後者）。

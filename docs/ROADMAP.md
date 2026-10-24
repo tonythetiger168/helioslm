@@ -45,9 +45,9 @@ class DecisionHead(nn.Module):
         self.score = nn.Linear(hidden_size, 1)      # continuous score
 ```
 
-Implemented as `helioslm_v5/src/decision_head.py` (v5.41, LM-backed).
+Implemented as `evastar/src/decision_head.py` (v5.41, LM-backed).
 The toy-scale self-contained variant remains at
-`helioslm_v5/agent/decision_head.py` (v5.32).
+`evastar/agent/decision_head.py` (v5.32).
 
 ## Training path
 

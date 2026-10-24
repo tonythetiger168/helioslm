@@ -29,8 +29,8 @@ import torch.nn.functional as F
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from helioslm_v5.configs.config_v5 import HeliosLMv5Config
-from helioslm_v5.src.model_v5 import HeliosLMv5
+from evastar.configs.config_v5 import EvastarV5Config
+from evastar.src.model_v5 import EvastarV5
 
 
 def corpus_files():
@@ -69,7 +69,7 @@ ZH_SEED_MIN_VOCAB = {"tw": 6100, "cn": 4400, "both": 7400}
 
 def train_tokenizer(train_text, vocab_size, zh_seed=None):
     """zh_seed (v5.80): also learn the common Chinese characters as single
-    tokens (helioslm_v5/eval/zh_tokenizer_coverage.py; 3 -> 1 token per
+    tokens (evastar/eval/zh_tokenizer_coverage.py; 3 -> 1 token per
     character for text the corpus barely covers): "tw" = 5401 Big5
     Traditional, "cn" = 3755 GB2312 Simplified, "both" = their 6722-
     character union. A vocabulary too small to hold the seed is refused.
@@ -82,7 +82,7 @@ def train_tokenizer(train_text, vocab_size, zh_seed=None):
         if vocab_size < need:
             raise ValueError(f"--zh-seed {zh_seed} needs --vocab-size >= "
                              f"{need} (the characters plus their byte merges)")
-        from helioslm_v5.eval.zh_tokenizer_coverage import zh_seed_text
+        from evastar.eval.zh_tokenizer_coverage import zh_seed_text
         train_text = train_text + "\n" + zh_seed_text(zh_seed)
     tokenizer = Tokenizer(models.BPE(unk_token="[UNK]"))
     tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
@@ -140,7 +140,7 @@ def real_word_rate(sample, train_text):
 
 def train_model(ids, val_ids, cfg, steps, batch, seq, lr, seed):
     torch.manual_seed(seed)
-    model = HeliosLMv5(cfg)
+    model = EvastarV5(cfg)
     model.train()
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     gen = torch.Generator().manual_seed(seed)
@@ -202,7 +202,7 @@ def main():
 
 def run(args):
     """One training run; returns the metrics (also written next to --out)."""
-    cfg = HeliosLMv5Config(size="lite")
+    cfg = EvastarV5Config(size="lite")
     if args.vocab_size is not None:
         cfg.vocab_size = args.vocab_size
     max_ord = args.max_ord
@@ -221,7 +221,7 @@ def run(args):
     model, metrics = train_model(train_ids, val_ids, cfg, args.steps,
                                  args.batch, args.seq, args.lr, args.seed)
     if args.zh_seed:
-        from helioslm_v5.eval.zh_tokenizer_coverage import Bpe, zh_seed_chars
+        from evastar.eval.zh_tokenizer_coverage import Bpe, zh_seed_chars
         bpe = Bpe(tok)
         chars = zh_seed_chars(args.zh_seed)
         metrics["zh_seed"] = args.zh_seed

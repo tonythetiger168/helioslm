@@ -4,7 +4,7 @@
         --tasks arc_easy,hellaswag,tmmluplus --device cuda --out results/eval.json
 
 Runs lm_eval.simple_evaluate on the `helioslm` model type
-(helioslm_v5/eval/lm_harness.py). Harness datasets are downloaded from the
+(evastar/eval/lm_harness.py). Harness datasets are downloaded from the
 Hugging Face Hub, so run it where the Hub's file hosts are reachable (the
 GPU pod, not the development sandbox). --limit N scores only the first N
 documents of each task (a smoke run; such scores are not comparable).
@@ -21,7 +21,7 @@ import torch
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from helioslm_v5.eval.lm_harness import HeliosHarnessLM  # noqa: E402
+from evastar.eval.lm_harness import HeliosHarnessLM  # noqa: E402
 
 
 def main():

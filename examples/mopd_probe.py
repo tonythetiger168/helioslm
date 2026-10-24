@@ -1,5 +1,5 @@
 """mopd_probe.py — roadmap B2-6: multi-teacher on-policy distillation on two
-toy domains (helioslm_v5/eval/mopd_probe.py).
+toy domains (evastar/eval/mopd_probe.py).
 
 Two teachers are trained with cross-entropy, one per domain; per arm the
 same warm-started student (a short CE warm start on both domains: it
@@ -28,8 +28,8 @@ import torch
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from helioslm_v5.eval.mopd_probe import (  # noqa: E402
-    ARMS, HeliosLMv5, config, exact_match, reverse_kl, run_arm,
+from evastar.eval.mopd_probe import (  # noqa: E402
+    ARMS, EvastarV5, config, exact_match, reverse_kl, run_arm,
     train_teacher, warm_student)
 
 ENVS = ("rev", "inc")
@@ -40,7 +40,7 @@ def teachers(args):
     for i, env in enumerate(ENVS):
         path = Path(args.ckpt_dir) / f"teacher_{env}.pt" if args.ckpt_dir else None
         if path is not None and path.exists():
-            m = HeliosLMv5(config())
+            m = EvastarV5(config())
             m.load_state_dict(torch.load(path))
             out[env] = m.eval()
             continue
