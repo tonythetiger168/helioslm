@@ -15,6 +15,8 @@
   changelog entries.
 - `tests/case_harness_repair.py::test_version_never_ahead_of_changelog`
   accepts both the `Evastar-v` and `HeliosLM-v` prefixes.
+- `tests/test_term_bench.py`: drop the unused `real` local left by v5.132
+  (flake8 F841 failed the lint gate).
 
 ## v5.132 (2026-10-24) - Windows test_sandbox_limits repair, CI LF guard, version-drift lock
 
