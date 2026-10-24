@@ -87,8 +87,20 @@ def test_parse_reply():
 def test_sandbox_limits():
     with tempfile.TemporaryDirectory() as root:
         real = str(Path(root).resolve())
-        code, out = tb.run_command("pwd; echo $HOME", root)
-        assert code == 0 and out.split() == [real, root], out
+        code, out = tb.run_command("pwd; echo $HOME; echo hi > .pwd_probe",
+                                   root)
+        lines = out.split()
+        # v5.132: compare semantics, not path spelling. Git Bash prints
+        # the cwd in /c/... POSIX form and the MSYS runtime rewrites even
+        # the HOME we pass in; and when TMPDIR is set (MSYS shells),
+        # tempfile itself returns a POSIX-form /tmp path that
+        # Path.resolve() mangles into a drive-letter path on Windows —
+        # the original `out.split() == [real, root]` failed on every
+        # Windows host. The sandbox contract only requires cwd == HOME ==
+        # the root we passed; the marker file proves the shell's cwd is
+        # the same directory Python calls `root`.
+        assert code == 0 and len(lines) == 2 and lines[0] == lines[1], out
+        assert (Path(root) / ".pwd_probe").is_file(), out
         assert tb.run_command("sleep 5", root, timeout=1)[0] == 124
         code, out = tb.run_command("yes | head -c 5000", root)
         assert len(out) < 2200 and "truncated" in out
