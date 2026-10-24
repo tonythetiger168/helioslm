@@ -488,8 +488,7 @@ Offline targets cost k * 4 bytes per token, which suits the pilot and the
     (5-shot) and TW-JusticeBench (0-shot); Breeze 2 3B is reported as the
     Taiwanese reference line, C-Eval / CMMLU as controls;
   - `docs/prereg/v2.0.json` (#41, 3B, draft): gated against Breeze 2 3B
-    (`MediaTek-Research/Llama-Breeze2-3B-Instruct`) on every task the repo
-    can score (TMMLU+, TW-JusticeBench, C-Eval, CMMLU). The Breeze 2 paper
+    on every task the repo can score (TMMLU+, TW-JusticeBench, C-Eval, CMMLU). The Breeze 2 paper
     numbers (TMMLU+ 42.7, MMLU 59.9, MT-Bench-tw 4.26, BFCL 85) are noted for
     orientation; MMLU, MT-Bench-tw and function calling join the gates when
     a scorer exists.

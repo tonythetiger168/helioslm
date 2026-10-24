@@ -13,7 +13,7 @@ of the answer letter), then write the base-minus-reference gap per task with a
 
   # smoke: first 20 questions per task, smallest models only
   python examples/base_gap_eval.py --fetch --limit 20 \\
-      --models google/gemma-4-E4B MediaTek-Research/Llama-Breeze2-3B-Instruct
+      --models google/gemma-4-E4B google/gemma-4-E2B
 
 Needs transformers, accelerate, datasets and huggingface_hub on the pod,
 and HF_TOKEN for gated model cards. Models are scored one at a time and

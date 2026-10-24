@@ -118,7 +118,7 @@ def test_b1_prereg():
     validate(plan)
     tasks = {t["name"] for t in plan["tasks"]}
     refs = [b["name"] for b in plan["baselines"]
-              if b["name"].startswith("MediaTek-Research/")]
+            if not b["name"].startswith("google/")]
     assert len(refs) == 4
     gates = {(g["task"], g["vs"]): g["margin"] for g in plan["gates"]}
     for r in refs:

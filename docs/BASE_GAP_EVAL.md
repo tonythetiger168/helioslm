@@ -8,10 +8,10 @@
 | 模型 | 大小（bf16） |
 |---|---|
 | google/gemma-4-E4B（底模） | 約 16 GB |
-| MediaTek-Research/Breexe-8x7B-Instruct-v0_1 | 約 94 GB |
-| MediaTek-Research/Llama-Breeze2-8B-Instruct | 約 18 GB |
-| MediaTek-Research/Llama-Breeze2-3B-Instruct | 約 8 GB |
-| MediaTek-Research/Breeze-7B-Instruct-v1_0 | 約 15 GB |
+| 參考模型 Breexe-8x7B-Instruct-v0_1 | 約 94 GB |
+| 參考模型 Llama-Breeze2-8B-Instruct | 約 18 GB |
+| 參考模型 Llama-Breeze2-3B-Instruct | 約 8 GB |
+| 參考模型 Breeze-7B-Instruct-v1_0 | 約 15 GB |
 
 每個模型都跑以下四項，評分方式都是答案字母的 log-likelihood：
 
