@@ -139,10 +139,8 @@ def _pack_value(vtype, value):
         return _pack_str(value)
     if vtype == _VAL_ARRAY:
         sub_type, items = value
-        out = struct.pack("<IQ", sub_type, len(items))
-        for item in items:
-            out += _pack_value(sub_type, item)
-        return out
+        return struct.pack("<IQ", sub_type, len(items)) + b"".join(
+            _pack_value(sub_type, item) for item in items)
     raise ValueError(f"cannot pack metadata value type {vtype}")
 
 

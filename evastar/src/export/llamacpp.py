@@ -38,19 +38,27 @@ features (KDA hybrid layers, NoPE, LatentMoE, ...), and the exporter also
 refuses any trainable parameter it does not map, so a new module cannot
 be dropped silently.
 
-Tokenizer: by default the file carries no vocabulary
-(``tokenizer.ggml.model = "none"``); llama.cpp then runs on token ids,
-which is what the equivalence checks use. HeliosBPE pre-tokenizes on
-spaces only, while llama.cpp's BPE applies a regex, so mapping it as a
-``gpt2`` vocabulary would silently produce different ids. A matching
-pre-tokenizer is follow-up work.
+Tokenizer: without one the file carries no vocabulary
+(``tokenizer.ggml.model = "none"``) and llama.cpp runs on token ids,
+which is what the equivalence checks use. Passing the pretraining
+``tokenizer.json`` (a Hugging Face byte-level BPE, as
+``examples/pilot_prepare_data.py`` trains it) writes it as llama.cpp's
+``gpt2`` vocabulary with the ``gpt-2`` pre-tokenizer: the same GPT-2
+split regex, byte map and merge ranks, so text in gives the same ids
+(:func:`gpt2_tokenizer_metadata`). Only that exact shape is accepted;
+anything else (a normalizer, another pre-tokenizer, byte fallback) is
+refused rather than approximated. HeliosBPE pre-tokenizes on spaces
+only, which no llama.cpp pre-tokenizer reproduces, so it stays id-only.
 """
+import json
 from collections.abc import Mapping
+from pathlib import Path
 
 import torch
 
 from .gguf import (
-    _VAL_BOOL, _VAL_FLOAT32, _VAL_STRING, _VAL_UINT32, DEFAULT_ALIGNMENT,
+    _VAL_ARRAY, _VAL_BOOL, _VAL_FLOAT32, _VAL_INT32, _VAL_STRING, _VAL_UINT32,
+    DEFAULT_ALIGNMENT,
     _FILE_TYPE_ENUM, write_gguf)
 
 ARCHITECTURE = "deepseek2"
@@ -221,8 +229,9 @@ def to_deepseek2_tensors(model, config):
     return out
 
 
-def deepseek2_metadata(config, *, dtype="f16", name=None):
-    """Typed GGUF keys for llama.cpp's deepseek2 loader."""
+def deepseek2_metadata(config, *, dtype="f16", name=None, tokenizer=None):
+    """Typed GGUF keys for llama.cpp's deepseek2 loader (``tokenizer``: see
+    :func:`gpt2_tokenizer_metadata`; None writes an id-only file)."""
     a, m = config.attention, config.moe
     arch = ARCHITECTURE
     kv = []
@@ -262,6 +271,9 @@ def deepseek2_metadata(config, *, dtype="f16", name=None):
     f32(f"{arch}.expert_weights_scale", 1.0)
     kv.append((f"{arch}.expert_weights_norm", _VAL_BOOL, False))
     u32(f"{arch}.expert_gating_func", GATING_SIGMOID)
+    if tokenizer is not None:
+        kv.extend(gpt2_tokenizer_metadata(tokenizer, config.vocab_size))
+        return kv
     kv.append(("tokenizer.ggml.model", _VAL_STRING, "none"))
     for key in ("bos_token_id", "eos_token_id", "pad_token_id"):
         value = getattr(config, key, None)
@@ -270,15 +282,99 @@ def deepseek2_metadata(config, *, dtype="f16", name=None):
     return kv
 
 
-def export_llamacpp_gguf(model, path, config, *, dtype="f16", name=None):
+# llama.cpp llama_token_type
+TOKEN_NORMAL, TOKEN_UNKNOWN, TOKEN_CONTROL, TOKEN_USER_DEFINED, TOKEN_UNUSED = 1, 2, 3, 4, 5
+EOS_NAMES = ("<|endoftext|>", "<eos>", "</s>")
+UNK_NAMES = ("[UNK]", "<unk>")
+
+
+def _tokenizer_json(tokenizer):
+    if isinstance(tokenizer, Mapping):
+        return tokenizer
+    if isinstance(tokenizer, (str, Path)):
+        return json.loads(Path(tokenizer).read_text(encoding="utf-8"))
+    return json.loads(tokenizer.to_str())            # tokenizers.Tokenizer
+
+
+def gpt2_tokenizer_metadata(tokenizer, vocab_size):
+    """``tokenizer.ggml.*`` keys for a byte-level BPE ``tokenizer.json``.
+
+    ``tokenizer`` is a ``tokenizers.Tokenizer``, a path to its JSON, or the
+    parsed JSON. Ids above the tokenizer's size up to ``vocab_size`` (the
+    embedding rows) become unused ``[PAD{id}]`` entries, as llama.cpp's own
+    converter writes them. Raises ``ValueError`` for any tokenizer llama.cpp
+    would split or merge differently."""
+    tj = _tokenizer_json(tokenizer)
+    model, pre = tj.get("model") or {}, tj.get("pre_tokenizer") or {}
+    problems = []
+    if model.get("type") != "BPE":
+        problems.append(f"model type {model.get('type')!r} (need BPE)")
+    for key in ("byte_fallback", "ignore_merges", "dropout",
+                "continuing_subword_prefix", "end_of_word_suffix"):
+        if model.get(key):
+            problems.append(f"model.{key}={model[key]!r}")
+    if tj.get("normalizer"):
+        problems.append(f"normalizer {tj['normalizer'].get('type')!r}")
+    if pre.get("type") != "ByteLevel" or pre.get("add_prefix_space") \
+            or not pre.get("use_regex", True):
+        problems.append(f"pre_tokenizer {pre!r} (need ByteLevel, regex on, "
+                        "no prefix space)")
+    post = tj.get("post_processor")
+    if post and post.get("type") != "ByteLevel":
+        problems.append(f"post_processor {post.get('type')!r} adds tokens")
+    if problems:
+        raise ValueError("tokenizer cannot run as llama.cpp gpt2: "
+                         + "; ".join(problems))
+
+    tokens = {i: t for t, i in model["vocab"].items()}
+    types = {i: TOKEN_NORMAL for i in tokens}
+    for added in tj.get("added_tokens") or []:
+        tokens[added["id"]] = added["content"]
+        types[added["id"]] = TOKEN_CONTROL if added.get("special") else TOKEN_USER_DEFINED
+    n = max(tokens) + 1
+    if n > vocab_size:
+        raise ValueError(f"tokenizer has {n} ids but the model only "
+                         f"{vocab_size} embedding rows")
+    names = [tokens.get(i, f"[PAD{i}]") for i in range(vocab_size)]
+    kinds = [types.get(i, TOKEN_UNUSED) for i in range(vocab_size)]
+    by_name = {t: i for i, t in tokens.items()}
+    for name in UNK_NAMES:
+        if name in by_name:
+            kinds[by_name[name]] = TOKEN_UNKNOWN
+    merges = [m if isinstance(m, str) else " ".join(m) for m in model["merges"]]
+
+    kv = [
+        ("tokenizer.ggml.model", _VAL_STRING, "gpt2"),
+        ("tokenizer.ggml.pre", _VAL_STRING, "gpt-2"),
+        ("tokenizer.ggml.tokens", _VAL_ARRAY, (_VAL_STRING, names)),
+        ("tokenizer.ggml.token_type", _VAL_ARRAY, (_VAL_INT32, kinds)),
+        ("tokenizer.ggml.merges", _VAL_ARRAY, (_VAL_STRING, merges)),
+        ("tokenizer.ggml.add_bos_token", _VAL_BOOL, False),
+        ("tokenizer.ggml.add_eos_token", _VAL_BOOL, False),
+    ]
+    eos = next((by_name[t] for t in EOS_NAMES if t in by_name), None)
+    if eos is not None:   # GPT-2 convention: one <|endoftext|> for both
+        kv += [("tokenizer.ggml.eos_token_id", _VAL_UINT32, eos),
+               ("tokenizer.ggml.bos_token_id", _VAL_UINT32, eos)]
+    unk = next((by_name[t] for t in UNK_NAMES if t in by_name), None)
+    if unk is not None:
+        kv.append(("tokenizer.ggml.unknown_token_id", _VAL_UINT32, unk))
+    return kv
+
+
+def export_llamacpp_gguf(model, path, config, *, dtype="f16", name=None,
+                         tokenizer=None):
     """Write ``model`` as a llama.cpp-loadable deepseek2 GGUF file.
 
     ``dtype`` is ``"f32"``, ``"f16"`` (default), ``"q8_0"`` or ``"q4_k"``
     (see :func:`gguf.export_gguf`). 1-D tensors (norms, ``exp_probs_b``)
     and the router ``ffn_gate_inp`` stay F32 in every dtype, as llama.cpp's
     converter writes them, and so do ``attn_k_b`` / ``attn_v_b`` (see
-    ``KEEP_F32``). Returns the path written.
+    ``KEEP_F32``). ``tokenizer`` (a byte-level BPE ``tokenizer.json``)
+    embeds the vocabulary so llama.cpp / Ollama take text; without it the
+    file takes token ids. Returns the path written.
     """
     tensors = to_deepseek2_tensors(model, config)
-    return write_gguf(path, deepseek2_metadata(config, dtype=dtype, name=name),
+    kv = deepseek2_metadata(config, dtype=dtype, name=name, tokenizer=tokenizer)
+    return write_gguf(path, kv,
                       tensors, dtype, keep_1d_f32=True, keep_f32=KEEP_F32)
