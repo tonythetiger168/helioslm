@@ -1,5 +1,14 @@
 # Evastar v5 Changelog
 
+## v5.146 (2026-10-24) - Pilot B0: keep the checkpoint after the pod
+
+`pilot_b0_pod.sh` gains step 5: while step 4's benchmarks run, the final
+checkpoint uploads to a private HF model repo (`HF_REPO`, default
+`<account>/evastar-pilot-b0`); `results/` follows once step 4 ends. The
+upload uses the network only, so it adds no GPU time, and the pilot no
+longer lives only on a billed volume. GGUF conversion and the llama.cpp
+generation check run later on a local GPU instead of the pod.
+
 ## v5.144 (2026-10-24) - Pilot B0: access preflight and pinned pod packages
 
 The 2026-10-24 cloud dry run found that the pod's HF account cannot yet
