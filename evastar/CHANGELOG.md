@@ -1,5 +1,26 @@
 # Evastar v5 Changelog
 
+## v5.144 (2026-10-24) - Pilot B0: access preflight and pinned pod packages
+
+The 2026-10-24 cloud dry run found that the pod's HF account cannot yet
+download four gated datasets (three zh-TW corpora in the CPT mixture and
+TW-JusticeBench). `fetch_mixture.py` only checked card licences, so those
+sources would have failed mid-run without their share moving elsewhere,
+and the pilot's pass rule needs TW-JusticeBench. The pod now checks
+access first and stops before any GPU work.
+
+- `examples/fetch_mixture.py`: `HfApi.auth_check` per source; `plan(...,
+  no_access=)` skips them with `no download access (<error>)` and gives
+  their share to the rest of the phase; `blocked()` lists them; the run
+  stops when any are blocked unless `--allow-blocked`; `--check-only`
+  writes the plan to `manifest.json` without downloading (the tokenizer
+  is loaded only after the check).
+- `examples/base_gap_eval.py --check-access`: same check for the eval
+  sets and the Hub models; exit 1 if any are missing.
+- `examples/pilot_b0_pod.sh`: step 0 runs both checks and stops the pod
+  on failure; transformers / accelerate / datasets / huggingface_hub /
+  tokenizers pinned to the dry run's versions.
+- T134 gains `test_plan_no_access`.
 ## v5.143 (2026-10-24) - Pilot B0: common benchmarks
 
 Step 4 of `examples/pilot_b0_pod.sh` scores the E2B base and the pilot

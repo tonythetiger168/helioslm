@@ -69,11 +69,17 @@ def licence_matches(manifest, card):
     return any(c and _family(str(c)) == want for c in cards)
 
 
-def plan(mix, tokens, decay_frac, card_licences):
+NO_ACCESS = "no download access"
+
+
+def plan(mix, tokens, decay_frac, card_licences, no_access=None):
     """{name: {"budget", "phase", "weight", "usable", "reason"}}.
 
-    ``card_licences``: {name: card licence or None if unreadable}. Usable
-    sources share each phase's tokens by renormalised weight."""
+    ``card_licences``: {name: card licence or None if unreadable}.
+    ``no_access``: {name: why} for sources this HF account cannot
+    download (gated, not yet approved). Usable sources share each phase's
+    tokens by renormalised weight."""
+    no_access = no_access or {}
     rows, usable = {}, []
     for s in mix["sources"]:
         r = {"phase": s.get("phase", "main"), "weight": s["weight"],
@@ -83,6 +89,8 @@ def plan(mix, tokens, decay_frac, card_licences):
             r["reason"] = "not a hf: source"
         elif s.get("license") == "review":
             r["reason"] = "licence under review"
+        elif s["name"] in no_access:
+            r["reason"] = f"{NO_ACCESS} ({no_access[s['name']]})"
         elif card_licences.get(s["name"]) is None:
             r["reason"] = "card licence unreadable"
         elif not licence_matches(s["license"], card_licences[s["name"]]):
@@ -105,6 +113,12 @@ def plan(mix, tokens, decay_frac, card_licences):
         rows[name]["weight"] = next(s["weight"] for s in sub["sources"]
                                     if s["name"] == name)
     return rows
+
+
+def blocked(rows):
+    """Sources dropped only because this account cannot download them."""
+    return sorted(n for n, r in rows.items()
+                  if (r["reason"] or "").startswith(NO_ACCESS))
 
 
 def write_source(texts, encode_batch, path, budget, bos, eos, *,
@@ -159,6 +173,11 @@ def main(argv=None):
     ap.add_argument("--decay-frac", type=float, default=0.2)
     ap.add_argument("--field", default="text")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--check-only", action="store_true",
+                    help="licence + access plan only, no download")
+    ap.add_argument("--allow-blocked", action="store_true",
+                    help="go on when a source has no download access "
+                         "(its share goes to the rest of its phase)")
     a = ap.parse_args(argv)
 
     from datasets import load_dataset
@@ -168,16 +187,8 @@ def main(argv=None):
     mix = load_mixture(a.mixture)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    tok = (Tokenizer.from_file(a.tokenizer) if Path(a.tokenizer).exists()
-           else Tokenizer.from_pretrained(a.tokenizer))
-    bos = next((tok.token_to_id(t) for t in ("<bos>", "<s>")
-                if tok.token_to_id(t) is not None), None)
-    eos = next((tok.token_to_id(t) for t in ("<eos>", "</s>", "<|endoftext|>")
-                if tok.token_to_id(t) is not None), None)
-    if eos is None:
-        raise SystemExit("tokenizer has no EOS token")
 
-    api, cards, revs = HfApi(), {}, {}
+    api, cards, revs, no_access = HfApi(), {}, {}, {}
     for s in mix["sources"]:
         ps = parse_source(s["source"])
         if ps is None or s.get("license") == "review":
@@ -187,16 +198,45 @@ def main(argv=None):
         except Exception as e:
             cards[s["name"]] = None
             revs[s["name"]] = f"{type(e).__name__}: {e}"[:200]
-    rows = plan(mix, a.tokens, a.decay_frac, cards)
+        try:
+            api.auth_check(ps[0], repo_type="dataset")
+        except Exception as e:
+            no_access[s["name"]] = type(e).__name__
+    rows = plan(mix, a.tokens, a.decay_frac, cards, no_access)
+    for name, r in rows.items():
+        print(f"{name:28} {r['phase']:5} {r['budget'] / 1e6:9.1f}M  "
+              f"{r['reason'] or 'ok'}")
+    stuck = blocked(rows)
     manifest = {"schema": "cpt-data/1", "mixture": mix["name"],
                 "mixture_sha256": mixture_sha256(mix),
                 "tokenizer": a.tokenizer, "dtype": "uint32",
-                "bos": bos, "eos": eos, "sources": {}}
+                "bos": None, "eos": None, "sources": {}}
 
     def save():
         (out / "manifest.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8")
+
+    if stuck and not a.allow_blocked:
+        manifest["sources"] = rows
+        save()
+        raise SystemExit(
+            f"no download access to {', '.join(stuck)}: request access on "
+            "the Hub, or pass --allow-blocked to train without them")
+    if a.check_only:
+        manifest["sources"] = rows
+        save()
+        return manifest
+
+    tok = (Tokenizer.from_file(a.tokenizer) if Path(a.tokenizer).exists()
+           else Tokenizer.from_pretrained(a.tokenizer))
+    bos = next((tok.token_to_id(t) for t in ("<bos>", "<s>")
+                if tok.token_to_id(t) is not None), None)
+    eos = next((tok.token_to_id(t) for t in ("<eos>", "</s>", "<|endoftext|>")
+                if tok.token_to_id(t) is not None), None)
+    if eos is None:
+        raise SystemExit("tokenizer has no EOS token")
+    manifest.update(bos=bos, eos=eos)
 
     for s in mix["sources"]:
         r = dict(rows[s["name"]], card_licence=cards.get(s["name"]),

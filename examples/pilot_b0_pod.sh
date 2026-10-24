@@ -1,5 +1,5 @@
 #!/bin/bash
-# Route B pilot (v5.137, common benchmarks v5.143): base-gap eval + Gemma 4 E2B continued-pretraining
+# Route B pilot (v5.137, common benchmarks v5.143, preflight v5.144): base-gap eval + Gemma 4 E2B continued-pretraining
 # pilot on one RunPod pod, then stop the pod. docs/PILOT_B0.md has the
 # steps and the pass rule. Approved spend: US$320 in total (2026-10-24).
 #
@@ -27,9 +27,24 @@ WATCHDOG=$!
 T0=$(date +%s)
 left_h() { python3 -c "print(max(0.1, ($LIMIT_S - ($(date +%s) - $T0)) / 3600 - $EVAL_RESERVE_H))"; }
 
-pip install -q -U transformers accelerate datasets huggingface_hub tokenizers
-# step 4 (common benchmarks); pinned so the task definitions stay fixed
-pip install -q "lm-eval[hf,math]==0.4.13"
+# pinned (versions the 2026-10-24 cloud dry run used), so a new release
+# cannot change the run between pods; lm-eval for step 4 (common
+# benchmarks) in the same resolve so it keeps these pins
+pip install -q transformers==5.20.2 accelerate==1.15.0 datasets==5.1.0 \
+    huggingface_hub==2.3.0 tokenizers==0.23.3 "lm-eval[hf,math]==0.4.13"
+
+# 0. Preflight (about a minute, CPU only): stop before any GPU work if this
+#    HF account cannot download an eval set or a mixture source.
+if ! python examples/base_gap_eval.py --check-access \
+     || ! python examples/fetch_mixture.py --check-only \
+          --mixture data/mixtures/b1_gemma4_e4b_cpt_v1.json \
+          --tokenizer google/gemma-4-E2B --tokens "$TOKENS" \
+          --out /workspace/cpt_data; then
+  echo "preflight failed: see above; stopping the pod"
+  kill $WATCHDOG 2>/dev/null
+  runpodctl stop pod "$RUNPOD_POD_ID"
+  exit 1
+fi
 NGPU=$(nvidia-smi -L | wc -l)
 GPUS=$(seq -s, 0 $((NGPU - 1)))
 mkdir -p /workspace/results /workspace/runs

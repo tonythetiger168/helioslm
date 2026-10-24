@@ -117,6 +117,22 @@ def _fetch_zip(repo, out):
     return n
 
 
+def check_access(benches, models=()):
+    """{bench or model: None if this HF account can download it, else
+    why}. Local checkpoint paths are skipped."""
+    from huggingface_hub import HfApi
+    api, out = HfApi(), {}
+    todo = [(b, TASKS[b][0], "dataset") for b in benches]
+    todo += [(m, m, "model") for m in models if not Path(m).exists()]
+    for key, repo, kind in todo:
+        try:
+            api.auth_check(repo, repo_type=kind)
+            out[key] = None
+        except Exception as e:
+            out[key] = type(e).__name__
+    return out
+
+
 def fetch(data_dir, benches):
     """Download each bench's questions to data_dir/<bench>/ as
     <subject>_<split>.{csv,jsonl}. Returns {bench: status}."""
@@ -253,6 +269,9 @@ def main(argv=None):
                     choices=list(TASKS))
     ap.add_argument("--data", default="data/tw_bench")
     ap.add_argument("--fetch", action="store_true")
+    ap.add_argument("--check-access", action="store_true",
+                    help="only check this HF account can download every "
+                         "bench; exit 2 if not")
     ap.add_argument("--limit", type=int, default=None,
                     help="first N questions per task (smoke; not comparable)")
     ap.add_argument("--device", default="cuda")
@@ -265,6 +284,15 @@ def main(argv=None):
     ap.add_argument("--part-out", default=None, help=argparse.SUPPRESS)
     ap.add_argument("--stop-pod", action="store_true")
     a = ap.parse_args(argv)
+
+    if a.check_access:
+        access = check_access(a.benches, a.models)
+        print(json.dumps(access, indent=2))
+        missing = [b for b, why in access.items() if why]
+        if missing:
+            raise SystemExit(f"no download access to {', '.join(missing)}: "
+                             "request access on the Hub")
+        return access
 
     out_dir = Path(a.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
