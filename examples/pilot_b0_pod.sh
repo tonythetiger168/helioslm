@@ -1,5 +1,5 @@
 #!/bin/bash
-# Route B pilot (v5.137, common benchmarks v5.143, preflight v5.144): base-gap eval + Gemma 4 E2B continued-pretraining
+# Route B pilot (v5.137, common benchmarks v5.143, preflight v5.144, upload v5.146): base-gap eval + Gemma 4 E2B continued-pretraining
 # pilot on one RunPod pod, then stop the pod. docs/PILOT_B0.md has the
 # steps and the pass rule. Approved spend: US$320 in total (2026-10-24).
 #
@@ -87,6 +87,26 @@ if [ -f /workspace/runs/b0/final/config.json ]; then
   echo "pilot eval exit $?"
 fi
 
+# 5 (runs during step 4, network only). Keep the pilot after the pod is
+#    gone: upload the final checkpoint to a private HF model repo
+#    (HF_REPO, default <account>/evastar-pilot-b0); results follow after
+#    step 4. GGUF
+#    conversion and the llama.cpp check run later on a local GPU, not here.
+UP=
+if [ -f /workspace/runs/b0/final/config.json ]; then
+  timeout 1h python - > /workspace/upload.log 2>&1 <<'PY' &
+import os
+from huggingface_hub import HfApi
+api = HfApi()
+repo = os.environ.get("HF_REPO") or f"{api.whoami()['name']}/evastar-pilot-b0"
+api.create_repo(repo, private=True, exist_ok=True)
+api.upload_folder(repo_id=repo, folder_path="/workspace/runs/b0/final",
+                  commit_message="pilot B0 final checkpoint")
+print("uploaded to", repo)
+PY
+  UP=$!
+fi
+
 # 4. Common benchmarks (lm-evaluation-harness, the numbers model cards
 #    report), E2B base and pilot side by side, half the GPUs each. Shots
 #    follow the usual base-model settings. humaneval / mbpp execute the
@@ -130,6 +150,19 @@ if [ -f /workspace/runs/b0/final/config.json ]; then
   echo "std bench (pilot) exit $?"
 fi
 wait $SB; echo "std bench (base) exit $?"
+if [ -n "$UP" ]; then
+  wait $UP; echo "checkpoint upload exit $?"; tail -2 /workspace/upload.log
+  timeout 10m python - <<'PY'
+import os
+from huggingface_hub import HfApi
+api = HfApi()
+repo = os.environ.get("HF_REPO") or f"{api.whoami()['name']}/evastar-pilot-b0"
+api.upload_folder(repo_id=repo, folder_path="/workspace/results",
+                  path_in_repo="results", commit_message="pilot B0 results")
+print("results uploaded to", repo)
+PY
+  echo "results upload exit $?"
+fi
 
 echo "done: results in /workspace/results, run in /workspace/runs/b0"
 kill $WATCHDOG 2>/dev/null
