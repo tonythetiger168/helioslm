@@ -81,6 +81,11 @@ def main():
                     help="routed-expert dispatch (v5.106); batched runs all "
                          "experts in two bmm calls (default since v5.139: "
                          "2.95x faster on an RTX 4060)")
+    ap.add_argument("--ce-chunk", type=int, default=0,
+                    help="v5.142: compute the output head + cross-entropy "
+                         "this many tokens at a time (fused, no full "
+                         "[tokens, vocab] logits); 0 = full logits. KD "
+                         "batches always use full logits")
     ap.add_argument("--kda-chunk", type=int, default=64,
                     help="k3_block: chunked-parallel KDA recurrence with "
                          "this chunk length (v5.107; default 64 since "
@@ -141,7 +146,8 @@ def main():
         ckpt_every=args.ckpt_every, seed=args.seed, device=device,
         dtype=dtype, bytes_per_token=meta["val_bytes_per_token"],
         peak_flops=args.peak_tflops * 1e12 if args.peak_tflops else None,
-        compile_model=args.compile, kd_alpha=args.kd_alpha)
+        compile_model=args.compile, kd_alpha=args.kd_alpha,
+        ce_chunk=args.ce_chunk)
     print("done", json.dumps(summary))
 
 
