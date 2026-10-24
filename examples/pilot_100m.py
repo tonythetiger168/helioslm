@@ -77,12 +77,14 @@ def main():
     ap.add_argument("--peak-tflops", type=float)
     ap.add_argument("--compile", action="store_true")
     ap.add_argument("--moe-dispatch", choices=["blocked", "batched"],
-                    default="blocked",
+                    default="batched",
                     help="routed-expert dispatch (v5.106); batched runs all "
-                         "experts in two bmm calls")
-    ap.add_argument("--kda-chunk", type=int, default=0,
+                         "experts in two bmm calls (default since v5.139: "
+                         "2.95x faster on an RTX 4060)")
+    ap.add_argument("--kda-chunk", type=int, default=64,
                     help="k3_block: chunked-parallel KDA recurrence with "
-                         "this chunk length (v5.107); 0 = per-token loop")
+                         "this chunk length (v5.107; default 64 since "
+                         "v5.139); 0 = per-token loop, 8-18x slower")
     ap.add_argument("--ple-dim", type=int, default=0,
                     help="LB8: per-layer embedding width (Gemma 3n); "
                          "0 = off")

@@ -46,7 +46,7 @@ ARCHS = ("dense", "moe", "k3_block", "mimo_hybrid", "lfm_conv")
 
 def pilot_config(arch="dense", vocab_size=32768, hidden_size=640,
                  num_layers=8, intermediate_size=1792, max_seq=2048,
-                 balance="smebu", moe_dispatch="blocked", kda_chunk=0,
+                 balance="smebu", moe_dispatch="batched", kda_chunk=64,
                  ple_dim=0):
     if arch not in ARCHS:
         raise ValueError(f"arch must be one of {ARCHS}, got {arch!r}")
@@ -395,6 +395,7 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
     tokens_per_step = batch * seq * grad_accum
     logf = open(out / "log.jsonl", "a")
     t_window, tok_window = time.perf_counter(), 0
+    t_step = t_window
     last = {}
     while step < steps:
         cur_lr = lr_at(step, plan, lr, warmup, min_lr_ratio, schedule,
@@ -436,9 +437,18 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
         update_router_biases(model)
         step += 1
         tok_window += tokens_per_step
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+        now = time.perf_counter()
         rec = {"step": step, "lr": round(cur_lr, 8),
                "phase": "decay" if step > decay_start else "main",
-               "train_loss": round(loss_sum, 5), "grad_norm": round(gnorm, 4)}
+               "train_loss": round(loss_sum, 5), "grad_norm": round(gnorm, 4),
+               # v5.139: per-step throughput (the window value below also
+               # spans warmup and eval) and peak memory, for MFU tuning.
+               "step_tokens_per_s": round(tokens_per_step / max(now - t_step, 1e-9), 1)}
+        t_step = now
+        if device.type == "cuda":
+            rec["peak_mem_gb"] = round(torch.cuda.max_memory_allocated() / 2**30, 3)
         if kd_used:
             rec["kd_loss"] = round(kd_sum, 5)
         if step % eval_every == 0 or step == steps:
@@ -452,6 +462,7 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
             if peak_flops:
                 rec["mfu"] = round(6 * params["active"] * tps / peak_flops, 4)
             t_window, tok_window = time.perf_counter(), 0
+            t_step = t_window
             log(json.dumps(rec))
         logf.write(json.dumps(rec) + "\n")
         logf.flush()

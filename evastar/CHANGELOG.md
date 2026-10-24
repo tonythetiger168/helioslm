@@ -1,5 +1,51 @@
 # Evastar v5 Changelog
 
+## v5.139 (2026-10-24) - Training speed from the RTX 4060 MFU run
+
+An eager MFU sweep of `examples/pilot_100m.py` ran on an RTX 4060 8 GB,
+at 65,536 tokens per step. Peak memory was ~3–5 GB because the PC was
+nearly out of RAM. torch.profiler found three bottlenecks that only
+needed defaults changed:
+
+- **MLA training on the expanded path.** `attention.expanded_training`
+  is new and on by default. With `use_absorption`, a cache-free training
+  forward (no past, `use_cache=False`) now runs the expanded K/V + SDPA
+  path. The weights and math are the same, but no eager
+  `[B, H, T, T]` score tensor is built. On the 4060 at seq 1024 this
+  gave 2.1x tok/s and 40% less memory (15.9k vs 7.5k tok/s, 2.9 vs
+  4.8 GB). The best dense setting went from 14.8k to 20.3k tok/s, which
+  is 28% to 39% of the card's measured 29 TFLOPS bf16 peak.
+  - These keep the absorbed path: eval forwards, decode, prefill with a
+    cache, fp8 caches (they quantize c_kv even without a cache), sparse
+    top-k, and KV-sharing layers, which read the source's latent cache.
+  - `MLA._train_expanded` holds the rule. `False` restores v5.138
+    training.
+- **Pilot defaults.** `pilot_config` and `pilot_100m.py` now default to
+  `moe_dispatch="batched"`. Blocked dispatch was launch-bound (about
+  6,800 small matmuls per 2 steps): 769 vs 166 ms per step, 2.95x slower
+  at b4 s512. They also default to `kda_chunk=64`; the per-token loop
+  was 8–18x slower. The model-level `moe.dispatch` default stays
+  "blocked", because serving relies on its batch-independent bit
+  stability.
+- **Per-step logging.** `pretrain` logs `step_tokens_per_s` on every
+  step and `peak_mem_gb` on CUDA. Before this, tok/s appeared only at
+  eval steps, and that window included warmup.
+- `tests/test_mla_expanded_training.py` (T135) covers the change:
+  - Loss and every gradient match the absorbed training forward with
+    the plain config, the output gate, a soft cap, a learnable sink,
+    sliding window + global layers, K=V, a padding mask, packed
+    position_ids, and KV sharing.
+  - It checks which path is taken in train, eval, with a cache, with
+    fp8, and with sparse top-k.
+
+Measured but not changed yet:
+
+- `--compile` needs triton, which is not installed on the 4060 PC.
+- The k3_block KDA chunk recurrence (fp32, three-operand einsum, 41% of
+  GPU time) runs at 1.6k tok/s.
+- 14–20% of GPU time goes to dtype copies, from autocast re-casting the
+  fp32 weights and from `logits.float()`.
+
 ## v5.138 (2026-10-24) - cpt_hf fixes from the RTX 4060 smoke run
 
 `examples/cpt_hf.py` was run once on an RTX 4060 before any pod opened:
