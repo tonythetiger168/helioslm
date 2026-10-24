@@ -364,7 +364,7 @@ class HybridAttentionConfig:
     # per-token loop (default, unchanged). Equal to the loop to float
     # tolerance; single-token decode always uses the loop.
     chunk_size: int = 0
-    # v5.141: "default" keeps the layer above. "k3" is the KDA layer of
+    # v5.142: "default" keeps the layer above. "k3" is the KDA layer of
     # llama.cpp's kimi-k3 graph, so the layer exports to GGUF: the decay is
     # applied before the retrieval, a sigmoid write strength (beta) per
     # head, L2-normalized q and k, a low-rank log-decay gate

@@ -1,4 +1,4 @@
-"""T137 — KDA layer in the style of llama.cpp's kimi-k3 graph, v5.141.
+"""T137 — KDA layer in the style of llama.cpp's kimi-k3 graph, v5.142.
 
 ``hybrid_attention.style="k3"`` makes GatedDeltaAttention compute what
 llama.cpp's kimi-k3 KDA layer computes, so hybrid models can export to

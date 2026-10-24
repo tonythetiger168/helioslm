@@ -1,6 +1,6 @@
 # Evastar v5 Changelog
 
-## v5.141 (2026-10-24) - hybrid (KDA + MLA) and K3-block models run in llama.cpp
+## v5.142 (2026-10-24) - hybrid (KDA + MLA) and K3-block models run in llama.cpp
 
 Until now only the dense / MoE MLA configs exported to llama.cpp
 (`deepseek2`); everything with KDA layers was refused. llama.cpp f5027fb
@@ -90,6 +90,29 @@ architecture choice and the refusals. `tests/test_k3_llamacpp_parts.py`
 decode, score gradients), the full-width router, situ_k3 (formula,
 blocked = batched) and the presets (export for every size; the
 llama.cpp k3 block trains).
+## v5.141 (2026-10-24) - Fused chunked output head + cross-entropy
+
+The RTX 4060 MFU sweep spent 14-20% of GPU time in dtype copies, much of
+it the fp32 copy of the [tokens, vocab] logits, and the logits are what
+made `--batch 8 --seq 1024` run out of memory (bf16 logits, their fp32
+copy and its gradient: about 2.5 GB at vocab 32768; 8.6 GB for one fp32
+copy at Gemma's 262k vocab).
+
+- `training.pretrain.chunked_lm_loss(hidden, weight, targets, mask,
+  softcap, chunk)`: the output head and the cross-entropy run `chunk`
+  tokens at a time, and the forward computes the gradients for the hidden
+  states and the head weight in the same pass (a custom autograd
+  function: nothing is recomputed, only one chunk's fp32 logits exist).
+  Target masks and the final logit soft cap are supported.
+- `EvastarV5.forward(return_logits=False)` skips `lm_head` and returns
+  the final-normed hidden states.
+- `pretrain(ce_chunk=N)` / `pilot_100m.py --ce-chunk N` (default 0 = full
+  logits, unchanged) use it for plain and SFT-masked batches; logit-KD
+  batches keep full logits.
+
+`tests/test_chunked_ce.py` (T140): loss and gradients equal full-logits
+cross-entropy (masks, soft cap, ragged chunks, bf16), model gradients
+match for dense and MoE, and `pretrain` logs the same losses either way.
 
 ## v5.140 (2026-10-24) - KDA chunk form without the pair-decay tensor
 

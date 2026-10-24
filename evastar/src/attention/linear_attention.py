@@ -143,7 +143,7 @@ def chunked_delta_rule(q, k, v, decay, keep, seg_start, state, chunk, sub=16,
     previous sub-chunk, ``exp(G_t - G_j) = exp(G_t - R) exp(R - G_j)``,
     where both factors are <= 1 (plain matmuls, no overflow).
 
-    v5.141 (``hybrid_attention.style="k3"``): ``log_decay`` takes ``decay``
+    v5.142 (``hybrid_attention.style="k3"``): ``log_decay`` takes ``decay``
     as the log-decay itself; ``decay_first`` decays the state before the
     retrieval (``u_t = keep_t (v_t - (Lam_t S_{t-1})^T k_t)``, llama.cpp's
     gated delta net), so the k-side decays run to t instead of t - 1;
@@ -300,7 +300,7 @@ class GatedDeltaAttention(nn.Module):
             config.hybrid_attention.per_channel_decay)
         gate_width = self.num_heads * self.head_dim \
             if self.per_channel_decay else self.num_heads
-        # v5.141: style "k3" = llama.cpp's kimi-k3 KDA layer (see
+        # v5.142: style "k3" = llama.cpp's kimi-k3 KDA layer (see
         # HybridAttentionConfig.style); "default" keeps the v5.5 layer.
         self.style = hc.style
         self.norm_eps = config.rms_norm_eps

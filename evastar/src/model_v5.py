@@ -605,8 +605,13 @@ class EvastarV5(nn.Module):
 
     def forward(self, input_ids, attention_mask=None, position_ids=None,
                 past_key_values=None, use_cache=False, images=None,
-                audio_features=None):
+                audio_features=None, return_logits=True):
         """See module docstring for the (logits, hidden_states, past) contract.
+
+        ``return_logits=False`` (v5.141) skips ``lm_head``: logits is None
+        and the caller computes the loss from the final-normed hidden
+        states (``training.pretrain.chunked_lm_loss``), so the
+        [B, L, vocab] logits never exist at once.
 
         attention_mask: [B, L] with 1 = real token, 0 = pad. When decoding it
         must cover past + current tokens; a mask covering only the current
@@ -764,6 +769,8 @@ class EvastarV5(nn.Module):
                     self.config.rms_norm_eps)
 
         hidden_states = self.norm(hidden_states)
+        if not return_logits:
+            return None, hidden_states, present_key_values
         logits = self.lm_head(hidden_states)
         # v5.9: Gemma-2 style final logit soft-capping (None = uncapped,
         # v5.8 behaviour). Bounds every logit to (-cap, cap); generate()

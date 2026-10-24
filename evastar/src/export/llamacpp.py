@@ -1,6 +1,6 @@
 """Export HeliosLM checkpoints as llama.cpp ``deepseek2`` GGUF files.
 
-v5.141: hybrid KDA + MLA configs (``hybrid_attention.style="k3"``, nope
+v5.142: hybrid KDA + MLA configs (``hybrid_attention.style="k3"``, nope
 MLA) export to llama.cpp's ``kimi-k3`` architecture instead; see
 :func:`llamacpp_arch` and :func:`to_kimi_k3_tensors` at the end of this
 module.
