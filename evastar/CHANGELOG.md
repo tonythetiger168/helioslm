@@ -1,5 +1,27 @@
 # Evastar v5 Changelog
 
+## v5.140 (2026-10-24) - KDA chunk form without the pair-decay tensor
+
+The RTX 4060 MFU sweep put the k3_block pilot at 3% MFU (1.6k tok/s),
+with ~41% of GPU time in the per-channel `chunked_delta_rule` building
+one fp32 [B, H, n, n, Dk] pair-decay tensor per chunk and running a
+Python loop of solves. `chunked_delta_rule` now:
+
+- computes everything that does not depend on the carried state (the
+  k-k and q-k pair matrices, the unit-triangular solve, and their
+  products with v and with the decayed k) for all chunks at once; the
+  sequential loop over chunks only does [n, D] x [D, D] products;
+- for per-channel decay splits the rows of a chunk into sub-chunks of 16
+  tokens: pairs inside a sub-chunk keep the exact pairwise form
+  ([16, 16, Dk]); pairs with earlier columns factor through the
+  log-decay R at the end of the previous sub-chunk,
+  `exp(G_t - G_j) = exp(G_t - R) exp(R - G_j)`, where both factors are
+  <= 1, so they are plain matmuls with no overflow.
+
+Same results as the per-token loop (fp64 to 1e-10, gradients to 1e-9,
+clamp-floor decays finite). On CPU at B=2, H=8, T=1024, Dk=64, chunk 64
+forward+backward went from 2.63 s to 0.46 s. GPU numbers from the 4060
+follow in the PR. `tests/test_kda_subchunk.py` (T136) adds 43 tests.
 ## v5.139 (2026-10-24) - Training speed from the RTX 4060 MFU run
 
 An eager MFU sweep of `examples/pilot_100m.py` ran on an RTX 4060 8 GB,
