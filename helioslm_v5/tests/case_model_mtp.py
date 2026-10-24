@@ -353,3 +353,100 @@ def test_mtp_speculative_distribution():
     _pass("test_mtp_speculative_distribution",
           f"TV to exact p: plain {tvs[False]:.4f}, MTP {tvs[True]:.4f} "
           f"(noise floor ~0.08, bound 0.16); both paths deterministic")
+
+
+# ----------------------------------------------------------------------
+def test_mtp_conv_rollback():
+    """v5.126 (LB9) x MTP: speculative rollback over gated-conv state.
+
+    GatedShortConv's cache is the last k-1 gated inputs as a StateTensor
+    (fixed size, no sequence axis), and its docstring claims past_seq_len,
+    MTP rollback and engine batching treat it like the delta-rule state.
+    T129 pins the mixer math and cached decode; the MTP rollback path is
+    pinned here, mirroring test_mtp_hybrid_rollback (GDA) — a conv model
+    speculating over a REJECTED draft must restore the exact
+    pre-speculation conv taps:
+
+    1. unit: a speculative forward must not mutate the input cache in
+       place; _row_past truncates the MLA cache but never the conv state;
+    2. rollback-replay: restoring a clone and replaying the committed
+       token equals a fresh sequential decode (measured diffs in the
+       pass line; conv taps are copied values, so the replay is exact
+       down to fp reassociation, unlike GDA's accumulated recurrence);
+    3. end to end: MTPDecoder greedy == plain greedy, bitwise, with at
+       least one rejection (the rollback path actually taken);
+    4. past_seq_len skips the fixed-size conv state.
+    """
+    from helioslm_v5.configs.config_v5 import (
+        HybridAttentionConfig, MoEConfig, MTPConfig)
+    from helioslm_v5.src.attention.gated_conv import GatedShortConv
+    from helioslm_v5.src.attention.linear_attention import (
+        is_recurrent_state, past_seq_len)
+    from helioslm_v5.src.inference.mtp import MTPDecoder
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+
+    torch.manual_seed(147)
+    config = HeliosLMv5Config(
+        size="lite", num_hidden_layers=4, vocab_size=120, hidden_size=64,
+        intermediate_size=128,
+        hybrid_attention=HybridAttentionConfig(enabled=False),
+        mtp=MTPConfig(enabled=True, num_modules=1),
+        moe=MoEConfig(num_experts=2, num_activated_experts=1,
+                      expert_hidden_size=64),
+        use_attention_residuals=False,
+        gated_conv_layers=(1, 3))
+    model = HeliosLMv5(config).eval()
+    assert [isinstance(l.attention, GatedShortConv) for l in model.layers
+            ] == [False, True, False, True]
+
+    # --- 1/2: unit level — clone -> speculate -> restore -> replay ------
+    ids = torch.randint(3, config.vocab_size, (1, 7))
+    with torch.no_grad():
+        _, _, p5 = model(ids[:, :5], use_cache=True)
+        assert past_seq_len(p5) == 5
+        conv5 = p5[1][0].clone()          # layer-1 conv taps after 5 tokens
+        assert is_recurrent_state(p5[1][0])
+        # Speculative +2 tokens from p5 (must NOT mutate p5).
+        _, _, p7 = model(ids[:, 5:7], past_key_values=p5, use_cache=True)
+        assert torch.equal(p5[1][0], conv5), \
+            "speculative forward mutated the conv state cache in place"
+        assert past_seq_len(p7) == 7      # fixed-size conv state skipped
+        # _row_past with a truncation length: MLA cache truncated, conv
+        # state NOT (no sequence axis to cut).
+        rp = MTPDecoder._row_past(p7, 0, length=6)
+        assert rp[0][0].shape[2] == 6, "MLA cache not truncated to 6"
+        assert rp[1][0].shape == p7[1][0].shape \
+            and torch.equal(rp[1][0], p7[1][0]), \
+            "conv state cache must never be dim-2 truncated"
+        # Reject the speculation: restore the clone of p5 and replay the
+        # committed token ids[:, 5].
+        clone = [tuple(t.clone() for t in lp) for lp in p5]
+        _, _, p6r = model(ids[:, 5:6], past_key_values=clone, use_cache=True)
+        # Reference: a fresh sequential decode to 6 tokens.
+        _, _, p6d = model(ids[:, :6], use_cache=True)
+        s_diff = (p6r[1][0] - p6d[1][0]).abs().max().item()
+        k_diff = (p6r[0][0] - p6d[0][0]).abs().max().item()
+        # Conv taps are copied inputs, not an accumulated recurrence, so
+        # the replay stays far cleaner than GDA's; the MLA cache
+        # threshold follows the suite's own hybrid decode allowance.
+        # Measured on this fixture: conv 2.98e-08, MLA 7.15e-07 — the
+        # bounds below keep ~30x / ~14x margin over the measurements.
+        assert s_diff < 1e-6, f"restored+replayed conv state diverges: {s_diff:.3e}"
+        assert k_diff < 1e-5, f"restored+replayed MLA cache diverges: {k_diff:.3e}"
+
+    # --- 3: end to end — MTP speculative decode == plain greedy --------
+    decoder = MTPDecoder(model, model.mtp_modules, config)
+    ids = torch.randint(3, config.vocab_size, (1, 6))
+    res = decoder.generate(ids, max_new_tokens=8, temperature=0)
+    plain = model.generate(ids, max_new_tokens=8, temperature=0)
+    n = res.sequences.shape[1]
+    assert torch.equal(plain[:, :n], res.sequences), \
+        "conv-model MTP decode diverged from plain greedy"
+    assert res.num_drafted > 0
+    assert res.num_accepted < res.num_drafted, \
+        "test expected at least one rejection (rollback path) to occur"
+    _pass("test_mtp_conv_rollback",
+          f"replay-exactness conv {s_diff:.2e}/mla {k_diff:.2e}, "
+          f"MTP==greedy len {n}, acceptance {res.acceptance_rate:.3f} "
+          f"({res.num_accepted}/{res.num_drafted} drafted, rejections "
+          "rolled back), past_seq_len skips conv state")

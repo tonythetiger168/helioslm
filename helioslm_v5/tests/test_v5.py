@@ -120,6 +120,7 @@ TESTS = [
     case_moe.test_situ_glu,
     case_model_mtp.test_mtp_hybrid_rollback,
     case_model_mtp.test_mtp_speculative_distribution,
+    case_model_mtp.test_mtp_conv_rollback,
     case_moe.test_quantile_margin_boundary,
     case_moe.test_balance_state_resume,
     case_moe.test_balance_state_resume_qb,
