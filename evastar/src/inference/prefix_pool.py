@@ -43,6 +43,8 @@ class PrefixPool:
         self.model.eval()
         self.block_size = int(block_size)
         self.max_blocks = int(max_blocks)
+        if self.block_size <= 0 or self.max_blocks < 0:
+            raise ValueError("block_size must be positive and max_blocks non-negative")
         self.fingerprint = fingerprint
         # Hash-chain seed: the first block's "parent" is the fingerprint,
         # so fingerprint mismatch still guarantees a miss.
@@ -113,6 +115,11 @@ class PrefixPool:
     def store(self, ids):
         """Incremental per-block prefill; each block stores its own
         (cumulative length, exact-length past snapshot, last logits)."""
+        _, _, logits = self._store_prefix(ids)
+        return logits
+
+    def _store_prefix(self, ids):
+        """Return live prefill state even when its pool entries are evicted."""
         logits = None
         past = None
         n = 0
@@ -133,7 +140,7 @@ class PrefixPool:
             while len(self._pool) > self.max_blocks:
                 self._pool.popitem(last=False)
                 self.evictions += 1
-        return logits
+        return n, past, logits
 
     # ------------------------------------------------------------------
     @torch.no_grad()
@@ -161,8 +168,7 @@ class PrefixPool:
         else:
             self.misses += 1
             matched = 0
-            self.store(ids)
-            full = (len(ids) // self.block_size) * self.block_size
+            full, past, logits = self._store_prefix(ids)
             if full == 0:
                 lg, _, past = self.model(
                     input_ids=torch.tensor([ids], dtype=torch.long),
@@ -170,13 +176,10 @@ class PrefixPool:
                 logits = lg[0, -1]
             elif full < len(ids):
                 # prefill the tail remainder on top of the deepest block
-                _, past, _ = self.lookup(ids)
                 lg, _, past = self.model(
                     input_ids=torch.tensor([ids[full:]], dtype=torch.long),
                     past_key_values=past, use_cache=True)
                 logits = lg[0, -1]
-            else:
-                _, past, logits = self.lookup(ids)
 
         out = []
         for _ in range(max_new_tokens):

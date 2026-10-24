@@ -209,6 +209,26 @@ def sparse_kd_loss(logits, idx, p):
     return per[has].sum() / n, n
 
 
+def mixed_kd_loss(logits, y, mask, idx, p, alpha):
+    """Mix CE/KD per token; unaligned positions retain their full CE loss.
+
+    Normalize once over the scored tokens, so changing teacher coverage
+    cannot silently change the relative weight of the remaining positions.
+    The second result is mean KD on scored, aligned positions for logging.
+    """
+    ce = F.cross_entropy(logits.float().reshape(-1, logits.shape[-1]),
+                         y.reshape(-1), reduction="none")
+    p = p.to(logits.device)
+    logp = F.log_softmax(logits.float(), dim=-1)
+    kd = -(p * logp.gather(-1, idx.to(logits.device))).sum(-1).reshape(-1)
+    has = p.sum(-1).reshape(-1) > 0
+    m = mask.to(logits.device).reshape(-1).float()
+    per = torch.where(has, (1 - alpha) * ce + alpha * kd, ce)
+    loss = (per * m).sum() / m.sum().clamp(min=1)
+    aligned = has * m
+    return loss, (kd * aligned).sum() / aligned.sum().clamp(min=1)
+
+
 # -------------------------------------------------------------- schedule
 SCHEDULES = ("cosine", "wsd")
 DECAY_SHAPES = ("sqrt", "linear", "cosine")
@@ -393,17 +413,18 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
             with torch.autocast(device.type, dtype=dtype,
                                 enabled=dtype != torch.float32):
                 logits = fwd(x)[0]
-                if len(b) > 2:
+                if len(b) > 4:
+                    loss, kd = mixed_kd_loss(logits, y, b[2], b[3],
+                                             b[4], kd_alpha)
+                    loss = loss / grad_accum
+                    kd_sum += kd.item() / grad_accum
+                    kd_used = True
+                elif len(b) > 2:
                     m = b[2].to(device).reshape(-1).float()
                     ce = F.cross_entropy(
                         logits.float().reshape(-1, logits.shape[-1]),
                         y.reshape(-1), reduction="none")
                     loss = (ce * m).sum() / m.sum().clamp(min=1) / grad_accum
-                    if len(b) > 4:
-                        kd, _ = sparse_kd_loss(logits, b[3], b[4])
-                        loss = (1 - kd_alpha) * loss + kd_alpha * kd / grad_accum
-                        kd_sum += kd.item() / grad_accum
-                        kd_used = True
                 else:
                     loss = F.cross_entropy(
                         logits.float().reshape(-1, logits.shape[-1]),

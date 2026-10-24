@@ -135,7 +135,19 @@ def train(model, phases, *, steps, micro_batch, seq, grad_accum, lr,
                     loss = lm_loss(model, x, y) / grad_accum
                 loss.backward()
             total += loss.item()
-        torch.nn.utils.clip_grad_norm_(params, 1.0)
+        grad_norm = torch.nn.utils.clip_grad_norm_(params, 1.0)
+        # A rejected batch must never reach AdamW or poison the final model.
+        # Agree across DDP ranks before any rank advances the optimizer.
+        bad = torch.tensor([not math.isfinite(total),
+                            not bool(torch.isfinite(grad_norm))],
+                           device=device, dtype=torch.int32)
+        if world > 1 and torch.distributed.is_initialized():
+            torch.distributed.all_reduce(bad, op=torch.distributed.ReduceOp.MAX)
+        if bool(bad.any()):
+            loss_v = total
+            stopped = "non_finite_loss" if bool(bad[0]) else "non_finite_grad"
+            opt.zero_grad(set_to_none=True)
+            break
         opt.step()
         opt.zero_grad(set_to_none=True)
         tokens += micro_batch * seq * grad_accum * world
@@ -147,9 +159,6 @@ def train(model, phases, *, steps, micro_batch, seq, grad_accum, lr,
                  "phase": "decay" if src is phases.get("decay") else "main",
                  "tokens": tokens, "elapsed_s": round(el, 1),
                  "tok_per_s": round(tokens / max(el, 1e-9))})
-        if not math.isfinite(loss_v):
-            stopped = "non_finite_loss"
-            break
     return {"steps": done, "tokens": tokens,
             "loss": loss_v, "stopped": stopped}
 

@@ -126,8 +126,8 @@ class Session:
         frozen = json.loads(_canonical(ev))  # detach from caller's objects
         self._events.append(frozen)
         for fn in list(self._listeners):
-            fn(frozen)
-        return frozen
+            fn(copy.deepcopy(frozen))
+        return copy.deepcopy(frozen)
 
     def subscribe(self, fn):
         self._listeners.append(fn)
