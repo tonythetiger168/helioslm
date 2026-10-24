@@ -13,7 +13,7 @@ Pins:
    and the B1 release run stays within the US$5-25k the owner was quoted
    (the pilot well under US$1k);
 5. the B1 mixture is mostly Taiwanese and keeps general-data replay;
-6. the B1.0 pre-registration gates every MediaTek rival on every task
+6. the B1.0 pre-registration gates every reference model on every task
    and the base itself on the Taiwanese tasks;
 7. uint32 shards: a 248K-vocabulary stream round-trips through
    write_shards / TokenShard (torch only).
@@ -117,11 +117,11 @@ def test_b1_prereg():
                       .read_text("utf-8"))
     validate(plan)
     tasks = {t["name"] for t in plan["tasks"]}
-    rivals = [b["name"] for b in plan["baselines"]
+    refs = [b["name"] for b in plan["baselines"]
               if b["name"].startswith("MediaTek-Research/")]
-    assert len(rivals) == 4
+    assert len(refs) == 4
     gates = {(g["task"], g["vs"]): g["margin"] for g in plan["gates"]}
-    for r in rivals:
+    for r in refs:
         for t in tasks:
             assert gates[(t, r)] == 0.0
     base = BASES["gemma4-e4b"]["hf_id"]

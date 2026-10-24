@@ -30,7 +30,7 @@ NGPU=$(nvidia-smi -L | wc -l)
 GPUS=$(seq -s, 0 $((NGPU - 1)))
 mkdir -p /workspace/results /workspace/runs
 
-# 1. In parallel: base-gap eval on the GPUs (E4B vs the 4 MediaTek models)
+# 1. In parallel: base-gap eval on the GPUs (E4B vs the 4 reference models)
 #    and the pilot corpus on CPU / network.
 timeout 3h python examples/base_gap_eval.py --fetch --cleanup --gpus "$GPUS" \
     --data /workspace/tw_bench --out-dir /workspace/results \
@@ -56,7 +56,7 @@ echo "cpt_hf exit ${PIPESTATUS[0]}"
 if [ -f /workspace/runs/b0/final/config.json ]; then
   timeout 1h python examples/base_gap_eval.py --gpus 0,1 \
       --models /workspace/runs/b0/final google/gemma-4-E2B \
-      --base /workspace/runs/b0/final --rivals google/gemma-4-E2B \
+      --base /workspace/runs/b0/final --refs google/gemma-4-E2B \
       --data /workspace/tw_bench --out-dir /workspace/results/pilot_b0 \
       > /workspace/pilot_eval.log 2>&1
   echo "pilot eval exit $?"

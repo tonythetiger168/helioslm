@@ -1,7 +1,7 @@
-# Route B: beat every MediaTek model by continuing an open base (v5.127)
+# Route B: continued pretraining of an open base on Taiwanese data (v5.127)
 
-On 2026-10-23 the owner chose route B ("B路線") to beat every MediaTek
-Research text model with the least training. The plan is to continue the
+On 2026-10-23 the owner chose route B ("B路線"): reach a strong
+Traditional Chinese model with the least training. The plan is to continue the
 pretraining of an open Apache-2.0 3–4B base on Taiwanese data, then run
 the post-training stack the repo already has. Training a 4B model from
 scratch on 5T+ tokens (route A, about US$260–450k) is dropped. The
@@ -10,19 +10,19 @@ from-scratch 0.5B (#40) stays the research line and keeps its v1.0 gate.
 Nothing here spends money. Every GPU stage below needs the owner's
 approval first.
 
-## The bar
+## Reference models
 
-| MediaTek model | TMMLU+ | MMLU | MT-Bench-tw | Note |
+| Taiwanese reference model | TMMLU+ | MMLU | MT-Bench-tw | Note |
 |---|---|---|---|---|
-| Breexe-8x7B | 48.9 | 69.9 | 7.2 | hardest; Mixtral-based MoE, 47B total |
+| Breexe-8x7B | 48.9 | 69.9 | 7.2 | Mixtral-based MoE, 47B total |
 | Breeze 2 8B | 46.6 | 67.0 | – | Llama 3.1 base |
 | Breeze 2 3B | 42.7 | 59.9 | 4.26 | Llama 3.2 base |
 | Breeze-7B | – | – | – | Mistral base, 2024 |
 
 The numbers are the vendors' papers, for orientation only. The gate in
-`docs/prereg/b1.0.json` reruns every rival under our own scorer. Breeze 3
-(2026-02) has only speech and guard models, so there is no newer text
-model to beat.
+`docs/prereg/b1.0.json` reruns every reference model under our own
+scorer. Breeze 3 (2026-02) has only speech and guard models, so there is
+no newer text reference.
 
 ## Base model
 
@@ -68,9 +68,8 @@ in the pre-registration are filled in.
 - **#41 (3B dense).** Route B replaces it as the 3B-class model. E4B is
   3B class in memory: about 3 GB at Q4, which fits the L8 (8 GB GPU)
   tier. The product-line review rejected adding new sizes or
-  an 8B dense model, so B1 stays a single 4B model and does not add a
-  second, larger model to chase Breeze 2 8B. The 4B is gated against
-  every MediaTek model, Breexe-8x7B included.
+  an 8B dense model, so B1 stays a single 4B model. Its gates compare it
+  with every reference model in the table above.
 - **The v2.0 plan.** `docs/prereg/v2.0.json`, which gates the
   from-scratch 3B against Breeze 2 3B, is left as it is in case route A
   is revived. B1.0 is a separate release line.
@@ -104,10 +103,10 @@ in the pre-registration are filled in.
    then GRPO length stages (LB6). Average the best checkpoints (LB7
    linear or TIES merge).
 4. **Pre-registered evaluation** against `docs/prereg/b1.0.json`:
-   - B1 must beat all four MediaTek models on TMMLU+, TW-JusticeBench,
-     C-Eval and CMMLU.
-   - It must also beat its own base on the two Taiwanese tasks, so the
-     release adds something beyond the base.
+   - B1 must score at least as high as each of the four reference models
+     on TMMLU+, TW-JusticeBench, C-Eval and CMMLU.
+   - It must also score above its own base on the two Taiwanese tasks,
+     so the release adds something beyond the base.
    - It may lose at most 2 points to the base on C-Eval and CMMLU.
 
 Before training, run `eval/decontam.py` over the mixture against the
@@ -136,8 +135,9 @@ per-layer embedding tables are lookups.
 
 Order of spend, each step approved separately:
 
-1. **An evaluation of the untouched E4B, about US$20.** It shows how far
-   behind Breexe the base is on TMMLU+ and TW-JusticeBench.
+1. **An evaluation of the untouched E4B, about US$20.** It shows where
+   the base stands against the reference models on TMMLU+ and
+   TW-JusticeBench.
 2. **The E2B pilot, about US$200–300.** It checks the mixture and the
    learning rate. It passes if TMMLU+ and TW-JusticeBench go up and
    C-Eval and CMMLU stay within 2 points of the base.

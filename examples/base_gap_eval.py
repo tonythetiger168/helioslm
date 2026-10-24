@@ -1,11 +1,11 @@
-"""base_gap_eval.py — route B: how far is the untouched base from every
-MediaTek model? (v5.129)
+"""base_gap_eval.py — route B: where does the untouched base stand against
+the Taiwanese reference models? (v5.129)
 
 One pod run, before any training is paid for: score the base
-(google/gemma-4-E4B) and the four MediaTek Research text models on
+(google/gemma-4-E4B) and four Taiwanese reference text models on
 TMMLU+ (5-shot), TW-JusticeBench (0-shot), C-Eval val (5-shot) and CMMLU
 (5-shot) with the same scorer (evastar/eval/tw_bench.py, log-likelihood
-of the answer letter), then write the base-minus-rival gap per task with a
+of the answer letter), then write the base-minus-reference gap per task with a
 95% paired-bootstrap interval (eval/prereg.paired_bootstrap).
 
   # on the pod (docs/BASE_GAP_EVAL.md has the full steps)
@@ -44,15 +44,15 @@ from evastar.eval import tw_bench  # noqa: E402
 from evastar.eval.prereg import paired_bootstrap  # noqa: E402
 
 BASE = "google/gemma-4-E4B"
-RIVALS = (
+REFS = (
     "MediaTek-Research/Breexe-8x7B-Instruct-v0_1",
     "MediaTek-Research/Llama-Breeze2-8B-Instruct",
     "MediaTek-Research/Llama-Breeze2-3B-Instruct",
     "MediaTek-Research/Breeze-7B-Instruct-v1_0",
 )
 # Rough compute per model (active B params) for spreading them over GPUs.
-SIZE_B = {BASE: 4.5, RIVALS[0]: 13.0, RIVALS[1]: 8.0, RIVALS[2]: 3.0,
-          RIVALS[3]: 7.0}
+SIZE_B = {BASE: 4.5, REFS[0]: 13.0, REFS[1]: 8.0, REFS[2]: 3.0,
+          REFS[3]: 7.0}
 # bench: (dataset id, eval split, shot split, shots). The splits are the
 # file-name suffixes fetch() writes.
 TASKS = {
@@ -157,16 +157,16 @@ def load_tasks(data_dir, bench, limit=None):
     return tasks, shots
 
 
-def gap_table(scores, base=BASE, rivals=RIVALS, seed=0):
-    """scores: {model: {bench: {task_id: correct}}} -> {bench: {rival:
-    paired_bootstrap(base, rival) over the task ids both scored}}."""
+def gap_table(scores, base=BASE, refs=REFS, seed=0):
+    """scores: {model: {bench: {task_id: correct}}} -> {bench: {ref:
+    paired_bootstrap(base, ref) over the task ids both scored}}."""
     out = {}
     for bench in sorted({b for m in scores.values() for b in m}):
         ours = scores.get(base, {}).get(bench)
         if not ours:
             continue
         row = {}
-        for r in rivals:
+        for r in refs:
             theirs = scores.get(r, {}).get(bench)
             if not theirs:
                 continue
@@ -200,7 +200,7 @@ def _parallel(a, report, scores, save):
     procs = []
     for i, grp in enumerate(assign(a.models, len(gpus))):
         cmd = [sys.executable, str(Path(__file__).resolve()),
-               "--models", *grp, "--base", a.base, "--rivals", *a.rivals,
+               "--models", *grp, "--base", a.base, "--refs", *a.refs,
                "--benches", *a.benches, "--data", a.data,
                "--device", "cuda", "--max-length", str(a.max_length),
                "--part-out", str(parts / f"part{i}.json")]
@@ -244,11 +244,11 @@ def _free(model_id, cleanup):
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--models", nargs="*", default=[BASE, *RIVALS])
+    ap.add_argument("--models", nargs="*", default=[BASE, *REFS])
     ap.add_argument("--base", default=BASE,
                     help="model the gaps are measured from (e.g. a "
                          "cpt_hf.py checkpoint for the pilot, v5.131)")
-    ap.add_argument("--rivals", nargs="*", default=list(RIVALS))
+    ap.add_argument("--refs", nargs="*", default=list(REFS))
     ap.add_argument("--benches", nargs="+", default=list(TASKS),
                     choices=list(TASKS))
     ap.add_argument("--data", default="data/tw_bench")
@@ -272,12 +272,12 @@ def main(argv=None):
     out = (Path(a.part_out) if a.part_out
            else out_dir / f"base_gap_{stamp}.json")
     report = {"schema": "base-gap/1", "started": stamp, "base": a.base,
-              "rivals": a.rivals,
+              "refs": a.refs,
               "limit": a.limit, "fetch": None, "models": {}, "gaps": {}}
     scores = {}
 
     def save():
-        report["gaps"] = gap_table(scores, a.base, a.rivals)
+        report["gaps"] = gap_table(scores, a.base, a.refs)
         report["scores"] = scores
         out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n",
                        encoding="utf-8")
