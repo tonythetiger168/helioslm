@@ -1,7 +1,7 @@
 """Route B: continued pretraining of an open base (v5.127).
 
-The owner's choice of 2026-10-23: beat every MediaTek Research text model
-(the hardest is Breexe-8x7B) with the least training, by continuing the
+The owner's choice of 2026-10-23: a strong Traditional Chinese model with
+the least training, by continuing the
 pretraining of an open Apache-2.0 3-4B base on Taiwanese data instead of
 training from scratch. The chosen base is Google's Gemma 4 E4B. The
 from-scratch 0.5B stays the research line.

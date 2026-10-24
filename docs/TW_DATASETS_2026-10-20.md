@@ -22,7 +22,7 @@
 - `lianghsun/tw-instruct-500k`：CC BY-NC-SA 4.0（不可商用）。
 - `lianghsun/cosmopedia-zhtw`：卡片標 Apache-2.0；合成資料，生成模型的條款另計。
 - `lianghsun/wikipedia-pretrain-zh-tw-chat` 卡片標 MIT，但上游 Wikipedia 是 CC BY-SA，**仍視為存疑**。
-- `MediaTek-Research/TCEval-v2` 卡片沒有授權欄位（unknown）。
+- `TCEval-v2` 卡片沒有授權欄位（unknown）。
 - 新增簡體、西班牙文、日文、韓文候選資料集，同一份報告一起分類。
 
 **限制：** 只讀 metadata。資料檔本身的主機（`cas-server.xethub.hf.co`、`*.cdn.hf.co`）仍被沙箱擋住，所以還不能量測西／日／韓文的 tokenizer 成本。

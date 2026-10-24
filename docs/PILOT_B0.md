@@ -20,10 +20,10 @@ PER_HOUR=<pod 實際每小時美金> bash helioslm/examples/pilot_b0_pod.sh 2>&1
 
 | 步驟 | 內容 | 大約時間 |
 |---|---|---|
-| 1a | `base_gap_eval.py`：E4B 對聯發科四個模型（`docs/BASE_GAP_EVAL.md`），用全部 GPU | 1.5–2.5 h |
+| 1a | `base_gap_eval.py`：E4B 對四個台灣參考模型（`docs/BASE_GAP_EVAL.md`），用全部 GPU | 1.5–2.5 h |
 | 1b | 同時 `fetch_mixture.py`：串流下載配方內的 `hf:` 來源，篩選後用 E2B tokenizer 切成 uint32 shard，共 3B token | 1–2 h |
 | 2 | `torchrun cpt_hf.py`：E2B 續訓 3B token，WSD，最後 20% 換 decay 來源 | 約 4.8 h |
-| 3 | `base_gap_eval.py --base <續訓後> --rivals google/gemma-4-E2B`：先導對它自己的底模 | 約 0.5 h |
+| 3 | `base_gap_eval.py --base <續訓後> --refs google/gemma-4-E2B`：先導對它自己的底模 | 約 0.5 h |
 
 花費上限有兩道：腳本開頭的 watchdog 在 `MAX_COST`（預設 US$300）時直接停 pod；
 續訓用 `--max-hours` 預留一小時給存檔和評測，時間不夠會提早停下並照常存檔。
@@ -59,7 +59,7 @@ B1 不跑，這次只把結果和建議帶回來。
 
 | 路徑 | 內容 |
 |---|---|
-| `/workspace/results/base_gap_<時間>.json` | E4B 對聯發科四個模型的差距 |
+| `/workspace/results/base_gap_<時間>.json` | E4B 對四個台灣參考模型的差距 |
 | `/workspace/results/pilot_b0/base_gap_<時間>.json` | 先導對 E2B 原版的差距 |
 | `/workspace/cpt_data/manifest.json` | 實際用到的資料 |
 | `/workspace/runs/b0/` | 續訓紀錄與權重 |
