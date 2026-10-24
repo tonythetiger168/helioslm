@@ -1,5 +1,31 @@
 # Evastar v5 Changelog
 
+## v5.137 (2026-10-24) - Route B pilot B0: Gemma 4 E2B continued pretraining
+
+The owner approved the base-gap eval plus a Gemma 4 E2B pilot, US$320 in
+total; B1 does not run. One pod script fetches and tokenises the CPT
+mixture, continues pretraining E2B on 3B tokens and scores the result
+against its own base. Runbook and pass rule: `docs/PILOT_B0.md`.
+
+- `examples/fetch_mixture.py`: for each `hf:repo[:config]` source, check
+  the dataset card licence against the manifest's (same licence family),
+  skip `review` / mismatched / non-hf sources and give their share to the
+  rest of the phase, stream rows through the LB3 heuristics and the
+  source's `zh_variants`, write BOS + ids + EOS as uint32 per-source
+  shards up to the token budget, and record everything in
+  `manifest.json` (`cpt-data/1`).
+- `examples/cpt_hf.py`: continued pretraining of a Hugging Face causal LM
+  on those shards: `MixedSource` draws each sequence from one source by
+  weight, WSD schedule with the decay-phase source switch, fp32 master
+  weights under bf16 autocast, gradient checkpointing, DDP via torchrun,
+  `--freeze` (per-layer tables and vision / audio towers by default),
+  `--max-hours` stop that still saves `final/`.
+- `examples/pilot_b0_pod.sh`: base-gap eval and data fetch in parallel,
+  then training, then the pilot eval; a watchdog stops the pod at
+  `MAX_COST`.
+- `examples/base_gap_eval.py --base / --rivals`: measure gaps for any
+  model pair (here the pilot checkpoint against `google/gemma-4-E2B`).
+- `evastar/tests/test_cpt_pilot.py` (T134).
 ## v5.136 (2026-10-24) - Pin three newer MIT teacher releases
 
 - `eval/teacher_license_audit.py`: a 2026-10-24 re-survey of the teacher
