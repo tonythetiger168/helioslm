@@ -1,5 +1,27 @@
 # HeliosLM v5 Changelog
 
+## v5.132 (2026-10-24) - Windows test_sandbox_limits repair, CI LF guard, version-drift lock
+
+- `tests/test_term_bench.py::test_sandbox_limits`: the pwd/$HOME
+  assertion compared Windows-form paths against Git Bash's POSIX-form
+  output (the MSYS runtime rewrites even the HOME passed into the
+  sandbox, and when TMPDIR is set tempfile itself returns an MSYS /tmp
+  path that Path.resolve() mangles into a drive-letter path), so the
+  test failed on every Windows host while CI stayed green. It now
+  asserts semantics instead of spelling: pwd == $HOME, and a marker file
+  written by the shell must be visible to Python at `root`. POSIX
+  behaviour unchanged. Locked by a new case test.
+- `.github/workflows/ci.yml`: new "LF guard" step in the syntax-gate job
+  fails the build when any tracked text file carries CR bytes. The
+  v5.110 `.gitattributes` policy governs future checkouts; this guards
+  the index itself against CRLF blobs committed without the policy.
+- `tests/case_harness_repair.py` (3 tests, registered in test_v5.py):
+  `test_sandbox_pwd_home_posix_form` (sandbox pwd == $HOME, /c/... form
+  on Windows), `test_ci_lf_guard` (workflow still carries the guard),
+  `test_version_never_ahead_of_changelog` (`model_name` must not claim a
+  version newer than the changelog head; lag is tolerated because
+  upstream entries do not update `model_name` — it is calibrated daily).
+
 ## v5.131 (2026-10-23) - Pin the four pending teacher licences
 
 - `eval/teacher_license_audit.py`: the OS4 rows read on 2026-10-22

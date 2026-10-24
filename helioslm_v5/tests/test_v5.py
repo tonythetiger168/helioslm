@@ -178,6 +178,12 @@ TESTS = [
     case_harness_repair.test_sandbox_python3_resolvable,
     case_harness_repair.test_sandbox_timeout_kills_tree,
     case_harness_repair.test_patch_command_base64_roundtrip,
+    # v5.132 (2026-10-24): sandbox pwd/$HOME POSIX-form semantics (the
+    # repaired test_sandbox_limits relies on them), CI LF guard presence,
+    # and the model_name <= changelog-head invariant.
+    case_harness_repair.test_sandbox_pwd_home_posix_form,
+    case_harness_repair.test_ci_lf_guard,
+    case_harness_repair.test_version_never_ahead_of_changelog,
 ]
 
 # CI thread guard (2026-10-13): PR #16's full-suite probe passes with
@@ -191,7 +197,7 @@ if os.environ.get("GITHUB_ACTIONS") == "true":
 
 
 def main():
-    print("HeliosLM v5.110 Test Suite (lite config, CPU)")
+    print("HeliosLM v5.132 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:

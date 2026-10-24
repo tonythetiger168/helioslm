@@ -21,6 +21,15 @@ jobs:
           python-version: '3.12'
       - run: pip install flake8==7.4.1
       - run: flake8 helioslm_v5/ harness/ agent/
+      # v5.132: LF guard. The digest-pinned benchmark/data artifacts hash
+      # raw bytes, so a CRLF blob (e.g. a Windows checkout/commit without
+      # the v5.110 .gitattributes policy) fails digest gates on content
+      # that is actually right. .gitattributes governs future checkouts;
+      # this step guards the index itself.
+      - name: LF guard
+        run: |
+          bad=$(git ls-files '*.py' '*.md' '*.json' '*.jsonl' '*.txt' '*.yml' '*.yaml' '*.sh' '*.toml' '*.cfg' '*.ini' '*.csv' '*.tex' | xargs grep -lU $'\r' || true)
+          if [ -n "$bad" ]; then echo "CRLF bytes in tracked text files:"; echo "$bad"; exit 1; fi
 
   test-v5:
     name: Test v5 Suite (py${{ matrix.python }})

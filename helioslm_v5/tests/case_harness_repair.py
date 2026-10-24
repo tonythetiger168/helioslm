@@ -317,3 +317,77 @@ def test_patch_command_base64_roundtrip():
     _pass("test_patch_command_base64_roundtrip",
           "regex-bearing patch applied via base64 payload in the real "
           "sandbox")
+
+
+# ---------------------------------------------------------------------------
+# v5.132 (2026-10-24): three repo-hygiene locks — the sandbox pwd/$HOME
+# POSIX-form semantics the repaired test_sandbox_limits relies on, the CI
+# LF guard's presence, and the model_name <= changelog-head invariant.
+# See CHANGELOG v5.132.
+# ---------------------------------------------------------------------------
+
+def test_sandbox_pwd_home_posix_form():
+    """test_term_bench.py::test_sandbox_limits asserted
+    `out.split() == [real, root]` with Windows-form paths, but Git Bash
+    prints the cwd in POSIX form (/c/..., or an MSYS /tmp path when TMPDIR
+    redirects tempfile) and the MSYS runtime rewrites even the HOME we
+    pass in — so the test failed on every Windows host while CI (Linux)
+    stayed green. v5.132 repaired that comparison to assert semantics
+    (pwd == $HOME, marker file lands in `root`) instead of path spelling;
+    this test locks the underlying sandbox behaviour it relies on."""
+    import os as _os
+    import tempfile
+    from helioslm_v5.eval import term_bench as tb
+    with tempfile.TemporaryDirectory() as root:
+        rc, out = tb.run_command("pwd; echo $HOME; echo hi > .pwd_probe",
+                                 root, timeout=30)
+        assert rc == 0, (rc, out)
+        lines = out.split()
+        assert len(lines) == 2 and lines[0] == lines[1], out
+        assert (Path(root) / ".pwd_probe").is_file(), out
+        if _os.name == "nt":
+            assert lines[0].startswith("/") and ":" not in lines[0], out
+        else:
+            assert lines[0] == str(Path(root).resolve()), out
+    _pass("test_sandbox_pwd_home_posix_form",
+          "sandbox pwd == $HOME; POSIX path form on Windows")
+
+
+def test_ci_lf_guard():
+    """The v5.110 .gitattributes policy governs future checkouts, but only
+    CI can stop a CRLF blob from reaching the index (a Windows contributor
+    committing without the policy applied). v5.132 added an "LF guard"
+    step to the syntax-gate job. Locked: the workflow still contains it —
+    silently dropping the guard reopens the digest-drift failure mode."""
+    ci = _REPO_ROOT / ".github" / "workflows" / "ci.yml"
+    assert ci.is_file(), ".github/workflows/ci.yml missing"
+    body = ci.read_text(encoding="utf-8")
+    assert "LF guard" in body and "git ls-files" in body, \
+        "LF guard step missing from ci.yml"
+    _pass("test_ci_lf_guard", "ci.yml syntax-gate carries the LF guard step")
+
+
+def test_version_never_ahead_of_changelog():
+    """`model_name` may LAG the changelog head: upstream entries do not
+    update it (the 2026-10-23 calibration found it stuck at v5.49 with the
+    changelog at v5.109 — a 60-minor drift), and the daily maintenance job
+    re-calibrates. But it must never claim a version NEWER than the
+    changelog head: that would assert an undocumented release. Locked:
+    model_version <= changelog_head_version."""
+    import re
+    cfg = (_REPO_ROOT / "helioslm_v5" / "configs" / "config_v5.py") \
+        .read_text(encoding="utf-8")
+    m = re.search(r'model_name:\s*str\s*=\s*"HeliosLM-v(\d+)\.(\d+)"', cfg)
+    assert m, "model_name not found or unparseable in config_v5.py"
+    ch = (_REPO_ROOT / "helioslm_v5" / "CHANGELOG.md") \
+        .read_text(encoding="utf-8")
+    h = re.search(r"^## v(\d+)\.(\d+)", ch, re.M)
+    assert h, "no version heading found in CHANGELOG.md"
+    model_v = (int(m.group(1)), int(m.group(2)))
+    head_v = (int(h.group(1)), int(h.group(2)))
+    assert model_v <= head_v, \
+        f"model_name v{model_v[0]}.{model_v[1]} claims a version newer " \
+        f"than the changelog head v{head_v[0]}.{head_v[1]}"
+    _pass("test_version_never_ahead_of_changelog",
+          f"model_name v{model_v[0]}.{model_v[1]} <= changelog head "
+          f"v{head_v[0]}.{head_v[1]} (lag tolerated, calibrated daily)")

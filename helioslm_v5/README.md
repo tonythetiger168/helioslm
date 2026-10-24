@@ -1,6 +1,7 @@
-# HeliosLM v5.110 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.132 - DeepSeek/K3-Style Architecture
 
-v5.110 (2026-10-23): Windows checkout repairs — repo-wide LF policy
+v5.132 (2026-10-24): Windows test_sandbox_limits repair, CI LF guard,
+version-drift lock. v5.110 (2026-10-23): Windows checkout repairs — repo-wide LF policy
 (.gitattributes), sandbox python3 PATH resolution and timeout
 process-tree kill in `eval/term_bench.py`, base64 patch transport in
 `eval/swe_bench.py`, plus UTF-8/tolerance test fixes. See CHANGELOG.md.
