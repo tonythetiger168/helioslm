@@ -1,5 +1,20 @@
 # Evastar v5 Changelog
 
+## v5.143 (2026-10-24) - Pilot B0: common benchmarks
+
+Step 4 of `examples/pilot_b0_pod.sh` scores the E2B base and the pilot
+checkpoint on the benchmarks model cards report, so the pilot's numbers
+compare directly with other models. Recorded only; the pass rule in
+`docs/PILOT_B0.md` is unchanged.
+
+- `lm-eval[hf,math]==0.4.13` installed on the pod (pinned task
+  definitions); `accelerate launch` data-parallel, half the GPUs per model.
+- Tasks and shots: mmlu / mmmlu_zh_cn / winogrande 5, arc_challenge 25,
+  hellaswag 10, truthfulqa_mc2 0, gsm8k 5, bbh_cot_fewshot 3,
+  minerva_math500 4, humaneval 0, mbpp 3.
+- `EVAL_RESERVE_H` (default 2.0 h, was a fixed 1 h) is kept after training
+  for saving and steps 3-4; step 4 is time-boxed to what is left.
+- Results: `/workspace/results/std_bench/{e2b_base,pilot_b0}/`.
 ## v5.142 (2026-10-24) - hybrid (KDA + MLA) and K3-block models run in llama.cpp
 
 Until now only the dense / MoE MLA configs exported to llama.cpp
