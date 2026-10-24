@@ -1,5 +1,25 @@
 # Evastar v5 Changelog
 
+## v5.147 (2026-10-24) - HDL track H0: VerilogEval v2 harness
+
+First piece of the chip-design (HDL) track. `evastar/eval/hdl_bench.py`
+scores VerilogEval v2 spec-to-rtl (NVlabs/verilog-eval, MIT, 156
+problems) the way upstream does, so numbers compare with published ones:
+
+- the upstream spec-to-rtl prompt (system message, `Question:`/`Answer:`,
+  `[BEGIN]`/`[DONE]`, optional 1-shot prefix);
+- upstream code extraction, `iverilog -g2012 -s tb` + `vvp` under 30 s,
+  and the `sv-iv-analyze` failure codes (S, C, T, R, ...);
+- unbiased pass@k; optional pyslang lint and yosys synthesis per sample,
+  reported next to (never inside) the pass rate;
+- `fetch` pins the upstream commit and writes a sha256 manifest; `load`
+  rejects a changed cache; `self-check` scores the references renamed to
+  TopModule and must reach 156/156 before a model run.
+
+`examples/hdl_bench_run.py` runs a Hugging Face model on the pod. CI now
+installs Icarus Verilog. T141 (test_hdl_bench.py) pins the prompt,
+extraction, failure codes, manifest and pass@k, and simulates two
+upstream problems (fixtures, MIT notice included).
 ## v5.146 (2026-10-24) - Pilot B0: keep the checkpoint after the pod
 
 `pilot_b0_pod.sh` gains step 5: while step 4's benchmarks run, the final

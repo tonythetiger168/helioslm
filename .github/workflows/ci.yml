@@ -44,6 +44,10 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Install pinned CPU torch + test deps
         run: pip install -r requirements-ci.txt
+      # v5.147: Icarus Verilog for the HDL bench simulation tests
+      # (test_hdl_bench.py skips them when it is absent).
+      - name: Install Icarus Verilog
+        run: sudo apt-get update -q && sudo apt-get install -y -q iverilog
       - name: Install optional BPE tokenizer dependency
         run: pip install tokenizers==0.22.1
       # v5.79 (tech-debt Phase 3): one parallel pytest run covers both
