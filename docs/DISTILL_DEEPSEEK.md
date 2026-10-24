@@ -1,7 +1,7 @@
 # DeepSeek 教師蒸餾（D 系列）
 
 負責人 2026-10-22 決定：從 DeepSeek 蒸餾，教師在 RunPod 上自架，與其他工作平行進行。
-本文件是計畫與 pod 操作手冊。程式在 `helioslm_v5/src/training/distill_gen.py`（D1）以及後續的 D2–D4。
+本文件是計畫與 pod 操作手冊。程式在 `evastar/src/training/distill_gen.py`（D1）以及後續的 D2–D4。
 
 ## 版本選擇
 

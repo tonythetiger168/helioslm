@@ -37,11 +37,11 @@ _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
 from examples.data_quality import read_docs  # noqa: E402
-from helioslm_v5.src.training.data_mixture import (  # noqa: E402
+from evastar.src.training.data_mixture import (  # noqa: E402
     load_mixture, mixture_sha256, usable_sources)
-from helioslm_v5.src.training.data_quality import (  # noqa: E402
+from evastar.src.training.data_quality import (  # noqa: E402
     HashedNgramClassifier, filter_docs)
-from helioslm_v5.src.training.mid_train import (  # noqa: E402
+from evastar.src.training.mid_train import (  # noqa: E402
     mix_docs, render_trace)
 
 TOKEN_DTYPES = {"uint16": np.uint16, "uint32": np.uint32}

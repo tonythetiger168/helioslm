@@ -1,0 +1,336 @@
+"""Evolvable serving harness with an oracle validation gate (v5.19).
+
+Applies the ModularRSI methodology (Siwei Wu et al., arXiv:2609.14857) to
+the INFERENCE harness: instead of evolving an agent scaffold, evolve the
+serving configuration — draft policy, prefix-pool policy, expert-tier
+budget — under a **deterministic validation gate** ModularRSI's LLM-based
+diff review cannot provide:
+
+    GATE: at temperature 0 every accepted configuration must produce
+    outputs BITWISE-IDENTICAL to the baseline configuration.
+
+(Changing cache/draft/tier settings changes latency, never greedy answers —
+that invariance IS the oracle. Configs that violate it are rejected on the
+spot.) Accepted mutations must also lower the analytic cost model, which is
+calibrated from the telemetry the v5.15–v5.18 stack already emits
+(expert-store hit rates, prefix-pool hit tokens, MTP acceptance).
+
+Modules and their mutation spaces (mirrors ModularRSI's module-wise
+separation — modules are independent, integrated greedily with the gate):
+
+    draft : off | on            (MTP speculative decoding)
+    pool  : off | on            (content-addressed KV prefix pool)
+    tier  : resident budget     (disk-tier expert store, MoE models)
+
+The evolver is deliberately small and auditable — the point is that the
+SEARCH is replaceable, the GATE is not.
+
+Usage:
+    from evastar.src.inference.harness_evolver import HarnessEvolver
+    ev = HarnessEvolver(model, workload)
+    report = ev.evolve()
+    # report["best_config"], report["accepted"], report["contrastive"]
+"""
+
+from dataclasses import dataclass, field
+from typing import List
+
+import torch
+
+from evastar.src.inference.mtp import MTPDecoder
+
+__all__ = ["HarnessConfig", "HarnessEvolver"]
+
+
+@dataclass
+class HarnessConfig:
+    """A point in the serving-harness configuration space."""
+    draft: bool = False
+    pool: bool = False
+    tier_resident_experts: int = 0        # 0 = no tiering (dense)
+    label: str = field(default="", compare=False)
+
+    def as_dict(self):
+        return {"draft": self.draft, "pool": self.pool,
+                "tier_resident_experts": self.tier_resident_experts}
+
+
+class _NullPool:
+    """Pool-off: prefix reuse contributes zero saving."""
+
+    def __init__(self):
+        self.hit_tokens = 0
+
+
+class HarnessEvolver:
+    """Contrastive, oracle-gated search over serving configurations.
+
+    Args:
+        model: a EvastarV5 (eval mode).
+        workload: list of token-id prompts; prefix overlap between items
+            is what makes ``pool=on`` profitable.
+        max_new: decode length per workload item during probes.
+    """
+
+    def __init__(self, model, workload: List[List[int]], max_new: int = 8,
+                 block_size: int = 16, memory_budget: float = None):
+        self.model = model
+        self.model.eval()
+        self.workload = [list(w) for w in workload]
+        self.max_new = max_new
+        self.block_size = block_size
+        # v5.20: second axis. None = unconstrained. Pool blocks and tier
+        # residency consume memory; drafting does not (weights resident).
+        self.memory_budget = memory_budget
+        self.gate_rejects = 0
+        self.evaluations = 0
+
+    # ------------------------------------------------------------------
+    # Oracle: greedy outputs must be bitwise-identical to baseline.
+    # ------------------------------------------------------------------
+    @torch.no_grad()
+    def _run(self, cfg: HarnessConfig, baseline_outputs: List[List[int]] = None):
+        """Run the workload under ``cfg``. Returns (outputs, telemetry).
+
+        ``baseline_outputs``: greedy outputs of the zero config. When a
+        candidate runs BOTH the pool and the draft pass, each pass's
+        output is gated against it — a composite config is accepted only
+        if every pass agrees bitwise (temp-0 invariance). A diverging
+        pass's output is surfaced as the item result so the caller's
+        oracle gate rejects the config.
+        """
+        outputs = []
+        telemetry = {"tokens": 0, "pool_hit_tokens": 0}
+        pool = None
+        if cfg.pool:
+            from evastar.src.inference.prefix_pool import PrefixPool
+            pool = PrefixPool(self.model, block_size=self.block_size,
+                              max_blocks=max(4, len(self.workload) * 2),
+                              fingerprint="harness-evolver")
+        for idx, ids in enumerate(self.workload):
+            out = None
+            pool_out = None
+            draft_ran = False
+            # pass 1 (optional): prefix-pool pass — prefill reuse telemetry
+            if pool is not None:
+                row = pool.generate(ids, max_new_tokens=self.max_new,
+                                    temperature=0.0)
+                pool_out = row[0, len(ids):].tolist()
+                out = pool_out
+            # pass 2 (optional): MTP draft pass — acceptance telemetry.
+            # Measured on its own because PrefixPool.generate does not
+            # draft internally; when BOTH passes run (composite config),
+            # each pass is gated separately against the baseline below —
+            # a composite config is accepted only if every pass agrees
+            # bitwise (which temp-0 guarantees).
+            if cfg.draft and getattr(self.model, "mtp_modules", None):
+                draft_ran = True
+                dec = MTPDecoder(self.model, self.model.mtp_modules,
+                                 self.model.config)
+                r = dec.generate(torch.tensor([ids]), max_new_tokens=self.max_new,
+                                 temperature=0)
+                out = r.sequences[0, len(ids):].tolist()
+                telemetry["acceptance"] = r.acceptance_rate
+            if out is None:
+                out_t = self.model.generate(torch.tensor([ids]),
+                                            max_new_tokens=self.max_new,
+                                            temperature=0)
+                out = out_t[0, len(ids):].tolist()
+            elif pool_out is not None and draft_ran \
+                    and baseline_outputs is not None \
+                    and pool_out != list(baseline_outputs[idx]):
+                # Composite gate: the pool pass diverged from the
+                # baseline. Surface its output as the item result — the
+                # draft output (which overwrote ``out`` above) would mask
+                # the divergence and let the oracle gate pass a config
+                # whose pool pass changes greedy answers.
+                out = pool_out
+            outputs.append(list(out))
+            telemetry["tokens"] += len(ids) + len(out)
+        if pool is not None:
+            st = pool.stats()
+            telemetry["pool_hit_tokens"] = st["hit_tokens"]
+            telemetry["pool_blocks"] = st["blocks_resident"]
+        else:
+            telemetry["pool_blocks"] = 0
+        return outputs, telemetry
+
+    @staticmethod
+    def _memory(cfg: HarnessConfig, telemetry: dict) -> float:
+        """Memory footprint (relative units): pooled KV blocks + tier
+        residency. Drafting costs zero (no extra state)."""
+        return float(telemetry.get("pool_blocks", 0)) \
+            + float(cfg.tier_resident_experts)
+
+    # ------------------------------------------------------------------
+    # Analytic cost model (per-probe calibration; units are relative).
+    # ------------------------------------------------------------------
+    def _cost(self, cfg: HarnessConfig, telemetry: dict,
+              base_outputs_tokens: int) -> float:
+        """Lower is better. Components map to real telemetry:
+
+        prefill  : tokens not covered by the prefix pool must be processed
+        decode   : per-step cost; drafting saves verify steps in proportion
+                   to acceptance; tier misses add expert load cost
+        """
+        tok = telemetry["tokens"]
+        prefill = tok - telemetry.get("pool_hit_tokens", 0)
+        steps = self.max_new * len(self.workload)
+        draft_gain = 0.0
+        if cfg.draft:
+            acc = telemetry.get("acceptance", 0.0)
+            draft_gain = 0.4 * acc          # measured net-gain structure
+        miss_cost = 0.0
+        if cfg.tier_resident_experts > 0:
+            hit = telemetry.get("tier_hit_rate", 0.0)
+            miss_cost = 0.3 * (1.0 - hit)   # per-step expert load
+        return prefill + steps * (1.0 - draft_gain + miss_cost)
+
+    # ------------------------------------------------------------------
+    # Modular search: per module, try each alternative against the gate.
+    # ------------------------------------------------------------------
+    def evolve(self, start_from: "HarnessConfig" = None) -> dict:
+        baseline = HarnessConfig(label="baseline")
+        base_outputs, base_tel = self._run(baseline)
+        base_cost = self._cost(baseline, base_tel, 0)
+        # AdaptationLoop seeds the search from a transferred config: the
+        # baseline for ACCEPTANCE decisions is still the zero config (its
+        # cost), but mutations compose onto the seed.
+        seed = start_from or HarnessConfig()
+        seed_outputs, seed_tel = self._run(seed, base_outputs)
+        seed_cost = self._cost(seed, seed_tel, 0)
+        # the oracle must hold for the seed itself on this workload
+        seed_ok = all(torch.equal(torch.tensor(a), torch.tensor(b))
+                      for a, b in zip(seed_outputs, base_outputs))
+        current = seed if seed_ok else HarnessConfig()
+        current_cost = seed_cost if seed_ok else base_cost
+
+        modules = {
+            "draft": [HarnessConfig(draft=True, label="draft:on")],
+            "pool": [HarnessConfig(pool=True, label="pool:on")],
+            "tier": [HarnessConfig(tier_resident_experts=4, label="tier:4")],
+        }
+
+        accepted: List[dict] = []
+        contrastive: List[dict] = []
+        evaluated: List[dict] = []   # for the Pareto frontier
+        for mod, candidates in modules.items():
+            for cand in candidates:
+                # build candidate on top of the current config
+                trial = HarnessConfig(
+                    draft=current.draft or cand.draft,
+                    pool=current.pool or cand.pool,
+                    tier_resident_experts=max(current.tier_resident_experts,
+                                              cand.tier_resident_experts),
+                    label=cand.label,
+                )
+                out, tel = self._run(trial, base_outputs)
+                self.evaluations += 1
+                ok = all(torch.equal(torch.tensor(a), torch.tensor(b))
+                         for a, b in zip(out, base_outputs))
+                cost = self._cost(trial, tel, 0)
+                mem = self._memory(trial, tel)
+                evaluated.append({"module": mod, "label": trial.label,
+                                  "cost": round(cost, 2),
+                                  "memory": round(mem, 2), "gate": ok})
+                mem_ok = (self.memory_budget is None
+                          or mem <= self.memory_budget)
+                contrastive.append({
+                    "module": mod, "config": trial.label,
+                    "gate_passed": ok,
+                    "cost": round(cost, 2),
+                    "memory": round(mem, 2),
+                    "memory_budget_ok": mem_ok,
+                    "delta_vs_current": round(cost - current_cost, 2),
+                })
+                if not ok:
+                    # the oracle caught a math-changing "optimization"
+                    self.gate_rejects += 1
+                    continue
+                if not mem_ok:
+                    # v5.20: latency is not the only axis — a config that
+                    # saves time by blowing the memory budget is rejected
+                    # (the efficiency-redemption failure mode)
+                    continue
+                if cost < current_cost:
+                    current, current_cost = trial, cost
+                    accepted.append({"module": mod, "config": trial.label,
+                                     "cost": round(cost, 2),
+                                     "memory": round(mem, 2)})
+
+        # Pareto frontier over ALL gate-passing evaluations:
+        # minimize (cost, memory); a point is kept if nothing dominates it.
+        pareto = []
+        for p in evaluated:
+            if not p["gate"]:
+                continue
+            dominated = any(
+                q is not p and q["gate"]
+                and q["cost"] <= p["cost"] and q["memory"] <= p["memory"]
+                and (q["cost"] < p["cost"] or q["memory"] < p["memory"])
+                for q in evaluated)
+            if not dominated:
+                pareto.append(p)
+
+        return {
+            "best_config": current.as_dict(),
+            "best_label": current.label,
+            "cost_baseline": round(base_cost, 2),
+            "cost_best": round(current_cost, 2),
+            "speedup": round(base_cost / max(current_cost, 1e-9), 3),
+            "accepted": accepted,
+            "contrastive": contrastive,
+            "pareto": pareto,
+            "memory_budget": self.memory_budget,
+            "gate_rejects": self.gate_rejects,
+            "evaluations": self.evaluations,
+            "oracle": "greedy outputs bitwise-identical to baseline "
+                      "(temperature 0 invariance)",
+        }
+
+
+class AdaptationLoop:
+    """Transfer an evolved harness across workloads (the inference-layer
+    analog of ModularRSI's cross-model generalization): seed a new evolver
+    with the source best config on a target workload, re-run the module
+    mutations, and report which modules survived the transfer.
+
+    The gate is re-validated on the target workload — a transferred config
+    is never trusted, only re-proven.
+    """
+
+    def __init__(self, model, rounds: int = 1):
+        self.model = model
+        self.rounds = rounds
+
+    def transfer(self, source_report: dict, target_workload,
+                 max_new: int = 8, memory_budget=None) -> dict:
+        seed = HarnessConfig(**source_report["best_config"])
+        decisions = []
+        reaccepted = set()
+        for r in range(self.rounds):
+            ev = HarnessEvolver(self.model, target_workload,
+                                max_new=max_new,
+                                memory_budget=memory_budget)
+            rep = ev.evolve(start_from=seed)
+            for a in rep["accepted"]:
+                reaccepted.add(a["module"])
+            decisions.append({"round": r, "accepted": rep["accepted"],
+                              "gate_rejects": rep["gate_rejects"]})
+        # intersection: a seed module survives only if the target workload
+        # re-accepts it (and it fits the target memory budget)
+        adapted = {"draft": seed.draft and "draft" in reaccepted,
+                   "pool": seed.pool and "pool" in reaccepted,
+                   "tier_resident_experts": seed.tier_resident_experts
+                   if "tier" in reaccepted else 0}
+        dropped = [m for m, on in (("draft", seed.draft), ("pool", seed.pool))
+                   if on and not adapted[m]]
+        return {
+            "source_config": seed.as_dict(),
+            "adapted_config": adapted,
+            "dropped_modules": dropped,
+            "target_memory_budget": memory_budget,
+            "decisions": decisions,
+            "note": "transferred modules must be re-accepted under the "
+                    "target workload's gate; unprofitable ones are dropped",
+        }

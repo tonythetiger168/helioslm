@@ -1,7 +1,7 @@
 # #42 30B-A3B 的 MoE 配置決策表（OS6）
 
 來源：2026-10-22 開源模型評析的 OS6。各模型數值讀自各自 Hugging Face repo 的
-`config.json`（2026-10-22）。計算在 `helioslm_v5/eval/moe_config_table.py`，
+`config.json`（2026-10-22）。計算在 `evastar/eval/moe_config_table.py`，
 測試是 `tests/test_moe_config_table.py`。
 
 ## 五個模型的 MoE 欄位

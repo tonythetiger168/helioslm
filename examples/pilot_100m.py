@@ -29,8 +29,8 @@ import torch
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from helioslm_v5.src.training.pretrain import (  # noqa: E402
-    ARCHS, HeliosLMv5, KDShard, TokenShard, count_params, pilot_config, pretrain)
+from evastar.src.training.pretrain import (  # noqa: E402
+    ARCHS, EvastarV5, KDShard, TokenShard, count_params, pilot_config, pretrain)
 
 
 def main():
@@ -97,7 +97,7 @@ def main():
                        moe_dispatch=args.moe_dispatch,
                        kda_chunk=args.kda_chunk, ple_dim=args.ple_dim)
     with torch.device("meta"):
-        params = count_params(HeliosLMv5(cfg))
+        params = count_params(EvastarV5(cfg))
     print("params", json.dumps(params))
     if args.dry_run:
         return

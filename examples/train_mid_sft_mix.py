@@ -25,9 +25,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # reuse the training backbone from train_mid_sft
 from examples.train_mid_sft import (BATCH, EPISODES_PER_ENV, LR, MAXLEN,
                                     SEED, collate, gen_dataset)
-from helioslm_v5.configs.config_v5 import HeliosLMv5Config
-from helioslm_v5.src.model_v5 import HeliosLMv5
-from helioslm_v5.src.tokenizer.bpe import BOS, HeliosBPE, build_corpus
+from evastar.configs.config_v5 import EvastarV5Config
+from evastar.src.model_v5 import EvastarV5
+from evastar.src.tokenizer.bpe import BOS, HeliosBPE, build_corpus
 
 OPEN_PATH = "/tmp/mid_open_dolly.jsonl"
 OUT_NAME = "mid_sft_v5.29_mix"
@@ -92,10 +92,10 @@ def main():
     rng.shuffle(train)
     print(f"total train: {len(train)}", flush=True)
 
-    out_dir = Path(os.environ.get("HELIOS_CKPT_DIR", "checkpoints"))
+    out_dir = Path(os.environ.get("EVASTAR_CKPT_DIR") or os.environ.get("HELIOS_CKPT_DIR", "checkpoints"))
     out_dir.mkdir(exist_ok=True, parents=True)
     ckpt = out_dir / f"{OUT_NAME}.pt"
-    model = HeliosLMv5(HeliosLMv5Config(size="mid"))
+    model = EvastarV5(EvastarV5Config(size="mid"))
     # hot start from existing mid
     init = out_dir / "mid_sft_v5.33.pt"
     if init.exists():

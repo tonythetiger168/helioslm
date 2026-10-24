@@ -1,4 +1,4 @@
-"""train_tool_tuned.py - Stage B: train a tool-tuned HeliosLMv5 checkpoint.
+"""train_tool_tuned.py - Stage B: train a tool-tuned EvastarV5 checkpoint.
 
 Data: replay the v5.23 agent loop with the scripted correct policy as the
 model (AgentLoop records EXACT prompt/response text in trajectory steps, so
@@ -23,14 +23,14 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from helioslm_v5.agent.benchmark import scripted_correct_policy
-from helioslm_v5.agent.envs import make_envs
-from helioslm_v5.agent.gate import FixedGate, Route
-from helioslm_v5.agent.loop import AgentLoop
-from helioslm_v5.agent.tools import build_default_registry
-from helioslm_v5.agent.trajectory import ids_to_text
-from helioslm_v5.configs.config_v5 import HeliosLMv5Config
-from helioslm_v5.src.model_v5 import HeliosLMv5
+from evastar.agent.benchmark import scripted_correct_policy
+from evastar.agent.envs import make_envs
+from evastar.agent.gate import FixedGate, Route
+from evastar.agent.loop import AgentLoop
+from evastar.agent.tools import build_default_registry
+from evastar.agent.trajectory import ids_to_text
+from evastar.configs.config_v5 import EvastarV5Config
+from evastar.src.model_v5 import EvastarV5
 
 BOS, EOS, PAD = 1023, 1022, 1021
 MAX_CHAR = 1021          # logits masked to ids < MAX_CHAR at inference
@@ -107,8 +107,8 @@ def main():
     train, evals = samples[:split], samples[split:]
     print(f"dataset: {len(train)} train / {len(evals)} eval", flush=True)
 
-    cfg = HeliosLMv5Config(size="lite")
-    model = HeliosLMv5(cfg)
+    cfg = EvastarV5Config(size="lite")
+    model = EvastarV5(cfg)
     out_dir = Path(__file__).resolve().parent.parent / "checkpoints"
     out_dir.mkdir(exist_ok=True)
     ckpt = out_dir / "tool_tuned_v5.27.pt"
@@ -163,7 +163,7 @@ def main():
         exact += got.strip() == want.strip()
     print(f"eval exact-match: {exact}/{len(evals)}", flush=True)
 
-    meta = {"arch": "helioslm_v5_lite", "params": sum(p.numel()
+    meta = {"arch": "evastar_lite", "params": sum(p.numel()
             for p in model.parameters()), "vocab_size": cfg.vocab_size,
             "tokenizer": "char(ord<1024); BOS=1023 EOS=1022 PAD=1021",
             "train_samples": len(train), "eval_exact": f"{exact}/{len(evals)}",

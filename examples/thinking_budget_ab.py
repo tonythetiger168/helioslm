@@ -34,13 +34,13 @@ import torch.nn.functional as F
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from helioslm_v5.eval import multiseed  # noqa: E402
-from helioslm_v5.configs.config_v5 import (  # noqa: E402
-    AttentionConfig, HeliosLMv5Config, HybridAttentionConfig, MoEConfig,
+from evastar.eval import multiseed  # noqa: E402
+from evastar.configs.config_v5 import (  # noqa: E402
+    AttentionConfig, EvastarV5Config, HybridAttentionConfig, MoEConfig,
     MTPConfig)
-from helioslm_v5.src.inference.thinking_budget import (  # noqa: E402
+from evastar.src.inference.thinking_budget import (  # noqa: E402
     ThinkingBudget, random_truncation)
-from helioslm_v5.src.model_v5 import HeliosLMv5  # noqa: E402
+from evastar.src.model_v5 import EvastarV5  # noqa: E402
 
 PAD, BOS, EOS = 0, 1, 2
 D0, EQ, OPEN, CLOSE = 4, 14, 15, 16
@@ -49,7 +49,7 @@ N = 8
 
 
 def config():
-    return HeliosLMv5Config(
+    return EvastarV5Config(
         size="lite", num_hidden_layers=4, vocab_size=VOCAB, hidden_size=128,
         intermediate_size=256, pad_token_id=PAD, bos_token_id=BOS,
         eos_token_id=EOS,
@@ -84,7 +84,7 @@ def batch(rng, size, p_trunc):
 
 def train(p_trunc, steps, bsz, lr, seed):
     torch.manual_seed(seed)
-    model = HeliosLMv5(config())
+    model = EvastarV5(config())
     opt = torch.optim.AdamW(model.parameters(), lr=lr)
     sched = torch.optim.lr_scheduler.OneCycleLR(
         opt, max_lr=lr, total_steps=steps, pct_start=0.1)

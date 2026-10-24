@@ -26,7 +26,7 @@
 
 ## Phase 1 detail
 
-### 1.1 DecisionHead module — `helioslm_v5/src/decision_head.py` ✅
+### 1.1 DecisionHead module — `evastar/src/decision_head.py` ✅
 Spec (from the direction doc):
 
 ```python
@@ -47,7 +47,7 @@ class DecisionHead(nn.Module):
 Shipped v5.41 with loud-error guards and arbitrary leading-dim support.
 
 ### 1.2 Unit tests
-Handoff named `helioslm_v5/tests/test_decision_head.py`, but that name was
+Handoff named `evastar/tests/test_decision_head.py`, but that name was
 already taken by the v5.32 agent-variant tests, so the shipped file is
 `tests/test_lm_decision_head.py` (5/5 oracles).
 
@@ -61,7 +61,7 @@ Shipped v5.42 (3/3). Recorded finding: the decision path bypasses
 `lm_head` by design, and the aux-loss-free `route_bias` carries no
 backprop gradient (heuristic-only).
 
-### 1.4 DPO Trainer — `helioslm_v5/src/training/dpo.py` ✅
+### 1.4 DPO Trainer — `evastar/src/training/dpo.py` ✅
 Handoff named `src/trainers/dpo_trainer.py`; the repo's training-module
 convention (`src/training/grpo.py`, `fp8_trainer.py`, …) won, noted
 honestly in the module docstring. Shipped v5.41 with 6/6 oracles

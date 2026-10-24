@@ -25,11 +25,11 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from helioslm_v5.agent.finetune_data import build_chat_dataset
-from helioslm_v5.agent.schema import ToolCallError, parse_chat_turn
-from helioslm_v5.configs.config_v5 import HeliosLMv5Config
-from helioslm_v5.src.model_v5 import HeliosLMv5
-from helioslm_v5.src.tokenizer.bpe import BOS, EOS, HeliosBPE, build_corpus
+from evastar.agent.finetune_data import build_chat_dataset
+from evastar.agent.schema import ToolCallError, parse_chat_turn
+from evastar.configs.config_v5 import EvastarV5Config
+from evastar.src.model_v5 import EvastarV5
+from evastar.src.tokenizer.bpe import BOS, EOS, HeliosBPE, build_corpus
 
 EPISODES_PER_ENV = int(os.environ.get("MID_EPISODES", "400"))
 EVAL_PER_TYPE = int(os.environ.get("MID_EVAL", "20"))
@@ -43,7 +43,7 @@ OUT_NAME = "mid_sft_v5.33"
 
 
 def _hf_sync(path, repo_path):
-    if os.environ.get("HELIOS_HF_SYNC") != "1":
+    if (os.environ.get("EVASTAR_HF_SYNC") or os.environ.get("HELIOS_HF_SYNC")) != "1":
         return
     import subprocess as sp
     try:
@@ -140,13 +140,13 @@ def main():
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"device: {device}", flush=True)
-    cfg = HeliosLMv5Config(size="mid")
-    model = HeliosLMv5(cfg).to(device)
+    cfg = EvastarV5Config(size="mid")
+    model = EvastarV5(cfg).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"mid params: {n_params/1e6:.1f}M | vocab {cfg.vocab_size}",
           flush=True)
 
-    out_dir = Path(os.environ.get("HELIOS_CKPT_DIR", "checkpoints"))
+    out_dir = Path(os.environ.get("EVASTAR_CKPT_DIR") or os.environ.get("HELIOS_CKPT_DIR", "checkpoints"))
     out_dir.mkdir(exist_ok=True, parents=True)
     ckpt = out_dir / f"{OUT_NAME}.pt"
     # tokenizer travels WITH the checkpoint: eval processes must load

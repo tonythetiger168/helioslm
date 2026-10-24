@@ -20,7 +20,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install flake8==7.4.1
-      - run: flake8 helioslm_v5/ harness/ agent/
+      - run: flake8 evastar/ harness/ agent/
       # v5.132: LF guard. The digest-pinned benchmark/data artifacts hash
       # raw bytes, so a CRLF blob (e.g. a Windows checkout/commit without
       # the v5.110 .gitattributes policy) fails digest gates on content
@@ -51,7 +51,7 @@ jobs:
       # cases (test_v5.py itself still works as a script). conftest.py
       # pins every xdist worker to one torch thread.
       - name: Test suite (pytest + test_v5 cases, 4 workers)
-        run: python -m pytest helioslm_v5/tests/ -q -x -n 4 --ignore=helioslm_v5/tests/test_v5.py
+        run: python -m pytest evastar/tests/ -q -x -n 4 --ignore=evastar/tests/test_v5.py
       - name: Integration test (v5.1 serving stack)
         run: python integration_test_v51.py
 
@@ -64,7 +64,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: |
           zip -r helioslm-v5-release.zip \
-            helioslm_v5/ harness/ agent/ benchmarks/ docs/ examples/ \
+            evastar/ harness/ agent/ benchmarks/ docs/ examples/ \
             README.md LICENSE \
             -x "*.zip" "*.pyc" "__pycache__/*" "*.pt"
       - uses: actions/upload-artifact@v4

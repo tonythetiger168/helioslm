@@ -150,7 +150,7 @@ US$5.5k without contingency), before the B1 run rather than after it.
 
 ## What the CPU prep PR contains (v5.127)
 
-- `helioslm_v5/src/training/cpt_plan.py`: the approved bases, the plan schema and the cost model.
+- `evastar/src/training/cpt_plan.py`: the approved bases, the plan schema and the cost model.
 - `examples/cpt_plan.py`: prints the cost table and, with `--bases`, the
   candidate list.
 - `data/cpt/b1_gemma4_e4b.json` and `data/cpt/b0_gemma4_e2b_pilot.json`:

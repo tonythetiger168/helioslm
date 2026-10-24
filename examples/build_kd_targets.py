@@ -29,7 +29,7 @@ import numpy as np
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from helioslm_v5.src.training.logit_kd import (  # noqa: E402
+from evastar.src.training.logit_kd import (  # noqa: E402
     FirstTokenMap, KDTargetWriter, doc_targets)
 
 

@@ -36,7 +36,7 @@ sys.path.insert(0, str(_REPO / "examples"))
 
 from csa_ab_passkey import _wire_csa, selection_hit_rate  # noqa: E402
 from hca_ab_passkey import SCORING_TAG, _trial, probe_accuracy  # noqa: E402
-from helioslm_v5.src.attention.kv_compress import (  # noqa: E402
+from evastar.src.attention.kv_compress import (  # noqa: E402
     CompressedSparseAttention)
 
 DEFAULT_OUT = "benchmarks/csa_learned_2026-10-15.json"

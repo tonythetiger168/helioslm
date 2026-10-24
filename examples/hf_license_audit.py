@@ -1,6 +1,6 @@
 """hf_license_audit.py — roadmap TW1: licence screen of the Traditional and
 Simplified Chinese, Spanish, Japanese and Korean datasets the training plan names
-(helioslm_v5/eval/hf_license_audit.py).
+(evastar/eval/hf_license_audit.py).
 
 Needs network access to huggingface.co (environment settings: Network
 access -> Allowed domains) and, for gated cards, HF_TOKEN in the
@@ -22,7 +22,7 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from helioslm_v5.eval.hf_license_audit import (  # noqa: E402
+from evastar.eval.hf_license_audit import (  # noqa: E402
     ALL, audit, hub_fetch, summary)
 
 
