@@ -109,7 +109,7 @@ def past_seq_len(past_key_values) -> int:
     return 0
 
 
-def chunked_delta_rule(q, k, v, decay, keep, seg_start, state, chunk):
+def chunked_delta_rule(q, k, v, decay, keep, seg_start, state, chunk, sub=16):
     """Chunked-parallel form of the recurrence in the module docstring
     (v5.107, ``hybrid_attention.chunk_size``); same results as the
     per-token loop up to float rounding.
@@ -124,72 +124,133 @@ def chunked_delta_rule(q, k, v, decay, keep, seg_start, state, chunk):
     where ``Lam_{t,j} = diag(prod_{i=j+1..t} decay_i)``. Substituting into
     the retrieval gives a unit lower-triangular system for the u of a
     chunk, ``(I + diag(keep) A) u = keep (v - (k * Lam_{t-1}) S_0)`` with
-    ``A_tj = k_t^T Lam_{t-1,j} k_j`` (j < t), solved with one triangular
-    solve instead of t sequential steps. Every decay product is formed
+    ``A_tj = k_t^T Lam_{t-1,j} k_j`` (j < t). Every decay product is formed
     as ``exp`` of a difference of cumulative log-decays over j <= t, so
     all factors are <= 1 (no division by small decays). A document
     boundary (seg_start) zeroes every pair (t, j) across it, and the
     carried state only for tokens still in the chunk's first document.
     Computed in fp32 (fp64 for fp64 inputs) whatever the input dtype.
+
+    v5.140: everything that does not depend on the carried state (A, the
+    q-k matrix, the triangular inverse and their products with v and the
+    decayed k) is computed for all chunks at once; the sequential loop
+    over chunks only does small [n, D] x [D, D] products. For per-channel
+    decay the pair decays are no longer one [n, n, Dk] tensor per chunk:
+    rows are split into sub-chunks of ``sub`` tokens, the pairs inside a
+    sub-chunk keep the exact pairwise form ([sub, sub, Dk]), and the pairs
+    with earlier columns factor through the log-decay R at the end of the
+    previous sub-chunk, ``exp(G_t - G_j) = exp(G_t - R) exp(R - G_j)``,
+    where both factors are <= 1 (plain matmuls, no overflow).
     """
     out_dtype, state_dtype = q.dtype, state.dtype
     ct = torch.promote_types(q.dtype, torch.float32)   # fp64 stays fp64
     q, k, v, state = q.to(ct), k.to(ct), v.to(ct), state.to(ct)
     B, H, T, _ = q.shape
+    dev = q.device
     per_channel = decay.dim() == 4
     g = torch.log(decay.to(ct))
     if not per_channel:
         g = g[..., None]                                     # [B, H, T, 1]
     keep = keep.to(ct) if keep is not None else None
     seg = torch.cumsum(seg_start.long(), 1) if seg_start is not None else None
-    outs = []
-    for c0 in range(0, T, chunk):
-        c1 = min(c0 + chunk, T)
-        n = c1 - c0
-        qc, kc, vc = q[:, :, c0:c1], k[:, :, c0:c1], v[:, :, c0:c1]
-        G = g[:, :, c0:c1].cumsum(2)                        # log Lam_t
-        Gp = torch.cat([torch.zeros_like(G[:, :, :1]), G[:, :, :-1]], 2)
-        lower = torch.ones(n, n, dtype=torch.bool, device=q.device).tril()
-        strict = lower.tril(-1)
-        same = inh = None
-        if seg is not None:
-            sc = seg[:, c0:c1]
-            prev = seg[:, c0 - 1] if c0 > 0 else torch.zeros_like(sc[:, 0])
-            same = (sc[:, :, None] == sc[:, None, :])[:, None]   # [B, 1, n, n]
-            inh = (sc == prev[:, None])[:, None, :, None].to(ct)   # [B, 1, n, 1]
 
-        def pair(Ga, mask):
-            # exp(Ga_t - G_j) on the masked pairs, 0 elsewhere (masked to
-            # -inf BEFORE exp, so no overflow from j > t).
-            m = mask if same is None else mask & same
-            d = Ga[:, :, :, None, :] - G[:, :, None, :, :]          # [B, H, n, n, C]
-            return torch.exp(d.masked_fill(~m[..., None], float("-inf")))
-
-        Pk, Pq = pair(Gp, strict), pair(G, lower)
-        if per_channel:
-            A = torch.einsum("bhtc,bhjc,bhtjc->bhtj", kc, kc, Pk)
-            Qm = torch.einsum("bhtc,bhjc,bhtjc->bhtj", qc, kc, Pq)
-        else:
-            A = (kc @ kc.transpose(-1, -2)) * Pk[..., 0]
-            Qm = (qc @ kc.transpose(-1, -2)) * Pq[..., 0]
-        kdec, qdec = kc * torch.exp(Gp), qc * torch.exp(G)
-        if inh is not None:
-            kdec, qdec = kdec * inh, qdec * inh
-        rhs = vc - kdec @ state                                     # [B, H, n, Dv]
+    # Pad T to whole chunks: padded tokens have k = v = 0, keep = 0 and
+    # decay 1, so they leave the state unchanged.
+    n = min(chunk, T)
+    nc = -(-T // n)
+    pad = nc * n - T
+    if pad:
+        q, k, v, g = (F.pad(x, (0, 0, 0, pad)) for x in (q, k, v, g))
         if keep is not None:
-            kp = keep[:, :, c0:c1, None]
-            rhs, A = rhs * kp, A * kp
-        eye = torch.eye(n, dtype=q.dtype, device=q.device)
-        u = torch.linalg.solve_triangular(eye + A, rhs, upper=False,
-                                          unitriangular=True)
-        outs.append(qdec @ state + Qm @ u)
-        w = torch.exp(G[:, :, -1:] - G)                             # Lam_{n-1,j}
-        carry = torch.exp(G[:, :, -1])[..., None]                    # [B, H, C, 1]
-        if same is not None:
-            w = w * same[:, :, -1, :, None].to(ct)
-            carry = carry * inh[:, :, -1:, :]
-        state = carry * state + (kc * w).transpose(-1, -2) @ u
-    return torch.cat(outs, 2).to(out_dtype), state.to(state_dtype)
+            keep = F.pad(keep, (0, pad))
+        if seg is not None:
+            seg = torch.cat([seg, seg[:, -1:].expand(B, pad)], 1)
+
+    def chunks(x):                                           # [B, H, nc, n, *]
+        return x.view(B, H, nc, n, x.shape[-1])
+
+    qc, kc, vc = chunks(q), chunks(k), chunks(v)
+    G = chunks(g).cumsum(3)                                  # log Lam_t
+    Gp = torch.cat([torch.zeros_like(G[:, :, :, :1]), G[:, :, :, :-1]], 3)
+    same = inh = None
+    if seg is not None:
+        sc = seg.view(B, nc, n)
+        prev = torch.cat([torch.zeros_like(sc[:, :1, 0]), sc[:, :-1, -1]], 1)
+        same = (sc[..., :, None] == sc[..., None, :])[:, None]   # [B, 1, nc, n, n]
+        inh = (sc == prev[..., None])[:, None, ..., None].to(ct)  # [B, 1, nc, n, 1]
+
+    lower = torch.ones(n, n, dtype=torch.bool, device=dev).tril()
+    strict = lower.tril(-1)
+    if not per_channel:
+        def pair(Ga, mask):
+            m = mask if same is None else mask & same
+            d = Ga - G.transpose(-1, -2)                         # [.., n, n]
+            return torch.exp(d.masked_fill(~m, float("-inf")))
+        kk = kc @ kc.transpose(-1, -2)
+        A = kk * pair(Gp, strict)
+        Qm = (qc @ kc.transpose(-1, -2)) * pair(G, lower)
+    else:
+        A = q.new_zeros(B, H, nc, n, n)
+        Qm = q.new_zeros(B, H, nc, n, n)
+        for a0 in range(0, n, sub):
+            a1 = min(a0 + sub, n)
+            rows = slice(a0, a1)
+            Gr = G[:, :, :, rows]
+            # pairs inside the sub-chunk: exact pairwise decays
+            d_lo, d_st = lower[rows, rows], strict[rows, rows]
+            sm = same[..., rows, rows] if same is not None else None
+
+            def pair(Ga, mask):
+                m = mask if sm is None else mask & sm
+                d = Ga[..., :, None, :] - Gr[..., None, :, :]   # [.., s, s, C]
+                return torch.exp(d.masked_fill(~m[..., None], float("-inf")))
+
+            kr = kc[:, :, :, rows]
+            A[..., rows, rows] = torch.einsum(
+                "bhntc,bhnjc,bhntjc->bhntj", kr, kr, pair(Gp[:, :, :, rows], d_st))
+            Qm[..., rows, rows] = torch.einsum(
+                "bhntc,bhnjc,bhntjc->bhntj", qc[:, :, :, rows], kr, pair(Gr, d_lo))
+            if a0 == 0:
+                continue
+            # pairs with earlier columns, factored through R = G_{a0-1}
+            R = G[:, :, :, a0 - 1:a0]                            # [.., 1, C]
+            kcol = kc[:, :, :, :a0] * torch.exp(R - G[:, :, :, :a0])
+            Ab = (kr * torch.exp(Gp[:, :, :, rows] - R)) @ kcol.transpose(-1, -2)
+            Qb = (qc[:, :, :, rows] * torch.exp(Gr - R)) @ kcol.transpose(-1, -2)
+            if same is not None:
+                sb = same[..., rows, :a0].to(ct)
+                Ab, Qb = Ab * sb, Qb * sb
+            A[..., rows, :a0] = Ab
+            Qm[..., rows, :a0] = Qb
+
+    kdec, qdec = kc * torch.exp(Gp), qc * torch.exp(G)
+    if inh is not None:
+        kdec, qdec = kdec * inh, qdec * inh
+    rv = vc
+    if keep is not None:
+        kp = keep.view(B, 1, nc, n, 1)
+        rv, kdec, A = rv * kp, kdec * kp, A * kp
+    eye = torch.eye(n, dtype=ct, device=dev)
+    # u = U0 - Kd S_0 with (I + A) U0 = keep v, (I + A) Kd = keep kdec
+    sol = torch.linalg.solve_triangular(eye + A, torch.cat([rv, kdec], -1),
+                                        upper=False, unitriangular=True)
+    Dv = vc.shape[-1]
+    U0, Kd = sol[..., :Dv], sol[..., Dv:]
+    Qd = qdec - Qm @ Kd                                      # out = Qd S_0 + O0
+    O0 = Qm @ U0
+    w = torch.exp(G[:, :, :, -1:] - G)                       # Lam_{n-1,j}
+    carry = torch.exp(G[:, :, :, -1])[..., None]             # [B, H, nc, C, 1]
+    if same is not None:
+        w = w * same[:, :, :, -1, :, None].to(ct)
+        carry = carry * inh[:, :, :, -1:, :]
+    W = (kc * w).transpose(-1, -2)                           # [B, H, nc, Dk, n]
+    WU, WK = W @ U0, W @ Kd                                  # S' = carry S + WU - WK S
+    outs = []
+    for c in range(nc):
+        outs.append(Qd[:, :, c] @ state + O0[:, :, c])
+        state = carry[:, :, c] * state + WU[:, :, c] - WK[:, :, c] @ state
+    out = torch.stack(outs, 2).reshape(B, H, nc * n, Dv)[:, :, :T]
+    return out.to(out_dtype), state.to(state_dtype)
 
 
 class GatedDeltaAttention(nn.Module):
