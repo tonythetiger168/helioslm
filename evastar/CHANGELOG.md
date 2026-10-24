@@ -1,5 +1,39 @@
 # Evastar v5 Changelog
 
+## v5.148 (2026-10-24) - local deployment packages per tier
+
+`evastar/src/export/package.py` `package_tier(model, config, tier, out_dir)`
+writes one directory per local tier of the README *Product roadmap*
+(L-Edge / L8 / L16 / L24 / L48+):
+
+- the tier's GGUF files from `export_llamacpp_gguf` (deepseek2 or
+  kimi-k3, picked by `llamacpp_arch`): L-Edge / L8 Q4_K + Q8_0, L16 F16 +
+  Q4_K, L24 Q4_K, L48+ Q8_0 + F16 + Q4_K (F16 stands in for the table's
+  BF16, Q4_K for Q4_K_M / Q6_K);
+- an Ollama `Modelfile` (raw prompt template, the tier's context) when a
+  tokenizer is embedded; id-only files get none;
+- `README.md` with the `llama-cli` / `llama-server` commands (`-ngl 99`
+  on GPU tiers, CPU only on L-Edge);
+- `manifest.json`: architecture, context, per-file size, sha256 and
+  whether the weights take at most 75% of the tier's memory.
+
+`examples/package_tiers.py --run <pilot run> --out dist/` packages a
+`pilot_100m.py` checkpoint (tokenizer from the run's data directory,
+`--tokenizer` or `--no-tokenizer`); the real weights go through the same
+call once they exist. kimi-k3 packages need an Ollama build whose bundled
+llama.cpp has that architecture; llama.cpp has it since f5027fb.
+
+Checked in llama.cpp f5027fb: every file of a 2-layer dense pilot and the
+8-layer `k3_llamacpp` pilot (random 2-step weights) loads and runs; cosine
+of llama.cpp logits to the PyTorch model: F16 1.0000 / 1.0000, Q8_0
+0.9999 / 0.989, Q4_K 0.983 / 0.987 (dense / kimi-k3). At pilot width 640
+the Q4_K rows are not a multiple of 256, so most kimi-k3 tensors fall back
+to Q8_0 and Q4_K is barely smaller there; real widths are multiples of 256.
+
+T142 (test_package_tiers.py): tiers match the README table, files /
+hashes / sizes match the manifest, Modelfile with a tokenizer, fit flag,
+kimi-k3 package, refusals, and the CLI on a pilot run directory.
+
 ## v5.147 (2026-10-24) - HDL track H0: VerilogEval v2 harness
 
 First piece of the chip-design (HDL) track. `evastar/eval/hdl_bench.py`
