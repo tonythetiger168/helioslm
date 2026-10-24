@@ -118,7 +118,7 @@ class SessionStore:
 
     def __init__(self, directory):
         self.dir = directory
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
 
     def _path(self, sid):
         if not re.fullmatch(r"[A-Za-z0-9_-]{8,64}", sid or ""):
@@ -184,10 +184,10 @@ class SessionStore:
         return s
 
     def get(self, sid):
-        p = self._path(sid)
-        if not p or not os.path.exists(p):
-            return None
         with self.lock:
+            p = self._path(sid)
+            if not p or not os.path.exists(p):
+                return None
             try:
                 with open(p, "r", encoding="utf-8") as f:
                     return json.load(f)
@@ -206,50 +206,52 @@ class SessionStore:
             os.replace(tmp, p)
 
     def update(self, sid, title=None, params=None):
-        s = self.get(sid)
-        if not s:
-            return None
-        if isinstance(title, str) and title.strip():
-            s["title"] = title.strip()[:120]
-        if isinstance(params, dict):
-            merged = dict(s.get("params", {}))
-            for k in ("temperature", "max_tokens", "system"):
-                if k in params:
-                    merged[k] = params[k]
-            try:
-                merged["temperature"] = max(0.0, min(2.0, float(merged.get("temperature", 0.7))))
-                merged["max_tokens"] = max(1, min(8192, int(merged.get("max_tokens", 512))))
-                merged["system"] = str(merged.get("system", ""))[:4000]
-            except (TypeError, ValueError):
-                pass
-            s["params"] = merged
-        self._save(s)
-        return s
+        with self.lock:
+            s = self.get(sid)
+            if not s:
+                return None
+            if isinstance(title, str) and title.strip():
+                s["title"] = title.strip()[:120]
+            if isinstance(params, dict):
+                merged = dict(s.get("params", {}))
+                for k in ("temperature", "max_tokens", "system"):
+                    if k in params:
+                        merged[k] = params[k]
+                try:
+                    merged["temperature"] = max(0.0, min(2.0, float(merged.get("temperature", 0.7))))
+                    merged["max_tokens"] = max(1, min(8192, int(merged.get("max_tokens", 512))))
+                    merged["system"] = str(merged.get("system", ""))[:4000]
+                except (TypeError, ValueError):
+                    pass
+                s["params"] = merged
+            self._save(s)
+            return s
 
     def append_messages(self, sid, *msgs):
-        s = self.get(sid)
-        if not s:
-            return None
-        first_exchange = not s["messages"]
-        s["messages"].extend(msgs)
-        if len(s["messages"]) > _MAX_STORED_MESSAGES:
-            s["messages"] = s["messages"][-_MAX_STORED_MESSAGES:]
-        if first_exchange and s.get("title") in ("new chat", ""):
-            first = msgs[0].get("content", "")
-            s["title"] = (first[:48] + ("…" if len(first) > 48 else "")) or "new chat"
-        self._save(s)
-        return s
+        with self.lock:
+            s = self.get(sid)
+            if not s:
+                return None
+            first_exchange = not s["messages"]
+            s["messages"].extend(msgs)
+            if len(s["messages"]) > _MAX_STORED_MESSAGES:
+                s["messages"] = s["messages"][-_MAX_STORED_MESSAGES:]
+            if first_exchange and s.get("title") in ("new chat", ""):
+                first = msgs[0].get("content", "")
+                s["title"] = (first[:48] + ("…" if len(first) > 48 else "")) or "new chat"
+            self._save(s)
+            return s
 
     def delete(self, sid):
-        p = self._path(sid)
-        if p and os.path.exists(p):
-            with self.lock:
+        with self.lock:
+            p = self._path(sid)
+            if p and os.path.exists(p):
                 try:
                     os.remove(p)
                 except OSError:
                     pass
-            return True
-        return False
+                return True
+            return False
 
 SESSIONS = SessionStore(_SESSIONS_DIR)
 
