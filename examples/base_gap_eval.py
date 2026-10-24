@@ -324,7 +324,7 @@ def main(argv=None):
                 save()
             row["status"] = "done"
             del model, tok, score
-        except Exception as e:
+        except Exception:
             row["status"] = "FAILED"
             row["error"] = traceback.format_exc()[-1500:]
         row["seconds"] = round(time.time() - t0)
