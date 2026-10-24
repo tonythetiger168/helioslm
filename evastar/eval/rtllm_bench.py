@@ -210,6 +210,23 @@ def simulate(sample, design, timeout=SIM_TIMEOUT_S):
     return {"syntax": syntax, "passed": passed, "log": "".join(log)[-4000:]}
 
 
+def extract_code(text):
+    """Code from a response: a [BEGIN]/[DONE] or fenced block, else the span
+    from the first ``module`` to the last ``endmodule``.
+
+    VerilogEval's fallback stops at the first ``endmodule``; RTLLM answers
+    often carry helper modules, so the fallback keeps all of them.
+    """
+    fences = [i for i, ln in enumerate(text.splitlines()) if ln.startswith("```")]
+    if "[BEGIN]" in text or len(fences) >= 2:
+        return hb.extract_code(text)
+    m = re.search(r"\bmodule\b", text)
+    end = text.rfind("endmodule")
+    if not m or end < m.start():
+        return text
+    return text[m.start():end + len("endmodule")] + "\n"
+
+
 def build_prompt(description):
     """Upstream sends the description as the whole user message."""
     return description.strip() + "\n"
@@ -224,7 +241,7 @@ def score(designs, generate_fn, n=1, ks=(1,), exclude=()):
         texts = generate_fn(hb.SYSTEM_MSG, build_prompt(d["prompt"]), i)
         if len(texts) != n:
             raise RtllmError(f"{d['name']}: got {len(texts)} samples, want {n}")
-        sims = [simulate(hb.extract_code(t), d) for t in texts]
+        sims = [simulate(extract_code(t), d) for t in texts]
         rows.append({"name": d["name"], "n": n,
                      "syntax": sum(s["syntax"] for s in sims),
                      "correct": sum(s["passed"] for s in sims)})

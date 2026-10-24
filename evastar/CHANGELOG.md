@@ -16,6 +16,9 @@ testbench = syntax; output contains "pass" = function):
   references use other file and module names) and prints the designs
   Icarus cannot run, to pass as `--exclude` rather than score as 0;
 - `syntax@k` and `pass@k` are plain means over designs.
+- code extraction keeps helper modules: without a [BEGIN]/fenced block
+  it takes the first `module` to the last `endmodule` (VerilogEval's
+  fallback stops at the first one, which drops RTLLM submodules).
 
 `examples/hdl_bench_run.py --bench rtllm` runs it on the pod. T143
 (test_rtllm_bench.py) pins the cache, naming and scoring, and simulates

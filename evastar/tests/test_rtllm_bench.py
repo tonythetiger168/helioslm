@@ -2,6 +2,8 @@
 
 Pins:
 
+0. code extraction keeps helper modules (from the first module to the
+   last endmodule when the answer has no [BEGIN]/fenced block);
 1. build_cache finds designs by their makefile, keeps data files, writes a
    sha256 manifest; load rejects a tampered cache;
 2. the requested module name comes from the description;
@@ -75,6 +77,15 @@ def test_prompt_is_description(designs):
         "Please act as a professional verilog designer.")
 
 
+def test_extract_keeps_helper_modules():
+    two = "module a(); b u(); endmodule\nmodule b(); endmodule"
+    assert rb.extract_code("Here:\n" + two + "\nDone.") == two + "\n"
+    # a closing fence on the endmodule line is one fence: fallback span
+    assert rb.extract_code("```verilog\n" + two + "```") == two + "\n"
+    assert rb.extract_code("```\n" + two + "\n```\n") == two + "\n"
+    assert rb.extract_code("[BEGIN]\n" + two + "\n[DONE]") == two + "\n"
+
+
 @needs_iverilog
 def test_self_check(designs):
     assert rb.self_check(designs) == (3, [])
@@ -95,7 +106,7 @@ def test_failures(designs):
 @needs_iverilog
 def test_score(designs):
     def gen(system, user, i):
-        return [f"```verilog\n{rb.reference_sample(designs[i])}```", "no code"]
+        return [f"```verilog\n{rb.reference_sample(designs[i])}\n```", "no code"]
     out = rb.score(designs, gen, n=2, ks=(1, 2), exclude=("multi_pipe_4bit",))
     assert out["n_designs"] == 2 and out["excluded"] == ["multi_pipe_4bit"]
     assert out["pass@1"] == pytest.approx(0.5)
