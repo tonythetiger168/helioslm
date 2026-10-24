@@ -45,7 +45,7 @@
 | 評測 | agent 評測只有 12 個合成任務（12/12），沒有標準 benchmark harness，結果無法與他人比較 |
 | 生態系 | 真正的 tokenizer（#5）、Hugging Face Hub（#4）、fused 量化 benchmark（#2）都還沒做 |
 | 決策引擎 | Level 1 達 0.796 AUROC；Level 2 失敗（約 0.50）；多環境 GRPO 尚未開始 |
-| 維護 | `helioslm_v5/CHANGELOG.md` 缺 v5.52／v5.53 條目 |
+| 維護 | `evastar/CHANGELOG.md` 缺 v5.52／v5.53 條目 |
 
 ## 3. 定位
 

@@ -1,6 +1,6 @@
 # hsh — the HeliosLM harness after DeepSeek Harness
 
-`helioslm_v5/hsh/` rebuilds the agent harness on the design of
+`evastar/hsh/` rebuilds the agent harness on the design of
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`,
 MIT, developer preview released 2026-08-13). dsh is a TypeScript/Node
 project; hsh is pure Python, written from dsh's design documents
@@ -59,7 +59,7 @@ OpenAI-compatible adapter and the local HeliosLM model.
   any other method, or an undeclared event, raises `EventModeError`.
 - `ctx.scoped(key)` tags registrations and dispatches with `key`.
 
-Tests: `helioslm_v5/tests/test_hsh_kernel.py` (16).
+Tests: `evastar/tests/test_hsh_kernel.py` (16).
 
 ## H2: the session log (`hsh/session.py`)
 
@@ -76,7 +76,7 @@ Tests: `helioslm_v5/tests/test_hsh_kernel.py` (16).
 - `Session.repair()` seals an interrupted tail; `Session.fork(after_turn)`
   starts a child at a turn boundary.
 
-Tests: `helioslm_v5/tests/test_hsh_session.py` (15).
+Tests: `evastar/tests/test_hsh_session.py` (15).
 
 ## H3: tools (`hsh/tools.py`, `hsh/schema.py`)
 
@@ -95,7 +95,7 @@ Tests: `helioslm_v5/tests/test_hsh_session.py` (15).
 - `ToolResult.session_data(turn, step, call_id)` is the `tool/result`
   payload for the log.
 
-Tests: `helioslm_v5/tests/test_hsh_tools.py` (21).
+Tests: `evastar/tests/test_hsh_tools.py` (21).
 
 ## H4: model seam and agent loop (`hsh/llm.py`, `hsh/loop.py`)
 
@@ -114,7 +114,7 @@ Tests: `helioslm_v5/tests/test_hsh_tools.py` (21).
 A real model in five lines:
 
 ```python
-from helioslm_v5.hsh import *
+from evastar.hsh import *
 ctx = Context()
 for p in (Sessions, Tools, LLM, Agents): ctx.plugin(p)
 ctx.llm.register("deepseek", OpenAICompatAdapter("https://api.deepseek.com", "DEEPSEEK_API_KEY"))
@@ -122,7 +122,7 @@ agent = ctx.agents.create("demo", {"provider": "deepseek", "model": "deepseek-v4
 print(agent.send("hello"))
 ```
 
-Tests: `helioslm_v5/tests/test_hsh_loop.py` (12).
+Tests: `evastar/tests/test_hsh_loop.py` (12).
 
 ## H5: presets and built-in tools (`hsh/presets.py`, `hsh/builtin.py`)
 
@@ -144,7 +144,7 @@ environment, timeout, rlimits) but are not a security sandbox; dsh uses
 Landlock/Seatbelt for that. Keep HeliosLM's TrustGate as a guard when the
 model is untrusted.
 
-Tests: `helioslm_v5/tests/test_hsh_presets.py` (10).
+Tests: `evastar/tests/test_hsh_presets.py` (10).
 
 ## H6: compaction, subagents, instructions, hooks
 
@@ -169,4 +169,4 @@ Not done (and why): MCP client (needs an MCP package; out of scope without
 a dependency decision), Web UI / desktop app, Landlock-class sandboxing,
 background jobs, goals and schedules.
 
-Tests: `helioslm_v5/tests/test_hsh_extras.py` (8). All hsh tests: 82.
+Tests: `evastar/tests/test_hsh_extras.py` (8). All hsh tests: 82.

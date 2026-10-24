@@ -34,4 +34,4 @@ python examples/mimo_hybrid_recall.py --arms gda_hybrid_conv --threads 2 --steps
 python examples/mimo_hybrid_recall.py --merge a.json b.json --output benchmarks/q1_short_conv_2026-10-16.json
 ```
 
-測試：`python helioslm_v5/tests/test_qwen_next.py`（T101）。
+測試：`python evastar/tests/test_qwen_next.py`（T101）。

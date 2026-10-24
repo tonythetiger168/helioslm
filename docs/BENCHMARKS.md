@@ -98,7 +98,7 @@ median of 11 runs after 3 warm-up runs; artifacts
   from an fp32 weight, not by the forward pass.
 - Scope: CPU and PyTorch only. This says nothing about GPU kernels
   (auto-gptq / exllama / Marlin) or FP8.
-- Checked by `helioslm_v5/tests/test_bench_quant.py`: each median follows
+- Checked by `evastar/tests/test_bench_quant.py`: each median follows
   from its samples, every parity error is <= 1e-4, and every speedup > 1.5.
 
 ## Multi-seed A/B runs (Issue #55)

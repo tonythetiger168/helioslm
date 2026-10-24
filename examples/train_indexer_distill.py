@@ -47,8 +47,8 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from helioslm_v5.configs.config_v5 import HeliosLMv5Config
-from helioslm_v5.src.model_v5 import HeliosLMv5
+from evastar.configs.config_v5 import EvastarV5Config
+from evastar.src.model_v5 import EvastarV5
 
 
 def load_with_new_indexer(model, state_dict):
@@ -144,7 +144,7 @@ def indexer_prefill_stability(model, ids, top_k, n_trials=8, noise_std=0.05,
     The probe is mechanical stability only (see the probe's honest
     scope notes): a stable-but-wrong indexer scores 1.0 here.
     """
-    from helioslm_v5.eval.sparse_stability import prefill_stability
+    from evastar.eval.sparse_stability import prefill_stability
 
     store = _hidden_per_layer(model, ids)
     stats = {}
@@ -347,11 +347,11 @@ def main():
         )
     ckpt = torch.load(args.checkpoint, map_location="cpu",
                       weights_only=False)
-    cfg = HeliosLMv5Config(size="lite")
+    cfg = EvastarV5Config(size="lite")
     cfg.attention.sparse_top_k = args.sparse_top_k
     cfg.attention.sparse_indexer = "learned"
     torch.manual_seed(args.seed)
-    model = HeliosLMv5(cfg).eval()
+    model = EvastarV5(cfg).eval()
     n_idx = load_with_new_indexer(model, ckpt["state_dict"])
     print(f"loaded trunk; {n_idx} indexer params freshly initialized")
 

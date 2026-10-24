@@ -85,7 +85,7 @@ python examples/pilot_100m.py --data data/pilot --out runs/dense --arch dense --
 - **蒸餾教師：** 不使用封閉模型（Claude、GPT、Gemini），其條款禁止拿輸出訓練競品。
 - **固定 held-out 文件：** `docs/TW_DATASETS_2026Q4.md` 與 `docs/V5.4_FIXES_REPORT.md` 是 TW4／TW5 的 held-out 文字，**不可修改**，改了會讓 T114／T118 失敗。資料集更新寫在 `docs/TW_DATASETS_2026-10-20.md`。
 - **CI：**
-  - `python -m pytest helioslm_v5/tests/ -q -n 4 --ignore=helioslm_v5/tests/test_v5.py` 加 `python integration_test_v51.py`，本機約 11 分鐘；
+  - `python -m pytest evastar/tests/ -q -n 4 --ignore=evastar/tests/test_v5.py` 加 `python integration_test_v51.py`，本機約 11 分鐘；
   - 新的 benchmark JSON 必須登記到 `benchmarks/verification_tiers.json`。
 - **網路：**
   - 沙箱可連 huggingface.co 的 metadata API 與 PyPI；

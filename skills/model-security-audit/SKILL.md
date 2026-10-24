@@ -46,7 +46,7 @@ regression-testing that a refactor did not widen an observable, or
 calibrating the trust gate against measured leakage.
 
 Do not use for: non-HeliosLM models (the probes are written against
-`HeliosLMv5.forward`'s `(logits, hidden, past)` contract), jailbreak or
+`EvastarV5.forward`'s `(logits, hidden, past)` contract), jailbreak or
 prompt-injection robustness (behavioral, not observability, surface), or
 any target you are not authorized to probe (see `guard`).
 
@@ -56,11 +56,11 @@ any target you are not authorized to probe (see `guard`).
   `pip install torch --index-url https://download.pytorch.org/whl/cpu`
   Verify: `python -c "import torch; print(torch.__version__)"`.
 - Repo checkout on `PYTHONPATH` (run from the repo root). Verify:
-  `python -c "from helioslm_v5.src.model_v5 import HeliosLMv5"`.
+  `python -c "from evastar.src.model_v5 import EvastarV5"`.
 
 ## Procedure
 
-Every path is an executable test in `helioslm_v5/tests/case_security.py`;
+Every path is an executable test in `evastar/tests/case_security.py`;
 run individually or through the suite runner.
 
 1. **Fingerprint** — `test_model_fingerprint`: probe-set last-position
@@ -90,7 +90,7 @@ Run all five:
 
 ```bash
 python -c "
-from helioslm_v5.tests import case_security as cs
+from evastar.tests import case_security as cs
 for t in (cs.test_model_fingerprint,
           cs.test_membership_inference_signal,
           cs.test_distillation_leak_budget,

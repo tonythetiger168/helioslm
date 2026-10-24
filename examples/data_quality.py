@@ -24,9 +24,9 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from helioslm_v5.src.training.data_mixture import (  # noqa: E402
+from evastar.src.training.data_mixture import (  # noqa: E402
     load_mixture, mixture_sha256, token_budget, usable_sources)
-from helioslm_v5.src.training.data_quality import (  # noqa: E402
+from evastar.src.training.data_quality import (  # noqa: E402
     HashedNgramClassifier, heuristic_check, zh_variant)
 
 

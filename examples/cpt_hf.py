@@ -43,7 +43,7 @@ import torch.nn.functional as F
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from helioslm_v5.src.training.pretrain import (  # noqa: E402
+from evastar.src.training.pretrain import (  # noqa: E402
     TokenShard, lr_at, wsd_decay_start)
 
 

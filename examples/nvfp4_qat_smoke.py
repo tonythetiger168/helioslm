@@ -3,7 +3,7 @@ scale, with a QAT→deploy parity oracle and a bitwise gate.
 
 WHY THIS EXISTS
 ---------------
-``helioslm_v5/src/quantization/qat.py`` has had a full NVFP4 QAT target
+``evastar/src/quantization/qat.py`` has had a full NVFP4 QAT target
 since v5.22-L (E2M1 values x 16-wide blocks, E4M3 block scales under a
 per-row fp32 scale, STE gradients into fp32 master weights), and
 ``tests/case_quant_fused.py::test_nvfp4_qat`` pins the math in isolation.
@@ -18,7 +18,7 @@ Three arms share one corpus, one validation protocol, one seed, and one
 data order (the train_toy_checkpoint.py recipe: Adam + cosine, MTP aux
 loss), so the only moving part is WHERE the NVFP4 grid enters:
 
-  1. ARM fp32_scratch: HeliosLMv5(lite) trained from scratch, evaluated
+  1. ARM fp32_scratch: EvastarV5(lite) trained from scratch, evaluated
      in fp32 — the quality reference.
   2. ARM ptq_rtn_nvfp4: that same fp32-trained model, every nn.Linear
      weight snapped onto the NVFP4 grid by pure round-to-nearest
@@ -100,9 +100,9 @@ _REPO_ROOT = _SCRIPT_DIR.parent
 sys.path.insert(0, str(_REPO_ROOT))
 sys.path.insert(0, str(_SCRIPT_DIR))
 
-from helioslm_v5.configs.config_v5 import HeliosLMv5Config  # noqa: E402
-from helioslm_v5.src.model_v5 import HeliosLMv5  # noqa: E402
-from helioslm_v5.src.quantization.qat import (  # noqa: E402
+from evastar.configs.config_v5 import EvastarV5Config  # noqa: E402
+from evastar.src.model_v5 import EvastarV5  # noqa: E402
+from evastar.src.quantization.qat import (  # noqa: E402
     FakeQuantLinear, _qdq_nvfp4, apply_qat)
 from train_toy_checkpoint import build_corpus, encode  # noqa: E402
 
@@ -173,7 +173,7 @@ def train_model(cfg, ids, steps, batch, seq, lr, mtp_weight, seed, qat):
     NVFP4-fake-quantized (STE) BEFORE step 0. Returns (model, applied,
     first_train_loss10, final_train_loss10)."""
     torch.manual_seed(seed)
-    model = HeliosLMv5(cfg)
+    model = EvastarV5(cfg)
     applied = apply_qat(model, method="nvfp4") if qat else None
     model.train()
     opt = torch.optim.Adam(model.parameters(), lr=lr)
@@ -257,7 +257,7 @@ def run_qat_arm(cfg, args, ids, window):
 
 
 def run_smoke(args):
-    cfg = HeliosLMv5Config(size="lite")
+    cfg = EvastarV5Config(size="lite")
     ids = stable_corpus(cfg.vocab_size)
     window = val_window(ids, args.seed)
     telemetry = {}
