@@ -1,4 +1,5 @@
-"""v5.106 (#42 prep): moe.dispatch = "batched".
+"""v5.106 (#42 prep): moe.dispatch = "batched"; v5.149 "grouped"
+(F.grouped_mm, no padding) is held to the same pins.
 
 Pins:
 
@@ -37,13 +38,16 @@ CASES = {
 }
 
 
-def _pair(seed=0, zero_centered=False, **moe):
+MODES = ("batched", "grouped")
+
+
+def _pair(seed=0, zero_centered=False, mode="batched", **moe):
     cfg = EvastarV5Config(size="lite", zero_centered_norm=zero_centered,
                            moe=MoEConfig(**moe))
     torch.manual_seed(seed)
     blocked = DeviceLimitedMoE(cfg)
     batched = copy.deepcopy(blocked)
-    batched.dispatch = "batched"
+    batched.dispatch = mode
     return cfg, blocked, batched
 
 
@@ -69,12 +73,14 @@ def test_config_default_and_validation():
     assert MoEConfig().dispatch == "blocked"
     assert DeviceLimitedMoE(EvastarV5Config(size="lite")).dispatch == "blocked"
     with pytest.raises(ValueError, match="dispatch"):
-        EvastarV5Config(size="lite", moe=MoEConfig(dispatch="grouped"))
+        EvastarV5Config(size="lite", moe=MoEConfig(dispatch="padded"))
+    EvastarV5Config(size="lite", moe=MoEConfig(dispatch="grouped"))
 
 
+@pytest.mark.parametrize("mode", MODES)
 @pytest.mark.parametrize("name", sorted(CASES))
-def test_batched_matches_blocked(name):
-    cfg, blocked, batched = _pair(**CASES[name])
+def test_batched_matches_blocked(name, mode):
+    cfg, blocked, batched = _pair(mode=mode, **CASES[name])
     assert batched._batchable()
     x = torch.randn(3, 37, cfg.hidden_size)
     blocked.train()
@@ -83,8 +89,9 @@ def test_batched_matches_blocked(name):
     assert torch.equal(blocked.expert_load, batched.expert_load)
 
 
-def test_situ_zero_centered_norm():
-    cfg, blocked, batched = _pair(zero_centered=True, activation="situ")
+@pytest.mark.parametrize("mode", MODES)
+def test_situ_zero_centered_norm(mode):
+    cfg, blocked, batched = _pair(zero_centered=True, activation="situ", mode=mode)
     with torch.no_grad():
         for m in (blocked, batched):
             for e in m.experts:
@@ -95,8 +102,9 @@ def test_situ_zero_centered_norm():
     _assert_match(_run(blocked, x), _run(batched, x))
 
 
-def test_skewed_routing_and_idle_experts():
-    cfg, blocked, batched = _pair()
+@pytest.mark.parametrize("mode", MODES)
+def test_skewed_routing_and_idle_experts(mode):
+    cfg, blocked, batched = _pair(mode=mode)
     with torch.no_grad():
         for m in (blocked, batched):
             m.route_bias.zero_()
@@ -107,8 +115,9 @@ def test_skewed_routing_and_idle_experts():
     assert load[5] == load[6] == 200 and load.sum() == 400
 
 
-def test_fallback_when_expert_is_converted():
-    cfg, blocked, batched = _pair()
+@pytest.mark.parametrize("mode", MODES)
+def test_fallback_when_expert_is_converted(mode):
+    cfg, blocked, batched = _pair(mode=mode)
 
     class Wrapped(nn.Linear):
         pass
@@ -126,18 +135,20 @@ def test_fallback_when_expert_is_converted():
 def test_model_level():
     ids = torch.randint(3, 1000, (2, 24))
     outs = []
-    for dispatch in ("blocked", "batched"):
+    for dispatch in ("blocked",) + MODES:
         torch.manual_seed(0)
         cfg = EvastarV5Config(size="lite", moe=MoEConfig(dispatch=dispatch))
         model = EvastarV5(cfg).eval()
         with torch.no_grad():
             out = model(ids)
         outs.append(out["logits"] if isinstance(out, dict) else out[0])
-    assert torch.allclose(outs[0], outs[1], atol=1e-4, rtol=1e-4)
+    for out in outs[1:]:
+        assert torch.allclose(outs[0], out, atol=1e-4, rtol=1e-4)
 
 
-def test_bf16_autocast():
-    cfg, blocked, batched = _pair()
+@pytest.mark.parametrize("mode", MODES)
+def test_bf16_autocast(mode):
+    cfg, blocked, batched = _pair(mode=mode)
     x = torch.randn(2, 30, cfg.hidden_size)
     with torch.no_grad(), torch.autocast("cpu", dtype=torch.bfloat16):
         ya, yb = blocked(x), batched(x)

@@ -1,4 +1,5 @@
-"""moe_dispatch_bench.py — blocked vs batched MoE dispatch (v5.106, #42 prep).
+"""moe_dispatch_bench.py — blocked vs batched vs grouped MoE dispatch (v5.106, #42 prep;
+grouped v5.149).
 
 Times one DeviceLimitedMoE layer, forward + backward, with
 ``moe.dispatch`` "blocked" (fixed 64-row blocks, one call per expert and
@@ -74,13 +75,20 @@ def main():
     blocked = DeviceLimitedMoE(cfg).to(dev).train()
     batched = copy.deepcopy(blocked)
     batched.dispatch = "batched"
+    grouped = copy.deepcopy(blocked)
+    grouped.dispatch = "grouped"
     x = torch.randn(1, args.tokens, args.hidden, device=dev)
     with torch.no_grad():
-        diff = (blocked(x) - batched(x)).abs().max().item()
+        ref = blocked(x)
+        diff = (ref - batched(x)).abs().max().item()
+        diff_grouped = (ref - grouped(x)).abs().max().item()
     res = {"blocked_s": bench(blocked, x, dtype, args.steps, args.warmup),
-           "batched_s": bench(batched, x, dtype, args.steps, args.warmup)}
+           "batched_s": bench(batched, x, dtype, args.steps, args.warmup),
+           "grouped_s": bench(grouped, x, dtype, args.steps, args.warmup)}
     res["speedup"] = res["blocked_s"] / res["batched_s"]
+    res["grouped_speedup"] = res["blocked_s"] / res["grouped_s"]
     payload = {"args": vars(args), "max_abs_diff_fp32": diff,
+               "max_abs_diff_fp32_grouped": diff_grouped,
                "median_fwd_bwd": res,
                "environment": {"torch": torch.__version__,
                                "platform": platform.platform(),

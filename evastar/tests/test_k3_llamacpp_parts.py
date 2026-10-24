@@ -139,7 +139,10 @@ def test_situ_k3_formula_and_dispatch():
         y1 = moe(x)
         moe.dispatch = "batched"
         y2 = moe(x)
+        moe.dispatch = "grouped"
+        y3 = moe(x)
     assert torch.allclose(y1, y2, atol=1e-5)
+    assert torch.allclose(y1, y3, atol=1e-5)
 
 
 @pytest.mark.parametrize("size", ["lite", "mid", "full"])

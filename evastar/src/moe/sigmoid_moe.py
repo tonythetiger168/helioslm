@@ -268,7 +268,8 @@ class DeviceLimitedMoE(nn.Module):
         # never changes within a process, so the list is built at most once
         # per (rank, device) instead of on every forward.
         self._local_experts_cache = None
-        # v5.106: "blocked" (bit-stable per token) or "batched" (bmm).
+        # v5.106: "blocked" (bit-stable per token) or "batched" (bmm);
+        # v5.149: "grouped" (F.grouped_mm, no padding).
         self.dispatch = config.moe.dispatch
 
         # Routed experts (latent<->expert_hidden under LatentMoE).
@@ -451,7 +452,7 @@ class DeviceLimitedMoE(nn.Module):
                     (counts_all.detach().float(), probs.sum(0), N))
         self._last_scores = None
 
-        if self.dispatch == "batched" and self._batchable():
+        if self.dispatch in ("batched", "grouped") and self._batchable():
             output_z = self._dispatch_batched(z, topk_indices, topk_gates)
         else:
             output_z = self._dispatch_blocked(z, topk_indices, topk_gates)
@@ -542,6 +543,10 @@ class DeviceLimitedMoE(nn.Module):
         Padding rows are never read back. Each expert's output equals the
         blocked path to float tolerance; it is not bit-identical, because
         the GEMM shape depends on C.
+
+        ``moe.dispatch="grouped"`` (v5.149) runs the same two GEMMs as
+        ``F.grouped_mm`` over the expert-sorted rows, with no padding: the
+        [A, C, D] scatter and the A * C - N * K padded rows are gone.
         """
         N, D = z.shape
         K = topk_indices.shape[1]
@@ -553,32 +558,37 @@ class DeviceLimitedMoE(nn.Module):
         sorted_tokens = token_idx[order]
         sorted_weights = topk_gates.reshape(-1)[order]
         counts = torch.bincount(flat_expert, minlength=E)
-        starts = counts.cumsum(0) - counts
-        slot = torch.arange(N * K, device=z.device) - starts[sorted_expert]
         # Only experts that received tokens are stacked, so an idle
         # expert's weights get no gradient (None, as in the blocked path)
         # rather than a zero one that AdamW would still step and decay.
         host_counts = counts.tolist()
         active = [i for i, c in enumerate(host_counts) if c]
-        C = max(host_counts)
         compact = torch.full((E,), -1, dtype=torch.long, device=z.device)
         compact[active] = torch.arange(len(active), device=z.device)
         row = compact[sorted_expert]
-        x = z.new_zeros(len(active), C, D)
-        x[row, slot] = z[sorted_tokens]
-
         experts = [self.experts[i] for i in active]
         w13 = torch.stack([e.w13.weight for e in experts])           # [A, 2F, D]
         w2 = torch.stack([e.w2.weight for e in experts])             # [A, D, F]
-        a, b = torch.bmm(x, w13.transpose(1, 2)).chunk(2, dim=-1)   # [A, C, F]
+        grouped = self.dispatch == "grouped"
+        if grouped:
+            offs = counts[active].cumsum(0).to(torch.int32)
+            x = z[sorted_tokens]                                     # [N*K, D]
+            a, b = F.grouped_mm(x, w13.transpose(1, 2), offs=offs).chunk(2, dim=-1)
+        else:
+            starts = counts.cumsum(0) - counts
+            slot = torch.arange(N * K, device=z.device) - starts[sorted_expert]
+            x = z.new_zeros(len(active), max(host_counts), D)
+            x[row, slot] = z[sorted_tokens]
+            a, b = torch.bmm(x, w13.transpose(1, 2)).chunk(2, dim=-1)   # [A, C, F]
         e0 = self.experts[0]
         if isinstance(e0, SiTUExpert):
             h = F.silu(_situ_cap(a, e0.softcap)) * _situ_cap(b, e0.softcap)
             g = torch.stack([e.norm.weight for e in experts])        # [A, F]
             if e0.norm.zero_centered:
                 g = 1.0 + g
+            g = g[row] if grouped else g[:, None, :]
             h = h * torch.rsqrt(h.pow(2).mean(-1, keepdim=True)
-                                + e0.norm.eps) * g[:, None, :]
+                                + e0.norm.eps) * g
         elif e0.situ is not None:
             h = k3_situ(a, b, *e0.situ)
         elif not e0.clamped:
@@ -588,9 +598,12 @@ class DeviceLimitedMoE(nn.Module):
                 a = a.clamp(max=e0.limit)
                 b = b.clamp(-e0.limit, e0.limit)
             h = a * torch.sigmoid(e0.alpha * a) * (b + e0.up_offset)
-        y = torch.bmm(h, w2.transpose(1, 2))                         # [A, C, D]
+        if grouped:
+            y = F.grouped_mm(h, w2.transpose(1, 2), offs=offs)        # [N*K, D]
+        else:
+            y = torch.bmm(h, w2.transpose(1, 2))[row, slot]          # [N*K, D]
 
-        out = y[row, slot] * sorted_weights.unsqueeze(-1)
+        out = y * sorted_weights.unsqueeze(-1)
         output_z = torch.zeros_like(z)
         # fp32 accumulation, as in the blocked path (bf16 autocast).
         output_z.index_add_(0, sorted_tokens, out.to(output_z.dtype))

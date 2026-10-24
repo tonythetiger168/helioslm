@@ -1,5 +1,28 @@
 # Evastar v5 Changelog
 
+## v5.149 (2026-10-24) - grouped-GEMM MoE dispatch
+
+`moe.dispatch="grouped"` (`pilot_100m.py --moe-dispatch grouped`) runs
+the routed experts as two `torch.nn.functional.grouped_mm` calls over
+the expert-sorted token rows, with per-expert offsets. The "batched" path
+scatters those rows into a zero-padded [A, C, D] tensor (C = the largest
+expert load) and multiplies the padding too; grouped skips the scatter
+and the A * C - N * K padded rows. Routing, the active-expert stacking
+(idle experts still get no gradient) and the activations (SwiGLU, clamped
+SwiGLU, SiTU with its per-expert norm, situ_k3) are shared with
+"batched", and it falls back to "blocked" in the same cases.
+
+CPU fp32 forward + backward of one layer (`moe_dispatch_bench.py`, 4096
+tokens, hidden 640, 16 experts top-2, expert hidden 448): blocked 0.201 s,
+batched 0.199 s, grouped 0.139 s (1.43x batched). The pilot default stays
+"batched" until grouped is measured on a GPU (`moe_dispatch_bench.py
+--device cuda` now times all three).
+
+`test_moe_batched_dispatch.py` runs every pin for both "batched" and
+"grouped" (outputs and all gradients match blocked, skewed routing with
+idle experts, fallback, whole model, bf16 autocast);
+`test_k3_llamacpp_parts.py` checks grouped with situ_k3.
+
 ## v5.147 (2026-10-24) - HDL track H0: VerilogEval v2 harness
 
 First piece of the chip-design (HDL) track. `evastar/eval/hdl_bench.py`
