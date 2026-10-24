@@ -4,7 +4,7 @@ MediaTek model? (v5.129)
 One pod run, before any training is paid for: score the base
 (google/gemma-4-E4B) and the four MediaTek Research text models on
 TMMLU+ (5-shot), TW-JusticeBench (0-shot), C-Eval val (5-shot) and CMMLU
-(5-shot) with the same scorer (helioslm_v5/eval/tw_bench.py, log-likelihood
+(5-shot) with the same scorer (evastar/eval/tw_bench.py, log-likelihood
 of the answer letter), then write the base-minus-rival gap per task with a
 95% paired-bootstrap interval (eval/prereg.paired_bootstrap).
 
@@ -40,8 +40,8 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from helioslm_v5.eval import tw_bench  # noqa: E402
-from helioslm_v5.eval.prereg import paired_bootstrap  # noqa: E402
+from evastar.eval import tw_bench  # noqa: E402
+from evastar.eval.prereg import paired_bootstrap  # noqa: E402
 
 BASE = "google/gemma-4-E4B"
 RIVALS = (

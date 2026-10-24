@@ -29,7 +29,7 @@ import math
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "helioslm_v5" / "agent"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "evastar" / "agent"))
 
 
 def load(path):

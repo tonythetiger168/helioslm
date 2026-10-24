@@ -12,7 +12,7 @@ Single tracker for every Evastar plan, oldest first:
 
 Update this file in the same PR that lands or changes a milestone.
 
-> Not tracked here: the "M1–M11" IDs in `docs/helioslm_v5_code_review.md`
+> Not tracked here: the "M1–M11" IDs in `docs/evastar_code_review.md`
 > and `docs/V5.1_FIXES_REPORT.md` (v5.1 code-review findings), and the
 > "Phase 0–2" commits of the rev-skills integration plan (`ddf1851`,
 > `41ef523`: skill template, validator, model-security skills).
@@ -28,7 +28,7 @@ surviving evidence. Scope notes are in [`PHASE0_3_PLAN.md`](PHASE0_3_PLAN.md).
 | 0 | Merge the diverged lines, version v5.41, all tests green | ✅ Done | v5.41 | full suite |
 | 1.1 | DecisionHead module (`src/decision_head.py`) | ✅ Done | v5.41 | `test_lm_decision_head.py` |
 | 1.2 | DecisionHead unit tests | ✅ Done | v5.41 | `test_lm_decision_head.py` (5) |
-| 1.3 | DecisionHead wired onto real HeliosLMv5 hidden states | ✅ Done | v5.42 | `test_decision_head_integration.py` (3) |
+| 1.3 | DecisionHead wired onto real EvastarV5 hidden states | ✅ Done | v5.42 | `test_decision_head_integration.py` (3) |
 | 1.4 | DPO trainer (`src/training/dpo.py`) | ✅ Done | v5.41 | `test_dpo.py` |
 | 2.1 | Multi-env registry: math / code / alignment-audit (`src/training/envs.py`) | ✅ Done (end-to-end loop v5.43) | v5.42 | `test_envs.py`, `case_trainers.py` |
 | 2.2 | Long-context passkey eval (`eval/longctx.py`) | ✅ Done — tested at 128–512 tokens; no 32K–256K result recorded | v5.42 | `test_longctx.py`, `test_longctx_harness.py` |

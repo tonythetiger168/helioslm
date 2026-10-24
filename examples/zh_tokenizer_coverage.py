@@ -16,7 +16,7 @@ _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 os.environ.setdefault("RAYON_NUM_THREADS", "1")   # deterministic BPE training
 
-from helioslm_v5.eval.zh_tokenizer_coverage import (  # noqa: E402
+from evastar.eval.zh_tokenizer_coverage import (  # noqa: E402
     HELD_OUT, Bpe, CharToy, Utf8Bytes, eval_split, eval_stats, measure,
     train_bpe, training_corpus)
 

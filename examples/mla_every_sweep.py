@@ -68,9 +68,9 @@ _REPO_ROOT = _SCRIPT_DIR.parent
 sys.path.insert(0, str(_REPO_ROOT))
 sys.path.insert(0, str(_SCRIPT_DIR))
 
-from helioslm_v5.configs.config_v5 import (HeliosLMv5Config,  # noqa: E402
+from evastar.configs.config_v5 import (EvastarV5Config,  # noqa: E402
                                            HybridAttentionConfig)
-from helioslm_v5.src.model_v5 import HeliosLMv5, _is_full_attention_layer  # noqa: E402
+from evastar.src.model_v5 import EvastarV5, _is_full_attention_layer  # noqa: E402
 from benchmarks.bench_cpu import cache_bytes  # noqa: E402
 
 EXPERIMENT = "B1-5 mla-every sweep"
@@ -82,8 +82,8 @@ def arm_config(every, layers):
     """Lite width at ``layers`` depth; ``every=None`` = dense-MLA reference
     (hybrid disabled)."""
     if every is None:
-        return HeliosLMv5Config(size="lite", num_hidden_layers=layers)
-    return HeliosLMv5Config(
+        return EvastarV5Config(size="lite", num_hidden_layers=layers)
+    return EvastarV5Config(
         size="lite", num_hidden_layers=layers,
         hybrid_attention=HybridAttentionConfig(enabled=True,
                                                full_attention_every=every))
@@ -100,7 +100,7 @@ def build_and_generate(cfg, seed, prompts, decode_tokens):
     Two calls with identical arguments must return identical token lists
     (the bitwise gate)."""
     torch.manual_seed(seed)
-    model = HeliosLMv5(cfg).eval()
+    model = EvastarV5(cfg).eval()
     outs = []
     for p in prompts:
         out = model.generate(p, max_new_tokens=decode_tokens, temperature=0)
@@ -119,7 +119,7 @@ def train_arm(cfg, seed, steps, batch, seq, lr, ids, val_windows):
     (Adam + cosine, no MTP loss — see module docstring). Returns
     (final_train_loss10, val_loss, probe_ids)."""
     torch.manual_seed(seed)
-    model = HeliosLMv5(cfg)
+    model = EvastarV5(cfg)
     model.train()
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=max(steps, 1))
@@ -195,7 +195,7 @@ def run_sweep(args):
             json.dumps(outs1).encode()).hexdigest()
 
         torch.manual_seed(args.seed)  # identical param count basis
-        n_params = sum(p.numel() for p in HeliosLMv5(cfg).parameters())
+        n_params = sum(p.numel() for p in EvastarV5(cfg).parameters())
 
         arm = {
             "label": label,

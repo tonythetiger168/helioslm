@@ -43,10 +43,10 @@ import torch.nn.functional as F
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from helioslm_v5.configs.config_v5 import (  # noqa: E402
-    AttentionConfig, HeliosLMv5Config, HybridAttentionConfig, MoEConfig,
+from evastar.configs.config_v5 import (  # noqa: E402
+    AttentionConfig, EvastarV5Config, HybridAttentionConfig, MoEConfig,
     MTPConfig)
-from helioslm_v5.src.model_v5 import HeliosLMv5  # noqa: E402
+from evastar.src.model_v5 import EvastarV5  # noqa: E402
 
 N_PAIRS = 8
 N_KEYS = 16
@@ -64,7 +64,7 @@ ALL_ARMS = ARMS + EXTRA_ARMS
 
 def arm_config(arm):
     if arm in EXTRA_ARMS:
-        return HeliosLMv5Config(
+        return EvastarV5Config(
             size="lite", num_hidden_layers=LAYERS, vocab_size=VOCAB,
             hidden_size=128, intermediate_size=256,
             hybrid_attention=HybridAttentionConfig(
@@ -81,7 +81,7 @@ def arm_config(arm):
            "hybrid_5to1_sink": AttentionConfig(sliding_window=WINDOW,
                                                global_attention_every=6,
                                                learnable_sink=True)}[arm]
-    return HeliosLMv5Config(
+    return EvastarV5Config(
         size="lite", num_hidden_layers=LAYERS, vocab_size=VOCAB,
         hidden_size=128, intermediate_size=256, attention=att,
         hybrid_attention=HybridAttentionConfig(enabled=False),
@@ -114,7 +114,7 @@ def attendable_keys(cfg):
     every = cfg.attention.global_attention_every
     total = 0
     if cfg.hybrid_attention.enabled:      # GDA layers read a fixed state
-        from helioslm_v5.src.model_v5 import _is_full_attention_layer
+        from evastar.src.model_v5 import _is_full_attention_layer
         return sum(SEQ for i in range(cfg.num_hidden_layers)
                    if _is_full_attention_layer(cfg, i))
     for i in range(cfg.num_hidden_layers):
@@ -142,7 +142,7 @@ def evaluate(model, n_batches, batch):
 def train_arm(arm, args):
     cfg = arm_config(arm)
     torch.manual_seed(args.seed)
-    model = HeliosLMv5(cfg)
+    model = EvastarV5(cfg)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr)
     sched = torch.optim.lr_scheduler.OneCycleLR(
         opt, max_lr=args.lr, total_steps=max(args.steps, 1), pct_start=0.1)

@@ -27,8 +27,8 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from helioslm_v5.configs.config_v5 import HeliosLMv5Config
-from helioslm_v5.src.model_v5 import HeliosLMv5
+from evastar.configs.config_v5 import EvastarV5Config
+from evastar.src.model_v5 import EvastarV5
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def build_corpus() -> str:
@@ -70,8 +70,8 @@ def main() -> None:
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
-    cfg = HeliosLMv5Config(size="lite")
-    model = HeliosLMv5(cfg)
+    cfg = EvastarV5Config(size="lite")
+    model = EvastarV5(cfg)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"toy checkpoint: {n_params/1e6:.2f}M params, vocab={cfg.vocab_size}")
 
@@ -146,7 +146,7 @@ def main() -> None:
     acc = None
     pids = torch.tensor([encode("HeliosLM", cfg.vocab_size)])
     if model.mtp_modules is not None:
-        from helioslm_v5.src.inference.mtp import MTPDecoder
+        from evastar.src.inference.mtp import MTPDecoder
         with torch.no_grad():
             d = MTPDecoder(model, model.mtp_modules, cfg)
             r = d.generate(pids, max_new_tokens=32, temperature=0)

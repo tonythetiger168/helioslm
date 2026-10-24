@@ -19,11 +19,11 @@ is fixed for a given source order (--val-fraction, default 0.005).
 Decontamination (plan E2): --decontaminate PATH ... reads evaluation sets
 (.txt one item each, .jsonl one item per line in field --eval-field,
 default "text", or directories) and drops every TRAIN document that shares
-a 13-word n-gram with any item (helioslm_v5/eval/decontam.py); the
+a 13-word n-gram with any item (evastar/eval/decontam.py); the
 validation split is never trained on and is left as is. The counts
 go into meta.json; --decontam-report PATH writes the per-item report.
 
-Quality filters (LB3, v5.116; helioslm_v5/src/training/data_quality.py),
+Quality filters (LB3, v5.116; evastar/src/training/data_quality.py),
 applied to TRAIN documents before decontamination: --heuristics (length,
 duplicate lines, symbol / ellipsis ratios, non-text share),
 --zh-variants tw mixed none (keep only those Traditional / Simplified
@@ -49,7 +49,7 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from helioslm_v5.src.training.pretrain import write_shards  # noqa: E402
+from evastar.src.training.pretrain import write_shards  # noqa: E402
 
 
 def iter_text_sources(paths, field="text"):
@@ -104,7 +104,7 @@ def train_tokenizer(texts, vocab, zh_seed):
         special_tokens=["[UNK]", "<|endoftext|>"])
     it = iter(texts)
     if zh_seed != "none":
-        from helioslm_v5.eval.zh_tokenizer_coverage import zh_seed_text
+        from evastar.eval.zh_tokenizer_coverage import zh_seed_text
         seed = zh_seed_text(zh_seed)
         it = (t for src in (texts, [seed]) for t in src)
     tok.train_from_iterator(it, trainer=trainer)
@@ -153,7 +153,7 @@ def main():
         split["val"].append(split["train"].pop())
     quality = None
     if args.heuristics or args.zh_variants or args.quality_model:
-        from helioslm_v5.src.training.data_quality import (
+        from evastar.src.training.data_quality import (
             HashedNgramClassifier, filter_docs)
         clf = (HashedNgramClassifier.load(args.quality_model)
                if args.quality_model else None)
@@ -171,7 +171,7 @@ def main():
             sys.exit("the quality filters removed every training document")
     decontam = None
     if args.decontaminate:
-        from helioslm_v5.eval.decontam import EvalIndex, decontaminate
+        from evastar.eval.decontam import EvalIndex, decontaminate
         items = {f"e{i}": t for i, t in enumerate(
             iter_text_sources(args.decontaminate, args.eval_field))}
         if not items:
