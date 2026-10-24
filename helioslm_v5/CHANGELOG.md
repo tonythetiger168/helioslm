@@ -1,4 +1,22 @@
-# HeliosLM v5 Changelog
+# Evastar v5 Changelog
+
+## v5.133 (2026-10-24) - Rename HeliosLM to Evastar (display name)
+
+- The project's public name is now **Evastar** (Chinese name 恆星, "eternal
+  star"), replacing HeliosLM / 羲和. This release changes display text only:
+  README title and intro, CONTRIBUTING, the live roadmap/benchmark/plan
+  docs, the product names (Evastar Code / Cloud / Enterprise), the web UI
+  title, the test-suite banner, and `model_name` (`Evastar-v5.133`, which
+  also becomes the default GGUF `general.name`).
+- Unchanged on purpose, so existing imports, checkpoints and links keep
+  working: the `helioslm_v5` package, `HeliosLMv5` / `HeliosLMv5Config`
+  and other identifiers, `HELIOS_*` env vars, the custom GGUF arch string,
+  the GitHub and Hugging Face URLs, dated historical docs and older
+  changelog entries.
+- `tests/case_harness_repair.py::test_version_never_ahead_of_changelog`
+  accepts both the `Evastar-v` and `HeliosLM-v` prefixes.
+- `tests/test_term_bench.py`: drop the unused `real` local left by v5.132
+  (flake8 F841 failed the lint gate).
 
 ## v5.132 (2026-10-24) - Windows test_sandbox_limits repair, CI LF guard, version-drift lock
 

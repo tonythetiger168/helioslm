@@ -86,7 +86,6 @@ def test_parse_reply():
 
 def test_sandbox_limits():
     with tempfile.TemporaryDirectory() as root:
-        real = str(Path(root).resolve())
         code, out = tb.run_command("pwd; echo $HOME; echo hi > .pwd_probe",
                                    root)
         lines = out.split()

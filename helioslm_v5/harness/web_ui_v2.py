@@ -779,7 +779,7 @@ class Handler(BaseHTTPRequestHandler):
 _CHAT_HTML = r"""<!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>HeliosLM Harness</title>
+<title>Evastar Harness</title>
 <style>
 :root{--bg:#0d1117;--panel:#161b22;--border:#30363d;--fg:#e6edf3;--dim:#8b949e;
 --acc:#58a6ff;--user:#1f6feb;--ok:#3fb950;--warn:#d29922}
@@ -861,7 +861,7 @@ border:0;border-radius:6px;cursor:pointer}
 </style></head>
 <body>
 <aside id="side">
-  <h1>⚡ HeliosLM Harness</h1>
+  <h1>⚡ Evastar Harness</h1>
   <button id="newBtn">＋ New chat</button>
   <div id="sessList"></div>
   <div id="sideFooter">
@@ -1105,7 +1105,7 @@ $("saveParams").onclick = async () => {
 </script></body></html>"""
 
 _DASHBOARD_HTML = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
-<title>HeliosLM retro dashboard</title>
+<title>Evastar retro dashboard</title>
 <style>body{background:#0a0f0a;color:#33ff66;font:14px/1.6 ui-monospace,Menlo,monospace;
 padding:32px;max-width:860px;margin:auto}
 h1{color:#66ff99;border-bottom:1px dashed #33ff66;padding-bottom:8px}
@@ -1151,7 +1151,7 @@ def _effects_html():
 
 def main(port=8990):
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print("HeliosLM Harness UI v2.1  →  http://127.0.0.1:%d" % port)
+    print("Evastar Harness UI v2.1  →  http://127.0.0.1:%d" % port)
     print("backend: %s   sessions: %s" % (BACKEND.name, _SESSIONS_DIR))
     try:
         srv.serve_forever()

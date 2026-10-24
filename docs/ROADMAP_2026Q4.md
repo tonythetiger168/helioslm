@@ -1,4 +1,4 @@
-# HeliosLM 改進計劃與 Roadmap（2026 Q4 – 2027 Q2）
+# Evastar 改進計劃與 Roadmap（2026 Q4 – 2027 Q2）
 
 - **日期：** 2026-10-15
 - **基準：** `main` @ `1fd3358`（v5.53）+ PR #21（審查修正）
@@ -18,16 +18,16 @@
 | 開放權重 | MiMo-V2.6-Pro、Qwen3.8 Max、GLM-5.3、Kimi K3、DeepSeek V4.1 Flash | Kimi K3：總 2.8T／啟用 104B 參數，Terminal-Bench 2.1 為 88.3 |
 | 實際用量（OpenRouter token 量） | DeepSeek V4.1 Flash 第一；Opus 5.5 第 8 | 實際採用由成本決定 |
 
-### 對 HeliosLM 有意義的四個趨勢
+### 對 Evastar 有意義的四個趨勢
 
 1. **Agent 與程式能力已是主要評量**（Terminal-Bench、SWE-bench Pro、FrontierSWE），傳統聊天型 benchmark 的比重下降。
-2. **「推理強度」設定已是分數的一部分。** Artificial Analysis 依強度把同一模型分開排名；「每完成一項任務的成本」正成為標準指標，與 HeliosLM 的 M6 方向一致。
+2. **「推理強度」設定已是分數的一部分。** Artificial Analysis 依強度把同一模型分開排名；「每完成一項任務的成本」正成為標準指標，與 Evastar 的 M6 方向一致。
 3. **開放權重的架構配方已收斂：**
    - Kimi K3：每 3 層 Kimi Delta Attention（KDA，線性注意力）配 1 層 Gated MLA，加上 Attention Residuals 與 Stable LatentMoE。
    - DeepSeek-V4：Compressed Sparse Attention（CSA），先壓縮 KV cache 再做稀疏注意力。
-4. **排行榜彼此矛盾，且許多分數由廠商自報。** 可驗證、可重現的評測仍然稀缺，這正是 HeliosLM 驗證層級（verification tiers）與測試 oracle 文化能補上的缺口。
+4. **排行榜彼此矛盾，且許多分數由廠商自報。** 可驗證、可重現的評測仍然稀缺，這正是 Evastar 驗證層級（verification tiers）與測試 oracle 文化能補上的缺口。
 
-## 2. HeliosLM 現況
+## 2. Evastar 現況
 
 **架構跟得上前沿。** repo 已有：
 - KDA 風格的逐通道衰減閘（v5.21）；
@@ -49,7 +49,7 @@
 
 ## 3. 定位
 
-HeliosLM 不應追排行榜，它的優勢在別處：
+Evastar 不應追排行榜，它的優勢在別處：
 
 1. **前沿配方的可驗證參考實作。** 唯一能在 CPU 上閱讀、執行、並逐位元驗證 K3／V4 配方的地方。
 2. **校準的決策層**（TrustGate／RLCD）。問題是「模型知不知道自己錯了」——這正是排行榜不量測的。
@@ -84,7 +84,7 @@ HeliosLM 不應追排行榜，它的優勢在別處：
 
 ### Phase B2：GLM-5.3 與 MiMo 對照（2026-10-15 新增）
 
-對照智譜 GLM-5.3 與小米 MiMo（V2-Flash／V2.6-Pro）的公開資料後，找出 HeliosLM 尚缺的設計。依「每個機制都附 oracle 測試」原則，每項都有可驗證的完成標準。
+對照智譜 GLM-5.3 與小米 MiMo（V2-Flash／V2.6-Pro）的公開資料後，找出 Evastar 尚缺的設計。依「每個機制都附 oracle 測試」原則，每項都有可驗證的完成標準。
 
 | ID | 項目 | 來源 | 完成標準 |
 |---|---|---|---|
@@ -146,7 +146,7 @@ HeliosLM 不應追排行榜，它的優勢在別處：
 
 ### Phase AC：Agentic coding（2026-10-15 新增）
 
-排行榜的主戰場已轉向 agent 與程式能力（Terminal-Bench、SWE-bench Pro）。Qwen3-Coder 的公開做法是大規模 agent RL（多輪、以執行結果為獎勵）、「難解但容易驗證」的程式 RL、repo 級長 context 與穩定的 tool-call 格式。HeliosLM 已有 10 題終端沙盒（T90）、HumanEval 子集（T89）、GRPO 設定、`train_tool_tuned.py` 與 TrustGate。
+排行榜的主戰場已轉向 agent 與程式能力（Terminal-Bench、SWE-bench Pro）。Qwen3-Coder 的公開做法是大規模 agent RL（多輪、以執行結果為獎勵）、「難解但容易驗證」的程式 RL、repo 級長 context 與穩定的 tool-call 格式。Evastar 已有 10 題終端沙盒（T90）、HumanEval 子集（T89）、GRPO 設定、`train_tool_tuned.py` 與 TrustGate。
 
 | ID | 項目 | 完成標準 |
 |---|---|---|
