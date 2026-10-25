@@ -21,6 +21,12 @@ the licence is filled in). ``format`` (v5.121, LB5) is ``text`` (default)
 or ``trace``: D1 teacher records rendered as chat transcripts with their
 reasoning (``mid_train.render_trace``; optional ``think_ratio``). ``license_verified`` false is allowed for
 planning; ``usable_sources`` returns only verified ones.
+
+Per-source loading options (v5.152, HDL H1): ``field`` (the text column,
+default the fetcher's ``--field``), ``data_dir`` / ``data_files`` (passed
+to ``datasets.load_dataset``, e.g. ``data/vhdl`` of the-stack) and
+``heuristics`` (false skips the prose heuristics, which drop most source
+code: short modules, repeated ``end`` lines).
 """
 import hashlib
 import json
@@ -76,6 +82,16 @@ def validate_mixture(mix):
         q = s.get("quality_threshold")
         if q is not None and not 0.0 <= q <= 1.0:
             raise ValueError(f"{n}: quality_threshold must be in [0, 1]")
+        for k in ("field", "data_dir"):
+            if k in s and (not isinstance(s[k], str) or not s[k]):
+                raise ValueError(f"{n}: {k} must be a non-empty string")
+        df = s.get("data_files")
+        if df is not None and not (
+                isinstance(df, str) and df or isinstance(df, list) and df
+                and all(isinstance(x, str) and x for x in df)):
+            raise ValueError(f"{n}: data_files must be a path or a list of paths")
+        if not isinstance(s.get("heuristics", True), bool):
+            raise ValueError(f"{n}: heuristics must be true or false")
     if "main" not in totals:
         raise ValueError("mixture needs at least one main-phase source")
     for ph, t in totals.items():

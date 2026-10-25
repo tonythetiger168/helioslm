@@ -1,5 +1,26 @@
 # Evastar v5 Changelog
 
+## v5.152 (2026-10-25) - HDL track H1: HDL training-data mixture
+
+`data/mixtures/hdl_h1_cpt_v1.json` is the draft corpus for HDL continued
+pretraining (H2): Verilog from `shailja/Verilog_GitHub`, SystemVerilog
+and VHDL from `bigcode/the-stack-dedup` (under review until rows are
+filtered by their per-file licences), `rtl-llm/vhdl_github_deduplicated`,
+the reference Verilog of VeriThoughts, plus 25% fineweb-edu / finemath
+replay. Only raw code columns are read; model-written descriptions and
+traces are left for the instruct stage. `docs/HDL_DATA.md` lists each
+source's licence, size and column, what was left out and why, and the
+instruct-stage candidates with their generator models.
+
+Mixture sources take new loading options: `field` (the text column),
+`data_dir` / `data_files` (passed to `datasets.load_dataset`) and
+`"heuristics": false` for source code, which the prose heuristics mostly
+drop. `load_mixture` checks their types; `fetch_mixture.py` uses them.
+
+`test_hdl_data.py` (T145): the mixture loads and plan() moves the
+review sources' share to the usable ones; bad options are refused;
+heuristics=False keeps a short module; `fetch_mixture.main` passes
+`data_dir` and the source's column to the loader.
 ## v5.149 (2026-10-24) - grouped-GEMM MoE dispatch
 
 `moe.dispatch="grouped"` (`pilot_100m.py --moe-dispatch grouped`) runs
