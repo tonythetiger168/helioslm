@@ -631,3 +631,27 @@ Context sizes assume the default MLA cache (latent 512 + RoPE 64, about 37 KB pe
 
 This section tracks **intent**, not verified implementation status. Track actual completion in GitHub Issues/Milestones and link benchmark artifacts, commit SHAs, reproducible commands and release notes before marking an item complete. Keep the historical `evastar` code/release numbering distinct from these forward-looking product-generation labels.
 <!-- HELIOSLM_PRODUCT_ROADMAP_END -->
+
+## Offline API cost and comparison audit
+
+`examples/analyze_api_usage.py` analyzes saved response JSON without network
+access or API credentials. It separates ordinary input, cached reads, cache
+writes by lifetime, and output tokens for OpenAI and Anthropic usage formats.
+Supply a model-specific rate card with its source and date; missing counters,
+missing rates, or mismatched model/tier/context scope yield **unknown** cost.
+Estimates cover token charges only, not tool/search fees or an actual invoice.
+
+```bash
+python examples/analyze_api_usage.py --records saved_records.json \
+  --corpus tasks.jsonl --harness-revision <evaluation-commit> \
+  --tokenizer <name-and-revision> --settings evaluation_settings.json \
+  --rates rates.json --out api_cost_audit.json
+```
+
+The report preserves requested/reported model names and fingerprints, the
+corpus SHA-256 and UTF-8 byte count, declared tokenizer and evaluation settings,
+and supplied rate assumptions. Labels are not proof of an immutable snapshot
+or verified tokenizer. Optional `--outcomes` counts successful **tasks**, so
+multiple calls in one task do not inflate the denominator. See `--help` for
+input schemas. Legacy aggregate probe summaries cannot recover cache details;
+the existing live probe client and historical presets remain unchanged.
