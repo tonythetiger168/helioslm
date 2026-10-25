@@ -1,5 +1,49 @@
 # Evastar v5 Changelog
 
+## v5.154 (2026-10-25) - Roadmap TW2: zh-TW pretraining corpus pipeline
+
+TW2 asks for ~100M tokens of Taiwan Traditional Chinese with
+reproducible dedup and Traditional-share statistics, every document
+keeping its licence and attribution. The repo could already filter by
+zh variant (`data_quality.zh_variant`) but had no dedup, no s2twp
+conversion and no per-document attribution.
+
+- `evastar/src/training/zhtw_corpus.py` (numpy only; OpenCC imported
+  only by a converting source):
+  - `SOURCES`: zhwiki (wikimedia/wikipedia 20231101.zh, CC-BY-SA-4.0,
+    OpenCC `s2twp`, keeps tw/mixed after conversion), fineweb2
+    (HuggingFaceFW/fineweb-2 cmn_Hani, ODC-BY-1.0, keeps only text that
+    is already `tw`: converted mainland web text is not Taiwan text),
+    datagov (local JSONL, OGDL-Taiwan-1.0; a record without `provider`
+    is dropped because OGDL requires naming the agency);
+  - `Deduper`: exact (sha256 of NFKC, whitespace-free text) plus
+    MinHash near-dup (character 5-grams, 128 seeded permutations mod
+    2^31-1, 16 LSH bands, estimated Jaccard >= 0.8); first copy wins;
+  - `process`: attribution -> LB3 heuristics -> conversion -> variant ->
+    dedup, counting each drop reason and the kept text's CJK /
+    Traditional-only / Simplified-only characters (`trad_share`).
+- `examples/tw2_prepare_corpus.py`: reads datagov, zhwiki, fineweb2 in
+  that order (so dedup keeps the best-attributed copy), splits `--tokens`
+  by `--shares` (default 0.1 / 0.3 / 0.6, renormalised over present
+  sources), counts with `--tokenizer` or in units, and writes JSONL
+  shards, `manifest.json` (revision pinned to the dataset commit, drop
+  counts, Traditional share, shard sha256, `corpus_sha256`) and
+  `ATTRIBUTION.md`. Shards feed `pilot_prepare_data.py --text`.
+
+Not run at 100M here: the cloud container reaches huggingface.co
+metadata but not its data CDN, and not data.gov.tw. The full run is for
+the pod: `python examples/tw2_prepare_corpus.py --out /workspace/tw2
+--tokens 1e8 --tokenizer data/pilot/tokenizer.json --datagov <dir>`.
+
+Tests (T148, `evastar/tests/test_zhtw_corpus.py`): normalisation and
+seeded MinHash (Jaccard estimate within 0.12); exact and near dups
+dropped, unrelated kept; provider rule, converter-before-variant,
+convert source without converter refused; CLI on local files gives the
+same `corpus_sha256` twice, stops at the budget, drops a datagov
+document seen again in fineweb2; the OpenCC case (s2twp gives
+這個軟體的記憶體和網路) skips when OpenCC is absent, as in CI. Disabling
+the exact or the near-dup check fails T148.
+
 ## v5.153 (2026-10-25) - alias loader `get_code` + suite `--list` probe
 
 The v5.134 rename (`helioslm_v5` -> `evastar`, meta-path alias shim)
