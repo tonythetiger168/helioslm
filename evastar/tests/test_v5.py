@@ -185,6 +185,12 @@ TESTS = [
     case_harness_repair.test_sandbox_pwd_home_posix_form,
     case_harness_repair.test_ci_lf_guard,
     case_harness_repair.test_version_never_ahead_of_changelog,
+    # v5.153 (2026-10-25): the v5.134 evastar rename broke the mandated
+    # `python -m helioslm_v5.tests.test_v5` entry point (runpy needs
+    # loader.get_code). Locks: alias loader serves code/source, and the
+    # -m command runs end-to-end via the --list probe.
+    case_harness_repair.test_alias_loader_get_code,
+    case_harness_repair.test_alias_dash_m_smoke,
 ]
 
 # CI thread guard (2026-10-13): PR #16's full-suite probe passes with
@@ -198,7 +204,14 @@ if os.environ.get("GITHUB_ACTIONS") == "true":
 
 
 def main():
-    print("Evastar v5.134 Test Suite (lite config, CPU)")
+    if "--list" in sys.argv[1:]:
+        # v5.153 probe: print the registered test count and exit without
+        # running anything. Gives automation (and the daily-maintenance
+        # gate) a fast smoke check of the mandated `python -m ...` entry
+        # point without paying for the full suite.
+        print(f"TESTS={len(TESTS)}")
+        sys.exit(0)
+    print("Evastar v5.153 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:

@@ -1,5 +1,9 @@
-# Evastar v5.134 - DeepSeek/K3-Style Architecture
+# Evastar v5.153 - DeepSeek/K3-Style Architecture
 
+v5.153 (2026-10-25): repaired `python -m helioslm_v5.tests.test_v5` — the
+v5.134 rename's alias loader lacked `get_code`, which runpy requires;
+added `get_code`/`get_source` to the alias loader and a `--list` probe
+to the test suite entry point.
 v5.134 (2026-10-24): package renamed `helioslm_v5` -> `evastar`, classes
 `HeliosLMv5*` -> `EvastarV5*`, env vars `HELIOS_*` -> `EVASTAR_*`; the old
 names still work. v5.133 (2026-10-24): project renamed HeliosLM -> Evastar

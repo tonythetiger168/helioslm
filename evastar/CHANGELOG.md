@@ -1,5 +1,43 @@
 # Evastar v5 Changelog
 
+## v5.153 (2026-10-25) - alias loader `get_code` + suite `--list` probe
+
+The v5.134 rename (`helioslm_v5` -> `evastar`, meta-path alias shim)
+silently broke the daily-maintenance mandated gate command
+`python -m helioslm_v5.tests.test_v5`: `runpy._get_module_details`
+requires `loader.get_code`, and `_AliasLoader` did not provide it —
+the command died with `AttributeError: '_AliasLoader' object has no
+attribute 'get_code'` before a single test ran. Plain `import` still
+worked, which is exactly how the breakage shipped unnoticed.
+
+- `_AliasLoader.get_code` / `.get_source`
+  (`helioslm_v5/__init__.py`): compile/read the real evastar source file
+  (resolved via `find_spec`, parent packages only — no execution), so
+  `python -m helioslm_v5.x.y` behaves like `python -m evastar.x.y` and
+  tracebacks point at the canonical path. Loud `ImportError` when the
+  alias target has no readable origin.
+- `_AliasFinder` now carries the real spec's `origin` (and
+  `submodule_search_locations` for packages) onto the alias spec.
+  `spec_from_loader` defaults `origin=None`, and runpy stamps
+  `spec.origin` into `__file__` — with get_code alone the module still
+  ran with `__file__ = None`, crashing `Path(__file__)` at import time
+  (found by the first repaired `-m` run, fixed before shipping).
+- `evastar/tests/test_v5.py main()` gains `--list`: prints
+  `TESTS=<count>` and exits 0 without running the suite — a fast smoke
+  probe for the mandated entry point.
+
+Tests (T146/T147, in `case_harness_repair.py`, registered in TESTS):
+`test_alias_loader_get_code` locks the loader surface and that the code
+object compiles from `evastar/tests/test_v5.py`;
+`test_alias_dash_m_smoke` runs the mandated command end-to-end in a
+subprocess and asserts rc==0 plus a TESTS count matching the in-process
+registry. Suite: 106/106 PASS (lite config, CPU).
+
+Version calibration: `model_name` had drifted to `Evastar-v5.134` while
+the changelog head was v5.152 (an 18-minor lag accumulated from upstream
+entries that do not update it); re-calibrated to v5.153 per the daily
+rule (changelog head + 1).
+
 ## v5.152 (2026-10-25) - cpt_hf.py: chunked output head + cross-entropy
 
 `cpt_hf.py --ce-chunk N` (default 0 = full logits, unchanged) trains a
