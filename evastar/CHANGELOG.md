@@ -1,5 +1,35 @@
 # Evastar v5 Changelog
 
+## v5.152 (2026-10-25) - cpt_hf.py: chunked output head + cross-entropy
+
+`cpt_hf.py --ce-chunk N` (default 0 = full logits, unchanged) trains a
+Hugging Face base without materializing the [tokens, vocab] logits. At
+Gemma's 262k vocabulary those are 4.3 GB in fp32 for one 4096-token
+micro-batch, the largest single tensor of a route-B step.
+
+`lm_loss(model, x, y, ce_chunk)` calls the model, through the DDP wrapper
+so its gradient sync is untouched, with `logits_to_keep=1` and
+`output_hidden_states=True`, then runs `pretrain.chunked_lm_loss` (v5.141)
+on the last hidden state and `get_output_embeddings().weight`, with the
+config's `final_logit_softcapping` (via `get_text_config()`). The one
+kept logit row is added at weight 0 so every parameter the forward used
+still gets a gradient under `find_unused_parameters`. A head with a bias
+is refused.
+
+Before training, `check_chunked_head` compares the chunked loss with the
+full-logits loss on one 128-token window (fp32, no grad) and stops the
+run if they differ by more than 1e-3, so a model whose last hidden state
+is not the head input fails at start-up instead of training on a wrong
+loss.
+
+T145 (test_cpt_chunked_ce.py), on a tiny model with the Hugging Face
+causal-LM surface: loss and every gradient equal full logits (with and
+without soft cap), only one logit row is computed, the check accepts it
+and refuses a pre-norm hidden state, a DDP-style wrapper is unwrapped,
+and `train(ce_chunk=...)` follows the full-logits loss curve. Not yet run
+on a real Gemma checkpoint (transformers is not installed in CI); the
+start-up check covers that on the first real run.
+
 ## v5.149 (2026-10-24) - grouped-GEMM MoE dispatch
 
 `moe.dispatch="grouped"` (`pilot_100m.py --moe-dispatch grouped`) runs
