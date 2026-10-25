@@ -30,8 +30,11 @@ Cache contract (cross-module, relied upon by MTP rollback / the engine):
 
 Training path: a sequential loop over T (identical op order to the decode
 path, so both are numerically identical — verified at atol 1e-5). This is
-O(T) sequential and intended for the lite config; a chunked-parallel scan
-is a future optimization, deliberately out of scope here.
+O(T) sequential. v5.93 adds an opt-in chunked-parallel scan
+(``hybrid_attention.chunk_size``): the recurrence is
+S_t = D_t S_{t-1} + k_t w_t^T with w_t = v_t - S_{t-1}^T k_t, so inside a
+chunk every w_t follows from one unit-lower-triangular solve, and outputs
+and the carried state from a few matmuls (``_chunked_scan``).
 
 Numerical stability: the decay gate is a sigmoid (so 0 < decay < 1 by
 construction) additionally clamped to [m, 1 - m] with a dtype-aware margin
@@ -164,6 +167,7 @@ class GatedDeltaAttention(nn.Module):
         # (state, conv_state) where conv_state holds the last K-1 PRE-conv
         # projections [B, K-1, 3*H*D]; it is a StateTensor too (no sequence
         # axis), so MTP rollback and engine batching treat it like the state.
+        self.chunk_size = int(getattr(hc, "chunk_size", 0) or 0)
         self.conv_kernel = int(getattr(hc, "short_conv_kernel", 0) or 0)
         if self.conv_kernel:
             ch = 3 * self.num_heads * self.head_dim
@@ -319,6 +323,9 @@ class GatedDeltaAttention(nn.Module):
         # numerically to float-reassociation noise (asserted at atol 1e-5
         # in the test suite). At a packed-sequence document boundary the
         # state is zeroed before the boundary token is processed.
+        if self.chunk_size and seg_start is None and seq > 1:
+            out, state = self._chunked_scan(q, k, v, decay, keep, state)
+            return self._finish(out, state, B, seq, use_cache, new_conv_state)
         outs = []
         for t in range(seq):
             if seg_start is not None and bool(seg_start[:, t].any()):
@@ -335,7 +342,9 @@ class GatedDeltaAttention(nn.Module):
             o_t = torch.einsum("bhk,bhkv->bhv", q[:, :, t], state)
             outs.append(o_t)
         out = torch.stack(outs, dim=2)                        # [B, H, seq, Dv]
+        return self._finish(out, state, B, seq, use_cache, new_conv_state)
 
+    def _finish(self, out, state, B, seq, use_cache, new_conv_state):
         # Subclass hygiene: when the incoming state was a StateTensor, plain
         # torch ops keep the subclass (Tensor subclasses are "sticky"), so
         # `out` — and then the residual stream, other layers' MLA caches,
@@ -351,6 +360,83 @@ class GatedDeltaAttention(nn.Module):
             if self.conv_kernel:
                 present = present + (new_conv_state.as_subclass(StateTensor),)
         return output, present
+
+    # Below this cumulative log-decay a chunk's exp(-log G) factors could
+    # overflow fp32 (e^88); such chunks are split in half until they fit.
+    # One token always fits: its log-decay is >= log(1e-6) ~ -13.8.
+    _MIN_CHUNK_LOG_DECAY = -60.0
+
+    def _chunked_scan(self, q, k, v, decay, keep, state):
+        """Chunked form of the training recurrence (v5.93).
+
+        Per head, with D_t = diag(decay_t) and keep_t the write mask,
+            w_t = keep_t (v_t - S_{t-1}^T k_t),  S_t = D_t S_{t-1} + k_t w_t^T,
+            o_t = S_t^T q_t.
+        Inside a chunk starting from S_0, with G_t = prod_{j<=t} D_j:
+            S_{t-1} = G_{t-1} S_0 + sum_{i<t} (G_{t-1}/G_i) k_i w_i^T,
+        so W solves (I + diag(keep) L) W = diag(keep)(V - (K G_prev) S_0)
+        with L[t,i] = k_t^T (G_{t-1}/G_i) k_i for i < t (unit lower
+        triangular), and
+            O = (Q G) S_0 + tril(Q G (K / G)^T) W,
+            S_C = G_C S_0 + (K G_C / G)^T W.
+        Ratios are formed as exp(a) * exp(-b) (in at least fp32) from
+        cumulative log-decays.
+        q, k: [B, H, T, Dk]; v: [B, H, T, Dv]; decay: [B, H, T] or
+        [B, H, T, Dk]; keep: [B, 1, T] or None; state: [B, H, Dk, Dv].
+        """
+        # Autocast is off inside: the (I + L) solve and the e^{+-logG}
+        # factors stay in at least fp32 even in a bf16 training step.
+        with torch.autocast(device_type=q.device.type, enabled=False):
+            return self._chunked_scan_fp32(q, k, v, decay, keep, state)
+
+    def _chunked_scan_fp32(self, q, k, v, decay, keep, state):
+        out_dtype, st_dtype = v.dtype, state.dtype
+        dt = torch.promote_types(v.dtype, torch.float32)   # >= fp32 inside
+        q, k, v, S = q.to(dt), k.to(dt), v.to(dt), state.to(dt)
+        if not self.per_channel_decay:
+            decay = decay[..., None].expand_as(k)
+        logd = torch.log(decay.to(dt))
+        keepf = None if keep is None else keep.to(dt)
+        T, C = q.shape[2], self.chunk_size
+        outs = []
+        for c0 in range(0, T, C):
+            c1 = min(c0 + C, T)
+            S = self._chunk(q[:, :, c0:c1], k[:, :, c0:c1], v[:, :, c0:c1],
+                            logd[:, :, c0:c1],
+                            None if keepf is None else keepf[:, :, c0:c1],
+                            S, outs)
+        out = torch.cat(outs, dim=2).to(out_dtype)
+        return out, S.to(st_dtype)
+
+    def _chunk(self, qc, kc, vc, ld, kp, S, outs):
+        """One chunk of ``_chunked_scan``; appends its output, returns S_C."""
+        n = qc.shape[2]
+        lg = ld.cumsum(dim=2)                           # log G_t     [B,H,n,Dk]
+        if n > 1 and bool((lg[:, :, -1] < self._MIN_CHUNK_LOG_DECAY).any()):
+            h = n // 2
+            S = self._chunk(qc[:, :, :h], kc[:, :, :h], vc[:, :, :h], ld[:, :, :h],
+                            None if kp is None else kp[:, :, :h], S, outs)
+            return self._chunk(qc[:, :, h:], kc[:, :, h:], vc[:, :, h:], ld[:, :, h:],
+                               None if kp is None else kp[:, :, h:], S, outs)
+        lgp = lg - ld                                   # log G_{t-1}
+        k_inv = kc * torch.exp(-lg)                     # k_i / G_i
+        k_prev = kc * torch.exp(lgp)                    # k_t G_{t-1}
+        lower = torch.ones(n, n, dtype=torch.bool, device=qc.device)
+        L = (k_prev @ k_inv.transpose(-1, -2)).masked_fill(
+            ~torch.tril(lower, -1), 0.0)
+        rhs = vc - k_prev @ S
+        if kp is not None:
+            rhs = rhs * kp[..., None]
+            L = L * kp[..., None]
+        eye = torch.eye(n, dtype=qc.dtype, device=qc.device)
+        W = torch.linalg.solve_triangular(eye + L, rhs, upper=False,
+                                          unitriangular=True)
+        qg = qc * torch.exp(lg)
+        A = (qg @ k_inv.transpose(-1, -2)).masked_fill(~torch.tril(lower), 0.0)
+        outs.append(qg @ S + A @ W)
+        g_end = lg[:, :, -1:]                           # log G_C [B,H,1,Dk]
+        return torch.exp(g_end).transpose(-1, -2) * S \
+            + (kc * torch.exp(g_end - lg)).transpose(-1, -2) @ W
 
     def _short_conv(self, q, k, v, conv_state, attention_mask, seg_start):
         """Causal depthwise conv (kernel K) + SiLU over [q|k|v] channels.

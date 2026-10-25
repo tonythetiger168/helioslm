@@ -1,5 +1,44 @@
 # HeliosLM v5 Changelog
 
+## v5.93 (2026-10-25) - Chunked-parallel KDA scan
+
+- `hybrid_attention.chunk_size` (default 0 = the token loop, bit for bit).
+  C > 0 runs `GatedDeltaAttention`'s training / prefill recurrence C
+  tokens at a time:
+  - one unit-lower-triangular solve per chunk gives every delta-rule
+    write w_t;
+  - the outputs and the carried state then follow from a few matmuls;
+  - cumulative log-decays form the decay ratios;
+  - a chunk whose decay would overflow fp32 is split in half until it fits
+    (one token always fits);
+  - autocast is off inside, so the solve stays in at least fp32 in a bf16
+    step.
+  It is the same recurrence with only the float summation order changed.
+  Packed sequences (position restarts) keep the exact loop.
+- The pilot `k3_block` arm (`pilot_config`) uses `chunk_size=64`.
+- `examples/bench_kda_chunked.py`: one pilot-width KDA layer (hidden 640,
+  batch 4 x 1024), forward + backward, loop vs chunk sizes, with an output
+  check. CPU (`benchmarks/kda_chunked_cpu_2026-10-25.json`):
+
+  | chunk | seconds | tokens/s | speed-up | max diff |
+  |---|---|---|---|---|
+  | loop | 2.770 | 1.5k | 1.0x | - |
+  | 16 | 0.424 | 9.7k | 6.5x | 2.8e-7 |
+  | 32 | 0.338 | 12.1k | 8.2x | 3.0e-7 |
+  | 64 | 0.229 | 17.9k | 12.1x | 3.1e-7 |
+  | 128 | 0.244 | 16.8k | 11.4x | 3.0e-7 |
+
+  The GPU number is still to be measured (run the same script on the pod).
+- `tests/test_kda_chunked.py` (14 tests, float64):
+  - outputs and state match the loop at about 1e-16 for per-head and
+    per-channel decay, with padding, a carried state, and T % C != 0;
+  - input and parameter gradients match;
+  - an over-decayed chunk is split and stays exact;
+  - whole-model `k3_block` logits match, and chunked prefill followed by
+    cached decode matches;
+  - packed sequences never reach the chunked path;
+  - bad chunk sizes are rejected.
+
 ## v5.92 (2026-10-22) - Plan E1: lm-evaluation-harness adapter
 
 - `eval/lm_harness.py` registers the model type `helioslm` with

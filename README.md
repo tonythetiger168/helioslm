@@ -450,6 +450,7 @@ Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/hel
 - **v5.76** — B2-6: multi-teacher on-policy distillation (MOPD); routed teachers keep the student's inc skill (1.00) and halve its KL to the rev teacher, one teacher for everything erases inc — T115
 - **v5.77** — Stable LatentMoE: Kimi K3 Quantile Balancing router bias; fastest from a skewed start and after a drift, no bias drift; SMEBU stays lower in steady state — T116
 - **v5.78** — Phase B: 16x CSA compressor by curriculum (4x weights, fine-tuned at 16x): passkey recall 0.375/0.390 -> 0.790/0.740, 92%/88% of the oracle ceiling — T117
+- **v5.93** — Chunked-parallel KDA scan (`hybrid_attention.chunk_size`): same recurrence, one triangular solve per chunk; a pilot-width KDA layer trains 12.1x faster on CPU at chunk 64; the pilot `k3_block` arm uses it
 - **v5.92** — Plan E1: lm-evaluation-harness adapter (`--model helioslm`); `examples/eval_harness.py` scores a pilot checkpoint on any harness task (ARC, HellaSwag, TMMLU+, ...); checked offline against lm-eval's own `simple_evaluate`
 - **v5.91** — Issue #1 closed: `cuda_smoke.py` 23/23 on an RTX 6000 Ada (incl. CUDA-vs-CPU training parity, compile, MTP, GRPO, real-size memory); compiled 100M pilot 1.35 bits/byte at 67k tokens/s, 20.6% MFU
 - **v5.90** — Issue #1, first CUDA run (RTX 6000 Ada): `examples/cuda_smoke.py` 11/13 → two real CUDA bugs fixed (FP8Trainer built its layers on the CPU; GPUMonitor crashed without NVML); first GPU pilot 2.77 → 1.79 bits/byte at 29.8k tokens/s — `docs/CUDA_VERIFICATION_2026-10-21.md`

@@ -11,6 +11,7 @@ killed. This module is that loop; ``examples/pilot_prepare_data.py`` and
     moe          the mid preset's routed experts (4, top 2) at half the
                  dense FFN width, so active FFN compute matches dense;
     k3_block     3:1 KDA:Gated-MLA, attention residuals, LatentMoE;
+                 KDA uses the v5.93 chunked scan (chunk 64);
     mimo_hybrid  5:1 sliding-window (128) : global MLA with sinks.
   MTP is off so the loss is plain next-token cross-entropy.
 - Data: ``uint16`` token shards (``write_shards`` / ``TokenShard``).
@@ -63,7 +64,8 @@ def pilot_config(arch="dense", vocab_size=32768, hidden_size=640,
                   attention=AttentionConfig(output_gate=True),
                   hybrid_attention=HybridAttentionConfig(
                       enabled=True, full_attention_every=4,
-                      first_layer_full=False, per_channel_decay=True))
+                      first_layer_full=False, per_channel_decay=True,
+                      chunk_size=64))
     elif arch == "mimo_hybrid":
         kw.update(attention=AttentionConfig(sliding_window=128,
                                             global_attention_every=6,

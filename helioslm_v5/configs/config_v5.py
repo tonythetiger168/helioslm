@@ -334,6 +334,11 @@ class HybridAttentionConfig:
     # v5.63 (roadmap Q1, Qwen3-Next): causal depthwise short conv (kernel
     # size) + SiLU over the linear-attention q/k/v projections. 0 = off.
     short_conv_kernel: int = 0
+    # v5.93: chunked-parallel recurrence for training / prefill. 0 (default)
+    # keeps the token-by-token loop (bit-identical). C > 0 processes C
+    # tokens at a time with one triangular solve per chunk (same recurrence,
+    # float reassociation only); packed sequences still use the loop.
+    chunk_size: int = 0
 
 
 @dataclass
@@ -825,6 +830,11 @@ class HeliosLMv5Config:
             raise ValueError(
                 f"hybrid_attention.short_conv_kernel must be 0 (off) or an "
                 f"int >= 2, got {k!r}")
+        c = h.chunk_size
+        if isinstance(c, bool) or not isinstance(c, int) or c < 0:
+            raise ValueError(
+                f"hybrid_attention.chunk_size must be 0 (token loop) or a "
+                f"positive int, got {c!r}")
         if not isinstance(h.first_layer_full, bool):
             raise ValueError(
                 f"hybrid_attention.first_layer_full must be a bool, got "
