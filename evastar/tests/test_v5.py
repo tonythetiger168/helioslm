@@ -191,6 +191,11 @@ TESTS = [
     # -m command runs end-to-end via the --list probe.
     case_harness_repair.test_alias_loader_get_code,
     case_harness_repair.test_alias_dash_m_smoke,
+    # limitations round (2026-10-25): GatedShortConv now carries the
+    # is_recurrent_attention marker, so the engine keeps conv models off
+    # the watermark pad-prefix path; the test pins no-pad admission,
+    # batched == solo greedy, and StateTensor batch/row bitwise round trip.
+    case_engine.test_engine_conv_batched,
 ]
 
 # CI thread guard (2026-10-13): PR #16's full-suite probe passes with

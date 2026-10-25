@@ -27,6 +27,14 @@ from .linear_attention import StateTensor
 
 
 class GatedShortConv(nn.Module):
+    # Fixed-size state, no sequence axis: the same recognition marker the
+    # delta-rule layer carries (linear_attention.GatedDeltaAttention).
+    # VLLMEngine reads it to refuse watermark pad prefixes — pad tokens
+    # would fold into the conv state and are not maskable afterwards.
+    # (llama.cpp export is unaffected: _CHECKS refuses gated_conv_layers
+    # on every architecture before _kda_layers reads this marker.)
+    is_recurrent_attention = True
+
     def __init__(self, config):
         super().__init__()
         d = config.hidden_size

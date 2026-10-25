@@ -194,3 +194,91 @@ def test_vllm_engine_padded_batched_prefill():
         f"block leak: free={bm.num_free_blocks()}/64 tables={len(bm.block_tables)}"
     _pass("test_vllm_engine_padded_batched_prefill",
           "equal-length padded group decodes == per-request greedy; no errors")
+
+
+# ----------------------------------------------------------------------
+# GatedShortConv x VLLMEngine: no watermark pad prefix for conv state
+# ----------------------------------------------------------------------
+def test_engine_conv_batched():
+    """limitations round 2026-10-25: the v5.126 GatedShortConv docstring
+    claims "past_seq_len, MTP rollback and engine batching treat it like
+    the delta-rule state". case_model_mtp.test_mtp_conv_rollback pinned
+    the rollback half; this pins the engine-batching half.
+
+    The engine's recurrent-state guard keys on
+    ``attention.is_recurrent_attention`` (vllm_engine.__init__): without
+    that marker on GatedShortConv a conv+MLA model takes the watermark
+    pad-prefix path, whose standalone UNMASKED pad prefill folds pad
+    embeddings into the fixed-size conv state — not maskable after the
+    fact, the exact argument the engine docstring makes for delta-rule
+    state — and the polluted layer-1 outputs then feed every deeper
+    layer's conv state and K/V entries. Pins, on a 4-layer lite conv+MLA
+    hybrid (layers 1/3 conv, 0/2 MLA):
+
+    1. the engine detects the conv model as recurrent-state
+       (``_has_recurrent_state``);
+    2. unequal-length prompts admitted in one wave all get
+       ``prompt_pad == 0`` (no pad prefix is ever built for them), and
+       engine output equals per-request solo greedy bitwise — the
+       equal-length pair sharing one batched prefill and one batched
+       decode group (conv StateTensor through _batch_past/_row_past);
+    3. _batch_past/_row_past round-trip preserves conv state rows
+       bitwise (explicit fixed-size-tensor check, no sequence axis).
+    """
+    from evastar.src.inference.vllm_engine import VLLMEngine
+    from evastar.src.model_v5 import EvastarV5
+
+    torch.manual_seed(1817)
+    config = EvastarV5Config(size="lite")
+    config.num_hidden_layers = 4
+    config.gated_conv_layers = (1, 3)
+    model = EvastarV5(config).eval()
+
+    engine = VLLMEngine(model, config, block_size=4, max_num_blocks=64)
+    assert engine._has_recurrent_state is True, \
+        "conv model not detected as recurrent-state: engine would use " \
+        "watermark pad prefixes, folding pad embeddings into the fixed-size " \
+        "conv state (GatedShortConv must set is_recurrent_attention = True)"
+
+    # 2x len-4 + 1x len-3, one admission wave: without the marker the
+    # len-3 row would get prompt_pad == 1 (watermark 4).
+    prompts = [[11, 22, 33, 44], [55, 66, 77, 88], [1, 2, 3]]
+    max_new = 6
+    req_ids = [engine.add_request(p, max_new_tokens=max_new, temperature=0.0)
+               for p in prompts]
+    results = engine.run()
+
+    for req in engine.finished_requests:
+        assert req.prompt_pad == 0 and req.error is None, \
+            f"request {req.request_id}: prompt_pad={req.prompt_pad} " \
+            f"error={req.error!r} — conv models must never take the pad-prefix path"
+    for p, rid in zip(prompts, req_ids):
+        ref = model.generate(torch.tensor([p]), max_new_tokens=max_new,
+                             temperature=0)
+        ref_new = ref[0, len(p):].tolist()
+        got = results[rid]
+        assert ref_new[:len(got)] == got, \
+            f"request {rid}: engine {got} != greedy reference {ref_new[:len(got)]}"
+        assert len(got) >= 1
+    bm = engine.block_manager
+    assert len(bm.block_tables) == 0 and bm.num_free_blocks() == 64, \
+        f"block leak: free={bm.num_free_blocks()}/64 tables={len(bm.block_tables)}"
+
+    # Explicit fixed-size-tensor round trip: batch two solo caches and
+    # slice them back; every entry — conv state included — must return
+    # bitwise-identical rows (conv state [B, k-1, d] cats/slices on dim 0).
+    with torch.no_grad():
+        _, _, past_a = model(input_ids=torch.tensor([[7, 8, 9]]), use_cache=True)
+        _, _, past_b = model(input_ids=torch.tensor([[4, 5, 6]]), use_cache=True)
+    batched = VLLMEngine._batch_past([past_a, past_b])
+    for row, past in ((0, past_a), (1, past_b)):
+        sliced = VLLMEngine._row_past(batched, row)
+        for li, (la, lb) in enumerate(zip(past, sliced)):
+            for ei, (ta, tb) in enumerate(zip(la, lb)):
+                if ta is None and tb is None:
+                    continue
+                assert torch.equal(ta, tb), \
+                    f"layer {li} entry {ei}: batch/slice round trip differs"
+    _pass("test_engine_conv_batched",
+          "conv model: no pad prefix, batched prefill+decode == solo greedy, "
+          "StateTensor batch/row round trip bitwise")
