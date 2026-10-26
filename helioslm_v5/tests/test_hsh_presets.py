@@ -175,7 +175,7 @@ def test_patches(tmp_path):
                    [{"remove": "tool-fs"}])
     assert [r["id"] for r in rows] == ["persona", "agent-instructions", "tool-bash", "ed",
                                        "tool-todo", "tool-subagent", "skills", "tool-ask-user",
-                                       "plan-mode", "compaction"]
+                                       "plan-mode", "compaction", "request-retry"]
     assert rows[0]["config"] == {"prefix": "P"} and rows[4]["disabled"]
     ctx = world(tmp_path)
     a = create_agent(ctx, "a", CFG, rows)

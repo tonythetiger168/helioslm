@@ -230,7 +230,8 @@ def test_usage_summary():
     drive(s, SCRIPT)
     u = usage_summary(s.events)
     assert u["turns"][1] == {"input_tokens": 55, "output_tokens": 11,
-                             "reasoning_tokens": 3, "requests": 2, "attempts": 1}
+                             "reasoning_tokens": 3, "cached_input_tokens": 0,
+                             "requests": 2, "attempts": 1}
     assert u["total"]["output_tokens"] == 15 and u["total"]["requests"] == 3
 
 
