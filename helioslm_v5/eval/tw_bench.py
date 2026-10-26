@@ -265,14 +265,18 @@ def summarize(results, categories=None):
 def self_check(tasks, template="zh"):
     """Phase A gates on a loaded set; raises if any gate fails.
 
-    Reference answer = 100% (generate and loglik), empty answer = 0%."""
-    gold = {build_prompt(t, (), template): t["answer"] for t in tasks}
+    Reference answer = 100% (generate and loglik), empty answer = 0%.
+    The loglik oracle follows the task order, not the prompt text: a set
+    can hold two identical questions with different answers (C-Eval val
+    does), which a prompt-keyed lookup would score wrong."""
+    order = iter(t["answer"] for t in tasks)
 
     def oracle_gen(prompt, i):
         return f"答案：{tasks[i]['answer']}"
 
     def oracle_score(prompt, conts):
-        return [0.0 if c.strip() == gold[prompt] else -10.0 for c in conts]
+        answer = next(order)
+        return [0.0 if c.strip() == answer else -10.0 for c in conts]
 
     acc = {
         "reference_generate": summarize(run_generate(tasks, oracle_gen, template=template))["accuracy"],

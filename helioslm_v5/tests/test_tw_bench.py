@@ -11,7 +11,8 @@ Pins:
 2. malformed records raise TWBenchError, never pass silently;
 3. letter extraction oracles (zh-TW / zh-CN phrasing, full-width, no
    letter -> None);
-4. the Phase A gates hold on a loaded set and catch a broken extractor;
+4. the Phase A gates hold on a loaded set (also with two identical
+   questions that have different answers) and catch a broken extractor;
 5. loglik scoring picks the max, its confidence is the letter softmax;
    summarize's subject and category macros;
 6. k-shot prompts; results JSON carries no question text;
@@ -126,6 +127,15 @@ def test_phase_a_gates(tmmlu, monkeypatch):
     monkeypatch.setattr(tw_bench, "extract_letter", lambda text: "A")
     with pytest.raises(TWBenchError, match="Phase A"):
         tw_bench.self_check(tasks)
+
+
+def test_phase_a_duplicate_questions(tmmlu):
+    """Two identical questions with different answers (as in C-Eval val)
+    still pass: the loglik oracle follows task order, not prompt text."""
+    tasks = tw_bench.load_mcq(tmmlu, "tmmluplus")
+    twin = dict(tasks[0], task_id=tasks[0]["task_id"] + "-twin",
+                answer=next(L for L in "ABCD" if L != tasks[0]["answer"]))
+    assert tw_bench.self_check(tasks + [twin])["reference_loglik"] == 1.0
 
 
 def test_loglik_and_summary(tmmlu):

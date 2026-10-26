@@ -681,6 +681,7 @@ As of 2026-10-26:
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.173** — `tw_bench` Phase A gate: the loglik oracle follows task order, so a set with two identical questions that have different answers (C-Eval val) no longer fails the gate
 - **v5.165** — no host-sync graph breaks under `--compile` in RoPE or the MoE load count (L4: MoE pilot compiled 20.4k vs 18.2k tokens/s eager, hit dynamo's recompile limit at RoPE) — T155
 - **v5.164** — Name back to HeliosLM（羲和）: `helioslm_v5` is the real package again, `HeliosLMv5*` classes and `HELIOS_*` env vars are primary; `import evastar`, `EvastarV5*` and `EVASTAR_*` keep working as aliases
 - **v5.163** — `pilot_100m.py --kda-kernel` defaults to `fla` (torch kernel off CUDA / without fla)
