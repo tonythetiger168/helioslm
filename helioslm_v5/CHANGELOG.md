@@ -36,6 +36,27 @@ same, in the standard library only.
 Tests: `test_hsh_skills.py` (6 new), `test_hsh_presets.py` tool lists now
 include `skill`. All hsh tests: 88.
 
+## v5.165 (2026-10-26) - no host-sync graph breaks in RoPE / MoE load count
+
+Fourth GPU round (L4, torch 2.8, fla 0.5.2, pilot 8 x 1024, bf16, 40
+steps): all four runs passed. MoE batched 18,237 tokens/s eager (10.6
+GB) and 20,419 with `--compile` (9.8 GB, +12%); k3_llamacpp with the
+default fla kernel 12,522 eager (13.7 GB) and 20,531 compiled (10.5 GB).
+The compiled MoE run hit dynamo's recompile limit (8) on the resume
+function after `RotaryEmbedding.forward`: its position checks
+(`(position_ids < 0).any()`, `int(position_ids.max().item())`) sync to
+the host and broke the graph on every call.
+
+- `RotaryEmbedding.forward` under `torch.compiler.is_compiling()` sizes
+  the table from the static sequence length and skips the host-synced
+  checks; an out-of-range id still fails in the index. Eager keeps the
+  checks and the on-demand growth.
+- The training-time expert load count uses `scatter_add` instead of
+  `bincount` (data-dependent output length; same counts).
+- Graph breaks (dynamo explain, 2-layer pilots, CPU): dense 10 -> 0, MoE
+  14 -> 4 (only the `torch.compiler.disable` dispatch is left).
+- T155 `test_compile_graph_breaks.py`.
+
 ## v5.164 (2026-10-26) - Rename Evastar back to HeliosLM
 
 - The project's public name is **HeliosLM** again (Chinese name 羲和),

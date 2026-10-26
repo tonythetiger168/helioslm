@@ -445,9 +445,12 @@ class DeviceLimitedMoE(nn.Module):
         # must not pollute the statistics that drive update_bias().
         if self.training and torch.is_grad_enabled():
             with torch.no_grad():
-                counts_all = torch.bincount(
-                    topk_indices.reshape(-1), minlength=self.num_experts
-                )
+                # v5.165: scatter_add instead of bincount, whose output
+                # length is data-dependent and broke the compiled graph.
+                idx = topk_indices.reshape(-1)
+                counts_all = torch.zeros(
+                    self.num_experts, dtype=torch.long, device=idx.device
+                ).scatter_add_(0, idx, torch.ones_like(idx))
                 self.expert_load += counts_all.to(self.expert_load.dtype)
             if self.balance_loss_scope:
                 sc = self._last_scores

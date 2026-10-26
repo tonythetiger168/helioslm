@@ -1,4 +1,7 @@
-# HeliosLM v5.163 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.165 - DeepSeek/K3-Style Architecture
+
+v5.165 (2026-10-26): RoPE and the MoE expert-load count compile without
+host-sync graph breaks (dense pilot: none left).
 
 v5.163 (2026-10-26): `examples/pilot_100m.py --kda-kernel` defaults to
 `fla` (falls back to the torch kernel off CUDA or without fla).
