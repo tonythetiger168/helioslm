@@ -1,4 +1,7 @@
-# HeliosLM v5.165 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.174 - DeepSeek/K3-Style Architecture
+
+v5.174 (2026-10-26): the KDA layer compiles without `as_subclass` graph
+breaks.
 
 v5.165 (2026-10-26): RoPE and the MoE expert-load count compile without
 host-sync graph breaks (dense pilot: none left).
