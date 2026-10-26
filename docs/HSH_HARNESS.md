@@ -236,3 +236,27 @@ keeps the plain one-shot `bash`.
   kills running jobs and removes the files.
 
 Tests: `test_bash_jobs` in `helioslm_v5/tests/test_hsh_presets.py`.
+
+## H10: asking the user, plan mode, web_fetch (`hsh/interaction.py`)
+
+After dsh's `tool-ask-user`, `plan-mode` and `tool-web`.
+
+- `ctx.questions` is the user-questions seam (like `ctx.approval`): the
+  host provides `fn(execution, questions) -> answers`. Without it the
+  model is told nobody answered.
+- `ask_user_question` (row `tool-ask-user`, in `standard`): up to four
+  questions with optional options and multi-select.
+- Plan mode (row `plan-mode`, in `standard`): logged state `plan/mode`;
+  while on, the plan section joins the system prompt. `/plan`,
+  `/plan off`, `/plan <text>` from a human; `set_plan_mode(agent, on)`
+  from a host (logged when the next turn starts). `exit_plan_mode`
+  shows the plan through `ctx.questions`: "Approve" leaves plan mode
+  before the next step; any other answer is feedback. Guidance only, as
+  upstream; `deny_tools` adds a guard if you want enforcement.
+- `web_fetch` (row `tool-web-fetch`, opt-in): one http(s) GET, HTML to
+  text, size caps; hosts that resolve to private, loopback or link-local
+  addresses are refused (also after each redirect) unless
+  `allow_private`. `web_search` is not included: it needs a search
+  provider.
+
+Tests: `helioslm_v5/tests/test_hsh_interaction.py` (4).

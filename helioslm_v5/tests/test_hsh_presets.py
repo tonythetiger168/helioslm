@@ -143,8 +143,9 @@ def test_presets_isolate_agents_and_persona(tmp_path):
     s = create_agent(ctx, "s", CFG, "standard")
     c = create_agent(ctx, "c", CFG, "creator")
     assert names(ctx, m) == ["bash", "str_replace_editor"]
-    assert names(ctx, s) == ["bash", "edit", "glob", "grep", "job_kill", "job_list",
-                             "job_output", "read", "skill", "subagent", "todo_write", "write"]
+    assert names(ctx, s) == ["ask_user_question", "bash", "edit", "exit_plan_mode", "glob",
+                             "grep", "job_kill", "job_list", "job_output", "read", "skill",
+                             "subagent", "todo_write", "write"]
     assert "inspect" in names(ctx, c) and "inspect" not in names(ctx, s)
     assert ctx.tools.schemas() == []  # nothing leaked to the global scope
     m.send("hi")
@@ -173,12 +174,14 @@ def test_patches(tmp_path):
                     {"disable": "tool-todo"}],
                    [{"remove": "tool-fs"}])
     assert [r["id"] for r in rows] == ["persona", "agent-instructions", "tool-bash", "ed",
-                                       "tool-todo", "tool-subagent", "skills", "compaction"]
+                                       "tool-todo", "tool-subagent", "skills", "tool-ask-user",
+                                       "plan-mode", "compaction"]
     assert rows[0]["config"] == {"prefix": "P"} and rows[4]["disabled"]
     ctx = world(tmp_path)
     a = create_agent(ctx, "a", CFG, rows)
-    assert names(ctx, a) == ["bash", "job_kill", "job_list", "job_output", "skill",
-                             "str_replace_editor", "subagent"]
+    assert names(ctx, a) == ["ask_user_question", "bash", "exit_plan_mode", "job_kill",
+                             "job_list", "job_output", "skill", "str_replace_editor",
+                             "subagent"]
     for bad in ([{"remove": "nope"}], [{"insert": [{"id": "persona", "name": "persona"}]}],
                 [{"insert": [{"id": "z", "name": "no-such-plugin"}]}], [{"frobnicate": 1}]):
         with pytest.raises(PresetError):
