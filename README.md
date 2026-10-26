@@ -413,7 +413,7 @@ benchmarks/           # CPU bench results + disagg_pareto_2026-09-25.json (v5.28
 docs/                 # code review reports, benchmark_alignment.md, k3_alignment_targets(.md/.csv),
                       # competitive_intel_2026-09-25.md (+ raw claims CSV), helioslm_handoff.md
 integration_test_v51.py
-CHANGELOG.md          # full version history (v5.0 → v5.28)
+evastar/CHANGELOG.md  # full version history (v5.0 → latest)
 ```
 
 ## Roadmap
@@ -422,8 +422,8 @@ See the [GitHub Project board](https://github.com/tonythetiger168/helioslm/proje
 
 - [x] Pre-trained toy checkpoints (v5.13 text, v5.27 tool-tuned) — `load` and `generate()` / agent-loop immediately
 - [ ] Epoch-2 + scaled tool-tuning (T17 parse 0.15 → target 0.4+; trainer resume-ready)
-- [ ] Fused quantization kernels
-- [ ] CUDA end-to-end verification (paths are currently static-checked; CPU-verified)
+- [x] Fused quantization kernels (v5.11; measured in v5.84)
+- [x] CUDA end-to-end verification: `cuda_smoke.py` 23/23 on an RTX 6000 Ada (v5.91)
 - [x] Hugging Face Hub: `chienhsinlin/helioslm-agent` hosts the agent layer + tool-tuned artifacts
 - [ ] Example notebooks: "Train a tiny Evastar on your laptop" / "Add a new attention variant in 30 lines"
 
@@ -433,28 +433,62 @@ Contributions are very welcome — see [CONTRIBUTING.md](https://github.com/tony
 
 ## Known Limitations
 
-All five previously known limitations are resolved as of v5.14. Remaining
-hardware-dependent item: CUDA end-to-end verification (CPU-verified paths
-are static-checked) — tracked as a community issue.
+As of 2026-10-26:
+
+- **No trained product weights yet.** The checkpoints in this repo are toy
+  and pilot models; the deployment series below are a plan until each
+  generation is trained and passes its pre-registered evaluation.
+- **kimi-k3 GGUF files need a recent runtime.** llama.cpp has the `kimi-k3`
+  architecture since f5027fb; Ollama builds that bundle an older llama.cpp
+  cannot load them. `deepseek2` files load everywhere.
+- **The older HeliosBPE tokenizer stays token-id only** in llama.cpp (no
+  equivalent pre-tokenizer); byte-level BPE `tokenizer.json` files embed fine.
+- **Q4_K at non-256 widths falls back to Q8_0** for most kimi-k3 tensors (pilot
+  width 640); real model widths are multiples of 256.
+- **`moe.dispatch="grouped"` is not the default** until it is measured on a
+  GPU; `batched` stays the default.
+
+## Recent fixes (2026-10-23 to 2026-10-26)
+
+- **Test gate after the rename (v5.153):** `python -m helioslm_v5.tests.test_v5`
+  failed after the v5.134 rename because the alias loader had no `get_code`;
+  it now serves the real `evastar` files, and the suite gains a `--list` probe.
+- **Six review findings (#114):** `cpt_hf.py` never takes an optimizer step
+  on a NaN/inf loss or gradient, on any rank; prefix-pool eviction no longer breaks a running
+  generation; mixed KD keeps unaligned and masked tokens; pretraining without
+  teacher targets equals plain cross-entropy; session-store updates are atomic
+  under concurrency and listeners get detached events; the release zip keeps
+  the `helioslm_v5` alias importable. Each has a regression test in `tests/test_review_regressions.py`.
+- **Gated-conv models in the engine and MTP:** LFM2-style conv layers are
+  kept off the batched pad-prefix path, and MTP speculative rollback never
+  truncates conv state (clone-replay equals a fresh decode; MTP greedy equals
+  plain decoding bit for bit, with a rejection taken).
+- **Memory and speed (v5.139–v5.152):** MLA trains on the expanded SDPA path
+  (2.1x tokens/s, -40% memory at seq 1024 on an RTX 4060); KDA chunks no
+  longer build the pair-decay tensor (5.7x faster on CPU at T=1024); the output
+  head and cross-entropy run a chunk at a time in `pretrain` and in `cpt_hf.py
+  --ce-chunk`, so the full [tokens, vocab] logits never exist.
+- **`cpt_hf.py` from the RTX 4060 smoke run (v5.138):** short runs keep the
+  WSD decay, `dtype=` for transformers 5, and a `--dry-run` freeze check.
+- **Pilot pod safety (v5.144, v5.146):** Hub access is checked before any GPU
+  work, and the checkpoint is uploaded off the pod before it stops.
+- **Offline API cost audit (#131):** `examples/analyze_api_usage.py` reports
+  cache-aware token cost and evaluation provenance from saved responses, with
+  **unknown** instead of a guess when a counter or rate is missing.
 
 ## Version history
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/evastar/CHANGELOG.md)):
 
-- **v5.69** — U3: Llama 4 NoPE attention temperature; on one set of weights it lifts recall at 4x the training length from 0.267 to 0.317 (scale 0.3) and leaves the training length unchanged — T107
-- **v5.70** — U4: Gemma 4 p-RoPE (partial rotary) and K=V on global attention layers; `kv_b_proj` halves and the expanded cache shares one K/V tensor, defaults bit-identical — T108
-- **v5.71** — U6: cross-layer KV sharing (Gemma 3n/4); with the last 4 of 8 MLA layers sharing KV, the cache halves exactly and val ppl stays 14.71 vs 14.94 (toy char LM, single seed) — T109
-- **v5.72** — U7 (Arcee Trinity): SMEBU soft-clamped momentum expert-bias updates (fewer bias reversals at every step size; MaxVio variance 0.0067 → 0.0041 at λ=1e-2) and depth-scaled sandwich norm (post-norm gain 1/√L), both off by default — T111
-- **v5.73** — U2: thinking-budget control (forced close after b thinking tokens) + truncated-trace training; closed one step early, accuracy 0.12 → 0.88 with truncation training — T112
-- **v5.74** — AC4: repo-scale long-context probe; the sliding/global hybrid finds definitions across files at 1.00 even at 4x the training size, dense needs 2x the steps and still drops to 0.38 at 4x — T113
-- **v5.75** — TW4: zh-TW tokenizer coverage report; the toy char tokenizer loses every CJK character, a BPE without Chinese pays 3 tokens per character, the repo BPE 0.86 with 78% single-token coverage — T114
-- **v5.76** — B2-6: multi-teacher on-policy distillation (MOPD); routed teachers keep the student's inc skill (1.00) and halve its KL to the rev teacher, one teacher for everything erases inc — T115
-- **v5.77** — Stable LatentMoE: Kimi K3 Quantile Balancing router bias; fastest from a skewed start and after a drift, no bias drift; SMEBU stays lower in steady state — T116
-- **v5.78** — Phase B: 16x CSA compressor by curriculum (4x weights, fine-tuned at 16x): passkey recall 0.375/0.390 -> 0.790/0.740, 92%/88% of the oracle ceiling — T117
+- **v5.154** — Roadmap TW2: zh-TW pretraining corpus pipeline (`src/training/zhtw_corpus.py`, `examples/tw2_prepare_corpus.py`): zhwiki through OpenCC `s2twp`, FineWeb-2 `cmn_Hani` kept only when already Traditional, local data.gov.tw JSONL; exact + MinHash near-dup filter, per-source drop counts and Traditional share; attributed JSONL shards, sha256 manifest and `ATTRIBUTION.md` — T148
 - **v5.153** — `python -m helioslm_v5.tests.test_v5` (the daily-mandated gate) repaired after the v5.134 rename broke it (`_AliasLoader` lacked `get_code`, required by runpy); alias loader now serves code/source from the real evastar files, and the suite `main()` gains a `--list` probe (prints `TESTS=<count>`, exits 0) — T146, T147
 - **v5.152** — `cpt_hf.py --ce-chunk N`: route-B continued pretraining without the full [tokens, vocab] logits (4.3 GB fp32 per 4096-token micro-batch at Gemma's 262k vocab): `logits_to_keep=1` + last hidden state through the DDP wrapper, chunked head + CE with the final soft cap; checked against the full loss on one window before training — T145
 - **v5.149** — `moe.dispatch="grouped"` (`--moe-dispatch grouped`): routed experts as two `F.grouped_mm` calls over the expert-sorted rows, no capacity padding; same outputs and gradients as blocked / batched; CPU fp32 fwd+bwd 1.43x faster than batched (4096 tokens, 16 experts); default stays batched until a GPU measurement
 - **v5.148** — Local deployment packages per tier (`package_tier`, `examples/package_tiers.py`): each of L-Edge / L8 / L16 / L24 / L48+ gets its GGUF files, an Ollama Modelfile, llama.cpp commands and a manifest (sizes, sha256, fits the tier's memory); pilot packages load and run in llama.cpp f5027fb — T142
+- **v5.147** — HDL track H0: VerilogEval v2 spec-to-rtl harness (`eval/hdl_bench.py`, `examples/hdl_bench_run.py`): upstream prompt and extraction, Icarus Verilog simulation, upstream failure codes, unbiased pass@k, optional pyslang lint / yosys synthesis reported beside the pass rate; pinned, hash-checked problem cache and a 156/156 reference self-check — T141
+- **v5.146** — Pilot B0 step 5: the final checkpoint uploads to a private Hugging Face model repo while the benchmarks run, so the pilot no longer lives only on a billed pod volume
+- **v5.144** — Pilot B0 access preflight: `fetch_mixture.py` and `base_gap_eval.py --check-access` check Hub access for every dataset and model before any GPU work and stop the pod if one is missing; pod packages pinned to the dry run's versions
+- **v5.143** — Pilot B0 step 4: common benchmarks via `lm-eval[hf,math]==0.4.13` (MMLU, ARC, HellaSwag, GSM8K, BBH, MATH-500, HumanEval, MBPP, medicine and science sets) for the base and the pilot checkpoint; recorded only, the pass rule is unchanged
 - **v5.142** — Hybrid KDA + MLA and full K3-block models run in llama.cpp: `hybrid_attention.style="k3"`, block attention residuals, full-width LatentMoE router and `situ_k3` match llama.cpp's `kimi-k3` graph; `export_llamacpp_gguf` writes `kimi-k3` GGUF; `k3_block_config(llamacpp=True)` / pilot arch `k3_llamacpp`; llama.cpp f5027fb logits match to ~1e-4 (f32), prefill and token by token — T137, T138, T139
 - **v5.141** — Fused chunked output head + cross-entropy (`pretrain(ce_chunk=...)`, `pilot_100m.py --ce-chunk`): loss and gradients computed a chunk of tokens at a time in one pass, so the [tokens, vocab] logits never exist at once; same loss and gradients as full logits — T140
 - **v5.140** — KDA chunk form without the per-chunk fp32 [n, n, Dk] pair-decay tensor: state-free parts of all chunks computed at once, cross-sub-chunk pairs as plain matmuls (both decay factors <= 1); same results as the per-token loop (fp64 1e-10), CPU fwd+bwd 5.7x faster at T=1024 — T136
@@ -462,8 +496,9 @@ Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/hel
 - **v5.138** — `cpt_hf.py` fixes from an RTX 4060 smoke run (tiny Gemma 4, 20 steps, passed): short runs keep the WSD decay / source switch (`fit_warmup`), `dtype=` for transformers 5, `--dry-run` freeze check that `pilot_b0_pod.sh` runs before training — T134
 - **v5.137** — Route B pilot B0: `examples/fetch_mixture.py` (licence-checked, filtered uint32 shards per mixture source), `examples/cpt_hf.py` (WSD continued pretraining of a Hugging Face base with DDP and a `--max-hours` stop), `examples/pilot_b0_pod.sh` (one pod: base-gap eval, Gemma 4 E2B pilot on 3B tokens, pilot eval; runbook `docs/PILOT_B0.md`) — T134
 - **v5.135** — Text in for llama.cpp / Ollama: `export_llamacpp_gguf(..., tokenizer="tokenizer.json")` embeds the pretraining byte-level BPE as llama.cpp's `gpt2` vocabulary (`gpt-2` pre-tokenizer); llama.cpp f5027fb gives the same ids on 320 mixed zh-TW / code / emoji / whitespace samples and the same greedy continuations; tokenizers it would split differently are refused — T133
+- **v5.132** — Windows `test_sandbox_limits` repair (Git Bash /c/... path form), CI "LF guard" step (no CRLF blobs in tracked text files), `model_name` never-ahead-of-changelog lock; 3 new locks in `tests/case_harness_repair.py`
 - **v5.130** — llama.cpp-runnable GGUF: `export_llamacpp_gguf` writes llama.cpp's `deepseek2` architecture (MLA as MQA, sigmoid MoE with shared experts, RoPE rows reordered) and `llamacpp_incompatibilities` lists the features it cannot express (KDA, NoPE, cross-layer KV, LatentMoE, LB8 PLE, LB9 conv, ...); f32/f16 logits match Evastar in llama.cpp f5027fb; token-id input only, tokenizer is a follow-up — T131
-- **v5.129** — Route B base-gap eval: `examples/base_gap_eval.py` scores `google/gemma-4-E4B` and the Taiwanese reference models Breexe-8x7B, Breeze 2 8B / 3B and Breeze-7B on TMMLU+ / TW-JusticeBench / C-Eval / CMMLU with one scorer and reports paired-bootstrap gaps (`tw_bench.hf_score_fn`, `tw_bench_run.py --hf`; runbook `docs/BASE_GAP_EVAL.md`) — T132
+- **v5.129** — Route B base-gap eval: `examples/base_gap_eval.py` scores `google/gemma-4-E4B` and four Taiwanese reference models on TMMLU+ / TW-JusticeBench / C-Eval / CMMLU with one scorer and reports paired-bootstrap gaps (`tw_bench.hf_score_fn`, `tw_bench_run.py --hf`; runbook `docs/BASE_GAP_EVAL.md`) — T132
 - **v5.127** — Route B: continued-pretraining plan on `google/gemma-4-E4B` (Apache-2.0) on Taiwanese data (`docs/CPT_PLAN_B.md`; `cpt_plan.py` cost model, B1 ≈ US$3.8k / 1,360 H100-h, E2B pilot ≈ US$200; `prereg/b1.0.json`; CPT mixture; uint32 token shards) — T130
 - **v5.126** — LB9: LFM2-style gated short-convolution layers (`attention/gated_conv.py` `GatedShortConv`, `gated_conv_layers` / `gated_conv_kernel`, fixed-size StateTensor cache; pilot arch `lfm_conv`) — T129
 - **v5.125** — LB8: Gemma 3n-style per-layer embeddings (`per_layer_embed_dim`, `model_v5.PerLayerEmbedding`, zero-init so identical at init; `pilot_100m.py --ple-dim`) — T128
@@ -472,13 +507,12 @@ Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/hel
 - **v5.122** — GGUF block quantization: `export_gguf(dtype="q8_0" | "q4_k")` writes ggml Q8_0 / Q4_K blocks (`src/export/ggml_quants.py`, numpy), 1-D tensors and MoE routers stay F32, `read_gguf` dequantizes; Q4_K decoding checked against a scalar port of ggml's `dequantize_row_q4_K`. The `helioslm` architecture name still keeps llama.cpp from running the file
 - **v5.121** — LB5: mid-training data for the WSD decay phase (`src/training/mid_train.py`: `render_trace` turns D1 records into chat-format documents with reasoning, `mix_docs` interleaves sources to token budgets; manifest `format: trace`; `examples/build_midtrain.py` -> `pilot_100m.py --decay-data`) — T126
 - **v5.120** — LB4: cross-tokenizer logit KD for pretraining (`src/training/logit_kd.py` aligns teacher top-k to the BPE student on shared character boundaries; `pretrain.KDShard`, `sparse_kd_loss`, `kd_alpha`; `examples/teacher_topk.py` + `build_kd_targets.py`; `pilot_100m.py --kd-train`) — T125
+- **v5.119** — E5: split pre-registration: v1.0 0.5B gated against Qwen3.5-0.8B, #41 3B against a 3B Taiwanese reference model (`docs/prereg/`), each beyond sampling noise (95% paired-bootstrap lower bound > 0); `prereg.py` gains relative gates, `paired_bootstrap` and PENDING revisions
 - **v5.118** — LB6: hybrid-thinking soft switch for distillation SFT (`distill_sft` `mode_switch`: the last user turn ends in ` /think` or ` /no_think` to match the target; `distill_sft.py prepare --mode-switch`)
 - **v5.117** — LB6: GRPO rollout length schedule (`grpo.length_stages`, `two_stage_lengths`) and DAPO overlong handling (`overlong_buffer` soft punishment, `overlong_filter`); `truncated_frac` / `mean_response_tokens` in the update stats — T124
 - **v5.116** — LB3: pretraining data quality (`src/training/data_quality.py`: Gopher-style heuristics, Big5/GB2312 Traditional-vs-Simplified labels, hashed n-gram quality classifier) and mixture manifests with licence gates and main/decay phases (`src/training/data_mixture.py`, `data/mixtures/lb3_0p5b_v1.json`); `examples/data_quality.py`; `pilot_prepare_data.py --heuristics --zh-variants --quality-model` — T123
 - **v5.115** — LB2: warmup-stable-decay LR schedule (`pretrain.lr_at(schedule="wsd")`, 1-sqrt / linear / cosine decay), decay-phase data switch (`decay_train`) and `schedule_total` for stop-and-resume on one plan; `pilot_100m.py --schedule wsd` — T122
-- **v5.132** — Windows `test_sandbox_limits` repair (Git Bash /c/... path form), CI "LF guard" step (no CRLF blobs in tracked text files), `model_name` never-ahead-of-changelog lock; 3 new locks in `tests/case_harness_repair.py`
 - **v5.110** — Windows checkout repairs: root `.gitattributes` LF policy (pinned digest artifacts), sandbox `python3` PATH resolution, timeout process-tree kill (orphan grandchild fix), base64 patch transport for regex-bearing edits; `model_name` calibrated to the changelog (v5.49 -> v5.110); 4 new locks in `tests/case_harness_repair.py`
-- **v5.119** — E5: split pre-registration: v1.0 0.5B gated against Qwen3.5-0.8B, #41 3B against Breeze 2 3B (`docs/prereg/`), each beyond sampling noise (95% paired-bootstrap lower bound > 0); `prereg.py` gains relative gates, `paired_bootstrap` and PENDING revisions
 - **v5.108** — Plan E3 / TW3: Traditional-Chinese MCQ pack (`eval/tw_bench.py`): TMMLU+, TW-JusticeBench, C-Eval / CMMLU loaders, loglikelihood and generation scoring, Phase A gates (reference 100%, empty 0%), results without question text; `examples/tw_bench_run.py`
 - **v5.107** — #42 prep: chunked-parallel KDA / gated delta rule (`hybrid_attention.chunk_size`): one triangular solve per chunk instead of a Python step per token, equal to the loop to 1e-10 in float64 (padding, packed documents, carried state, per-channel decay); 1.68x faster forward + backward per layer on CPU
 - **v5.106** — #42 prep: `moe.dispatch="batched"` runs all routed experts in two `bmm` calls instead of one call per expert and 64-row block; equal to the default blocked path to float tolerance (outputs and gradients), 1.7–1.8x faster forward + backward on CPU; GPU speed via `cuda_smoke.py` / `examples/moe_dispatch_bench.py`
@@ -495,6 +529,16 @@ Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/hel
 - **v5.82** — Distillation from API teachers: sequence KD with a verifier, sparse top-k KD across tokenizers (`src/training/api_distill.py`), and a licence audit of ten open-weight teacher models; on a toy task verified sequence KD reaches 1.00 in every seed vs 0.54 unfiltered — T120, T121
 - **v5.81** — Dataset licence audit (TW1): 45 Hugging Face dataset cards (Traditional / Simplified Chinese, Spanish, Japanese, Korean, eval sets) read live and classified commercial / non-commercial / no-derivatives / unknown — T119; plus [`docs/K3_V4_COMPARISON.md`](docs/K3_V4_COMPARISON.md), the Phase B K3 vs V4 comparison
 - **v5.80** — Chinese training speed: Big5 + GB2312 common characters as BPE seeds (`train_toy_bpe.py --zh-seed both`); a tokenizer that never saw Chinese goes from 3.00 to 1.00 tokens per character, 1.82x the Chinese text per training step — T118
+- **v5.78** — Phase B: 16x CSA compressor by curriculum (4x weights, fine-tuned at 16x): passkey recall 0.375/0.390 -> 0.790/0.740, 92%/88% of the oracle ceiling — T117
+- **v5.77** — Stable LatentMoE: Kimi K3 Quantile Balancing router bias; fastest from a skewed start and after a drift, no bias drift; SMEBU stays lower in steady state — T116
+- **v5.76** — B2-6: multi-teacher on-policy distillation (MOPD); routed teachers keep the student's inc skill (1.00) and halve its KL to the rev teacher, one teacher for everything erases inc — T115
+- **v5.75** — TW4: zh-TW tokenizer coverage report; the toy char tokenizer loses every CJK character, a BPE without Chinese pays 3 tokens per character, the repo BPE 0.86 with 78% single-token coverage — T114
+- **v5.74** — AC4: repo-scale long-context probe; the sliding/global hybrid finds definitions across files at 1.00 even at 4x the training size, dense needs 2x the steps and still drops to 0.38 at 4x — T113
+- **v5.73** — U2: thinking-budget control (forced close after b thinking tokens) + truncated-trace training; closed one step early, accuracy 0.12 → 0.88 with truncation training — T112
+- **v5.72** — U7 (Arcee Trinity): SMEBU soft-clamped momentum expert-bias updates (fewer bias reversals at every step size; MaxVio variance 0.0067 → 0.0041 at λ=1e-2) and depth-scaled sandwich norm (post-norm gain 1/√L), both off by default — T111
+- **v5.71** — U6: cross-layer KV sharing (Gemma 3n/4); with the last 4 of 8 MLA layers sharing KV, the cache halves exactly and val ppl stays 14.71 vs 14.94 (toy char LM, single seed) — T109
+- **v5.70** — U4: Gemma 4 p-RoPE (partial rotary) and K=V on global attention layers; `kv_b_proj` halves and the expanded cache shares one K/V tensor, defaults bit-identical — T108
+- **v5.69** — U3: Llama 4 NoPE attention temperature; on one set of weights it lifts recall at 4x the training length from 0.267 to 0.317 (scale 0.3) and leaves the training length unchanged — T107
 - **v5.68** — U5: gpt-oss clamped SwiGLU option for MoE experts (pre-w2 activation bounded to [-42, 56] with gpt-oss settings), defaults bit-identical — T106
 - **v5.67** — B2-5: MiMo-style light MTP head (sliding-window attention + narrow FFN): -20% head parameters, -39% head step latency, acceptance 0.813 vs 0.822 — T105
 - **v5.66** — B2-4: learnable doubly stochastic mHC read matrices (Sinkhorn), identity at init; fixes the v5.7 HC branch fold that scrambled sequence positions across branches (decode != full once B != 0) — T104
@@ -599,7 +643,19 @@ Each generation above is trained once; the deployment series below are cut from 
 | **C8** | one 8-GPU NVLink node | 100B-A10B; 300B-A20B | FP8 | 100 GB; 300 GB | Reasoning and code agents, private deployment; expert parallelism inside the node | v4.0, v5.0 |
 | **CX** | 8× B200 and up, multi-node or NVL72 | 1T-A40B | FP8 or MXFP4 | 1,000 GB; 530 GB | Flagship; prefill/decode disaggregation, cross-node experts | v6.0 |
 
-Context sizes assume the default MLA cache (latent 512 + RoPE 64, about 37 KB per token for a 3B model); plain 8-head GQA needs about 3.5x more. The local series need checkpoints that llama.cpp-family runtimes can load: `src/export/gguf.py` writes Q8_0 / Q4_K blocks since v5.122, and since v5.130 `src/export/llamacpp.py` writes a model as llama.cpp's `deepseek2` architecture when `llamacpp_incompatibilities(config)` is empty (no KDA, NoPE, cross-layer KV, LatentMoE, per-layer embeddings or conv layers). Since v5.135, passing the pretraining `tokenizer.json` embeds the vocabulary, so llama.cpp and Ollama take text; the older HeliosBPE (space-only splitting) has no llama.cpp equivalent and stays id-only. A series whose source generation is still gated (v4.0 and later) inherits that gate.
+Context sizes assume the default MLA cache (latent 512 + RoPE 64, about 37 KB per token for a 3B model); plain 8-head GQA needs about 3.5x more. The local series need checkpoints that llama.cpp-family runtimes can load: `src/export/gguf.py` writes Q8_0 / Q4_K blocks since v5.122, and since v5.130 `src/export/llamacpp.py` writes a model as llama.cpp's `deepseek2` architecture when `llamacpp_incompatibilities(config)` is empty (no KDA, NoPE, cross-layer KV, LatentMoE, per-layer embeddings or conv layers). Since v5.135, passing the pretraining `tokenizer.json` embeds the vocabulary, so llama.cpp and Ollama take text; the older HeliosBPE (space-only splitting) has no llama.cpp equivalent and stays id-only. Since v5.142, hybrid KDA + MLA and K3-block configs export as llama.cpp's `kimi-k3` architecture instead of being refused (`llamacpp_arch(config)` picks `deepseek2` or `kimi-k3`). A series whose source generation is still gated (v4.0 and later) inherits that gate.
+
+**Status of the local series (2026-10-26)**
+
+| Series | Package tooling | Runtime check | Weights |
+| --- | --- | --- | --- |
+| **L-Edge** | `package_tier(..., "L-Edge")`: Q4_K + Q8_0, CPU only, 8K | pilot files load and run in llama.cpp f5027fb | v1.0 0.5B not trained yet |
+| **L8** | Q4_K + Q8_0, `-ngl 99`, 32K | same | v2.0 3B not trained yet |
+| **L16** | F16 + Q4_K, 32K | same | v2.0 / v3.0 not trained yet |
+| **L24** | Q4_K, 32K | same | v3.0 not trained yet |
+| **L48+** | Q8_0 + F16 + Q4_K, 128K | same | v3.0 / v4.0 not trained yet |
+
+`examples/package_tiers.py --run <pilot run> --out dist/` (v5.148) writes each tier's GGUF files, an Ollama `Modelfile` (when a tokenizer is embedded), the `llama-cli` / `llama-server` commands and a `manifest.json` with sizes, sha256 and whether the weights fit in 75% of the tier's memory. F16 stands in for the table's BF16 and Q4_K for Q4_K_M / Q6_K. On the pilots, llama.cpp logits match PyTorch at cosine 1.0000 (F16), ≥ 0.989 (Q8_0) and ≥ 0.983 (Q4_K). The cloud series has no packaging step yet; it serves the same checkpoints.
 
 ### Tentative product windows (subject to gates)
 
