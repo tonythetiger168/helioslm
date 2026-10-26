@@ -1,5 +1,7 @@
-# Evastar v5.157 - DeepSeek/K3-Style Architecture
+# Evastar v5.158 - DeepSeek/K3-Style Architecture
 
+v5.158 (2026-10-26): the MoE dispatch paths run eagerly under
+torch.compile (`torch.compiler.disable`), so `--compile` works on MoE.
 v5.157 (2026-10-26): `hybrid_attention.recompute` (pilot `--kda-recompute`)
 recomputes the chunked KDA recurrence in the backward pass: 41% less saved
 for backward on the k3_llamacpp pilot, same gradients.

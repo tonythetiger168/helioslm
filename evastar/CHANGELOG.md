@@ -1,5 +1,20 @@
 # Evastar v5 Changelog
 
+## v5.158 (2026-10-26) - MoE under torch.compile
+
+First L4 compile run (torch 2.8, triton 3.4, pilot 8 x 1024, 40 steps):
+dense went from 24,711 to 30,360 tokens/s (+23%) and 8.04 to 6.95 GB
+with `--compile`, but the MoE pilot failed: dynamo raised
+GuardOnDataDependentSymNode at the per-expert count loop of
+`_dispatch_batched`.
+
+- `DeviceLimitedMoE._dispatch_blocked` / `_dispatch_batched` are
+  `@torch.compiler.disable`: both sync per-expert counts to the host and
+  build data-dependent shapes, so they run eagerly; the router, shared
+  experts and the rest of the model are compiled. Eager runs unchanged.
+- T152 `test_moe_compile.py`: the disable marker, and a compiled model
+  (dynamo, eager backend) gives the eager loss and gradients for the
+  blocked, batched and grouped dispatch.
 ## v5.157 (2026-10-26) - recompute the chunked KDA recurrence
 
 The k3_llamacpp pilot (640 wide, 8 layers, 32k vocab) ran out of memory

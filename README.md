@@ -486,6 +486,7 @@ As of 2026-10-26:
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/evastar/CHANGELOG.md)):
 
+- **v5.158** — MoE dispatch excluded from torch.compile (`torch.compiler.disable`), so `--compile` works on the MoE pilot; L4: dense `--compile` +23% tokens/s — T152
 - **v5.157** — `hybrid_attention.recompute` / pilot `--kda-recompute`: the chunked KDA recurrence is recomputed in backward instead of saving its fp32 intermediates (k3 pilot: 41% less saved, same gradients) — T151
 - **v5.156** — `moe.dispatch="grouped"` runs the batched GEMMs on a torch without `F.grouped_mm` (< 2.10) instead of failing; first L4 MFU numbers in the CHANGELOG
 - **v5.155** — upstream's v5.154 pytest-only sidecar suites (TW2 zh-TW corpus T148, offline API accounting) folded into the daily TESTS registry via wrappers that pin the exact test-function set (upstream additions fail loudly until registered); `test_api_accounting.py` runs without pytest via a two-feature shim (parametrize no-op + raises match); `test_zhtw_corpus.py` UTF-8 read repairs for non-UTF-8 Windows locales — T149, T150
