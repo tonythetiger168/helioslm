@@ -166,7 +166,7 @@ Tests: `helioslm_v5/tests/test_hsh_presets.py` (10).
   rewriting is not supported: the logged call runs as logged.
 
 Not done in H6 (and why; MCP came in H8): Web UI / desktop app, Landlock-class sandboxing,
-background jobs, goals and schedules.
+goals and schedules.
 
 Tests: `helioslm_v5/tests/test_hsh_extras.py` (8). All hsh tests: 82.
 
@@ -221,3 +221,18 @@ the standard library only (no MCP SDK).
   result is the tool result's `value`.
 
 Tests: `helioslm_v5/tests/test_hsh_mcp.py` (5).
+
+## H9: background jobs (`bash` with `{"jobs": true}`)
+
+After dsh's `tool-bash` + `tool-jobs`. `standard` turns it on; `minimal`
+keeps the plain one-shot `bash`.
+
+- `run_in_background: true` starts the command and returns a job id at
+  once; a foreground command still running at its timeout moves to the
+  background instead of being killed.
+- `job_list`, `job_output` (output since the last read; `wait` blocks up
+  to `timeout_s`), `job_kill` (kills the process group).
+- Output goes to a spill file outside the workspace; disposing the row
+  kills running jobs and removes the files.
+
+Tests: `test_bash_jobs` in `helioslm_v5/tests/test_hsh_presets.py`.

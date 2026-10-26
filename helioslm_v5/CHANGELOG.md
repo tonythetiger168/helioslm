@@ -1,5 +1,21 @@
 # HeliosLM v5 Changelog
 
+## v5.168 (2026-10-26) - hsh H9: background jobs
+
+The upstream harness lets the model start long commands (servers,
+builds, training runs) in the background and read them later; hsh's
+`bash` killed anything that outlived its timeout.
+
+- `helioslm_v5/hsh/builtin.py`: `JobTable`; `bash` with `{"jobs": true}`
+  takes `run_in_background`, moves a timed-out foreground command to the
+  background, and registers `job_list` / `job_output` / `job_kill`.
+  Output spills to a temp file outside the workspace; the row's disposal
+  kills running jobs.
+- `presets.py`: `standard` (and so `code`, `creator`) turns jobs on.
+
+Tests: `test_bash_jobs` (new); preset tool lists updated. All hsh
+tests: 94.
+
 ## v5.167 (2026-10-26) - hsh H8: MCP client
 
 hsh could not use Model Context Protocol servers (H6 left it out for

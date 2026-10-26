@@ -10,7 +10,7 @@ the tools and prompt sections of its preset.
 Shipped presets (dsh's four work modes):
 
 - ``minimal``: ``bash`` + ``str_replace_editor`` and a short persona;
-- ``standard``: ``bash``, ``read``/``write``/``edit``/``glob``/``grep``,
+- ``standard``: ``bash`` (with background jobs), ``read``/``write``/``edit``/``glob``/``grep``,
   ``todo_write``, ``subagent``, ``skill``; ``AGENTS.md`` in the system
   prompt; the skill catalog; automatic compaction;
 - ``code``: standard plus ``run_code`` in PTC mode: the model sees only
@@ -123,7 +123,7 @@ _STANDARD = [
                           "Work in the workspace, verify with tools, and say when you "
                           "are not sure."}},
     {"id": "agent-instructions", "name": "agent-instructions"},
-    {"id": "tool-bash", "name": "tool-bash"},
+    {"id": "tool-bash", "name": "tool-bash", "config": {"jobs": True}},
     {"id": "tool-fs", "name": "tool-fs"},
     {"id": "tool-todo", "name": "tool-todo"},
     {"id": "tool-subagent", "name": "tool-subagent"},
