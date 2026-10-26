@@ -113,6 +113,13 @@ def fla_kda(q, k, v, log_decay, beta, state):
     return o.transpose(1, 2).to(q.dtype), s.to(state.dtype)
 
 
+def _plain(t):
+    """``t`` as a plain Tensor. v5.174: skips ``as_subclass`` when ``t`` is
+    already plain (training), where dynamo cannot trace it and broke the
+    compiled graph three times per KDA layer."""
+    return t if type(t) is torch.Tensor else t.as_subclass(torch.Tensor)
+
+
 class StateTensor(torch.Tensor):
     """Marker subclass of torch.Tensor for fixed-size recurrent state.
 
@@ -502,7 +509,7 @@ class GatedDeltaAttention(nn.Module):
                 )
             state = past_key_value[0]
             if self.conv_kernel:
-                conv_state = past_key_value[1].as_subclass(torch.Tensor)
+                conv_state = _plain(past_key_value[1])
             if state.shape != (B, self.num_heads, self.head_dim, self.head_dim):
                 raise ValueError(
                     f"recurrent state shape {tuple(state.shape)} != expected "
@@ -566,12 +573,12 @@ class GatedDeltaAttention(nn.Module):
         k3 = self.style == "k3"
         if self.chunk_size and seq > 1:
             args = (q, k, v, decay, keep, seg_start,
-                    state.as_subclass(torch.Tensor), self.chunk_size)
+                    _plain(state), self.chunk_size)
             kw = dict(log_decay=k3, decay_first=k3)
             if (self.kernel == "fla" and _fla_device(q) and seg_start is None
                     and _fla_chunk_kda() is not None):
                 out, state = fla_kda(q, k, v, decay, keep,
-                                     state.as_subclass(torch.Tensor))
+                                     _plain(state))
             elif self.recompute and torch.is_grad_enabled():
                 out, state = torch.utils.checkpoint.checkpoint(
                     chunked_delta_rule, *args, use_reentrant=False, **kw)
@@ -581,7 +588,7 @@ class GatedDeltaAttention(nn.Module):
             out, state = self._sequential(q, k, v, decay, keep, seg_start, state)
         if k3:
             # RMS norm over each head's output, times sigmoid(out_gate(x))
-            o = out.as_subclass(torch.Tensor).float()
+            o = _plain(out).float()
             o = o * torch.rsqrt(o.pow(2).mean(-1, keepdim=True) + self.norm_eps)
             o = o.to(out.dtype) * self.o_norm.to(out.dtype)
             gate = torch.sigmoid(self.out_gate(hidden_states)).view(
@@ -594,7 +601,7 @@ class GatedDeltaAttention(nn.Module):
         # everything downstream — would silently carry the
         # _is_recurrent_state marker. Only the returned cache tensor may be
         # marked; drop the subclass at the module boundary.
-        out = out.as_subclass(torch.Tensor)
+        out = _plain(out)
         output = self.o_proj(out.transpose(1, 2).contiguous().view(B, seq, -1))
 
         present = None

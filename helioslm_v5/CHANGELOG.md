@@ -1,5 +1,21 @@
 # HeliosLM v5 Changelog
 
+## v5.174 (2026-10-26) - KDA layer: no as_subclass graph breaks
+
+`GatedDeltaAttention.forward` dropped the `StateTensor` marker with
+`x.as_subclass(torch.Tensor)` at three points of every forward; dynamo
+cannot trace `as_subclass` and broke the compiled graph each time. A
+`_plain` helper returns plain tensors unchanged (training, where the
+state starts as zeros) and calls `as_subclass` only on a real
+`StateTensor` (cached decode), so the subclass hygiene is unchanged.
+
+- Graph breaks (dynamo explain, 4-layer k3_llamacpp pilot, CPU): 14 ->
+  11. Left: the MoE dispatch (`torch.compiler.disable`, by design) and
+  the packed-document restart check (`bool(restart.any())`, a host
+  sync); the default arange positions still pay for that check.
+- T155 `test_compile_graph_breaks.py`: no `as_subclass` break in the k3
+  pilot.
+
 ## v5.173 (2026-10-26) - tw_bench: Phase A gate with duplicate questions
 
 The 2026-10-26 base-gap run scored no model on C-Eval: the Phase A gate

@@ -85,3 +85,15 @@ def test_load_count_matches_bincount():
     m(torch.randint(0, 512, (2, 64)))
     want = torch.bincount(torch.cat(seen), minlength=moe.num_experts)
     assert torch.equal(moe.expert_load.to(want.dtype), want)
+
+
+def test_k3_pilot_no_subclass_breaks():
+    """v5.174: the KDA layer drops its StateTensor marker without
+    ``as_subclass`` on plain tensors (dynamo broke on it 3x per layer).
+    The packed-document restart check (a host sync) is the known break
+    left in the KDA layer."""
+    cfg = pilot_config("k3_llamacpp", vocab_size=512, hidden_size=128,
+                       num_layers=4, intermediate_size=256, max_seq=128)
+    reasons = _breaks(HeliosLMv5(cfg), torch.randint(0, 512, (2, 64)))
+    for r in reasons:
+        assert "as_subclass" not in str(r.reason), str(r.reason).splitlines()[0]
