@@ -453,6 +453,12 @@ As of 2026-10-26:
 - **Test gate after the rename (v5.153):** `python -m helioslm_v5.tests.test_v5`
   failed after the v5.134 rename because the alias loader had no `get_code`;
   it now serves the real `evastar` files, and the suite gains a `--list` probe.
+- **Daily gate covers every suite (v5.155):** the zh-TW corpus, API
+  accounting and MoE dispatch tests used to run only under pytest; the daily
+  `test_v5` gate now runs them too and fails if a new test is not registered.
+  `test_zhtw_corpus.py` reads its files as UTF-8 (it failed on cp950 Windows
+  locales), and MoE balance state resumes bit for bit under batched and
+  grouped dispatch.
 - **Six review findings (#114):** `cpt_hf.py` never takes an optimizer step
   on a NaN/inf loss or gradient, on any rank; prefix-pool eviction no longer breaks a running
   generation; mixed KD keeps unaligned and masked tokens; pretraining without
