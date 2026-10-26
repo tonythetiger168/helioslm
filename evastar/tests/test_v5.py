@@ -66,7 +66,8 @@ from evastar.tests import (  # noqa: E402
     case_stability,
     case_sweeps,
     case_trainers,
-    case_trust)
+    case_trust,
+    case_upstream_suites)
 from evastar.tests.case_common import (  # noqa: E402
     RESULTS, _fail)
 
@@ -196,6 +197,13 @@ TESTS = [
     # the watermark pad-prefix path; the test pins no-pad admission,
     # batched == solo greedy, and StateTensor batch/row bitwise round trip.
     case_engine.test_engine_conv_batched,
+    # v5.155 (2026-10-26): upstream's v5.154 subsystems (TW2 zh-TW corpus,
+    # offline API accounting) shipped as pytest-only sidecar files that the
+    # mandated daily gate never ran. Wrappers execute every sidecar test
+    # function and pin the exact function set, so upstream adding a test
+    # fails the daily suite loudly until registered. See CHANGELOG v5.155.
+    case_upstream_suites.test_zhtw_corpus_suite,
+    case_upstream_suites.test_api_accounting_suite,
 ]
 
 # CI thread guard (2026-10-13): PR #16's full-suite probe passes with
@@ -216,7 +224,7 @@ def main():
         # point without paying for the full suite.
         print(f"TESTS={len(TESTS)}")
         sys.exit(0)
-    print("Evastar v5.153 Test Suite (lite config, CPU)")
+    print("Evastar v5.155 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:

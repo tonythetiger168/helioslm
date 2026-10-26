@@ -160,8 +160,8 @@ def test_cli():
                   "fineweb2=0.5", "--shard-docs", 4]
         _run("--out", t / "a", *common)
         _run("--out", t / "b", *common)
-        ma = json.loads((t / "a" / "manifest.json").read_text())
-        mb = json.loads((t / "b" / "manifest.json").read_text())
+        ma = json.loads((t / "a" / "manifest.json").read_text(encoding="utf-8"))
+        mb = json.loads((t / "b" / "manifest.json").read_text(encoding="utf-8"))
         assert ma["corpus_sha256"] == mb["corpus_sha256"]
         assert ma["budget_unit"] == "units"
         g, f = ma["sources"]["datagov"], ma["sources"]["fineweb2"]
@@ -177,12 +177,12 @@ def test_cli():
         for src in (g, f):
             for sh in src["shards"]:
                 p = t / "a" / sh["path"]
-                rows = [json.loads(x) for x in p.read_text().splitlines()]
+                rows = [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines()]
                 assert len(rows) == sh["docs"]
                 assert all(r["license"] and r["attribution"] for r in rows)
                 texts |= {r["text"] for r in rows}
         assert len(texts) == ma["total"]["docs"]
-        assert "OGDL-Taiwan-1.0" in (t / "a" / "ATTRIBUTION.md").read_text()
+        assert "OGDL-Taiwan-1.0" in (t / "a" / "ATTRIBUTION.md").read_text(encoding="utf-8")
     print("PASS test_cli")
 
 
@@ -201,7 +201,7 @@ def test_opencc():
                                    "title": f"t{i}"} for i in range(3)])
         _run("--out", t / "o", "--sources", "zhwiki", "--local",
              f"zhwiki={t / 'wiki.jsonl'}", "--tokens", 1e6)
-        m = json.loads((t / "o" / "manifest.json").read_text())
+        m = json.loads((t / "o" / "manifest.json").read_text(encoding="utf-8"))
         w = m["sources"]["zhwiki"]
         assert w["stats"]["kept"] == 3 and w["trad_share"] > 0.95
         assert w["convert"] == "s2twp"

@@ -1,5 +1,36 @@
 # Evastar v5 Changelog
 
+## v5.155 (2026-10-26) - daily gate covers v5.154 sidecar suites
+
+Upstream's v5.154 subsystems (TW2 zh-TW corpus, offline API accounting)
+shipped with pytest-style sidecar files (`test_zhtw_corpus.py`,
+`test_api_accounting.py`) that CI's pytest step collects but the
+mandated daily gate `python -m helioslm_v5.tests.test_v5` never
+executed — a regression in either would pass the daily gate unnoticed.
+Worse, `test_zhtw_corpus.py` could not even RUN on this Windows host:
+five `read_text()` calls relied on the locale default encoding and died
+with `UnicodeDecodeError: 'cp950'` on the UTF-8 manifest (CI is Linux,
+so the failure never showed).
+
+- `evastar/tests/case_upstream_suites.py` (new): `test_zhtw_corpus_suite`
+  and `test_api_accounting_suite` call every sidecar test function
+  directly — parametrized cases with their full parameter lists, the
+  `tmp_path` fixture with a real TemporaryDirectory — and pin the exact
+  test_* function set, so the day upstream ADDS a sidecar test the
+  daily suite fails loudly ("register it") instead of silently
+  under-covering. Registered in TESTS (107 -> 109).
+- `evastar/tests/test_api_accounting.py`: pytest import is now optional
+  via a shim covering exactly the two features used —
+  `mark.parametrize` (collection-time no-op; direct calls pass arguments
+  explicitly) and `raises(match=...)` (pytest semantics: re.search on
+  str(exception)). pytest is not installed in the local runtime.
+- `evastar/tests/test_zhtw_corpus.py`: the five locale-dependent
+  `read_text()` calls now pass `encoding="utf-8"`, matching the writer
+  side (which already wrote UTF-8). Verified on a cp950-default host.
+
+Tests: the two wrappers are T149/T150; the suite passes 109/109 (lite
+config, CPU), `test_opencc` self-skips without OpenCC as designed.
+
 ## v5.154 (2026-10-25) - Roadmap TW2: zh-TW pretraining corpus pipeline
 
 TW2 asks for ~100M tokens of Taiwan Traditional Chinese with
