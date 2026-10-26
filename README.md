@@ -40,7 +40,201 @@ A from-scratch PyTorch reference implementation of a modern LLM stack: MLA atten
 
 **Honest positioning:** this is a correctness-focused reference implementation, not a throughput-optimized production engine (see [Known Limitations](#known-limitations)).
 
-## Harness Plugins (v1.0-v1.22, 23 releases)
+## Using the harness (hsh)
+
+`helioslm_v5/hsh/` is the agent harness: it runs a model in a loop with tools,
+skills, MCP servers, plan mode and a session log, and it has a local web
+UI. It follows the design of the open-source DeepSeek Harness and is
+pure Python standard library, so it needs nothing beyond Python 3.11+
+(PyTorch is only needed for the model code, not for the harness). Design
+notes and every contract it keeps: [docs/HSH_HARNESS.md](docs/HSH_HARNESS.md).
+
+### 1. Install
+
+```bash
+git clone https://github.com/tonythetiger168/helioslm
+cd helioslm
+python -m helioslm_v5.hsh.web --help        # no pip install needed for the harness
+```
+
+### 2. Connect a model
+
+| Model | How |
+|---|---|
+| DeepSeek API | `export DEEPSEEK_API_KEY=sk-...` (PowerShell: `$env:DEEPSEEK_API_KEY="sk-..."`). Models `deepseek-v4-flash`, `deepseek-v4-pro`. |
+| A local model or any OpenAI-compatible server (llama.cpp, vLLM, SGLang) | Start it, then pass `--openai-base http://127.0.0.1:8080/v1 --openai-models <model-id>`; add `--openai-key-env NAME` if it needs a key. For llama.cpp: `llama-server -m model.gguf --port 8080`. |
+| Several providers | `--config providers.json` with `{"providers": {"name": {"label", "base_url", "api_key_env", "models": [...], "stream": true}}}` |
+| No model (to try the UI) | `--demo` |
+
+Keys are read from environment variables only. The harness never writes
+a key to a file or a session log, and the web UI never asks for one.
+
+### 3. The web UI
+
+```bash
+python -m helioslm_v5.hsh.web --workspace /path/to/your/repo --open
+# then open http://127.0.0.1:3080
+```
+
+- **New Session** (or Ctrl/Cmd+K), type what you want, press Enter
+  (Shift+Enter for a new line). Replies stream in; click "Thought for…"
+  to see the model's thinking and a tool card to see its input and
+  output.
+- The chips under the input box choose the **preset** (which tools the
+  agent gets, see below), the **permission mode** (`Workspace write`
+  runs tools, `Ask first` asks you before each command, edit or MCP
+  call, `Read only` refuses them), **Plan** (the agent plans first and
+  asks you to approve the plan), and the **model**. The send button
+  becomes a stop button while the agent works.
+- Questions from the agent, plan reviews and approvals appear as cards
+  above the input box.
+- Type `/` for skills and commands (`/plan`, `/plan off`, `/<skill>`).
+- **Settings** (bottom left) shows the models and whether each key is
+  set, the skills found, MCP servers and presets, and switches between
+  light and dark.
+- Sessions are saved as JSONL logs under `~/.hsh/web` (change with
+  `--data-dir`) and come back after a restart.
+- Other options: `--port`, `--preset minimal|standard|code|creator`,
+  `--skills DIR` (extra skill folder, repeatable), `--mcp .mcp.json`.
+  The server listens on 127.0.0.1 only.
+
+### 4. From Python
+
+```python
+from helioslm_v5.hsh import (Context, Sessions, Tools, LLM, Agents, Workspace,
+                         OpenAICompatAdapter, create_agent)
+
+ctx = Context()
+for p in (Sessions, Tools, LLM, Agents):
+    ctx.plugin(p)
+ctx.plugin(Workspace, {"root": "/path/to/your/repo"})
+ctx.llm.register("deepseek", OpenAICompatAdapter(
+    "https://api.deepseek.com", "DEEPSEEK_API_KEY", stream=True))
+
+# optional: print the reply as it streams; answer questions and approvals
+ctx.on("agent/assistant-stream", lambda agent, chunk: print(chunk["text"], end=""))
+ctx.provide("questions", lambda exe, qs: {q["id"]: input(q["question"] + " ") for q in qs})
+ctx.provide("approval", lambda exe, question: input(question + " [y/N] ") == "y")
+
+agent = create_agent(ctx, "fix-1", {"provider": "deepseek", "model": "deepseek-v4-flash"},
+                     "standard")
+print(agent.send("Run the tests and fix the first failure."))
+agent.session.save("fix-1.jsonl")     # the whole session, replayable
+```
+
+- A local model server: `OpenAICompatAdapter("http://127.0.0.1:8080/v1", None)`.
+- A HeliosLM checkpoint or any `generate(prompt) -> str` function:
+  `ctx.llm.register("local", TextModelAdapter(generate))`.
+- `agent.followup(text)` queues a message, `agent.inject(text)` adds
+  context to the next request, `agent.cancel()` stops at the next step.
+- Every request can be rebuilt from the log:
+  `rebuild_requests(agent.session.events)`; token use per turn:
+  `usage_summary(agent.session.events)`.
+
+### 5. Presets and patches
+
+| Preset | Tools the model sees |
+|---|---|
+| `minimal` | `bash`, `str_replace_editor` |
+| `standard` | `bash` (with background jobs: `job_list`, `job_output`, `job_kill`), `read`, `write`, `edit`, `glob`, `grep`, `todo_write`, `subagent`, `skill`, `ask_user_question`, `exit_plan_mode`; plus `AGENTS.md` in the prompt, the skill catalog, plan mode, compaction and request retry |
+| `code` | `standard`, but the model writes one Python program (`run_code`) that calls the tools |
+| `creator` | `standard` plus `inspect` (look at the running harness) |
+
+A preset is a list of rows; patches change it without copying it:
+
+```python
+agent = create_agent(ctx, "a", config, "standard", patches=[[
+    {"replace": "persona", "config": {"prefix": "You are a careful reviewer."}},
+    {"insert": [{"id": "web", "name": "tool-web-fetch"}]},     # opt-in web_fetch
+    {"replace": "plan-mode", "config": {"deny_tools": ["write", "edit", "bash"]}},
+    {"remove": "tool-subagent"},
+]])
+```
+
+Patches can also live in a JSON file: `load_patch("my-profile.json")`.
+
+### 6. Add an agent skill
+
+A skill is a folder with a `SKILL.md`. The agent sees each skill's name
+and description, loads the full instructions with the `skill` tool when a
+task matches, and you can start one yourself with `/<name>`.
+
+1. Create the folder in your workspace:
+
+   ```
+   .hsh/skills/release-notes/SKILL.md
+   ```
+
+2. Write the frontmatter and the instructions:
+
+   ```markdown
+   ---
+   name: release-notes
+   description: Use when the user asks for release notes or a changelog entry.
+   ---
+   # Release notes
+
+   1. Run `git log --oneline $(git describe --tags --abbrev=0)..HEAD`.
+   2. Group the commits by area (model, harness, data, docs).
+   3. Write one line per change, newest first, in the CHANGELOG style.
+   ```
+
+   `name` must match the folder name and be kebab-case; `description`
+   is what the model uses to decide when the skill applies, so say when
+   to use it. Scripts or reference files can sit next to `SKILL.md`; the
+   agent is told the folder path and reads them when the instructions
+   say so.
+
+3. Use it: start a new session (the catalog is refreshed at the start of
+   every turn, and edits to a skill take effect on its next use), then
+   either ask for the task in plain words or type `/release-notes`.
+   Settings → Skills in the web UI lists what was found.
+
+Where skills are looked for (the first one wins a duplicate name):
+`.hsh/skills`, `.agents/skills`, `.claude/skills` in the workspace, then
+extra folders (`--skills DIR`, or `{"dirs": [...]}` on the `skills` row),
+then `~/.hsh/skills` and `~/.agents/skills`. A single file
+`<name>.md` works too. This repository's own [`skills/`](skills/) folder
+loads with `--skills skills`.
+
+Optional frontmatter keys: `disable-model-invocation: true` (only you can
+start it, with `/name`), `user-invocable: false` (only the agent can load
+it), `when_to_use`. From Python you can also register a skill at runtime:
+`ctx.plugin(Skills)` then `ctx.skills.register({"name": ..., "description": ..., "content": ...})`.
+
+### 7. MCP servers
+
+Put a Claude-style `.mcp.json` in the workspace and start with
+`--mcp .mcp.json` (or add the `mcp` row with `{"path": ".mcp.json"}`):
+
+```json
+{"mcpServers": {
+  "github": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"],
+             "env": {"GITHUB_TOKEN": "${GITHUB_TOKEN}"}},
+  "docs":   {"url": "https://example.com/mcp", "headers": {"Authorization": "Bearer ${DOCS_TOKEN}"}}
+}}
+```
+
+Tools appear as `mcp__github__create_issue` and so on. `${VAR}` is filled
+from your environment for that server only; other secrets in your
+environment are not passed to the server process.
+
+### 8. More
+
+- `AGENTS.md` (or `CLAUDE.md`) in the workspace root is added to the
+  system prompt.
+- An existing Claude Code `hooks.json` runs with the `claude-hooks` row
+  (`{"path": "hooks.json"}`): PreToolUse, PostToolUse, UserPromptSubmit,
+  Stop.
+- Long commands: in `standard`, `bash` takes `run_in_background`, and a
+  command that outlives its timeout keeps running as a job.
+- Transient model errors (429, 5xx, dropped connections) are retried
+  with backoff; each attempt is in the session log.
+
+## Legacy plugin harness (v1.0-v1.22, 23 releases)
+
+The `harness/` plugin context below predates hsh and is kept for its
+existing callers; new agent work uses hsh (above).
 
 All plugins register as `ctx.<name>.<op>` with per-call audit effects.
 Install extras as needed: `pip install openpyxl python-docx python-pptx
@@ -212,7 +406,7 @@ fingerprints and benchmark data in
 [huggingface.co/chienhsinlin/helioslm](https://huggingface.co/chienhsinlin/helioslm),
 and the paper source + PDF in `docs/`.
 
-## Plugins (helios-harness)
+## Plugins (legacy helios-harness)
 
 The harness ships with 35+ plugins covering DeepSeek-Harness scenarios and beyond.
 All plugins register as `ctx.<name>.<op>` with per-call audit effects.
@@ -253,7 +447,8 @@ ctx.robot.move_base(1.0, 0.0, 0.0)   # TrustGate-gated, effect-audited
 returns `Route.DIRECT` — `CLARIFY` and `ESCALATE` both block. The `full`
 preset wires a TrustGate; with a bare `Context`, register one yourself
 (`ctx.register("decision.trust", gate)`), or pass `terminal.run(cmd,
-gated=False)` to opt out explicitly. The web UI (`helioslm_v5/harness/web_ui_v2.py`)
+gated=False)` to opt out explicitly. The legacy web UI (`helioslm_v5/harness/web_ui_v2.py`,
+superseded by `python -m helioslm_v5.hsh.web`)
 binds to 127.0.0.1 and rejects requests with a non-loopback `Host`
 (DNS rebinding) or, on POST/PATCH/DELETE, a non-loopback `Origin`.
 
@@ -291,6 +486,7 @@ python helioslm_v5/tests/test_decision.py        # T27 typed decision primitives
 python helioslm_v5/tests/test_decision_head.py   # T28 DecisionHead calibration (v5.32)
 python helioslm_v5/tests/test_v110_github_pg.py    # T52 GitHub/PostgreSQL plugin oracles (offline, mocked HTTP)
 python helioslm_v5/tests/test_web_ui_v2.py         # T75 harness web UI v2 contract (stdlib-only UI, Host/Origin checks)
+python -m pytest helioslm_v5/tests/test_hsh_*.py   # hsh harness: kernel, session log, tools, loop, presets, skills, MCP, jobs, plan mode, streaming, web UI
 python helioslm_v5/tests/test_trust_gate_clarify.py # T86 TrustGate CLARIFY three-state routing (v5.53)
 python helioslm_v5/tests/test_review_fixes.py       # T87 review fixes: deferred validation, fail-closed gates, calc faults
 python helioslm_v5/tests/test_calibration_board.py  # T88 calibration leaderboard: metric oracles + byte-exact board rebuild

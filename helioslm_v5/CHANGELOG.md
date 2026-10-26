@@ -11,6 +11,17 @@ up by prompt text, so one of the pair always scored wrong.
   instead of a prompt-keyed dict. The generate oracle already did.
 - `tests/test_tw_bench.py::test_phase_a_duplicate_questions` fails on the
   old lookup and passes now.
+## v5.172 (2026-10-26) - README: how to use the hsh harness
+
+- `README.md`: new "Using the harness (hsh)" section: install, connecting
+  a model (DeepSeek API, llama.cpp or any OpenAI-compatible server,
+  a local checkpoint, `--demo`), the web UI, the Python agent loop,
+  presets and patches, adding an agent skill step by step, MCP servers,
+  `AGENTS.md`, hooks and background jobs. The old plugin-harness sections
+  are labelled legacy and point to hsh; the hsh test command is listed.
+
+Docs only; no code changes.
+
 ## v5.171 (2026-10-26) - hsh H12: web UI
 
 The previous harness web UI (`harness/web_ui_v2.py`) was hard to use
