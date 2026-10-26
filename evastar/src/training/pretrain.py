@@ -47,7 +47,7 @@ ARCHS = ("dense", "moe", "k3_block", "k3_llamacpp", "mimo_hybrid", "lfm_conv")
 def pilot_config(arch="dense", vocab_size=32768, hidden_size=640,
                  num_layers=8, intermediate_size=1792, max_seq=2048,
                  balance="smebu", moe_dispatch="batched", kda_chunk=64,
-                 ple_dim=0, kda_recompute=False):
+                 ple_dim=0, kda_recompute=False, kda_kernel="torch"):
     if arch not in ARCHS:
         raise ValueError(f"arch must be one of {ARCHS}, got {arch!r}")
     kw = dict(size="mid", vocab_size=vocab_size, hidden_size=hidden_size,
@@ -89,7 +89,7 @@ def pilot_config(arch="dense", vocab_size=32768, hidden_size=640,
                       enabled=True, full_attention_every=4,
                       first_layer_full=False, per_channel_decay=True,
                       chunk_size=kda_chunk, recompute=kda_recompute,
-                      style="k3", short_conv_kernel=4,
+                      kernel=kda_kernel, style="k3", short_conv_kernel=4,
                       linear_num_heads=heads,
                       linear_head_dim=hidden_size // heads))
     elif arch == "lfm_conv":

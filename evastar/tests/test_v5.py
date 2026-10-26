@@ -231,7 +231,7 @@ def main():
         # point without paying for the full suite.
         print(f"TESTS={len(TESTS)}")
         sys.exit(0)
-    print("Evastar v5.158 Test Suite (lite config, CPU)")
+    print("Evastar v5.160 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:

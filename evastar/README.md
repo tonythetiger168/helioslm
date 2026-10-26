@@ -1,5 +1,8 @@
-# Evastar v5.158 - DeepSeek/K3-Style Architecture
+# Evastar v5.160 - DeepSeek/K3-Style Architecture
 
+v5.160 (2026-10-26): `hybrid_attention.kernel="fla"` (pilot `--kda-kernel
+fla`) runs the k3 KDA chunked forward through flash-linear-attention's
+`chunk_kda` on CUDA (28-48x faster forward + backward on an A5000).
 v5.158 (2026-10-26): the MoE dispatch paths run eagerly under
 torch.compile (`torch.compiler.disable`), so `--compile` works on MoE.
 v5.157 (2026-10-26): `hybrid_attention.recompute` (pilot `--kda-recompute`)

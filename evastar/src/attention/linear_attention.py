@@ -64,10 +64,53 @@ or past the cached length (e.g. chunked-prefill ``past_len..past_len+seq-1``)
 is rejected outright rather than risk leaking the old document's state.
 """
 import math
+import warnings
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+_FLA = []          # [chunk_kda] once imported, [None] if unavailable
+
+
+def _fla_chunk_kda():
+    """flash-linear-attention's ``chunk_kda``, or None (v5.160)."""
+    if not _FLA:
+        try:
+            from fla.ops.kda import chunk_kda
+        except Exception as e:   # not installed, or no matching triton
+            warnings.warn(f"hybrid_attention.kernel='fla': fla unavailable "
+                          f"({e!r}); using chunked_delta_rule")
+            chunk_kda = None
+        _FLA.append(chunk_kda)
+    return _FLA[0]
+
+
+def _fla_device(x):
+    """FLA's Triton kernels run on CUDA only."""
+    return x.is_cuda
+
+
+def fla_kda(q, k, v, log_decay, beta, state):
+    """The k3 chunked forward via FLA ``chunk_kda`` (v5.160).
+
+    Same arguments as ``chunked_delta_rule(..., log_decay=True,
+    decay_first=True)`` without packed documents: q, k, v [B, H, T, D]
+    (q already scaled), log_decay [B, H, T, Dk], beta [B, H, T] (write
+    strength times the mask), state [B, H, Dk, Dv]. q, k, v and beta run
+    in the autocast dtype (bf16 in training), the gate and the state in
+    fp32. Returns (out [B, H, T, Dv] in q's dtype, new state).
+    """
+    chunk_kda = _fla_chunk_kda()
+    dev = q.device.type
+    dt = torch.get_autocast_dtype(dev) if torch.is_autocast_enabled(dev) else q.dtype
+
+    def tr(x):
+        return x.transpose(1, 2).contiguous()
+    o, s = chunk_kda(tr(q).to(dt), tr(k).to(dt), tr(v).to(dt), tr(log_decay).float(),
+                     tr(beta).to(dt), scale=1.0, initial_state=state.float(),
+                     output_final_state=True)
+    return o.transpose(1, 2).to(q.dtype), s.to(state.dtype)
 
 
 class StateTensor(torch.Tensor):
@@ -333,6 +376,7 @@ class GatedDeltaAttention(nn.Module):
         # v5.107: chunked-parallel recurrence for multi-token forwards.
         self.chunk_size = hc.chunk_size
         self.recompute = hc.recompute
+        self.kernel = getattr(hc, "kernel", "torch")
 
         # v5.63 (roadmap Q1, Qwen3-Next Gated DeltaNet): causal depthwise
         # short convolution over the q/k/v projections, followed by SiLU.
@@ -524,7 +568,11 @@ class GatedDeltaAttention(nn.Module):
             args = (q, k, v, decay, keep, seg_start,
                     state.as_subclass(torch.Tensor), self.chunk_size)
             kw = dict(log_decay=k3, decay_first=k3)
-            if self.recompute and torch.is_grad_enabled():
+            if (self.kernel == "fla" and _fla_device(q) and seg_start is None
+                    and _fla_chunk_kda() is not None):
+                out, state = fla_kda(q, k, v, decay, keep,
+                                     state.as_subclass(torch.Tensor))
+            elif self.recompute and torch.is_grad_enabled():
                 out, state = torch.utils.checkpoint.checkpoint(
                     chunked_delta_rule, *args, use_reentrant=False, **kw)
             else:
