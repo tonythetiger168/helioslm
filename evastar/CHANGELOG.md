@@ -1,5 +1,26 @@
 # Evastar v5 Changelog
 
+## v5.160 (2026-10-26) - FLA chunk_kda kernel for the k3 KDA layer
+
+On an RTX A5000 (torch 2.8, triton 3.4) flash-linear-attention 0.5.2's
+`chunk_kda` computed the same k3 recurrence as `chunked_delta_rule`
+(bf16, relative error 4.6e-3) in 0.72 vs 14.8 ms forward and 2.9 vs
+81.5 ms forward + backward at B4 T1024 H16 D64 (B2 T4096: 5.5 vs 261 ms).
+
+- `HybridAttentionConfig.kernel` ("torch" default, "fla"; "fla" needs
+  style "k3"). With "fla", CUDA, fla importable and no packed documents,
+  `GatedDeltaAttention` calls `fla_kda`: q / k / v / beta in the autocast
+  dtype, the log gate and the state in fp32, scale 1 (q is already
+  scaled), the carried state in and out. Otherwise (CPU, fla missing:
+  one warning, position_ids restarts) it uses `chunked_delta_rule`.
+  `recompute` is not applied to the FLA path (FLA recomputes inside).
+- `pilot_config(kda_kernel=)`, `examples/pilot_100m.py --kda-kernel fla`.
+- fla is not a dependency: install it on the GPU machine with
+  `pip install --no-deps flash-linear-attention==0.5.2 fla-core==0.5.2`
+  (0.6.0 needs triton >= 3.5).
+- T153 `test_kda_fla.py` (CPU, stand-in chunk_kda in FLA's layout):
+  arguments, outputs, state and gradients equal the torch kernel; the
+  autocast dtype; the fallbacks.
 ## v5.159 (2026-10-26) - MoE compile under bf16 autocast
 
 Second GPU round (RTX A5000 24 GB, torch 2.8, pilot 8 x 1024, bf16):

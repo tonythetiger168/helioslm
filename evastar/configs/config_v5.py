@@ -371,6 +371,13 @@ class HybridAttentionConfig:
     # about 220 MB per KDA layer per 1024-token row at 16 heads x 40 dims.
     # Same gradients; costs one more chunked forward per layer.
     recompute: bool = False
+    # v5.160: chunked-forward kernel for style "k3". "torch" is
+    # chunked_delta_rule; "fla" is flash-linear-attention's chunk_kda
+    # (Triton, CUDA only; pip install --no-deps flash-linear-attention==0.5.2
+    # fla-core==0.5.2), the same recurrence 28-48x faster forward+backward
+    # on an A5000. Falls back to "torch" off CUDA, without fla installed,
+    # or with packed documents (position_ids restarts).
+    kernel: str = "torch"
     # v5.142: "default" keeps the layer above. "k3" is the KDA layer of
     # llama.cpp's kimi-k3 graph, so the layer exports to GGUF: the decay is
     # applied before the retrieval, a sigmoid write strength (beta) per
@@ -665,7 +672,7 @@ OPTION_RULES = (
 
 @dataclass
 class EvastarV5Config:
-    model_name: str = "Evastar-v5.159"
+    model_name: str = "Evastar-v5.160"
     size: str = "full"  # "full" (production defaults) or "lite" (CPU smoke tests)
     # Size-dependent architecture dims: None = "follow the size" (filled
     # from _SIZE_PRESETS in __post_init__; the values below are the "full"
@@ -964,6 +971,13 @@ class EvastarV5Config:
             raise ValueError(
                 f"hybrid_attention.style must be 'default' or 'k3', got "
                 f"{h.style!r}")
+        if h.kernel not in ("torch", "fla"):
+            raise ValueError(
+                f"hybrid_attention.kernel must be 'torch' or 'fla', got {h.kernel!r}")
+        if h.kernel == "fla" and h.style != "k3":
+            raise ValueError(
+                "hybrid_attention.kernel='fla' needs style='k3' (chunk_kda "
+                "computes the decay-first kimi-k3 recurrence)")
         if h.style == "k3":
             if not h.per_channel_decay or not k:
                 raise ValueError(
