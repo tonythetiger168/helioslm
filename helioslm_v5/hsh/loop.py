@@ -62,6 +62,7 @@ class Agent:
         self.pending = []         # injected context for the next request
         self.sent = []            # request hashes, in order
         self.status = "idle"
+        self._cancel = False
         self.turn = max([e["data"]["turn"] for e in session.events
                          if e["type"] == "turn/start"], default=0)
 
@@ -80,9 +81,19 @@ class Agent:
 
     def run(self):
         last = None
+        self._cancel = False
         while self.inbox:
             last = self._agents._turn(self)
+            if self._cancel:
+                break
         return last
+
+    def cancel(self):
+        """Stop at the next step boundary (the running request and tool
+        finish first) and drop queued messages; the turn ends with reason
+        ``cancelled``. Safe to call from another thread."""
+        self._cancel = True
+        self.inbox.clear()
 
     def _set_status(self, status):
         self.status = status
@@ -145,6 +156,9 @@ class Agents(Service):
         try:
             while True:
                 step += 1
+                if agent._cancel:
+                    reason = "cancelled"
+                    break
                 if step > agent.max_steps:
                     reason = "max-steps"
                     break

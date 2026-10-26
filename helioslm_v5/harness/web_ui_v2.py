@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""web_ui_v2.py — HeliosLM Harness Web UI v2.1.
+"""web_ui_v2.py — HeliosLM Harness Web UI v2.1 (superseded).
+
+Superseded by the hsh web UI: ``python -m helioslm_v5.hsh.web --workspace .``
+(see docs/HSH_HARNESS.md, "Web UI"). This module stays for the legacy
+plugin harness and its tests; new work goes to ``helioslm_v5/hsh/web.py``.
 
 Drop-in replacement for helioslm_v5/harness/web_ui.py (v1.36).
 
@@ -1153,6 +1157,7 @@ def _effects_html():
 
 def main(port=8990):
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    print("note: this UI is superseded by `python -m helioslm_v5.hsh.web --workspace .`")
     print("HeliosLM Harness UI v2.1  →  http://127.0.0.1:%d" % port)
     print("backend: %s   sessions: %s" % (BACKEND.name, _SESSIONS_DIR))
     try:
