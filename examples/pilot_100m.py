@@ -29,8 +29,33 @@ import torch
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
+from evastar.src.training.adaptive_batch import fit_micro_batch  # noqa: E402
 from evastar.src.training.pretrain import (  # noqa: E402
-    ARCHS, EvastarV5, KDShard, TokenShard, count_params, pilot_config, pretrain)
+    ARCHS, EvastarV5, KDShard, TokenShard, chunked_lm_loss, count_params,
+    pilot_config, pretrain)
+
+
+def _probe_step(cfg, micro_batch, seq, device, dtype, ce_chunk):
+    """One forward + backward at ``micro_batch`` x ``seq`` (random
+    tokens) on a throwaway model, as --auto-batch's fit test."""
+    model = EvastarV5(cfg).to(device).train()
+    try:
+        x = torch.randint(0, cfg.vocab_size, (micro_batch, seq), device=device)
+        with torch.autocast(torch.device(device).type, dtype=dtype,
+                            enabled=dtype != torch.float32):
+            if ce_chunk:
+                hidden = model(x, return_logits=False)[1]
+                loss = chunked_lm_loss(hidden, model.lm_head.weight, x, None,
+                                       cfg.final_logit_soft_cap, ce_chunk)
+            else:
+                logits = model(x)[0]
+                loss = torch.nn.functional.cross_entropy(
+                    logits.float().reshape(-1, logits.shape[-1]), x.reshape(-1))
+        loss.backward()
+    finally:
+        del model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
 
 def main():
@@ -101,6 +126,10 @@ def main():
     ap.add_argument("--ple-dim", type=int, default=0,
                     help="LB8: per-layer embedding width (Gemma 3n); "
                          "0 = off")
+    ap.add_argument("--auto-batch", action="store_true",
+                    help="CUDA: if --batch runs out of memory, halve the "
+                         "micro-batch and double --grad-accum (same tokens "
+                         "per step) until one step fits (v5.161)")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the config and parameter counts and exit")
     args = ap.parse_args()
@@ -123,6 +152,11 @@ def main():
         device = "cuda" if torch.cuda.is_available() else "cpu"
     dtype = torch.bfloat16 if (args.dtype == "bf16" and device != "cpu") \
         else torch.float32
+    if args.auto_batch and device != "cpu":
+        args.batch, args.grad_accum = fit_micro_batch(
+            lambda mb: _probe_step(cfg, mb, args.seq, device, dtype, args.ce_chunk),
+            args.batch, args.grad_accum)
+        print("micro-batch", args.batch, "grad_accum", args.grad_accum)
     run = {k: v for k, v in vars(args).items() if k != "dry_run"}
     run.update(device=device, dtype=str(dtype), params=params,
                tokenizer_sha256=meta["tokenizer_sha256"])
