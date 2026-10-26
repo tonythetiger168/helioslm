@@ -1,5 +1,28 @@
 # Evastar v5 Changelog
 
+## v5.157 (2026-10-26) - recompute the chunked KDA recurrence
+
+The k3_llamacpp pilot (640 wide, 8 layers, 32k vocab) ran out of memory
+at 8 x 1024 on a 22 GB L4 with and without chunked CE. Counting the
+tensors autograd saves (fp32, one 1024-token row): 3.1 GB in all, of
+which each KDA layer saves 259 MB and each MLA layer 40 MB. The chunked
+delta rule works in fp32 whatever the autocast dtype, and its per-channel
+sub-chunk pair decays ([sub, sub, Dk] per sub-chunk) are kept for the
+backward pass.
+
+- `HybridAttentionConfig.recompute` (default False): with gradients on,
+  `GatedDeltaAttention` runs `chunked_delta_rule` under
+  `torch.utils.checkpoint` (non-reentrant), so only its inputs are saved
+  and the backward pass runs the chunked forward again. Outputs and the
+  carried state are bit-identical; gradients equal to 1e-6. The per-token
+  loop and no-grad forwards are unchanged.
+- `pilot_config(kda_recompute=)`, `examples/pilot_100m.py --kda-recompute`.
+- T151 `test_kda_recompute.py`.
+
+CPU, same pilot, one 1024-token row: saved for backward 3.1 -> 1.8 GB
+(-41%), forward + backward about 10% slower. At 8 rows that is about
+10 GB less.
+
 ## v5.155 (2026-10-26) - daily gate covers v5.154 sidecar suites
 
 Upstream's v5.154 subsystems (TW2 zh-TW corpus, offline API accounting)

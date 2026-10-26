@@ -332,6 +332,7 @@ class GatedDeltaAttention(nn.Module):
         self.q_scale = 1.0 / math.sqrt(self.head_dim)
         # v5.107: chunked-parallel recurrence for multi-token forwards.
         self.chunk_size = hc.chunk_size
+        self.recompute = hc.recompute
 
         # v5.63 (roadmap Q1, Qwen3-Next Gated DeltaNet): causal depthwise
         # short convolution over the q/k/v projections, followed by SiLU.
@@ -520,10 +521,14 @@ class GatedDeltaAttention(nn.Module):
         # form instead (same math, see chunked_delta_rule).
         k3 = self.style == "k3"
         if self.chunk_size and seq > 1:
-            out, state = chunked_delta_rule(
-                q, k, v, decay, keep, seg_start,
-                state.as_subclass(torch.Tensor), self.chunk_size,
-                log_decay=k3, decay_first=k3)
+            args = (q, k, v, decay, keep, seg_start,
+                    state.as_subclass(torch.Tensor), self.chunk_size)
+            kw = dict(log_decay=k3, decay_first=k3)
+            if self.recompute and torch.is_grad_enabled():
+                out, state = torch.utils.checkpoint.checkpoint(
+                    chunked_delta_rule, *args, use_reentrant=False, **kw)
+            else:
+                out, state = chunked_delta_rule(*args, **kw)
         else:
             out, state = self._sequential(q, k, v, decay, keep, seg_start, state)
         if k3:
