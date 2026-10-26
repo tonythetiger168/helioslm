@@ -67,6 +67,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+# F.grouped_mm is new in torch 2.10; older builds run "grouped" as
+# "batched" (same experts, padded bmm) instead of failing (v5.156).
+HAS_GROUPED_MM = hasattr(F, "grouped_mm")
+
 try:
     from evastar.src.attention.mla import RMSNorm
 except ImportError:  # pragma: no cover - package-relative fallback
@@ -547,6 +551,8 @@ class DeviceLimitedMoE(nn.Module):
         ``moe.dispatch="grouped"`` (v5.149) runs the same two GEMMs as
         ``F.grouped_mm`` over the expert-sorted rows, with no padding: the
         [A, C, D] scatter and the A * C - N * K padded rows are gone.
+        A torch without ``F.grouped_mm`` (before 2.10) runs the batched
+        GEMMs instead (v5.156).
         """
         N, D = z.shape
         K = topk_indices.shape[1]
@@ -569,7 +575,7 @@ class DeviceLimitedMoE(nn.Module):
         experts = [self.experts[i] for i in active]
         w13 = torch.stack([e.w13.weight for e in experts])           # [A, 2F, D]
         w2 = torch.stack([e.w2.weight for e in experts])             # [A, D, F]
-        grouped = self.dispatch == "grouped"
+        grouped = self.dispatch == "grouped" and HAS_GROUPED_MM
         if grouped:
             offs = counts[active].cumsum(0).to(torch.int32)
             x = z[sorted_tokens]                                     # [N*K, D]

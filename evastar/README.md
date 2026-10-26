@@ -3,6 +3,8 @@
 v5.157 (2026-10-26): `hybrid_attention.recompute` (pilot `--kda-recompute`)
 recomputes the chunked KDA recurrence in the backward pass: 41% less saved
 for backward on the k3_llamacpp pilot, same gradients.
+v5.156 (2026-10-26): `moe.dispatch="grouped"` runs the batched GEMMs on a
+torch without `F.grouped_mm` (before 2.10) instead of failing.
 v5.155 (2026-10-26): the daily TESTS gate now covers v5.154's
 pytest-only sidecar suites (TW2 zh-TW corpus, offline API accounting)
 via drift-guarded wrappers; `test_api_accounting.py` runs without
