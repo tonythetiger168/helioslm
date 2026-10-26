@@ -229,6 +229,17 @@ class RotaryEmbedding(nn.Module):
         if position_ids.dim() == 1:
             position_ids = position_ids.unsqueeze(0)
         position_ids = position_ids.to(self.inv_freq.device)
+        if torch.compiler.is_compiling():
+            # v5.165: the checks below sync to the host and broke the
+            # compiled graph at every call (dynamo recompiled the resume
+            # function each step on the MoE pilot). Compiled callers pass
+            # positions below the sequence length; the table is sized by
+            # the static length, and an out-of-range id still fails in the
+            # index (IndexError on CPU, device assert on CUDA).
+            self._ensure_capacity(position_ids.shape[-1])
+            cos = self.cos_cached[0, 0][position_ids].unsqueeze(1)
+            sin = self.sin_cached[0, 0][position_ids].unsqueeze(1)
+            return cos, sin
         if (position_ids < 0).any():
             raise ValueError(
                 f"position_ids must be non-negative, got min "
