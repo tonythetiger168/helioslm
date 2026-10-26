@@ -15,6 +15,53 @@ GuardOnDataDependentSymNode at the per-expert count loop of
 - T152 `test_moe_compile.py`: the disable marker, and a compiled model
   (dynamo, eager backend) gives the eager loss and gradients for the
   blocked, batched and grouped dispatch.
+## v5.157 (2026-10-26) - recompute the chunked KDA recurrence
+
+The k3_llamacpp pilot (640 wide, 8 layers, 32k vocab) ran out of memory
+at 8 x 1024 on a 22 GB L4 with and without chunked CE. Counting the
+tensors autograd saves (fp32, one 1024-token row): 3.1 GB in all, of
+which each KDA layer saves 259 MB and each MLA layer 40 MB. The chunked
+delta rule works in fp32 whatever the autocast dtype, and its per-channel
+sub-chunk pair decays ([sub, sub, Dk] per sub-chunk) are kept for the
+backward pass.
+
+- `HybridAttentionConfig.recompute` (default False): with gradients on,
+  `GatedDeltaAttention` runs `chunked_delta_rule` under
+  `torch.utils.checkpoint` (non-reentrant), so only its inputs are saved
+  and the backward pass runs the chunked forward again. Outputs and the
+  carried state are bit-identical; gradients equal to 1e-6. The per-token
+  loop and no-grad forwards are unchanged.
+- `pilot_config(kda_recompute=)`, `examples/pilot_100m.py --kda-recompute`.
+- T151 `test_kda_recompute.py`.
+
+CPU, same pilot, one 1024-token row: saved for backward 3.1 -> 1.8 GB
+(-41%), forward + backward about 10% slower. At 8 rows that is about
+10 GB less.
+## v5.156 (2026-10-26) - grouped MoE dispatch on older torch
+
+The first GPU MFU run (1x L4 24 GB, torch 2.8 image, pilot 8 x 1024,
+bf16, 30 steps) failed every `--moe-dispatch grouped` run with
+`AttributeError: torch.nn.functional has no attribute 'grouped_mm'`:
+`F.grouped_mm` is new in torch 2.10.
+
+- `sigmoid_moe.HAS_GROUPED_MM`: without `F.grouped_mm`, "grouped" runs
+  the batched (padded bmm) GEMMs, which give the same experts' outputs.
+- `examples/moe_dispatch_bench.py` records `grouped_mm` (False: the
+  grouped timing is the batched path).
+- `test_moe_batched_dispatch.py::test_grouped_without_grouped_mm`.
+
+Measured in the same run (tokens/s, peak memory):
+
+| run | tok/s | peak GB |
+|---|---|---|
+| dense | 24,875 | 8.04 |
+| dense, `--ce-chunk 2048` | 22,825 | 5.52 |
+| moe (batched) | 18,016 | 10.68 |
+| moe (batched), `--ce-chunk 2048` | 16,938 | 8.14 |
+
+Chunked CE saves 2.5 GB per micro-batch at a 32k vocabulary for 6-8%
+throughput; it stays opt-in. The k3_llamacpp pilot ran out of memory at
+8 x 1024 on 22 GB with and without chunked CE.
 
 ## v5.155 (2026-10-26) - daily gate covers v5.154 sidecar suites
 

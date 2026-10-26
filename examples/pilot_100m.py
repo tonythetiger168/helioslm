@@ -91,6 +91,10 @@ def main():
                     help="k3_block: chunked-parallel KDA recurrence with "
                          "this chunk length (v5.107; default 64 since "
                          "v5.139); 0 = per-token loop, 8-18x slower")
+    ap.add_argument("--kda-recompute", action="store_true",
+                    help="k3: recompute the chunked KDA recurrence in the "
+                         "backward pass instead of saving it (v5.157; "
+                         "~220 MB less per KDA layer per 1024-token row)")
     ap.add_argument("--ple-dim", type=int, default=0,
                     help="LB8: per-layer embedding width (Gemma 3n); "
                          "0 = off")
@@ -103,7 +107,8 @@ def main():
                        intermediate_size=args.intermediate,
                        max_seq=args.seq, balance=args.balance,
                        moe_dispatch=args.moe_dispatch,
-                       kda_chunk=args.kda_chunk, ple_dim=args.ple_dim)
+                       kda_chunk=args.kda_chunk, ple_dim=args.ple_dim,
+                       kda_recompute=args.kda_recompute)
     with torch.device("meta"):
         params = count_params(EvastarV5(cfg))
     print("params", json.dumps(params))

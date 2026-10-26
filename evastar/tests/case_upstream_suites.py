@@ -109,6 +109,7 @@ def test_moe_dispatch_suite():
                 "test_situ_zero_centered_norm",
                 "test_skewed_routing_and_idle_experts",
                 "test_fallback_when_expert_is_converted",
+                "test_grouped_without_grouped_mm",
                 "test_model_level",
                 "test_bf16_autocast"}
     _drift_guard(m, expected)
@@ -120,7 +121,8 @@ def test_moe_dispatch_suite():
         m.test_skewed_routing_and_idle_experts(mode)
         m.test_fallback_when_expert_is_converted(mode)
         m.test_bf16_autocast(mode)
+    m.test_grouped_without_grouped_mm()
     m.test_model_level()
     _pass("test_moe_dispatch_suite",
-          "v5.106/v5.149 MoE dispatch: all 7 sidecar tests (incl. 5 "
+          "v5.106/v5.149/v5.156 MoE dispatch: all 8 sidecar tests (incl. 5 "
           "cases x 2 modes parametrized matrix) under the daily gate")

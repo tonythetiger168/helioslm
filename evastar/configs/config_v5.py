@@ -366,6 +366,11 @@ class HybridAttentionConfig:
     # per-token loop (default, unchanged). Equal to the loop to float
     # tolerance; single-token decode always uses the loop.
     chunk_size: int = 0
+    # v5.157: recompute the chunked delta rule in the backward pass
+    # (activation checkpointing) instead of saving its fp32 intermediates,
+    # about 220 MB per KDA layer per 1024-token row at 16 heads x 40 dims.
+    # Same gradients; costs one more chunked forward per layer.
+    recompute: bool = False
     # v5.142: "default" keeps the layer above. "k3" is the KDA layer of
     # llama.cpp's kimi-k3 graph, so the layer exports to GGUF: the decay is
     # applied before the retrieval, a sigmoid write strength (beta) per
@@ -986,6 +991,9 @@ class EvastarV5Config:
             raise ValueError(
                 f"hybrid_attention.chunk_size must be an int >= 0 (0 = "
                 f"sequential), got {c!r}")
+        if not isinstance(h.recompute, bool):
+            raise ValueError(
+                f"hybrid_attention.recompute must be a bool, got {h.recompute!r}")
         if not isinstance(h.first_layer_full, bool):
             raise ValueError(
                 f"hybrid_attention.first_layer_full must be a bool, got "
