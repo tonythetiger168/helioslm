@@ -486,6 +486,7 @@ As of 2026-10-26:
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/evastar/CHANGELOG.md)):
 
+- **v5.163** — `pilot_100m.py --kda-kernel` defaults to `fla` (torch kernel off CUDA / without fla)
 - **v5.162** — MoE shared-expert outputs cast to the routed dtype before the add (torch 2.8 inductor fused a mixed-dtype addmm under `--compile`); L4: k3 pilot `--kda-kernel fla --compile` 20.3k tokens/s (2.45x recompute + compile)
 - **v5.161** — `get_adaptive_batch_size` / `fit_micro_batch` (pilot `--auto-batch`, halves the micro-batch on CUDA OOM at equal tokens per step); `safe_grouped_matmul` with an order-keeping fallback without `F.grouped_mm` — T154
 - **v5.160** — `hybrid_attention.kernel="fla"` / pilot `--kda-kernel fla`: k3 KDA chunked forward via flash-linear-attention `chunk_kda` on CUDA (A5000: 20x forward, 28-48x forward + backward vs `chunked_delta_rule`); torch kernel off CUDA / with packed documents — T153

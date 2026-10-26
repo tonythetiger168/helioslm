@@ -1,5 +1,7 @@
-# Evastar v5.162 - DeepSeek/K3-Style Architecture
+# Evastar v5.163 - DeepSeek/K3-Style Architecture
 
+v5.163 (2026-10-26): `examples/pilot_100m.py --kda-kernel` defaults to
+`fla` (falls back to the torch kernel off CUDA or without fla).
 v5.162 (2026-10-26): MoE shared-expert outputs are cast to the routed
 output's dtype before the add, so torch 2.8's inductor no longer fuses a
 mixed-dtype addmm (`--compile` on the MoE pilot, CUDA).

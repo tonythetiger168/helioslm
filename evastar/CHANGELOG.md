@@ -1,5 +1,15 @@
 # Evastar v5 Changelog
 
+## v5.163 (2026-10-26) - pilot uses the FLA KDA kernel by default
+
+On an L4 the k3_llamacpp pilot ran 12,466 tokens/s with `--kda-kernel
+fla` against 7,238 with the torch kernel and `--kda-recompute` (A5000),
+and 20,346 vs 8,293 with `--compile` (same L4), at the same or lower
+memory. `examples/pilot_100m.py --kda-kernel` now defaults to `fla`;
+without CUDA or without fla installed the layer uses
+`chunked_delta_rule` as before (one warning). `pilot_config` and
+`HybridAttentionConfig` keep "torch" as the library default.
+`--compile` stays opt-in.
 ## v5.162 (2026-10-26) - MoE compile: no mixed-dtype addmm
 
 Third GPU round (L4 22 GB, torch 2.8, fla 0.5.2, pilot 8 x 1024, bf16):
