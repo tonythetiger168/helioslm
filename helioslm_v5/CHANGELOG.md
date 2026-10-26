@@ -1,5 +1,17 @@
 # HeliosLM v5 Changelog
 
+## v5.173 (2026-10-26) - tw_bench: Phase A gate with duplicate questions
+
+The 2026-10-26 base-gap run scored no model on C-Eval: the Phase A gate
+stopped it with `reference_loglik` 0.9993. C-Eval val holds two identical
+questions with different answers, and the loglik oracle looked the answer
+up by prompt text, so one of the pair always scored wrong.
+
+- `eval/tw_bench.self_check`: the loglik oracle follows the task order
+  instead of a prompt-keyed dict. The generate oracle already did.
+- `tests/test_tw_bench.py::test_phase_a_duplicate_questions` fails on the
+  old lookup and passes now.
+
 ## v5.168 (2026-10-26) - hsh H9: background jobs
 
 The upstream harness lets the model start long commands (servers,
