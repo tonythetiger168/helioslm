@@ -165,7 +165,7 @@ Tests: `helioslm_v5/tests/test_hsh_presets.py` (10).
   Stop with matchers, exit code 2 and the JSON decision fields. Argument
   rewriting is not supported: the logged call runs as logged.
 
-Not done in H6 (and why; MCP came in H8): Web UI / desktop app, Landlock-class sandboxing,
+Not done in H6 (and why; MCP came in H8, the web UI in H12): desktop app, Landlock-class sandboxing,
 goals and schedules.
 
 Tests: `helioslm_v5/tests/test_hsh_extras.py` (8). All hsh tests: 82.
@@ -284,3 +284,39 @@ fields and `x-deepseek-harness-*` headers, which send the session log
 hsh sends the chat request only.
 
 Tests: `helioslm_v5/tests/test_hsh_llm.py` (4).
+
+## H12: web UI (`hsh/web.py`, `hsh/webui/`)
+
+Modelled on the DeepSeek Harness web app and written fresh: standard
+library server plus one static page (HTML, CSS, JS; no build step, no
+third-party code). It replaces `helioslm_v5/harness/web_ui_v2.py` as the
+harness UI (that file stays only for the legacy plugin harness).
+
+```
+python -m helioslm_v5.hsh.web --workspace /path/to/repo --open        # DeepSeek (DEEPSEEK_API_KEY)
+python -m helioslm_v5.hsh.web --workspace . --openai-base http://127.0.0.1:8080/v1 --openai-models my-model
+python -m helioslm_v5.hsh.web --workspace . --demo                    # no model, to try the UI
+```
+
+- Layout as upstream: sidebar (brand, New Session, sessions of this
+  workspace with relative times), centred composer (preset, permission,
+  plan and model chips; round send button that becomes stop), streamed
+  replies with collapsible thinking, tool cards with input and output,
+  todo lists, settings dialog (General, Models, Skills, MCP servers,
+  Agent presets), light and dark themes, phone layout.
+- Sessions are hsh agents saved as JSONL logs under `--data-dir`
+  (`~/.hsh/web`), resumed after a restart; a turn cut off mid-way is
+  sealed as `interrupted`.
+- Questions, plan review and tool approvals appear as cards
+  (`ctx.questions`, `ctx.approval`). Permission modes: `auto`, `ask`
+  (approve each command, edit and MCP call), `read-only`.
+- `/` lists skills and `/plan`; Enter sends, Shift+Enter is a new line,
+  Ctrl/Cmd+K starts a new session.
+- Keys come from environment variables only; the page shows whether each
+  is set and never accepts one.
+- Loopback only by default; non-loopback `Host` and cross-origin or
+  non-JSON POSTs are refused; strict CSP (`'self'` only).
+- `Agent.cancel()` (new in `loop.py`) stops at the next step boundary;
+  the turn ends with reason `cancelled`.
+
+Tests: `helioslm_v5/tests/test_hsh_web.py` (4).

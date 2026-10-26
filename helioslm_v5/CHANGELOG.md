@@ -1,5 +1,27 @@
 # HeliosLM v5 Changelog
 
+## v5.171 (2026-10-26) - hsh H12: web UI
+
+The previous harness web UI (`harness/web_ui_v2.py`) was hard to use
+and did not drive the hsh harness at all. The new one runs hsh agents and
+follows the upstream harness's web app: session sidebar, centred
+composer with preset / permission / plan / model chips, streamed replies
+with collapsible thinking and tool cards, question and approval cards,
+settings dialog, dark mode, phone layout.
+
+- `helioslm_v5/hsh/web.py` (new): `HarnessApp` (sessions as hsh agents,
+  JSONL persistence and resume, background turns, `ctx.questions` and
+  `ctx.approval` bridged to the page, permission modes), HTTP server with
+  SSE stream, Host/Origin/Content-Type checks, CSP; `--demo`,
+  `--openai-base`, `--config`, `--mcp`, `--skills` options.
+- `helioslm_v5/hsh/webui/` (new): `index.html`, `app.css`, `app.js`,
+  `icon.svg`; no dependencies.
+- `helioslm_v5/hsh/loop.py`: `Agent.cancel()`; turns end `cancelled`.
+- `helioslm_v5/harness/web_ui_v2.py`: marked superseded (kept for the legacy
+  plugin harness and its tests).
+
+Tests: `test_hsh_web.py` (4 new). All hsh tests: 106.
+
 ## v5.170 (2026-10-26) - hsh H11: streaming and request retry
 
 hsh made one blocking request per step and failed the turn on the first
