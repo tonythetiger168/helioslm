@@ -36,6 +36,7 @@ import json
 from .builtin import bash_tool, editor_tool, fs_tools, run_code_tool, todo_tool
 from .compaction import compaction
 from .interaction import ask_user_tool, plan_mode, web_fetch_tool
+from .llm import request_retry
 from .mcp import mcp_plugin
 from .skills import skills_plugin
 from .subagent import agent_instructions, claude_hooks, subagent_tool
@@ -120,6 +121,7 @@ PLUGINS = {
     "tool-ask-user": ask_user_tool,
     "plan-mode": plan_mode,
     "tool-web-fetch": web_fetch_tool,
+    "request-retry": request_retry,
 }
 
 _STANDARD = [
@@ -136,6 +138,7 @@ _STANDARD = [
     {"id": "tool-ask-user", "name": "tool-ask-user"},
     {"id": "plan-mode", "name": "plan-mode"},
     {"id": "compaction", "name": "compaction", "config": {"threshold_tokens": 24000}},
+    {"id": "request-retry", "name": "request-retry"},
 ]
 
 PRESETS = {
@@ -144,6 +147,7 @@ PRESETS = {
          "config": {"prefix": "You are a helpful software engineer assistant."}},
         {"id": "tool-bash", "name": "tool-bash"},
         {"id": "tool-editor", "name": "tool-editor"},
+        {"id": "request-retry", "name": "request-retry"},
     ],
     "standard": _STANDARD,
     "code": _STANDARD + [

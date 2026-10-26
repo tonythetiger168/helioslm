@@ -340,10 +340,10 @@ def usage_summary(events):
 
     Returns ``{"turns": {turn: {...}}, "total": {...}}`` where each record
     has ``input_tokens``, ``output_tokens``, ``reasoning_tokens``,
-    ``requests`` and ``attempts`` (retried or failed attempts, which spend
+    ``cached_input_tokens`` (prompt-cache hits, part of input), ``requests`` and ``attempts`` (retried or failed attempts, which spend
     tokens without adding history).
     """
-    keys = ("input_tokens", "output_tokens", "reasoning_tokens")
+    keys = ("input_tokens", "output_tokens", "reasoning_tokens", "cached_input_tokens")
 
     def blank():
         return {k: 0 for k in keys} | {"requests": 0, "attempts": 0}

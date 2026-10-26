@@ -17,7 +17,7 @@ agent's inbox.
         user/message per admitted message
         request/header if the header (config + tool schemas) changed
         request = session.build_request(log)       <- the only source
-        llm.call -> assistant/message
+        llm.call -> assistant/message   (agent/assistant-stream: live deltas)
                  | assistant/attempt + agent/request-error waterfall
                    ({"action": "retry"} retries in the same step)
         tool/call -> ctx.tools.execute(scope=agent) -> tool/result
@@ -38,6 +38,7 @@ from .kernel import Service
 from .session import build_request, fold_request_header, request_hash
 
 _EVENTS = {"agent/created": "serial", "agent/status": "emit",
+           "agent/assistant-stream": "emit",
            "agent/pre-step": "waterfall", "agent/request": "waterfall",
            "agent/request-error": "waterfall", "agent/turn-stopping": "serial",
            "system-prompt/assemble": "waterfall"}
@@ -197,7 +198,9 @@ class Agents(Service):
             request = build_request(s.events, agent.keep_thinking)
             agent.sent.append(request_hash(request))
             try:
-                out = self.ctx.llm.call(request, scope=agent.key)
+                out = self.ctx.llm.call(
+                    request, scope=agent.key,
+                    on_chunk=lambda c: agent.ctx.emit("agent/assistant-stream", agent, c))
             except Exception as exc:
                 s.append("assistant/attempt", {"turn": turn, "step": step, "stream": [],
                                                "error": f"{type(exc).__name__}: {exc}"})
@@ -205,7 +208,8 @@ class Agents(Service):
                     "agent/request-error", agent, exc, {"action": "fail"},
                     final=lambda a, e, d: d)
                 attempt += 1
-                if action.get("action") != "retry" or attempt > agent.max_retries:
+                limit = max(agent.max_retries, int(action.get("max_retries", 0)))
+                if action.get("action") != "retry" or attempt > limit:
                     s.append("step/end", {"turn": turn, "step": step})
                     return None
         msg = {"role": "assistant", "content": out["content"]}
