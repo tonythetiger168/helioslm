@@ -655,3 +655,10 @@ or verified tokenizer. Optional `--outcomes` counts successful **tasks**, so
 multiple calls in one task do not inflate the denominator. See `--help` for
 input schemas. Legacy aggregate probe summaries cannot recover cache details;
 the existing live probe client and historical presets remain unchanged.
+
+For a model-specific comparison, repeat `--expected-reported-model <id>` to
+allow exact returned IDs (including explicitly accepted snapshots). An
+unexpected or missing returned ID marks `model_identity.status` as `mismatch`
+and suppresses `cost_per_correct_usd`; the billed model's token cost remains
+visible. Without an allowlist identity is `unverified`. A matching returned
+name alone cannot prove the actual weights or detect a hidden provider fallback.

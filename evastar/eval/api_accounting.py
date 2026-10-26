@@ -135,12 +135,17 @@ def estimate_cost(response, provider, rate_card=None):
 
 
 def build_report(records, *, corpus, harness_revision, tokenizer=None,
-                 rate_card=None, outcomes=None, evaluation_settings=None):
+                 rate_card=None, outcomes=None, evaluation_settings=None,
+                 expected_reported_models=None):
     """Records contain provider, requested_model, response and optional task_id.
 
     Corpus hashes the same raw UTF-8 bytes across tokenizers. Tokenizer labels
     are caller declarations; a response model string is not proof of an
     immutable weight snapshot. Outcomes are per TASK, never per API call.
+    An optional exact allowlist checks response identities, not requested
+    aliases. A fallback/missing identity blocks the comparison metric, while
+    retaining token costs for the model actually billed. A reported-name
+    match does not verify the provider's underlying weights or thinking mode.
     """
     if not isinstance(records, list) or not records:
         raise ValueError("need at least one response record")
@@ -151,6 +156,12 @@ def build_report(records, *, corpus, harness_revision, tokenizer=None,
         raise ValueError("harness_revision is required")
     if evaluation_settings is not None and not isinstance(evaluation_settings, dict):
         raise ValueError("evaluation_settings must be an object")
+    if expected_reported_models is not None and (
+            not isinstance(expected_reported_models, list) or
+            not expected_reported_models or any(
+                not isinstance(m, str) or not m.strip()
+                for m in expected_reported_models)):
+        raise ValueError("expected_reported_models must be a non-empty list of model ids")
     rows = []
     for record in records:
         if not isinstance(record, dict) or "response" not in record or \
@@ -167,6 +178,11 @@ def build_report(records, *, corpus, harness_revision, tokenizer=None,
                      "task_id": record.get("task_id")})
     known = all(r["cost_usd"] is not None for r in rows)
     total = sum((Decimal(r["cost_usd"]) for r in rows), Decimal(0)) if known else None
+    mismatched = [i for i, row in enumerate(rows)
+                  if expected_reported_models is not None and
+                  row["reported_model"] not in expected_reported_models]
+    identity_status = ("unverified" if expected_reported_models is None
+                       else "mismatch" if mismatched else "matched")
     successes = None
     if outcomes is not None:
         if not isinstance(outcomes, dict):
@@ -185,8 +201,12 @@ def build_report(records, *, corpus, harness_revision, tokenizer=None,
                            "evaluation_settings": evaluation_settings,
                            "tokenizer_verified": False, "snapshot_verified": False},
             "n_calls": len(rows), "n_successful_tasks": successes,
+            "model_identity": {"status": identity_status,
+                               "expected_reported_models": (list(expected_reported_models)
+                                   if expected_reported_models is not None else None),
+                               "mismatched_call_indices": mismatched},
             "cost_usd": str(total) if total is not None else None,
             "cost_per_correct_usd": str(total / successes)
-            if total is not None and successes else None,
+            if total is not None and successes and not mismatched else None,
             "note": "Offline estimate from supplied counters and rates; not a live benchmark.",
             "calls": rows}
