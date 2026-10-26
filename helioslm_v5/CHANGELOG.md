@@ -1,5 +1,21 @@
 # HeliosLM v5 Changelog
 
+## v5.167 (2026-10-26) - hsh H8: MCP client
+
+hsh could not use Model Context Protocol servers (H6 left it out for
+lack of an MCP package). The client is now written against the protocol
+directly, standard library only.
+
+- `helioslm_v5/hsh/mcp.py` (new): stdio and Streamable HTTP transports,
+  handshake, paged `tools/list`, `mcp__<server>__<tool>` tools through the
+  normal hsh pipeline, resource tools, server instructions in the system
+  prompt, scrubbed child environment with `${VAR}` expansion, `.mcp.json`
+  loading. Row `mcp` in `presets.PLUGINS` (opt-in, not in any preset).
+- `docs/HSH_HARNESS.md`: H8 section.
+
+Tests: `test_hsh_mcp.py` (5 new, against a stdio server written in the
+test). All hsh tests: 93.
+
 ## v5.166 (2026-10-26) - hsh H7: agent skills
 
 The hsh harness (`helioslm_v5/hsh/`, after DeepSeek Harness) had no skills:
