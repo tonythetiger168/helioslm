@@ -143,8 +143,8 @@ def test_presets_isolate_agents_and_persona(tmp_path):
     s = create_agent(ctx, "s", CFG, "standard")
     c = create_agent(ctx, "c", CFG, "creator")
     assert names(ctx, m) == ["bash", "str_replace_editor"]
-    assert names(ctx, s) == ["bash", "edit", "glob", "grep", "read", "skill", "subagent",
-                             "todo_write", "write"]
+    assert names(ctx, s) == ["bash", "edit", "glob", "grep", "job_kill", "job_list",
+                             "job_output", "read", "skill", "subagent", "todo_write", "write"]
     assert "inspect" in names(ctx, c) and "inspect" not in names(ctx, s)
     assert ctx.tools.schemas() == []  # nothing leaked to the global scope
     m.send("hi")
@@ -177,7 +177,8 @@ def test_patches(tmp_path):
     assert rows[0]["config"] == {"prefix": "P"} and rows[4]["disabled"]
     ctx = world(tmp_path)
     a = create_agent(ctx, "a", CFG, rows)
-    assert names(ctx, a) == ["bash", "skill", "str_replace_editor", "subagent"]
+    assert names(ctx, a) == ["bash", "job_kill", "job_list", "job_output", "skill",
+                             "str_replace_editor", "subagent"]
     for bad in ([{"remove": "nope"}], [{"insert": [{"id": "persona", "name": "persona"}]}],
                 [{"insert": [{"id": "z", "name": "no-such-plugin"}]}], [{"frobnicate": 1}]):
         with pytest.raises(PresetError):
@@ -212,3 +213,33 @@ def test_minimal_agent_edits_file_end_to_end(tmp_path):
     assert (tmp_path / "app.py").read_text() == "print('hello')\n"
     assert "[exit 0]\nhello" in ad.requests[2]["messages"][-1]["content"]
     assert a.sent == [request_hash(r) for _, r in rebuild_requests(a.session.events)]
+
+
+def test_bash_jobs(tmp_path):
+    ctx = world(tmp_path)
+    a = create_agent(ctx, "s", CFG, "standard")
+    r = run(ctx, a, "bash", {"description": "d", "command": "echo hi; exit 4"})
+    assert r.value == {"exit_code": 4, "output": "hi\n"}
+    assert run(ctx, a, "job_list", {}).value == []        # foreground runs leave no job
+    r = run(ctx, a, "bash", {"description": "count", "command":
+                             "echo start; sleep 0.3; echo end", "run_in_background": True})
+    jid = r.value["job_id"]
+    assert r.value["exit_code"] is None and "job_output" in r.content
+    out = run(ctx, a, "job_output", {"job_id": jid, "wait": True, "timeout_s": 10}).value
+    assert out["status"] == "exited" and out["exit_code"] == 0
+    assert "end" in out["output"]
+    again = run(ctx, a, "job_output", {"job_id": jid}).value
+    assert again["output"] == ""                           # only new output
+    # a foreground command past its timeout keeps running as a job
+    r = run(ctx, a, "bash", {"description": "slow", "command": "echo a; sleep 30",
+                             "timeout_s": 1})
+    jid2 = r.value["job_id"]
+    assert "moved to the background" in r.content
+    assert [j["status"] for j in run(ctx, a, "job_list", {}).value] == ["exited", "running"]
+    k = run(ctx, a, "job_kill", {"job_id": jid2, "reason": "test"}).value
+    assert k["status"] == "killed"
+    assert run(ctx, a, "job_output", {"job_id": "job-99"}).is_error
+    # minimal keeps the plain one-shot bash
+    m = create_agent(ctx, "m", CFG, "minimal")
+    assert "run_in_background" not in [s for s in ctx.tools.schemas(m.key)
+                                       if s["name"] == "bash"][0]["parameters"]["properties"]

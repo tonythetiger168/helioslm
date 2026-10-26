@@ -10,7 +10,8 @@ presets work the same way).
   elsewhere, a symlink out) is refused before any file is touched.
 - ``bash_tool``: one-shot ``bash -c`` in the workspace, scrubbed
   environment, timeout, CPU and memory rlimits on Linux, output tail
-  truncated. This is process confinement, not a security sandbox: dsh
+  truncated. With ``{"jobs": true}`` it also runs background jobs
+  (``run_in_background``, ``job_list`` / ``job_output`` / ``job_kill``). This is process confinement, not a security sandbox: dsh
   uses Landlock/Seatbelt for that, which pure Python cannot.
 - ``editor_tool``: dsh's ``str_replace_editor`` (view / create /
   str_replace / insert); a replacement must match exactly once.
@@ -25,6 +26,7 @@ presets work the same way).
 """
 from __future__ import annotations
 
+import copy
 import fnmatch
 import json
 import os
@@ -104,13 +106,109 @@ BASH_SCHEMA = {
 }
 
 
+class JobTable:
+    """Background processes of one ``bash`` row (dsh ``ctx.jobs`` +
+    ``tool-jobs``). Output goes to a spill file outside the workspace;
+    ``read`` returns what arrived since the previous read."""
+
+    def __init__(self, limit=MAX_OUTPUT):
+        import tempfile
+        self.dir = Path(tempfile.mkdtemp(prefix="hsh-jobs-"))
+        self.jobs = {}
+        self.limit = limit
+        self._n = 0
+        self._files = 0
+
+    def spill_path(self):
+        self._files += 1
+        return self.dir / f"out-{self._files}.log"
+
+    def add(self, proc, command, description, out_path):
+        self._n += 1
+        jid = f"job-{self._n}"
+        self.jobs[jid] = {"id": jid, "proc": proc, "command": command,
+                          "description": description, "path": out_path,
+                          "offset": 0, "killed": None}
+        return jid
+
+    def _status(self, j):
+        code = j["proc"].poll()
+        if code is None:
+            return "running"
+        return "killed" if j["killed"] is not None else "exited"
+
+    def info(self, j):
+        return {"job_id": j["id"], "kind": "bash", "status": self._status(j),
+                "exit_code": j["proc"].poll(), "description": j["description"],
+                "output_file": str(j["path"])}
+
+    def get(self, jid):
+        j = self.jobs.get(jid)
+        if j is None:
+            raise ValueError(f"unknown job {jid!r}")
+        return j
+
+    def read(self, jid, wait=False, timeout_s=30):
+        j = self.get(jid)
+        if wait:
+            try:
+                j["proc"].wait(timeout=timeout_s)
+            except subprocess.TimeoutExpired:
+                pass
+        with open(j["path"], "rb") as fh:
+            fh.seek(j["offset"])
+            data = fh.read()
+        j["offset"] += len(data)
+        return dict(self.info(j), output=_clip(data.decode("utf-8", "replace"), self.limit))
+
+    def kill(self, jid, reason=None):
+        j = self.get(jid)
+        if j["proc"].poll() is None:
+            j["killed"] = reason or "killed"
+            _kill_tree(j["proc"])
+        return self.info(j)
+
+    def close(self):
+        for j in self.jobs.values():
+            if j["proc"].poll() is None:
+                _kill_tree(j["proc"])
+        import shutil
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+
+def _kill_tree(proc):
+    try:
+        if hasattr(os, "killpg"):
+            os.killpg(proc.pid, 9)
+        else:
+            proc.kill()
+    except (ProcessLookupError, PermissionError, OSError):
+        pass
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        pass
+
+
+JOB_ID = {"type": "string", "description": "Job id returned by the tool that started the "
+          "background work."}
+
+
 def bash_tool(ctx, config=None):
+    """``bash``. Config: ``timeout_s`` (default 60), ``mem_mb`` (2048),
+    ``jobs`` (default False): with jobs on, ``run_in_background`` starts a
+    job and a foreground command that outlives its timeout moves to the
+    background instead of being killed; ``job_list``, ``job_output`` and
+    ``job_kill`` come with it (dsh ``tool-bash`` + ``tool-jobs``)."""
     cfg = config or {}
     ws = ctx.workspace
+    jobs = JobTable() if cfg.get("jobs") else None
 
     def run(args, exe):
         cwd = ws.resolve(args.get("workdir", "."))
         timeout = min(args.get("timeout_s", cfg.get("timeout_s", 60)), 600)
+        if jobs is not None:
+            return run_job(args, cwd, timeout)
         try:
             p = subprocess.run(["bash", "-c", args["command"]], cwd=cwd,
                                env=_env(ws.root), capture_output=True, text=True,
@@ -120,10 +218,88 @@ def bash_tool(ctx, config=None):
             return {"exit_code": None, "output": f"timed out after {timeout}s"}
         return {"exit_code": p.returncode, "output": _clip(p.stdout + p.stderr)}
 
+    def run_job(args, cwd, timeout):
+        out_path = jobs.spill_path()
+        with open(out_path, "wb") as fh:
+            proc = subprocess.Popen(
+                ["bash", "-c", args["command"]], cwd=cwd, env=_env(ws.root),
+                stdin=subprocess.DEVNULL, stdout=fh, stderr=subprocess.STDOUT,
+                start_new_session=hasattr(os, "setsid"),
+                preexec_fn=_limits(cfg.get("job_cpu_s", 3600), cfg.get("mem_mb", 2048)))
+        background = bool(args.get("run_in_background"))
+        if not background:
+            try:
+                proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                background = True
+        jid = jobs.add(proc, args["command"], args.get("description", ""), out_path)
+        if background:
+            first = jobs.read(jid)
+            note = ("started in the background" if args.get("run_in_background")
+                    else f"still running after {timeout}s; moved to the background")
+            return {"exit_code": None, "job_id": jid, "note": note,
+                    "output": first["output"]}
+        done = jobs.read(jid)
+        del jobs.jobs[jid]
+        return {"exit_code": proc.returncode, "output": done["output"]}
+
+    def render(a, v):
+        if v.get("job_id"):
+            head = f"[{v['job_id']}: {v['note']}; read it with job_output, stop it with job_kill]"
+            return head + ("\n" + v["output"] if v["output"] else "")
+        return f"[exit {v['exit_code']}]\n{v['output']}"
+
+    schema = BASH_SCHEMA
+    if jobs is not None:
+        schema = copy.deepcopy(BASH_SCHEMA)
+        schema["properties"]["run_in_background"] = {
+            "type": "boolean", "description": "Run in the background and return a job id "
+            "at once (read it with job_output, stop it with job_kill). No timeout applies."}
+    desc = ("Run a bash command (bash -c) in the workspace. Each call is a fresh "
+            "shell; pass workdir instead of cd.")
+    if jobs is not None:
+        desc += (" A command still running at its timeout moves to the background "
+                 "as a job instead of being killed.")
+    _mount(ctx, ToolDefinition("bash", desc, schema, run, render=render))
+    if jobs is None:
+        return
+    ctx.effect(jobs.close)
+
+    def job_list(a, e):
+        return [jobs.info(j) for j in jobs.jobs.values()]
+
+    def job_output(a, e):
+        return jobs.read(a["job_id"], a.get("wait", False),
+                         min(a.get("timeout_s", 30), cfg.get("max_wait_s", 300)))
+
+    def job_kill(a, e):
+        return jobs.kill(a["job_id"], a.get("reason"))
+
+    def render_info(a, v):
+        code = "" if v["exit_code"] is None else f", exit {v['exit_code']}"
+        return f"{v['job_id']} {v['status']}{code}" + (
+            "\n" + v["output"] if v.get("output") else "")
+
     _mount(ctx, ToolDefinition(
-        "bash", "Run a bash command (bash -c) in the workspace. Each call is a fresh "
-        "shell; pass workdir instead of cd.", BASH_SCHEMA, run,
-        render=lambda a, v: f"[exit {v['exit_code']}]\n{v['output']}"))
+        "job_list", "List your background jobs (running and finished) with their ids "
+        "and statuses.", {"type": "object", "properties": {}, "additionalProperties": False},
+        job_list, render=lambda a, v: "\n".join(
+            f"{j['job_id']} {j['status']}  {j['description'] or j['job_id']}" for j in v)
+        or "(no jobs)"),
+        ToolDefinition(
+        "job_output", "Read a background job: output since the previous read, its status "
+        "and exit code.", {"type": "object", "properties": {
+            "job_id": JOB_ID,
+            "wait": {"type": "boolean", "description": "Block until the job finishes or "
+                     "the timeout expires; a timed-out wait leaves the job running."},
+            "timeout_s": {"type": "number", "minimum": 0}},
+            "required": ["job_id"], "additionalProperties": False}, job_output,
+        render=render_info),
+        ToolDefinition(
+        "job_kill", "Stop a running background job.", {"type": "object", "properties": {
+            "job_id": JOB_ID, "reason": {"type": "string"}},
+            "required": ["job_id"], "additionalProperties": False}, job_kill,
+        render=render_info))
 
 
 bash_tool.inject = ["tools", "workspace"]
