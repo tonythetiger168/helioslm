@@ -1,5 +1,25 @@
 # Evastar v5 Changelog
 
+## v5.161 (2026-10-26) - adaptive micro-batch, grouped-matmul fallback
+
+- `evastar/src/training/adaptive_batch.py`:
+  `get_adaptive_batch_size(device)` returns 4 on a CUDA device with less
+  than 30 GB, else 8 (a rule of thumb from the first L4 k3 OOM; with
+  v5.157's `--kda-recompute` batch 8 fits in 10-14 GB on 24 GB cards).
+  `fit_micro_batch(try_step, batch, grad_accum)` measures instead: on a
+  CUDA out-of-memory error it halves the micro-batch and doubles the
+  accumulation, so tokens per optimizer step stay the same.
+  `examples/pilot_100m.py --auto-batch` probes one forward + backward
+  with it before training and records the chosen values in run.json
+  (the batches drawn then differ from a run started at that size).
+- `evastar/src/moe/moe_fallback.py`: `safe_grouped_matmul(inputs,
+  weights [E, D, F], expert_indices)` returns `inputs[i] @ weights[e_i]`
+  in the original row order: `F.grouped_mm` over expert-sorted rows,
+  scattered back, or one matmul per expert written back to its rows when
+  `F.grouped_mm` is missing (torch < 2.10). `DeviceLimitedMoE` keeps its
+  own fused dispatch with the v5.156 fallback.
+- T154 `test_adaptive_batch_fallback.py`.
+
 ## v5.158 (2026-10-26) - MoE under torch.compile
 
 First L4 compile run (torch 2.8, triton 3.4, pilot 8 x 1024, 40 steps):

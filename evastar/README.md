@@ -1,5 +1,9 @@
-# Evastar v5.158 - DeepSeek/K3-Style Architecture
+# Evastar v5.161 - DeepSeek/K3-Style Architecture
 
+v5.161 (2026-10-26): `get_adaptive_batch_size` / `fit_micro_batch` (pilot
+`--auto-batch`: halve the micro-batch on CUDA OOM, same tokens per step)
+and `safe_grouped_matmul` (grouped expert matmul with an order-keeping
+fallback for torch without `F.grouped_mm`).
 v5.158 (2026-10-26): the MoE dispatch paths run eagerly under
 torch.compile (`torch.compiler.disable`), so `--compile` works on MoE.
 v5.157 (2026-10-26): `hybrid_attention.recompute` (pilot `--kda-recompute`)

@@ -665,7 +665,7 @@ OPTION_RULES = (
 
 @dataclass
 class EvastarV5Config:
-    model_name: str = "Evastar-v5.158"
+    model_name: str = "Evastar-v5.161"
     size: str = "full"  # "full" (production defaults) or "lite" (CPU smoke tests)
     # Size-dependent architecture dims: None = "follow the size" (filled
     # from _SIZE_PRESETS in __post_init__; the values below are the "full"

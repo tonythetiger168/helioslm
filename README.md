@@ -486,6 +486,7 @@ As of 2026-10-26:
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/evastar/CHANGELOG.md)):
 
+- **v5.161** — `get_adaptive_batch_size` / `fit_micro_batch` (pilot `--auto-batch`, halves the micro-batch on CUDA OOM at equal tokens per step); `safe_grouped_matmul` with an order-keeping fallback without `F.grouped_mm` — T154
 - **v5.158** — MoE dispatch excluded from torch.compile (`torch.compiler.disable`), so `--compile` works on the MoE pilot; L4: dense `--compile` +23% tokens/s — T152
 - **v5.157** — `hybrid_attention.recompute` / pilot `--kda-recompute`: the chunked KDA recurrence is recomputed in backward instead of saving its fp32 intermediates (k3 pilot: 41% less saved, same gradients) — T151
 - **v5.156** — `moe.dispatch="grouped"` runs the batched GEMMs on a torch without `F.grouped_mm` (< 2.10) instead of failing; first L4 MFU numbers in the CHANGELOG
