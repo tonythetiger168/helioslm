@@ -90,6 +90,8 @@ def main():
     payload = {"args": vars(args), "max_abs_diff_fp32": diff,
                "max_abs_diff_fp32_grouped": diff_grouped,
                "median_fwd_bwd": res,
+               # False: "grouped" ran the batched GEMMs (torch < 2.10)
+               "grouped_mm": hasattr(torch.nn.functional, "grouped_mm"),
                "environment": {"torch": torch.__version__,
                                "platform": platform.platform(),
                                "device": torch.cuda.get_device_name(0)
