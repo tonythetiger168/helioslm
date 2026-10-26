@@ -456,16 +456,24 @@ class DeviceLimitedMoE(nn.Module):
                     (counts_all.detach().float(), probs.sum(0), N))
         self._last_scores = None
 
+        # v5.159: the code after the eager dispatch runs in a new compiled
+        # graph, which torch 2.8 built without the caller's autocast (an
+        # fp32 shared-expert addmm got a bf16 input on CUDA). The autocast
+        # state read here is entered again explicitly for that part.
+        dev = z.device.type
+        autocast = (torch.get_autocast_dtype(dev)
+                    if torch.is_autocast_enabled(dev) else None)
         if self.dispatch in ("batched", "grouped") and self._batchable():
             output_z = self._dispatch_batched(z, topk_indices, topk_gates)
         else:
             output_z = self._dispatch_blocked(z, topk_indices, topk_gates)
-
-        # Back to hidden width (LatentMoE), then shared experts (always
-        # active, always full-width).
-        output = self.up_proj(output_z) if self.up_proj is not None else output_z
-        for shared in self.shared_experts:
-            output = output + shared(flat)
+        with torch.autocast(dev, dtype=autocast or torch.get_autocast_dtype(dev),
+                            enabled=autocast is not None):
+            # Back to hidden width (LatentMoE), then shared experts (always
+            # active, always full-width).
+            output = self.up_proj(output_z) if self.up_proj is not None else output_z
+            for shared in self.shared_experts:
+                output = output + shared(flat)
 
         return output.view(B, seq, H)
 
