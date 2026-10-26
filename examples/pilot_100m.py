@@ -120,9 +120,12 @@ def main():
                     help="k3: recompute the chunked KDA recurrence in the "
                          "backward pass instead of saving it (v5.157; "
                          "~220 MB less per KDA layer per 1024-token row)")
-    ap.add_argument("--kda-kernel", choices=["torch", "fla"], default="torch",
+    ap.add_argument("--kda-kernel", choices=["torch", "fla"], default="fla",
                     help="k3_llamacpp: chunked KDA kernel; fla = "
-                         "flash-linear-attention chunk_kda on CUDA (v5.160)")
+                         "flash-linear-attention chunk_kda on CUDA (v5.160; "
+                         "default since v5.163, 1.7x eager / 2.45x compiled "
+                         "on an L4); falls back to torch off CUDA or "
+                         "without fla installed")
     ap.add_argument("--ple-dim", type=int, default=0,
                     help="LB8: per-layer embedding width (Gemma 3n); "
                          "0 = off")
