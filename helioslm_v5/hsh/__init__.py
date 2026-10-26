@@ -8,7 +8,7 @@ from .session import (Session, SessionError, Sessions,  # noqa: F401
 from .schema import SchemaError, check_schema, validate  # noqa: F401
 from .tools import Execution, ToolDefinition, ToolResult, Tools, tool  # noqa: F401
 from .llm import (LLM, LLMError, OpenAICompatAdapter, ScriptedAdapter,  # noqa: F401
-                  TextModelAdapter, render_transcript)
+                  TextModelAdapter, is_transient, render_transcript, request_retry)
 from .loop import Agent, Agents  # noqa: F401
 from .builtin import (Workspace, bash_tool, editor_tool, fs_tools,  # noqa: F401
                       run_code_tool, todo_tool)

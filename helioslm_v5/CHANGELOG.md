@@ -11,6 +11,25 @@ up by prompt text, so one of the pair always scored wrong.
   instead of a prompt-keyed dict. The generate oracle already did.
 - `tests/test_tw_bench.py::test_phase_a_duplicate_questions` fails on the
   old lookup and passes now.
+## v5.170 (2026-10-26) - hsh H11: streaming and request retry
+
+hsh made one blocking request per step and failed the turn on the first
+429 or 5xx; the upstream harness streams and recovers.
+
+- `helioslm_v5/hsh/llm.py`: `OpenAICompatAdapter(stream=True)` (SSE fold,
+  live `on_chunk`), `LLMError.status/transient/retry_after`, HTTP and
+  connection errors mapped; `request_retry` row (backoff + jitter,
+  honours Retry-After); cached-token and finish-reason fields kept.
+- `loop.py`: `agent/assistant-stream` live event; a retry decision may
+  raise the step's retry limit (`max_retries`).
+- `session.py`: `usage_summary` adds `cached_input_tokens`.
+- `presets.py`: `request-retry` in every preset.
+
+The upstream adapter's session-log upload fields are deliberately not
+copied (see docs/HSH_HARNESS.md H11).
+
+Tests: `test_hsh_llm.py` (4 new). All hsh tests: 102.
+
 ## v5.169 (2026-10-26) - hsh H10: ask the user, plan mode, web_fetch
 
 Three upstream interaction tools hsh lacked.

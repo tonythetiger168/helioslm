@@ -260,3 +260,27 @@ After dsh's `tool-ask-user`, `plan-mode` and `tool-web`.
   provider.
 
 Tests: `helioslm_v5/tests/test_hsh_interaction.py` (4).
+
+## H11: streaming, HTTP errors and request retry (`hsh/llm.py`)
+
+- `OpenAICompatAdapter(..., stream=True)` reads server-sent events; text
+  and reasoning deltas go to `on_chunk` as they arrive and the loop
+  re-emits them as `agent/assistant-stream` (`emit`, live only: the
+  log keeps the merged stream on `assistant/message`). Tool-call
+  fragments are joined by index; usage includes DeepSeek's
+  `prompt_cache_hit_tokens` as `cached_input_tokens`.
+- HTTP failures raise `LLMError` with `status`, `transient` (408, 409,
+  425, 429, 5xx, dropped connections) and the server's `retry_after`.
+- Row `request-retry` (in every preset): on a transient failure it waits
+  (exponential backoff with jitter, at least `Retry-After`) and retries
+  in the same step, up to `max_retries` (4). Each failed attempt is an
+  `assistant/attempt` in the log, so the rebuild oracle still holds and
+  `usage_summary` counts them apart.
+- `finish_reason` (such as `length`) is kept on the adapter output.
+
+Not copied: dsh's `dsh_session_log` / `dsh_plugin_packages` request
+fields and `x-deepseek-harness-*` headers, which send the session log
+(code, tool output) and an install id to the API on every request.
+hsh sends the chat request only.
+
+Tests: `helioslm_v5/tests/test_hsh_llm.py` (4).
