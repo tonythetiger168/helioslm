@@ -1,5 +1,5 @@
 """api_distill_probe.py — distillation from an imperfect API teacher
-(evastar/eval/api_distill_probe.py): sequence-level KD with and
+(helioslm_v5/eval/api_distill_probe.py): sequence-level KD with and
 without a verifier, and sparse top-k KD across tokenizers.
 
 Usage:
@@ -17,7 +17,7 @@ import torch
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.eval.api_distill_probe import (  # noqa: E402
+from helioslm_v5.eval.api_distill_probe import (  # noqa: E402
     TextAPI, TopKAPI, collect_sequences, exact_match, prompt_pool,
     topk_coverage, topk_targets, train_student, train_teacher, verify_rev)
 

@@ -1,6 +1,6 @@
 """HeliosLM v5.1 — cross-module integration tests with a REAL lite model (CPU).
 
-Every test instantiates the real EvastarV5(size="lite") model (or the real
+Every test instantiates the real HeliosLMv5(size="lite") model (or the real
 module under test) — no dummy stand-ins. Each test prints PASS/FAIL plus key
 numbers; the script exits non-zero if any test fails.
 
@@ -15,7 +15,7 @@ sys.path.insert(0, "/mnt/agents/output")
 import torch
 import torch.nn as nn
 
-from evastar.configs.config_v5 import EvastarV5Config
+from helioslm_v5.configs.config_v5 import HeliosLMv5Config
 
 torch.manual_seed(0)
 
@@ -29,7 +29,7 @@ def report(name, ok, detail=""):
 
 def make_lite_model(seed=0):
     torch.manual_seed(seed)
-    config = EvastarV5Config(size="lite")
+    config = HeliosLMv5Config(size="lite")
     model = HeliosLMv5_shim(config)
     model.eval()
     return model, config
@@ -37,8 +37,8 @@ def make_lite_model(seed=0):
 
 def HeliosLMv5_shim(config):
     # Local import so a broken model import fails inside the test, not at load.
-    from evastar.src.model_v5 import EvastarV5
-    return EvastarV5(config)
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+    return HeliosLMv5(config)
 
 
 # ----------------------------------------------------------------------
@@ -65,7 +65,7 @@ def test_cache_consistency():
 # T2: MTP end-to-end (use_mtp=True) == plain greedy, acceptance in [0,1]
 # ----------------------------------------------------------------------
 def test_mtp_end_to_end():
-    from evastar.src.inference.mtp import MTPDecoder
+    from helioslm_v5.src.inference.mtp import MTPDecoder
     model, config = make_lite_model(seed=2)
     ids = torch.randint(3, config.vocab_size, (1, 6))
 
@@ -112,7 +112,7 @@ def test_mtp_end_to_end():
 # T3: VLLMEngine end-to-end == per-request greedy generate, no block leak
 # ----------------------------------------------------------------------
 def test_vllm_engine():
-    from evastar.src.inference.vllm_engine import VLLMEngine
+    from helioslm_v5.src.inference.vllm_engine import VLLMEngine
     model, config = make_lite_model(seed=3)
     prompts = [[5, 100, 200, 7], [42, 900]]  # unequal lengths
     max_new = 6
@@ -140,7 +140,7 @@ def test_vllm_engine():
 
     # PagedAttention module itself: cache dtype must follow the input (fp32
     # here), and the write/read path must run end-to-end.
-    from evastar.src.inference.paged_attention import BlockManager, PagedAttention
+    from helioslm_v5.src.inference.paged_attention import BlockManager, PagedAttention
     torch.manual_seed(31)
     pa = PagedAttention(config)
     bm2 = BlockManager(block_size=4, num_blocks=16, device="cpu")  # dtype=None
@@ -161,7 +161,7 @@ def test_vllm_engine():
 # T4: GRPO end-to-end with the real lite model
 # ----------------------------------------------------------------------
 def test_grpo():
-    from evastar.src.training.grpo import GRPOTrainer
+    from helioslm_v5.src.training.grpo import GRPOTrainer
     model, config = make_lite_model(seed=4)
     ref_model, _ = make_lite_model(seed=14)  # different init -> non-trivial k3 KL
     config.grpo.group_size = 4
@@ -185,7 +185,7 @@ def test_grpo():
 # T5: DualPipe end-to-end over a real lite-model layer
 # ----------------------------------------------------------------------
 def test_dualpipe():
-    from evastar.src.training.dualpipe import (
+    from helioslm_v5.src.training.dualpipe import (
         DualPipeScheduler, DualPipeStage, LayerWrap)
     model, config = make_lite_model(seed=5)
 
@@ -215,7 +215,7 @@ def test_dualpipe():
 # T6: FP8Trainer end-to-end, finite loss, no cross-step grad accumulation
 # ----------------------------------------------------------------------
 def test_fp8():
-    from evastar.src.training.fp8_trainer import FP8Trainer
+    from helioslm_v5.src.training.fp8_trainer import FP8Trainer
     model, config = make_lite_model(seed=6)
     trainer = FP8Trainer(model, config)
     ids = torch.randint(3, config.vocab_size, (2, 10))
@@ -240,7 +240,7 @@ def test_fp8():
 # T7: Quantization (AWQ + GPTQ) on the real lite model, then generate
 # ----------------------------------------------------------------------
 def test_quantization():
-    from evastar.src.quantization.standard_quant import QuantizationManager
+    from helioslm_v5.src.quantization.standard_quant import QuantizationManager
     ok_all, details = True, []
     for method in ("awq", "gptq"):
         model, config = make_lite_model(seed=7)
@@ -268,8 +268,8 @@ def test_quantization():
 # T8: streaming audio — 3 chunks vs one-shot
 # ----------------------------------------------------------------------
 def test_audio_streaming():
-    from evastar.src.audio.streaming_encoder import StreamingAudioEncoder
-    config = EvastarV5Config(size="lite")
+    from helioslm_v5.src.audio.streaming_encoder import StreamingAudioEncoder
+    config = HeliosLMv5Config(size="lite")
     config.multimodal.audio_hidden_size = 128
     config.multimodal.audio_num_layers = 2
     torch.manual_seed(8)
@@ -291,10 +291,10 @@ def test_audio_streaming():
 # T9: NaViT — 512x512 needs max_grid>=40; default 32 must raise ValueError
 # ----------------------------------------------------------------------
 def test_navit():
-    from evastar.src.vision.navit import NaViTEncoder
+    from helioslm_v5.src.vision.navit import NaViTEncoder
     img = torch.randn(1, 3, 512, 512)  # 36x36 patch grid at patch 14
 
-    config = EvastarV5Config(size="lite")
+    config = HeliosLMv5Config(size="lite")
     config.multimodal.vision_hidden_size = 128
     config.multimodal.vision_num_layers = 2
     config.multimodal.vision_num_heads = 4
@@ -318,7 +318,7 @@ def test_navit():
         raised = True
 
     # (c) model-level wiring: enabling multimodal builds matching encoders
-    cfg_mm = EvastarV5Config(size="lite")
+    cfg_mm = HeliosLMv5Config(size="lite")
     cfg_mm.multimodal.enabled = True
     cfg_mm.multimodal.vision_hidden_size = 128
     cfg_mm.multimodal.vision_num_layers = 1

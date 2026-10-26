@@ -30,8 +30,8 @@ sys.path.insert(0, str(_REPO / "examples"))
 from hca_ab_passkey import (  # noqa: E402
     SCORING_TAG, DenseCausalAttention, _trial, _wire_identity,
     probe_accuracy)
-from evastar.eval import multiseed  # noqa: E402
-from evastar.src.attention.kv_compress import (  # noqa: E402
+from helioslm_v5.eval import multiseed  # noqa: E402
+from helioslm_v5.src.attention.kv_compress import (  # noqa: E402
     CompressedSparseAttention)
 
 DEFAULT_OUT = "benchmarks/csa_ab_2026-10-15.json"

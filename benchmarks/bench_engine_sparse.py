@@ -68,7 +68,7 @@ import torch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from benchmarks.bench_sparse_mtp import PROMPTS, _build_model, encode
-from evastar.src.inference.vllm_engine import VLLMEngine
+from helioslm_v5.src.inference.vllm_engine import VLLMEngine
 
 SCHEMA_KEYS = (
     "model", "engine", "sparse_top_k", "indexer", "n_requests",

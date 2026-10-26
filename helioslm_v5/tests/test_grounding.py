@@ -1,0 +1,268 @@
+"""T33 - v5.34: deterministic grounding oracles.
+
+The core oracle replays the mid failure: a model that CONFABULATES
+arguments ("19 * -92" -> "12 * -9") scores 0 without grounding and
+passes env.verify WITH GroundingGate -- the model keeps only the tool
+sequence; policy in code fills both ends.
+Run from repo root: python3 helioslm_v5/tests/test_grounding.py
+"""
+import random
+import re
+import sys
+from contextlib import contextmanager
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "agent"))
+
+from envs import make_envs, make_long_envs
+from gate import FixedGate, Gate, Route
+from grounding import GroundingGate
+from loop import AgentLoop
+from schema import ToolCall, render_tool_call
+from task_grammar import parse as parse_task
+from tools import build_default_registry
+
+
+@contextmanager
+def raises(exc):
+    try:
+        yield
+    except exc:
+        return
+    raise AssertionError(f"expected {exc.__name__}")
+
+
+def _confabulating_policy(prompt, seed, step):
+    """Right tool SEQUENCE, universally WRONG content (mid's failure
+    mode, extended to every family): grounding must fix both ends.
+    v5.35: dispatch goes through the SHARED task grammar -- this test
+    no longer owns any regex copy of the grammar."""
+    obs = re.findall(r"step \d+: (.*)", prompt)
+    task_m = re.search(r"Task: (.*?)(?:\n|$)", prompt)
+    task = task_m.group(1) if task_m else prompt
+    spec = parse_task(task)
+    n = len(obs)
+    ph = lambda c: render_tool_call([c])
+    if spec is None:
+        return ph(ToolCall("finish", {"answer": "?"}))
+    k = spec["kind"]
+    if k == "calc":
+        return ph(ToolCall("finish", {"answer": "2"})) if obs else \
+            ph(ToolCall("calc", {"expr": "1+1"}))
+    if k == "str":
+        return ph(ToolCall("finish", {"answer": "xx"})) if obs else \
+            ph(ToolCall("str_op", {"s": "xx", "op": "upper", "n": 0}))
+    if k == "compose":
+        if n == 0:
+            return ph(ToolCall("calc", {"expr": "1+1"}))
+        if n == 1:
+            return ph(ToolCall("str_op", {"s": "xx", "op": "upper", "n": 0}))
+        return ph(ToolCall("finish", {"answer": "x"}))
+    if k == "write_read":
+        if n == 0:
+            return ph(ToolCall("calc", {"expr": "1+1"}))
+        if n == 1:
+            return ph(ToolCall("file_write", {"path": "zz.txt", "content": "0"}))
+        if n == 2:
+            return ph(ToolCall("file_read", {"path": "zz.txt"}))
+        return ph(ToolCall("finish", {"answer": "0"}))
+    if k == "write_transform":
+        if n == 0:
+            return ph(ToolCall("file_write", {"path": "zz.txt", "content": "xx"}))
+        if n == 1:
+            return ph(ToolCall("str_op", {"s": "xx", "op": "upper", "n": 0}))
+        if n == 2:
+            return ph(ToolCall("file_write", {"path": "zz2.txt", "content": "0"}))
+        if n == 3:
+            return ph(ToolCall("file_read", {"path": "zz2.txt"}))
+        return ph(ToolCall("finish", {"answer": "0"}))
+    if k == "accumulate":
+        if n == 0:
+            return ph(ToolCall("calc", {"expr": "1+1"}))
+        if n == 1:
+            return ph(ToolCall("calc", {"expr": "2+2"}))
+        if n == 2:
+            return ph(ToolCall("file_write", {"path": "zz.txt", "content": "0"}))
+        if n == 3:
+            return ph(ToolCall("file_write", {"path": "zz2.txt", "content": "0"}))
+        if n == 4:
+            return ph(ToolCall("file_read", {"path": "zz.txt"}))
+        if n == 5:
+            return ph(ToolCall("file_read", {"path": "zz2.txt"}))
+        if n == 6:
+            return ph(ToolCall("calc", {"expr": "1+1"}))
+        return ph(ToolCall("finish", {"answer": "0"}))
+    return ph(ToolCall("finish", {"answer": "?"}))
+
+
+def _grounded_run(task, root):
+    reg, impls = build_default_registry(root)
+    gate = GroundingGate(FixedGate(Route.DIRECT))
+    loop = AgentLoop(_confabulating_policy, reg, impls, gate,
+                     max_steps=task.step_budget)
+    traj = loop.run(task.text, seed=1)
+    return traj, gate
+
+
+def test_grounding_cures_confabulation():
+    rng = random.Random(20260929)
+    env = make_envs()[0]
+    n_ok = 0
+    for _ in range(6):
+        task = env.sample(rng)
+        with __import__("tempfile").TemporaryDirectory() as root:
+            traj, _ = _grounded_run(task, root)
+        assert traj.final_answer is not None, "no finish"
+        if env.verify(task, traj.final_answer):
+            n_ok += 1
+    assert n_ok == 6, f"grounding failed on {6 - n_ok}/6 calc tasks"
+    print(f"PASS test_grounding_cures_confabulation ({n_ok}/6, "
+          f"policy had wrong args on every call)")
+
+
+def test_grounding_all_env_families():
+    rng = random.Random(11)
+    total, ok = 0, 0
+    for env in make_envs() + make_long_envs():
+        for _ in range(6):
+            task = env.sample(rng)
+            with __import__("tempfile").TemporaryDirectory() as root:
+                traj, gate = _grounded_run(task, root)
+            total += 1
+            if traj.final_answer is not None and env.verify(task, traj.final_answer):
+                ok += 1
+    assert ok == total, f"{ok}/{total}"
+    print(f"PASS test_grounding_all_env_families ({ok}/{total})")
+
+
+def test_grounding_is_deterministic():
+    rng = random.Random(23)
+    env = make_envs()[2]  # ComposeEnv
+    task = env.sample(rng)
+    finals = set()
+    for _ in range(3):
+        with __import__("tempfile").TemporaryDirectory() as root:
+            traj, _ = _grounded_run(task, root)
+        finals.add(traj.final_answer)
+    assert len(finals) == 1, f"nondeterministic: {finals}"
+    print(f"PASS test_grounding_is_deterministic (final={finals.pop()!r})")
+
+
+def test_escalate_path_untouched():
+    class ExplodingOracle(Gate):
+        def decide(self, call, context):
+            return Route.ESCALATE
+
+        def escalate(self, call, context):
+            return "ORACLE_OBS"
+
+    reg, impls = build_default_registry("/tmp/helioslm_t33")
+    gate = GroundingGate(ExplodingOracle())
+    task = make_envs()[0].sample(random.Random(5))
+    # a finish call with confabulated args must reach the oracle UNCHANGED
+    call = ToolCall("finish", {"answer": "garbage"})
+    route = gate.decide(call, {"task": task.text})
+    assert route == Route.ESCALATE
+    assert call.args["answer"] == "garbage", "escalate path was modified!"
+    print("PASS test_escalate_path_untouched")
+
+
+def test_unknown_task_passes_through():
+    gate = GroundingGate(FixedGate(Route.DIRECT))
+    call = ToolCall("calc", {"expr": "garbage-expr"})
+    route = gate.decide(call, {"task": "totally unknown task shape"})
+    assert route == Route.DIRECT
+    assert call.args["expr"] == "garbage-expr", "unknown shape must pass through"
+    assert not gate.groundable("totally unknown task shape")
+    print("PASS test_unknown_task_passes_through")
+
+
+def test_finish_grounds_to_family_semantics():
+    """Code-review oracle: finish anchors to the TASK's definition, not
+    the sequence's last event. An accumulate run where the model skips
+    the closing sum calc (finishes right after the two reads) must still
+    produce the sum -- a mid-sequence deviation must never yield a
+    grounded-but-wrong answer."""
+    from grounding import GroundingGate
+    from gate import FixedGate, Route
+    from schema import ToolCall
+
+    def skipping_policy(prompt, seed, step):
+        obs = re.findall(r"step \d+: (.*)", prompt)
+        n = len(obs)
+        ph = lambda c: render_tool_call([c])
+        if n == 0:
+            return ph(ToolCall("calc", {"expr": "1+1"}))
+        if n == 1:
+            return ph(ToolCall("calc", {"expr": "2+2"}))
+        if n == 2:
+            return ph(ToolCall("file_write", {"path": "x", "content": "0"}))
+        if n == 3:
+            return ph(ToolCall("file_write", {"path": "y", "content": "0"}))
+        if n == 4:
+            return ph(ToolCall("file_read", {"path": "x"}))
+        if n == 5:
+            return ph(ToolCall("file_read", {"path": "y"}))
+        return ph(ToolCall("finish", {"answer": "0"}))  # no closing calc
+
+    import tempfile
+    rng = random.Random(77)
+    env = make_long_envs()[0]
+    ok = 0
+    for _ in range(4):
+        task = next(t for t in (env.sample(rng) for _ in range(20))
+                    if t.family == "accumulate")
+        with tempfile.TemporaryDirectory() as root:
+            reg, impls = build_default_registry(root)
+            gate = GroundingGate(FixedGate(Route.DIRECT))
+            loop = AgentLoop(skipping_policy, reg, impls, gate,
+                             max_steps=task.step_budget)
+            traj = loop.run(task.text, seed=1)
+        if traj.final_answer is not None and env.verify(task, traj.final_answer):
+            ok += 1
+    assert ok == 4, f"semantic finish grounding failed {4 - ok}/4"
+    print(f"PASS test_finish_grounds_to_family_semantics ({ok}/4, "
+          f"no closing calc)")
+
+
+def test_premature_finish_escalates():
+    """v5.37j: finish-first on a groundable multi-step family must
+    ESCALATE -- empty state machine means nothing to inject, and the
+    10-02 write_read bypass ('1 * 1', '36') showed the confabulation
+    passes through otherwise."""
+    from grounding import GroundingGate
+    from schema import ToolCall, render_tool_call
+
+    class ReviewOracle:
+        def decide(self, call, context):
+            return Route.DIRECT
+
+        def escalate(self, call, context):
+            return "ROUTED_TO_REVIEW"
+
+    gate = GroundingGate(FixedGate(Route.DIRECT))
+    gate.inner = ReviewOracle()
+    call = ToolCall("finish", {"answer": "0"})
+    task = ("Compute the value of: 21 * 17 + 10. Write the result to "
+            "f.txt, then read f.txt and finish with its exact content.")
+    route = gate.decide(call, {"task": task})
+    assert route == Route.ESCALATE, f"premature finish not refused: {route}"
+    assert gate.escalate(call, {"task": task}) == "ROUTED_TO_REVIEW"
+    # single-step calc finishing after its obs is NOT premature
+    g2 = GroundingGate(FixedGate(Route.DIRECT))
+    c2 = ToolCall("calc", {"expr": "1+1"})
+    g2.decide(c2, {"task": "Compute the value of: 2 + 2"})
+    c3 = ToolCall("finish", {"answer": "x"})
+    assert g2.decide(c3, {"task": "Compute the value of: 2 + 2"}) == Route.DIRECT
+    print("PASS test_premature_finish_escalates")
+
+
+if __name__ == "__main__":
+    test_grounding_cures_confabulation()
+    test_grounding_all_env_families()
+    test_grounding_is_deterministic()
+    test_escalate_path_untouched()
+    test_unknown_task_passes_through()
+    test_finish_grounds_to_family_semantics()
+    test_premature_finish_escalates()
+    print("\n7/7 grounding tests passed")

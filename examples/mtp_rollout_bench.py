@@ -34,9 +34,9 @@ import torch
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.configs.config_v5 import EvastarV5Config  # noqa: E402
-from evastar.src.inference.mtp import MTPDecoder  # noqa: E402
-from evastar.src.model_v5 import EvastarV5  # noqa: E402
+from helioslm_v5.configs.config_v5 import HeliosLMv5Config  # noqa: E402
+from helioslm_v5.src.inference.mtp import MTPDecoder  # noqa: E402
+from helioslm_v5.src.model_v5 import HeliosLMv5  # noqa: E402
 
 PROMPTS = ["What is 12 + 7?", "def forward", "HeliosLM", "KV cache",
            "speculative", "import torch", "The model", "Attention("]
@@ -52,14 +52,14 @@ def load_models(device, tiny_vocab=None):
     out = []
     if CKPT.exists() and tiny_vocab is None:
         ckpt = torch.load(CKPT, map_location="cpu", weights_only=False)
-        cfg = EvastarV5Config(size="lite")
-        m = EvastarV5(cfg)
+        cfg = HeliosLMv5Config(size="lite")
+        m = HeliosLMv5(cfg)
         m.load_state_dict(ckpt["state_dict"])
         out.append(("toy_v5.13", m.to(device).eval(), cfg))
     torch.manual_seed(0)
     kw = {"vocab_size": tiny_vocab} if tiny_vocab else {}
-    cfg = EvastarV5Config(size="lite", **kw)
-    out.append(("lite_untrained", EvastarV5(cfg).to(device).eval(), cfg))
+    cfg = HeliosLMv5Config(size="lite", **kw)
+    out.append(("lite_untrained", HeliosLMv5(cfg).to(device).eval(), cfg))
     return out
 
 

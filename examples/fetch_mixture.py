@@ -37,9 +37,9 @@ import numpy as np
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.src.training.data_mixture import (  # noqa: E402
+from helioslm_v5.src.training.data_mixture import (  # noqa: E402
     load_mixture, mixture_sha256, token_budget)
-from evastar.src.training.data_quality import filter_docs  # noqa: E402
+from helioslm_v5.src.training.data_quality import filter_docs  # noqa: E402
 
 _LICENSE_ALIASES = {"odc-by-1.0": "odc-by", "cc0-1.0": "cc0"}
 

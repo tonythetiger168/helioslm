@@ -10,7 +10,7 @@ imports. Run them from the repository root, as before:
 | What | Use | Archived |
 |---|---|---|
 | Mid-model agent eval | `examples/eval_mid_agent_v5.py` (v5.34: mid + GroundingGate) | `legacy/eval_mid_agent.py` (v1), `_v2`, `_v3`, `_v4` (v5.33) |
-| Harness web UI | `evastar/harness/web_ui_v2.py` | `evastar/harness/legacy/web_ui_v1.py` (v1.36) |
+| Harness web UI | `helioslm_v5/harness/web_ui_v2.py` | `helioslm_v5/harness/legacy/web_ui_v1.py` (v1.36) |
 
 ## What each archived version is
 
@@ -35,10 +35,10 @@ the old paths: they are historical records.
 - Mid eval: `python examples/eval_mid_agent_v5.py`. It needs the same
   `checkpoints/mid_sft_v5.33.*` files (`HELIOS_CKPT_DIR` to point
   elsewhere).
-- Web UI: `python evastar/harness/web_ui_v2.py`. It binds 127.0.0.1,
+- Web UI: `python helioslm_v5/harness/web_ui_v2.py`. It binds 127.0.0.1,
   checks Host / Origin, and keeps sessions on disk.
-- `evastar/harness/web_ui.py` is now a shim: `from harness.web_ui
-  import ...` and `python evastar/harness/web_ui.py` still load v1,
+- `helioslm_v5/harness/web_ui.py` is now a shim: `from harness.web_ui
+  import ...` and `python helioslm_v5/harness/web_ui.py` still load v1,
   with a `DeprecationWarning`.
 
 ## Fixed while archiving
@@ -49,7 +49,7 @@ the old paths: they are historical records.
   existed, and v1 binds `0.0.0.0`. The routes now resolve the name inside
   the media directory and return 404 otherwise (the same check as v2);
   `test_web_ui.py` covers it.
-- **v1 entrypoint.** `python evastar/harness/web_ui.py` failed with
+- **v1 entrypoint.** `python helioslm_v5/harness/web_ui.py` failed with
   `ModuleNotFoundError: harness.harness_core`: the module lives in the
   top-level `harness/`, which only pytest put on the path. v1 now adds the
   repository root itself.

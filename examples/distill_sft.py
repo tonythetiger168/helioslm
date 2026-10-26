@@ -20,7 +20,7 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.src.training import distill_sft as ds  # noqa: E402
+from helioslm_v5.src.training import distill_sft as ds  # noqa: E402
 
 
 def read_jsonl(path):
@@ -60,7 +60,7 @@ def prepare(a):
 
 def train(a):
     import torch
-    from evastar.src.training.pretrain import pilot_config, pretrain
+    from helioslm_v5.src.training.pretrain import pilot_config, pretrain
 
     meta = json.loads((Path(a.data) / "meta.json").read_text())
     p = ds.SFT_PRESETS[a.preset]

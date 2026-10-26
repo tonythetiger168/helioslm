@@ -29,16 +29,16 @@ import torch
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.src.training.adaptive_batch import fit_micro_batch  # noqa: E402
-from evastar.src.training.pretrain import (  # noqa: E402
-    ARCHS, EvastarV5, KDShard, TokenShard, chunked_lm_loss, count_params,
+from helioslm_v5.src.training.adaptive_batch import fit_micro_batch  # noqa: E402
+from helioslm_v5.src.training.pretrain import (  # noqa: E402
+    ARCHS, HeliosLMv5, KDShard, TokenShard, chunked_lm_loss, count_params,
     pilot_config, pretrain)
 
 
 def _probe_step(cfg, micro_batch, seq, device, dtype, ce_chunk):
     """One forward + backward at ``micro_batch`` x ``seq`` (random
     tokens) on a throwaway model, as --auto-batch's fit test."""
-    model = EvastarV5(cfg).to(device).train()
+    model = HeliosLMv5(cfg).to(device).train()
     try:
         x = torch.randint(0, cfg.vocab_size, (micro_batch, seq), device=device)
         with torch.autocast(torch.device(device).type, dtype=dtype,
@@ -146,7 +146,7 @@ def main():
                        kda_recompute=args.kda_recompute,
                        kda_kernel=args.kda_kernel)
     with torch.device("meta"):
-        params = count_params(EvastarV5(cfg))
+        params = count_params(HeliosLMv5(cfg))
     print("params", json.dumps(params))
     if args.dry_run:
         return

@@ -44,9 +44,9 @@ import torch
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.configs.config_v5 import MoEConfig  # noqa: E402
-from evastar.src.training.pretrain import (  # noqa: E402
-    EvastarV5, TokenShard, count_params, pilot_config, pretrain)
+from helioslm_v5.configs.config_v5 import MoEConfig  # noqa: E402
+from helioslm_v5.src.training.pretrain import (  # noqa: E402
+    HeliosLMv5, TokenShard, count_params, pilot_config, pretrain)
 
 SKIP_EXIT = 3
 HAS_DISPATCH = "dispatch" in {f.name for f in dataclasses.fields(MoEConfig)}
@@ -135,7 +135,7 @@ def run_arm(arm, args, meta, device, dtype):
         bytes_per_token=meta["val_bytes_per_token"],
         peak_flops=args.peak_tflops * 1e12 if args.peak_tflops else None,
         compile_model=args.compile, log=lambda s: print(arm, s, flush=True))
-    model = EvastarV5(cfg)
+    model = HeliosLMv5(cfg)
     state = torch.load(out / "ckpt.pt", map_location="cpu", weights_only=False)
     model.load_state_dict(state["model"])
     model.to(device)
@@ -163,7 +163,7 @@ def dry_run(args, vocab):
         cfg = arm_config(arm, vocab, args.hidden, args.layers,
                          args.intermediate, args.seq, args.dispatch)
         with torch.device("meta"):
-            params = count_params(EvastarV5(cfg))
+            params = count_params(HeliosLMv5(cfg))
         rows.append({"arm": arm, "moe": _moe_fields(cfg), "params": params})
         print(json.dumps(rows[-1]))
     return rows

@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT))
 
 def _run_case(kind, fused, args):
     import torch
-    from evastar.src.quantization.standard_quant import (
+    from helioslm_v5.src.quantization.standard_quant import (
         AWQLinear, GPTQLinear, MXFP4Linear)
     torch.manual_seed(args.seed)
     linear = torch.nn.Linear(args.in_features, args.out_features, bias=False)

@@ -4,7 +4,7 @@
   python3 examples/cpt_plan.py data/cpt/b0_gemma4_e2b_pilot.json --json
   python3 examples/cpt_plan.py --bases
 
-Prints each stage's GPU-hours and dollars (evastar/src/training/
+Prints each stage's GPU-hours and dollars (helioslm_v5/src/training/
 cpt_plan.py: 6ND for training, 2ND for forward passes, at the plan's
 MFU and GPU price assumption), the base's licence and the mixture's
 token split. Spends nothing: the GPU runs need the owner's approval.
@@ -17,9 +17,9 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.src.training.cpt_plan import (  # noqa: E402
+from helioslm_v5.src.training.cpt_plan import (  # noqa: E402
     BASES, load_plan, plan_cost)
-from evastar.src.training.data_mixture import load_mixture  # noqa: E402
+from helioslm_v5.src.training.data_mixture import load_mixture  # noqa: E402
 
 
 def main(argv=None):

@@ -62,14 +62,14 @@ class Job:
 
 def has_moe_dispatch(repo):
     """#72 merged: MoEConfig has a ``dispatch`` field (text check, no torch)."""
-    src = (repo / "evastar" / "configs" / "config_v5.py").read_text()
+    src = (repo / "helioslm_v5" / "configs" / "config_v5.py").read_text()
     return re.search(r"^\s+dispatch:\s*str\b", src, re.M) is not None
 
 
 def has_tw_bench(repo):
     """#86 merged: the TW3 runner and eval module exist."""
     return ((repo / "examples" / "tw_bench_run.py").exists()
-            and (repo / "evastar" / "eval" / "tw_bench.py").exists())
+            and (repo / "helioslm_v5" / "eval" / "tw_bench.py").exists())
 
 
 def pilot_run_ok(run):
