@@ -18,3 +18,4 @@ from .compaction import compact, compaction, estimate_tokens  # noqa: F401
 from .subagent import agent_instructions, claude_hooks, subagent_tool  # noqa: F401
 from .skills import (FilesystemSkills, SkillError, Skills,  # noqa: F401
                      parse_frontmatter, skills_plugin)
+from .mcp import MCPError, MCPServer, mcp_plugin  # noqa: F401

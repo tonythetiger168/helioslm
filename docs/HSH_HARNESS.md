@@ -165,8 +165,7 @@ Tests: `helioslm_v5/tests/test_hsh_presets.py` (10).
   Stop with matchers, exit code 2 and the JSON decision fields. Argument
   rewriting is not supported: the logged call runs as logged.
 
-Not done in H6 (and why): MCP client (needs an MCP package; out of scope without
-a dependency decision), Web UI / desktop app, Landlock-class sandboxing,
+Not done in H6 (and why; MCP came in H8): Web UI / desktop app, Landlock-class sandboxing,
 background jobs, goals and schedules.
 
 Tests: `helioslm_v5/tests/test_hsh_extras.py` (8). All hsh tests: 82.
@@ -199,3 +198,26 @@ After dsh's skill family (`docs/subsystems/skills.md`, upstream master of
   the next call without a restart.
 
 Tests: `helioslm_v5/tests/test_hsh_skills.py` (6).
+
+## H8: MCP client (`hsh/mcp.py`)
+
+After dsh's `mcp-client` / `mcp-resources` (`docs/subsystems/mcp.md`), in
+the standard library only (no MCP SDK).
+
+- Transports: stdio (newline-delimited JSON-RPC to a child process) and
+  Streamable HTTP (POST, JSON or SSE reply, `Mcp-Session-Id` kept).
+- The `mcp` row takes `{"servers": {name: {"command", "args", "env",
+  "cwd"} | {"url", "headers"}}}` or `{"path": ".mcp.json"}` (Claude Code's
+  `mcpServers` file works as is). Tools appear as `mcp__<server>__<tool>`;
+  the namespace is the configured name, never the server's own.
+- Child processes get a scrubbed environment (KEY/PASSWORD/SECRET/TOKEN
+  names dropped); `${VAR}` in `env` and `headers` expands from the host,
+  so a secret reaches only the server that names it.
+- Server instructions join the system prompt; `list_mcp_resources` and
+  `read_mcp_resource` read resources. A server that fails to start is
+  recorded in `ctx.errors` and adds no tools (`fail_on_error` raises).
+- Not supported (as upstream): prompts, elicitation, sampling,
+  subscriptions. Images reach the model as a text note; the full MCP
+  result is the tool result's `value`.
+
+Tests: `helioslm_v5/tests/test_hsh_mcp.py` (5).

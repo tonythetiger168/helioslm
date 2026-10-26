@@ -34,6 +34,7 @@ import json
 
 from .builtin import bash_tool, editor_tool, fs_tools, run_code_tool, todo_tool
 from .compaction import compaction
+from .mcp import mcp_plugin
 from .skills import skills_plugin
 from .subagent import agent_instructions, claude_hooks, subagent_tool
 from .tools import ToolDefinition
@@ -113,6 +114,7 @@ PLUGINS = {
     "tool-subagent": subagent_tool,
     "claude-hooks": claude_hooks,
     "skills": skills_plugin,
+    "mcp": mcp_plugin,
 }
 
 _STANDARD = [
