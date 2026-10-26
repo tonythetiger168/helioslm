@@ -204,6 +204,13 @@ TESTS = [
     # fails the daily suite loudly until registered. See CHANGELOG v5.155.
     case_upstream_suites.test_zhtw_corpus_suite,
     case_upstream_suites.test_api_accounting_suite,
+    # limitations round (2026-10-26): the v5.106/v5.149 MoE dispatch
+    # acceptance pins lived only in a pytest sidecar the daily gate never
+    # ran; the wrapper folds them in (drift-guarded), and the case_moe
+    # addition pins the balance-state resume contract under batched and
+    # grouped dispatch (plus cross-dispatch bitwise state equality).
+    case_upstream_suites.test_moe_dispatch_suite,
+    case_moe.test_balance_state_resume_grouped,
 ]
 
 # CI thread guard (2026-10-13): PR #16's full-suite probe passes with

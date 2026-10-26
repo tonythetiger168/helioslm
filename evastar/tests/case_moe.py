@@ -516,3 +516,79 @@ def test_balance_state_resume_qb():
           "quantile_balancing mid-run + mid-cycle resume bitwise "
           "(strict=True), cold empty-histogram update is a no-op "
           "(non-vacuous), model-level buffer keys present")
+
+
+# ----------------------------------------------------------------------
+def test_balance_state_resume_grouped():
+    """Checkpoint-resume contract under the v5.106/v5.149 dispatch paths.
+
+    Sibling of test_balance_state_resume, which drives the default
+    "blocked" dispatch only. The quantile strategy is the one whose
+    balance state advances through TRAINING FORWARDS (``_record_margins``
+    in the routing stage), so it is the strategy that actually exercises
+    a dispatch path; heuristic/smebu take the load vector directly and
+    never touch dispatch. v5.149 promises grouped shares routing and the
+    active-expert stacking with batched — if a future refactor of the
+    grouped GEMM path bypassed margin/load recording, resumed training
+    would silently balance differently on it.
+
+    Pins, for both "batched" and "grouped":
+    1. mid-run resume bitwise (strict=True), same protocol as the
+       blocked sibling;
+    2. cross-dispatch: same seed, same inputs — the whole balance state
+       (route_bias / expert_load / margin_buffer / margin_count) is
+       BITWISE identical across blocked/batched/grouped, because routing
+       (and therefore every recorded statistic) runs before dispatch
+       (sigmoid_moe.py: ``_record_margins`` precedes the dispatch
+       switch). Outputs themselves are only allclose across dispatch
+       (grouped_mm reorders the reduction); the balance state must not
+       inherit that noise.
+    """
+    from evastar.src.moe.sigmoid_moe import DeviceLimitedMoE
+
+    def make(dispatch):
+        config = EvastarV5Config(size="lite")
+        config.moe.balance_strategy = "quantile"
+        config.moe.dispatch = dispatch
+        torch.manual_seed(0)
+        return DeviceLimitedMoE(config)
+
+    def drive(moe, steps, start):
+        for i in range(start, start + steps):
+            g = torch.Generator().manual_seed(100 + i)
+            moe.train()
+            moe(torch.randn(1, 16, moe.hidden_size, generator=g))
+            moe.update_bias()
+
+    def assert_bitwise_same(a, b):
+        assert list(a) == list(b), "state-dict key order drifted"
+        for k in a:
+            assert torch.equal(a[k], b[k]), f"resume changed {k}"
+
+    for dispatch in ("batched", "grouped"):
+        moe = make(dispatch)
+        drive(moe, 5, 0)
+        saved = {k: v.clone() for k, v in moe.state_dict().items()}
+        drive(moe, 7, 5)
+        resumed = make(dispatch)
+        resumed.load_state_dict(saved, strict=True)
+        drive(resumed, 7, 5)
+        assert_bitwise_same(moe.state_dict(), resumed.state_dict())
+
+    # Cross-dispatch bitwise equality of the balance state.
+    state_keys = ("route_bias", "expert_load", "margin_buffer",
+                  "margin_count")
+    mos = {d: make(d) for d in ("blocked", "batched", "grouped")}
+    for moe in mos.values():
+        drive(moe, 6, 0)
+    ref = mos["blocked"].state_dict()
+    for dispatch in ("batched", "grouped"):
+        sd = mos[dispatch].state_dict()
+        for k in state_keys:
+            assert torch.equal(ref[k], sd[k]), \
+                f"{dispatch} dispatch changed balance state {k} " \
+                "(routing must run before dispatch)"
+    _pass("test_balance_state_resume_grouped",
+          "quantile resume bitwise under batched + grouped dispatch "
+          "(strict=True); balance state bitwise identical across "
+          "blocked/batched/grouped")

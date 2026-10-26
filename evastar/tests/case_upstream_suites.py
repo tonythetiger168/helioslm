@@ -85,3 +85,42 @@ def test_api_accounting_suite():
           "v5.154 API accounting: all 10 sidecar tests (incl. 8+4+4 "
           "parametrized cases and the no-network CLI) under the daily "
           "gate")
+
+
+def test_moe_dispatch_suite():
+    """v5.106/v5.149 MoE dispatch acceptance (batched + grouped) under
+    the daily gate.
+
+    Gap (limitations round 2026-10-26): the pins that hold "batched" and
+    "grouped" dispatch to the blocked reference — outputs and gradients,
+    skewed routing with idle experts, blocked fallback, whole model,
+    bf16 autocast — lived only in the pytest sidecar
+    test_moe_batched_dispatch.py, which the mandated daily gate
+    (`python -m helioslm_v5.tests.test_v5`) never executed. A regression
+    in the grouped path would pass the daily gate unnoticed. This
+    wrapper calls every sidecar test with its full parameter lists and
+    drift-guards the function set, same pattern as the v5.155 wrappers
+    above. The sidecar file runs under the pytest-optional shim when
+    pytest is absent.
+    """
+    from evastar.tests import test_moe_batched_dispatch as m
+    expected = {"test_config_default_and_validation",
+                "test_batched_matches_blocked",
+                "test_situ_zero_centered_norm",
+                "test_skewed_routing_and_idle_experts",
+                "test_fallback_when_expert_is_converted",
+                "test_model_level",
+                "test_bf16_autocast"}
+    _drift_guard(m, expected)
+    m.test_config_default_and_validation()
+    for mode in m.MODES:
+        for name in sorted(m.CASES):
+            m.test_batched_matches_blocked(name, mode)
+        m.test_situ_zero_centered_norm(mode)
+        m.test_skewed_routing_and_idle_experts(mode)
+        m.test_fallback_when_expert_is_converted(mode)
+        m.test_bf16_autocast(mode)
+    m.test_model_level()
+    _pass("test_moe_dispatch_suite",
+          "v5.106/v5.149 MoE dispatch: all 7 sidecar tests (incl. 5 "
+          "cases x 2 modes parametrized matrix) under the daily gate")
