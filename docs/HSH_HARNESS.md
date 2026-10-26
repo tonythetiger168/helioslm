@@ -165,8 +165,37 @@ Tests: `helioslm_v5/tests/test_hsh_presets.py` (10).
   Stop with matchers, exit code 2 and the JSON decision fields. Argument
   rewriting is not supported: the logged call runs as logged.
 
-Not done (and why): MCP client (needs an MCP package; out of scope without
+Not done in H6 (and why): MCP client (needs an MCP package; out of scope without
 a dependency decision), Web UI / desktop app, Landlock-class sandboxing,
 background jobs, goals and schedules.
 
 Tests: `helioslm_v5/tests/test_hsh_extras.py` (8). All hsh tests: 82.
+
+## H7: agent skills (`hsh/skills.py`)
+
+After dsh's skill family (`docs/subsystems/skills.md`, upstream master of
+2026-10-23).
+
+- A skill is `<root>/<name>/SKILL.md` (a bundle; files next to it are its
+  resources) or a flat `<root>/<name>.md`, with `name` and `description`
+  in a frontmatter block. Optional keys: `when_to_use`,
+  `disable-model-invocation: true` (only a human can start it with
+  `/name`), `user-invocable: false` (only the model can load it). Other
+  keys (such as this repo's `type` and `guard`) are kept as metadata.
+- Roots, best first: `.hsh/skills`, `.agents/skills`, `.claude/skills` in
+  the workspace, then the row's `dirs`, then `~/.hsh/skills` and
+  `~/.agents/skills`. A lower rank wins a duplicate name; a skill
+  registered on an agent's scoped context beats the global layer.
+- `ctx.skills` (`Skills` service, optional): `register_provider`,
+  `register` (runtime skills), `list`, `get`. Without it, each agent's
+  `skills` row keeps a private registry.
+- The `skills` row (in `standard`, `code`, `creator`) adds the `skill`
+  tool and, at the start of each turn, logs the catalog (names and
+  descriptions only) as a `user/message` with source `skill-catalog`
+  when it differs from the newest visible one. The catalog is in the
+  log, so requests still rebuild byte for byte. `/name rest` from a
+  human expands to the skill's instructions followed by `rest`.
+- Bodies are re-read on every load, so editing a skill takes effect on
+  the next call without a restart.
+
+Tests: `helioslm_v5/tests/test_hsh_skills.py` (6).
