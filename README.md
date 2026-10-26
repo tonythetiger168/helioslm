@@ -486,6 +486,7 @@ As of 2026-10-26:
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/evastar/CHANGELOG.md)):
 
+- **v5.158** — MoE dispatch excluded from torch.compile (`torch.compiler.disable`), so `--compile` works on the MoE pilot; L4: dense `--compile` +23% tokens/s — T152
 - **v5.155** — upstream's v5.154 pytest-only sidecar suites (TW2 zh-TW corpus T148, offline API accounting) folded into the daily TESTS registry via wrappers that pin the exact test-function set (upstream additions fail loudly until registered); `test_api_accounting.py` runs without pytest via a two-feature shim (parametrize no-op + raises match); `test_zhtw_corpus.py` UTF-8 read repairs for non-UTF-8 Windows locales — T149, T150
 - **v5.154** — Roadmap TW2: zh-TW pretraining corpus pipeline (`src/training/zhtw_corpus.py`, `examples/tw2_prepare_corpus.py`): zhwiki through OpenCC `s2twp`, FineWeb-2 `cmn_Hani` kept only when already Traditional, local data.gov.tw JSONL; exact + MinHash near-dup filter, per-source drop counts and Traditional share; attributed JSONL shards, sha256 manifest and `ATTRIBUTION.md` — T148
 - **v5.153** — `python -m helioslm_v5.tests.test_v5` (the daily-mandated gate) repaired after the v5.134 rename broke it (`_AliasLoader` lacked `get_code`, required by runpy); alias loader now serves code/source from the real evastar files, and the suite `main()` gains a `--list` probe (prints `TESTS=<count>`, exits 0) — T146, T147

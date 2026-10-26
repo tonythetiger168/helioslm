@@ -1,5 +1,7 @@
-# Evastar v5.155 - DeepSeek/K3-Style Architecture
+# Evastar v5.158 - DeepSeek/K3-Style Architecture
 
+v5.158 (2026-10-26): the MoE dispatch paths run eagerly under
+torch.compile (`torch.compiler.disable`), so `--compile` works on MoE.
 v5.155 (2026-10-26): the daily TESTS gate now covers v5.154's
 pytest-only sidecar suites (TW2 zh-TW corpus, offline API accounting)
 via drift-guarded wrappers; `test_api_accounting.py` runs without

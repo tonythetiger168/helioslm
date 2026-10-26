@@ -465,6 +465,12 @@ class DeviceLimitedMoE(nn.Module):
 
         return output.view(B, seq, H)
 
+    # v5.158: both dispatch paths (this and _dispatch_batched) are
+    # host-synced with data-dependent shapes (per-expert counts via
+    # .tolist()); torch.compile runs it eagerly (torch 2.8's dynamo failed
+    # with GuardOnDataDependentSymNode on the count loop) and compiles the
+    # rest of the layer.
+    @torch.compiler.disable
     def _dispatch_blocked(self, z, topk_indices, topk_gates):
         """Routed-expert output [N, D] (default "blocked" dispatch)."""
         N, D = z.shape
@@ -532,6 +538,7 @@ class DeviceLimitedMoE(nn.Module):
         return all(type(e.w13) is nn.Linear and type(e.w2) is nn.Linear
                    for e in self.experts)
 
+    @torch.compiler.disable
     def _dispatch_batched(self, z, topk_indices, topk_gates):
         """Routed-expert output [N, D] with all experts in two bmm calls.
 
