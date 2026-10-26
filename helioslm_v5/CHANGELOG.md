@@ -1,5 +1,25 @@
 # HeliosLM v5 Changelog
 
+## v5.166 (2026-10-26) - hsh H7: agent skills
+
+The hsh harness (`helioslm_v5/hsh/`, after DeepSeek Harness) had no skills:
+the upstream harness discovers `SKILL.md` folders, shows the model a
+catalog and loads full instructions with a `skill` tool. hsh now does the
+same, in the standard library only.
+
+- `helioslm_v5/hsh/skills.py` (new): frontmatter parser (no PyYAML),
+  `FilesystemSkills` provider over `.hsh/skills`, `.agents/skills`,
+  `.claude/skills`, custom dirs and `~/.hsh|.agents/skills`; `Skills`
+  registry (`ctx.skills`) layered by agent scope; the `skills` preset row:
+  `skill` tool, catalog logged as a `user/message` (source
+  `skill-catalog`) when it changes, `/name` expansion for user-invocable
+  skills.
+- `presets.py`: `skills` row in `standard` (and so `code`, `creator`).
+- `docs/HSH_HARNESS.md`: H7 section.
+
+Tests: `test_hsh_skills.py` (6 new), `test_hsh_presets.py` tool lists now
+include `skill`. All hsh tests: 88.
+
 ## v5.164 (2026-10-26) - Rename Evastar back to HeliosLM
 
 - The project's public name is **HeliosLM** again (Chinese name 羲和),

@@ -143,7 +143,7 @@ def test_presets_isolate_agents_and_persona(tmp_path):
     s = create_agent(ctx, "s", CFG, "standard")
     c = create_agent(ctx, "c", CFG, "creator")
     assert names(ctx, m) == ["bash", "str_replace_editor"]
-    assert names(ctx, s) == ["bash", "edit", "glob", "grep", "read", "subagent",
+    assert names(ctx, s) == ["bash", "edit", "glob", "grep", "read", "skill", "subagent",
                              "todo_write", "write"]
     assert "inspect" in names(ctx, c) and "inspect" not in names(ctx, s)
     assert ctx.tools.schemas() == []  # nothing leaked to the global scope
@@ -173,11 +173,11 @@ def test_patches(tmp_path):
                     {"disable": "tool-todo"}],
                    [{"remove": "tool-fs"}])
     assert [r["id"] for r in rows] == ["persona", "agent-instructions", "tool-bash", "ed",
-                                       "tool-todo", "tool-subagent", "compaction"]
+                                       "tool-todo", "tool-subagent", "skills", "compaction"]
     assert rows[0]["config"] == {"prefix": "P"} and rows[4]["disabled"]
     ctx = world(tmp_path)
     a = create_agent(ctx, "a", CFG, rows)
-    assert names(ctx, a) == ["bash", "str_replace_editor", "subagent"]
+    assert names(ctx, a) == ["bash", "skill", "str_replace_editor", "subagent"]
     for bad in ([{"remove": "nope"}], [{"insert": [{"id": "persona", "name": "persona"}]}],
                 [{"insert": [{"id": "z", "name": "no-such-plugin"}]}], [{"frobnicate": 1}]):
         with pytest.raises(PresetError):
