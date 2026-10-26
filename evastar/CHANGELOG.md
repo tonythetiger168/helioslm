@@ -21,6 +21,26 @@ On an RTX A5000 (torch 2.8, triton 3.4) flash-linear-attention 0.5.2's
 - T153 `test_kda_fla.py` (CPU, stand-in chunk_kda in FLA's layout):
   arguments, outputs, state and gradients equal the torch kernel; the
   autocast dtype; the fallbacks.
+## v5.159 (2026-10-26) - MoE compile under bf16 autocast
+
+Second GPU round (RTX A5000 24 GB, torch 2.8, pilot 8 x 1024, bf16):
+the MoE pilot with `--compile` still failed, now after the v5.158
+eager dispatch: the graph dynamo compiles for the code that resumes
+after `_dispatch_batched` ran without the caller's autocast, and an
+fp32 addmm got a bf16 input (`self and mat2 must have the same dtype,
+but got Float and BFloat16`, in the inductor code of that resume graph).
+
+- `DeviceLimitedMoE.forward` reads the autocast state before the
+  dispatch and runs the up projection and shared experts inside an
+  explicit `torch.autocast` with that state. Eager runs are unchanged
+  (the same autocast is entered again, or none).
+- T152: compiled vs eager loss under bf16 autocast.
+
+Same round, k3_llamacpp pilot with `--kda-recompute` (v5.157): 7,238
+tokens/s at 13.55 GB (no OOM), 7,161 at 11.06 GB with `--ce-chunk
+2048`, 13,342 at 10.25 GB with `--compile` (1.84x). FLA 0.5.2
+`chunk_kda` matches `chunked_delta_rule` (bf16, rel. error 4.6e-3) and
+is 20x faster forward, 28-48x forward + backward.
 
 ## v5.158 (2026-10-26) - MoE under torch.compile
 

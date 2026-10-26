@@ -6,6 +6,10 @@ dispatch. Both dispatch paths sync per-expert counts to the host and
 build data-dependent shapes, so they are excluded from compilation
 (``torch.compiler.disable``) and the rest of the layer is compiled.
 
+v5.159: the compiled graph that resumes after the eager dispatch ran
+without the caller's bf16 autocast on CUDA (an fp32 addmm got a bf16
+input); the rest of the layer now enters the caller's autocast again.
+
 Pins: the dispatch methods carry the disable marker, and a compiled
 model (dynamo with the eager backend, no inductor needed) gives the eager
 model's loss and gradients for every dispatch mode.
@@ -57,3 +61,18 @@ def test_compiled_equals_eager(dispatch):
             assert b.grad is None, n
         else:
             assert torch.allclose(a.grad, b.grad, atol=1e-6), n
+
+
+def test_compiled_under_bf16_autocast():
+    # v5.159: the graph after the eager dispatch must run under the
+    # caller's autocast (torch 2.8 on CUDA compiled it without).
+    torch._dynamo.reset()
+    cfg = pilot_config("moe", vocab_size=512, hidden_size=128, num_layers=2,
+                       intermediate_size=256, max_seq=128, moe_dispatch="batched")
+    torch.manual_seed(0)
+    eager = EvastarV5(cfg).train()
+    fwd = torch.compile(copy.deepcopy(eager), backend="eager")
+    ids = torch.randint(0, 512, (2, 48), generator=torch.Generator().manual_seed(1))
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        le, lc = _loss(eager, ids), _loss(fwd, ids)
+    assert torch.allclose(le, lc, atol=1e-6)
