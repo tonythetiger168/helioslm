@@ -167,6 +167,17 @@ def test_fallback_when_expert_is_converted(mode):
         assert torch.equal(blocked(x), batched(x))   # blocked path, bit equal
 
 
+def test_grouped_without_grouped_mm(monkeypatch):
+    # torch < 2.10 has no F.grouped_mm: "grouped" runs the batched GEMMs.
+    from evastar.src.moe import sigmoid_moe
+    cfg, blocked, grouped = _pair(mode="grouped")
+    monkeypatch.setattr(sigmoid_moe, "HAS_GROUPED_MM", False)
+    monkeypatch.delattr(sigmoid_moe.F, "grouped_mm", raising=False)
+    x = torch.randn(2, 10, cfg.hidden_size)
+    with torch.no_grad():
+        assert torch.allclose(blocked(x), grouped(x), atol=1e-5)
+
+
 def test_model_level():
     ids = torch.randint(3, 1000, (2, 24))
     outs = []
