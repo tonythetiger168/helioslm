@@ -6,9 +6,10 @@ dispatch. Both dispatch paths sync per-expert counts to the host and
 build data-dependent shapes, so they are excluded from compilation
 (``torch.compiler.disable``) and the rest of the layer is compiled.
 
-v5.159: the compiled graph that resumes after the eager dispatch ran
-without the caller's bf16 autocast on CUDA (an fp32 addmm got a bf16
-input); the rest of the layer now enters the caller's autocast again.
+v5.162: on CUDA, torch 2.8's inductor fused "fp32 routed output + bf16
+shared-expert down-projection" into one addmm with mixed dtypes (v5.159's
+explicit autocast did not avoid it); the shared output is now cast to the
+promoted dtype before the add, as eager promotes it.
 
 Pins: the dispatch methods carry the disable marker, and a compiled
 model (dynamo with the eager backend, no inductor needed) gives the eager
@@ -64,8 +65,7 @@ def test_compiled_equals_eager(dispatch):
 
 
 def test_compiled_under_bf16_autocast():
-    # v5.159: the graph after the eager dispatch must run under the
-    # caller's autocast (torch 2.8 on CUDA compiled it without).
+    # v5.159 / v5.162: compiled and eager agree under bf16 autocast.
     torch._dynamo.reset()
     cfg = pilot_config("moe", vocab_size=512, hidden_size=128, num_layers=2,
                        intermediate_size=256, max_seq=128, moe_dispatch="batched")

@@ -1,5 +1,32 @@
 # Evastar v5 Changelog
 
+## v5.162 (2026-10-26) - MoE compile: no mixed-dtype addmm
+
+Third GPU round (L4 22 GB, torch 2.8, fla 0.5.2, pilot 8 x 1024, bf16):
+the MoE pilot with `--compile` failed again, in the same inductor
+kernel: `addmm(primals_1, buf3, W^T)` with `primals_1` the fp32 routed
+output and `W` the bf16 shared-expert down-projection. Inductor had fused
+the residual add `output + shared(flat)` into the matmul although the
+two have different dtypes; v5.159's explicit autocast did not change
+that graph.
+
+- `DeviceLimitedMoE.forward`: each shared-expert output is cast to
+  `promote_types(output, shared)` before the add, the promotion eager
+  applies anyway (bit-identical eager results), so the add is no longer
+  fused into the bf16 matmul. The v5.159 autocast block is removed.
+
+Same round, k3_llamacpp pilot (tokens/s, peak GB):
+
+| run | tok/s | GB |
+|---|---|---|
+| `--kda-recompute --compile` | 8,293 | 10.30 |
+| `--kda-kernel fla` | 12,466 | 13.73 |
+| `--kda-kernel fla --compile` | 20,346 | 10.52 |
+| `--kda-kernel fla --batch 16 --auto-batch` (-> 8 x 2) | 12,438 | 20.39 |
+
+FLA vs `chunked_delta_rule` forward + backward on the L4: 4.8 vs 132 ms
+(B4 T1024), 11.1 vs 559 ms (B2 T4096).
+
 ## v5.161 (2026-10-26) - adaptive micro-batch, grouped-matmul fallback
 
 - `evastar/src/training/adaptive_batch.py`:
