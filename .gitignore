@@ -57,7 +57,7 @@ data/std_bench/full/
 # TW3 evaluation sets: local only, never redistributed (TW1 licence rule)
 data/tw_bench/
 
-# HDL bench cache (re-fetch: python -m evastar.eval.hdl_bench fetch)
+# HDL bench cache (re-fetch: python -m helioslm_v5.eval.hdl_bench fetch)
 data/hdl_bench/
 
 # Editor/backup leftovers

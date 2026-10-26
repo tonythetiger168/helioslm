@@ -21,7 +21,7 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.eval.calibration_board import (  # noqa: E402
+from helioslm_v5.eval.calibration_board import (  # noqa: E402
     build_board, render_markdown)
 
 DATE = "2026-10-15"

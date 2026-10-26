@@ -1,7 +1,6 @@
 ---
 license: apache-2.0
 tags:
-- evastar
 - helioslm
 - rlcd
 - calibrated-decisions
@@ -12,11 +11,11 @@ tags:
 pipeline_tag: text-generation
 ---
 
-# Evastar（恆星）— Verifiable DeepSeek-V3/V4 and Kimi-K3-Style LLM Architectures in Pure PyTorch
+# HeliosLM（羲和）— Verifiable DeepSeek-V3/V4 and Kimi-K3-Style LLM Architectures in Pure PyTorch
 
-> 中文名「恆星」：字面意思是「永恆的星」。本專案原名 HeliosLM，2026-10-24 改名；程式套件已改為 `evastar`，舊的 `import helioslm_v5`、`HeliosLMv5` 類別名和 `HELIOS_*` 環境變數仍可使用。標語「知止」（《大學》「知止而后有定」）：可驗證的機制，加上知道自己何時可能出錯、該停下來的決策層。
+> 中文名「羲和」：中國神話中駕日車的太陽神，對應希臘的 Helios。程式套件 `helioslm_v5`；2026-10-24 曾短暫改名 Evastar（v5.133–v5.163），舊的 `import evastar`、`EvastarV5` 類別名和 `EVASTAR_*` 環境變數仍可使用。標語「知止」（《大學》「知止而后有定」）：可驗證的機制，加上知道自己何時可能出錯、該停下來的決策層。
 
-**Every mechanism ships with an oracle test.** Evastar is a hackable, CPU-runnable reference for frontier LLM designs — MLA, sigmoid-gated MoE, hybrid linear attention, compressed sparse attention — plus a calibrated decision layer that measures whether a model knows when it is wrong.
+**Every mechanism ships with an oracle test.** HeliosLM is a hackable, CPU-runnable reference for frontier LLM designs — MLA, sigmoid-gated MoE, hybrid linear attention, compressed sparse attention — plus a calibrated decision layer that measures whether a model knows when it is wrong.
 
 A from-scratch PyTorch reference implementation of a modern LLM stack: MLA attention with weight absorption, sigmoid-gated MoE with auxiliary-loss-free load balancing, hybrid linear attention, speculative decoding, FP8 training, a DualPipe schedule simulation, a vLLM-style serving engine, a **verifiable agent layer** (strict tool schema, bitwise-replay oracle), DSA sparse attention, Mooncake-style prefill/decode disaggregation, and tool-tuned checkpoints. Built to be **read, modified, and verified** — every core path is unit-tested and many are checked with bitwise-equivalence tests. Everything runs on CPU.
 
@@ -33,7 +32,7 @@ A from-scratch PyTorch reference implementation of a modern LLM stack: MLA atten
 
 ## Who is this for?
 
-| You are... | What Evastar gives you |
+| You are... | What HeliosLM gives you |
 |---|---|
 | **A learner** who wants to understand MLA, MoE routing, DualPipe, speculative decoding | Annotated, review-hardened PyTorch with 120+ tests (T11-T75) that act as executable documentation |
 | **A researcher** who wants a stack to modify, ablate, and extend quickly | Single-process, CPU-iterable training + serving code — change one file, run one test |
@@ -51,7 +50,7 @@ azure-storage-blob pyttsx3 speech_recognition ultralytics transformers`
 ### Core (always available)
 | Plugin | Namespace | Key ops |
 |---|---|---|
-| ModelPlugin | `ctx.model.*` | mid (360M Evastar), qwen (Qwen3-0.6B) |
+| ModelPlugin | `ctx.model.*` | mid (360M HeliosLM), qwen (Qwen3-0.6B) |
 | ToolPlugin | `ctx.tools.*` | registry, impls (calc/str/file_read/file_write/finish) |
 | SessionPlugin | `ctx.session.*` | new (append-only, replay-verified) |
 | DecisionPlugin | `ctx.decision.*` | grounding, trust, prefetcher |
@@ -164,7 +163,7 @@ calibrated confidence on acting models, measured across three scales
   AUROC and beats the commercial Jev detector's zero-shot numbers on
   11/41 benchmarks. The open audit is 15x cheaper than the commercial
   detector it audits.
-- Evastar's policy-in-code route (GroundingGate, CalibratedPrefetcher)
+- HeliosLM's policy-in-code route (GroundingGate, CalibratedPrefetcher)
   is the engineering embodiment of the vendor's own finding: prompt
   engineering adds only +0.006 AUROC (p=0.055) -- retaining full
   probability and routing decisions in code is what works.
@@ -182,7 +181,7 @@ Canonical-Benchmark Comparison** — Chien-Hsin Lin, working draft 2026-10-03.
 
 **[📄 Read the PDF](docs/paper_draft_2026-10-03.pdf)** (7pp, figures included) ·
 [LaTeX source](docs/paper_draft_2026-10-03.tex) (arXiv-ready) ·
-[markdown](https://github.com/tonythetiger168/helioslm/blob/main/evastar/docs/paper_draft_2026-10-03.md) ·
+[markdown](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/docs/paper_draft_2026-10-03.md) ·
 [HF copy](https://huggingface.co/chienhsinlin/helioslm/tree/main/docs).
 (Looking for `paper.pdf`? The PDF ships under a dated filename —
 `docs/paper_draft_2026-10-03.pdf`; no file is literally named `paper.pdf`.)
@@ -254,7 +253,7 @@ ctx.robot.move_base(1.0, 0.0, 0.0)   # TrustGate-gated, effect-audited
 returns `Route.DIRECT` — `CLARIFY` and `ESCALATE` both block. The `full`
 preset wires a TrustGate; with a bare `Context`, register one yourself
 (`ctx.register("decision.trust", gate)`), or pass `terminal.run(cmd,
-gated=False)` to opt out explicitly. The web UI (`evastar/harness/web_ui_v2.py`)
+gated=False)` to opt out explicitly. The web UI (`helioslm_v5/harness/web_ui_v2.py`)
 binds to 127.0.0.1 and rejects requests with a non-loopback `Host`
 (DNS rebinding) or, on POST/PATCH/DELETE, a non-loopback `Origin`.
 
@@ -276,65 +275,65 @@ in `__post_init__` (no silent truncation).
 
 ```bash
 pip install -r requirements-ci.txt        # the exact CPU torch / numpy / pytest versions CI uses
-python -m evastar.tests.test_v5     # 92 unit tests (3 checkpoint-dependent tests self-skip without checkpoints/toy_v5.13.pt)
+python -m helioslm_v5.tests.test_v5     # 92 unit tests (3 checkpoint-dependent tests self-skip without checkpoints/toy_v5.13.pt)
 python integration_test_v51.py          # 9 end-to-end integration tests
-python -m evastar.tests.test_agent  # 9 agent-layer oracles (v5.23)
-python -m evastar.tests.test_v5_stage_a   # T15 real-model oracles (v5.26)
-python -m evastar.tests.test_v5_stage_b   # T17 tool-tuned end-to-end (v5.27)
-python -m evastar.tests.test_disagg_pareto  # T18 Pareto sweep oracles (v5.28)
-python evastar/tests/test_chat.py            # T20 chat capability oracles (v5.30)
-python evastar/tests/test_mhc.py             # T22 mHC oracles (v5.31)
-python evastar/tests/test_kv_compress.py     # T23 compressed-attention causality (v5.31)
-python evastar/tests/test_file_env.py        # T24 long-horizon env (v5.31)
-python evastar/tests/test_think.py           # T25 think + experience reuse (v5.31)
-python evastar/tests/test_async_grpo.py      # T26 async GRPO sync-parity (v5.31)
-python evastar/tests/test_decision.py        # T27 typed decision primitives (v5.32)
-python evastar/tests/test_decision_head.py   # T28 DecisionHead calibration (v5.32)
-python evastar/tests/test_v110_github_pg.py    # T52 GitHub/PostgreSQL plugin oracles (offline, mocked HTTP)
-python evastar/tests/test_web_ui_v2.py         # T75 harness web UI v2 contract (stdlib-only UI, Host/Origin checks)
-python evastar/tests/test_trust_gate_clarify.py # T86 TrustGate CLARIFY three-state routing (v5.53)
-python evastar/tests/test_review_fixes.py       # T87 review fixes: deferred validation, fail-closed gates, calc faults
-python evastar/tests/test_calibration_board.py  # T88 calibration leaderboard: metric oracles + byte-exact board rebuild
-python evastar/tests/test_std_bench.py          # T89 GSM8K/HumanEval harness: provenance, sandbox, reference gates, mock API run
-python evastar/tests/test_term_bench.py         # T90 terminal sandbox tasks: references, trap rejection, sandbox limits, mock agent run
-python evastar/tests/test_k3_block.py           # T91 K3 block preset: Gated MLA bitwise oracle, K3 layer order, decode == full
-python evastar/tests/test_csa.py                # T92 CSA compress-then-select: dense reduction, slow-reference equality, V4 stack preset
-python evastar/tests/test_csa_learned.py        # T93 CSA learned compressor: starts as mean pooling, masked softmax, stored-weight re-evaluation
-python evastar/tests/test_csa_learned_h64.py    # T94 learned compressor round 2: 16x re-evaluation, oracle ceiling, artifact-sized --check
-python evastar/tests/test_csa_learned_r3.py     # T95 learned compressor round 3: 4x re-evaluation beats round 2, relu2 option
-python evastar/tests/test_mimo_hybrid.py        # T96 MiMo 5:1 sliding/global interleave + learnable sink: defaults, sink math, decode == full, recall artifact
-python evastar/tests/test_swe_bench.py          # T97 mini SWE tasks: per-task fix/untouched/trap gates, grading guards, episode row
-python evastar/tests/test_stop_calibration.py   # T98 知止 stop metrics: false DONE, tested-before-done, trap = false DONE
-python evastar/tests/test_tool_recovery.py      # T99 tool-call recovery: 7 repairs, never-repaired classes, 3000-case fuzz
-python evastar/tests/test_swe_agent_rl.py       # T100 agent RL on the SWE sandbox: GRPO action_mask, env semantics, rollouts
-python evastar/tests/test_qwen_next.py          # T101 Qwen Q1-Q5: GDA short conv, zero-centered norm, global-batch balance, preset, MTP gate
-python evastar/tests/test_grpo_u1.py           # T102 U1 GRPO options: defaults bit-identical, token-level loss, filtering, TIS, clip-higher
-python evastar/tests/test_first_k_dense.py      # T103 B2-3 dense first layers: default unchanged, layout, decode == full, routing stats exclude dense
-python evastar/tests/test_mhc_sinkhorn.py       # T104 B2-4 learnable mHC: identity at init, doubly stochastic always, HC branch-fold regression
-python evastar/tests/test_mtp_light.py          # T105 B2-5 light MTP: default unchanged, window mask oracle, receptive field, A/B artifact
-python evastar/tests/test_clamped_swiglu.py     # T106 U5 gpt-oss clamped SwiGLU: defaults unchanged, reference match, activation bound
-python evastar/tests/test_nope_temperature.py   # T107 U3 Llama 4 NoPE temperature: formula, short-context identity, decode == full, A/B artifact
-python evastar/tests/test_global_prope_kv.py    # T108 U4 Gemma 4 p-RoPE + global K=V: defaults identical, identity dims, only global layers, shared V cache
-python evastar/tests/test_kv_share.py           # T109 U6 cross-layer KV sharing: defaults identical, manual-attention oracle, aliased cache (L-N)/L, decode == full, ppl A/B artifact
-python evastar/tests/test_option_matrix.py      # T110 option matrix: every pair of 28 feature options builds with decode == full or is rejected by OPTION_RULES; core modules read config fields directly
-python evastar/tests/test_smebu_sandwich.py     # T111 U7 Arcee Trinity: SMEBU oracle, bounded steps, sandwich-norm gain 1/sqrt(L) + layer oracle, A/B artifact
-python evastar/tests/test_thinking_budget.py    # T112 U2 thinking budget: forced close at exactly b tokens (greedy + sampled), no reopen, truncation helpers, A/B artifact
-python evastar/tests/test_repo_longctx.py       # T113 AC4 repo-scale probe: task generator, causality of every arm, all-SWA receptive-field oracle, A/B artifact
-python evastar/tests/test_zh_tokenizer_coverage.py  # T114 TW4 zh-TW tokenizer coverage: held-out split and leak check, UTF-8 / char-toy oracles, report artifact
-python evastar/tests/test_mopd.py               # T115 B2-6 MOPD: expected gradient = reverse-KL gradient, self-distillation zero, TROPD bound, routing, action mask, probe artifact
-python evastar/tests/test_quantile_balancing.py  # T116 Stable LatentMoE: K3 Quantile Balancing — histogram quantile, fixed-batch convergence, centring, summed-rank histograms, A/B artifact
-python evastar/tests/test_csa_learned_16x.py   # T117 16x CSA compressor by 4x->16x curriculum: state transfer, fine-tuned and zero-shot slices, ordering up to the oracle ceiling
-python evastar/tests/test_zh_train_speed.py    # T118 Chinese training speed: Big5/GB2312 seed lists, seeded BPE single tokens, bits-per-char metric, speed artifact
-python -m pytest evastar/tests/ -q --ignore=evastar/tests/test_v5.py  # full pytest suite (396 tests)
-python -m pytest evastar/tests/ -q -n 4 --ignore=evastar/tests/test_v5.py  # what CI runs: pytest + test_v5.py's 93 cases (test_v5_cases.py) on 4 workers, about 4 min
+python -m helioslm_v5.tests.test_agent  # 9 agent-layer oracles (v5.23)
+python -m helioslm_v5.tests.test_v5_stage_a   # T15 real-model oracles (v5.26)
+python -m helioslm_v5.tests.test_v5_stage_b   # T17 tool-tuned end-to-end (v5.27)
+python -m helioslm_v5.tests.test_disagg_pareto  # T18 Pareto sweep oracles (v5.28)
+python helioslm_v5/tests/test_chat.py            # T20 chat capability oracles (v5.30)
+python helioslm_v5/tests/test_mhc.py             # T22 mHC oracles (v5.31)
+python helioslm_v5/tests/test_kv_compress.py     # T23 compressed-attention causality (v5.31)
+python helioslm_v5/tests/test_file_env.py        # T24 long-horizon env (v5.31)
+python helioslm_v5/tests/test_think.py           # T25 think + experience reuse (v5.31)
+python helioslm_v5/tests/test_async_grpo.py      # T26 async GRPO sync-parity (v5.31)
+python helioslm_v5/tests/test_decision.py        # T27 typed decision primitives (v5.32)
+python helioslm_v5/tests/test_decision_head.py   # T28 DecisionHead calibration (v5.32)
+python helioslm_v5/tests/test_v110_github_pg.py    # T52 GitHub/PostgreSQL plugin oracles (offline, mocked HTTP)
+python helioslm_v5/tests/test_web_ui_v2.py         # T75 harness web UI v2 contract (stdlib-only UI, Host/Origin checks)
+python helioslm_v5/tests/test_trust_gate_clarify.py # T86 TrustGate CLARIFY three-state routing (v5.53)
+python helioslm_v5/tests/test_review_fixes.py       # T87 review fixes: deferred validation, fail-closed gates, calc faults
+python helioslm_v5/tests/test_calibration_board.py  # T88 calibration leaderboard: metric oracles + byte-exact board rebuild
+python helioslm_v5/tests/test_std_bench.py          # T89 GSM8K/HumanEval harness: provenance, sandbox, reference gates, mock API run
+python helioslm_v5/tests/test_term_bench.py         # T90 terminal sandbox tasks: references, trap rejection, sandbox limits, mock agent run
+python helioslm_v5/tests/test_k3_block.py           # T91 K3 block preset: Gated MLA bitwise oracle, K3 layer order, decode == full
+python helioslm_v5/tests/test_csa.py                # T92 CSA compress-then-select: dense reduction, slow-reference equality, V4 stack preset
+python helioslm_v5/tests/test_csa_learned.py        # T93 CSA learned compressor: starts as mean pooling, masked softmax, stored-weight re-evaluation
+python helioslm_v5/tests/test_csa_learned_h64.py    # T94 learned compressor round 2: 16x re-evaluation, oracle ceiling, artifact-sized --check
+python helioslm_v5/tests/test_csa_learned_r3.py     # T95 learned compressor round 3: 4x re-evaluation beats round 2, relu2 option
+python helioslm_v5/tests/test_mimo_hybrid.py        # T96 MiMo 5:1 sliding/global interleave + learnable sink: defaults, sink math, decode == full, recall artifact
+python helioslm_v5/tests/test_swe_bench.py          # T97 mini SWE tasks: per-task fix/untouched/trap gates, grading guards, episode row
+python helioslm_v5/tests/test_stop_calibration.py   # T98 知止 stop metrics: false DONE, tested-before-done, trap = false DONE
+python helioslm_v5/tests/test_tool_recovery.py      # T99 tool-call recovery: 7 repairs, never-repaired classes, 3000-case fuzz
+python helioslm_v5/tests/test_swe_agent_rl.py       # T100 agent RL on the SWE sandbox: GRPO action_mask, env semantics, rollouts
+python helioslm_v5/tests/test_qwen_next.py          # T101 Qwen Q1-Q5: GDA short conv, zero-centered norm, global-batch balance, preset, MTP gate
+python helioslm_v5/tests/test_grpo_u1.py           # T102 U1 GRPO options: defaults bit-identical, token-level loss, filtering, TIS, clip-higher
+python helioslm_v5/tests/test_first_k_dense.py      # T103 B2-3 dense first layers: default unchanged, layout, decode == full, routing stats exclude dense
+python helioslm_v5/tests/test_mhc_sinkhorn.py       # T104 B2-4 learnable mHC: identity at init, doubly stochastic always, HC branch-fold regression
+python helioslm_v5/tests/test_mtp_light.py          # T105 B2-5 light MTP: default unchanged, window mask oracle, receptive field, A/B artifact
+python helioslm_v5/tests/test_clamped_swiglu.py     # T106 U5 gpt-oss clamped SwiGLU: defaults unchanged, reference match, activation bound
+python helioslm_v5/tests/test_nope_temperature.py   # T107 U3 Llama 4 NoPE temperature: formula, short-context identity, decode == full, A/B artifact
+python helioslm_v5/tests/test_global_prope_kv.py    # T108 U4 Gemma 4 p-RoPE + global K=V: defaults identical, identity dims, only global layers, shared V cache
+python helioslm_v5/tests/test_kv_share.py           # T109 U6 cross-layer KV sharing: defaults identical, manual-attention oracle, aliased cache (L-N)/L, decode == full, ppl A/B artifact
+python helioslm_v5/tests/test_option_matrix.py      # T110 option matrix: every pair of 28 feature options builds with decode == full or is rejected by OPTION_RULES; core modules read config fields directly
+python helioslm_v5/tests/test_smebu_sandwich.py     # T111 U7 Arcee Trinity: SMEBU oracle, bounded steps, sandwich-norm gain 1/sqrt(L) + layer oracle, A/B artifact
+python helioslm_v5/tests/test_thinking_budget.py    # T112 U2 thinking budget: forced close at exactly b tokens (greedy + sampled), no reopen, truncation helpers, A/B artifact
+python helioslm_v5/tests/test_repo_longctx.py       # T113 AC4 repo-scale probe: task generator, causality of every arm, all-SWA receptive-field oracle, A/B artifact
+python helioslm_v5/tests/test_zh_tokenizer_coverage.py  # T114 TW4 zh-TW tokenizer coverage: held-out split and leak check, UTF-8 / char-toy oracles, report artifact
+python helioslm_v5/tests/test_mopd.py               # T115 B2-6 MOPD: expected gradient = reverse-KL gradient, self-distillation zero, TROPD bound, routing, action mask, probe artifact
+python helioslm_v5/tests/test_quantile_balancing.py  # T116 Stable LatentMoE: K3 Quantile Balancing — histogram quantile, fixed-batch convergence, centring, summed-rank histograms, A/B artifact
+python helioslm_v5/tests/test_csa_learned_16x.py   # T117 16x CSA compressor by 4x->16x curriculum: state transfer, fine-tuned and zero-shot slices, ordering up to the oracle ceiling
+python helioslm_v5/tests/test_zh_train_speed.py    # T118 Chinese training speed: Big5/GB2312 seed lists, seeded BPE single tokens, bits-per-char metric, speed artifact
+python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite (396 tests)
+python -m pytest helioslm_v5/tests/ -q -n 4 --ignore=helioslm_v5/tests/test_v5.py  # what CI runs: pytest + test_v5.py's 93 cases (test_v5_cases.py) on 4 workers, about 4 min
 ```
 
 ```python
 import torch
-from evastar.configs.config_v5 import EvastarV5Config
-from evastar.src.model_v5 import EvastarV5
+from helioslm_v5.configs.config_v5 import HeliosLMv5Config
+from helioslm_v5.src.model_v5 import HeliosLMv5
 
-model = EvastarV5(EvastarV5Config(size="lite"))   # CPU-friendly
+model = HeliosLMv5(HeliosLMv5Config(size="lite"))   # CPU-friendly
 out = model.generate(torch.tensor([[1, 2, 3]]), max_new_tokens=20, temperature=0)
 print(out)
 # tensor([[  1,   2,   3, 754, 754, 754, 754, 754, 754, 754, 666, 136, ...]])
@@ -353,7 +352,7 @@ print(out)
 | **Chat** | v5.30: dual-mode protocol (plain text OR @@tool@@ block; text bypasses the gate, gate governs tools only), multi-turn ChatSession with transcript replay, chat SFT data with inference-identical prompts; v5.30.2 fixed a dataset filter bias that had hidden the text channel (mode-choice: text 11/20) — T20/T21 |
 | **Frontier references** | v5.31: five readable toy-scale references distilled from the 2026 frontier — manifold-constrained hyper-connections (DS-V4), HCA/CSA-style compressed attention with exact causality, long-horizon file env (8-14 steps), think-mode + experience reuse (Qwen3-Max direction), async GRPO with bitwise sync-parity (GLM-5 direction) — T22-T26 |
 | **Decision layer** | v5.32: typed decision primitives Choice/Score/Noul (System One / Jev direction) with schema enforcement, gate ask/ask_batch extension point, non-autoregressive DecisionHead answering K questions in one pass, outcome-targeted Brier calibration (RLCD direction; the label-targeted variant is provably redundant with CE — recorded) — T27/T28 ; v5.36 continuous Noul (P(yes), floor retired); v5.34 deterministic grounding (0/12 -> 9/12 + 3 abstained on a real 360M checkpoint, zero hallucination leakage); v5.37 TrustGate calibrated abstention + TherapyPair composition (trust is f(state, intervention) — 8.4x measured contrast); v5.38 RLCDAlignBench: our supervised TF-IDF readout median 0.726 AUROC, beats the commercial Jev detector's zero-shot numbers on 11/41 benchmarks (charts in benchmarks/charts/) — T27-T39 |
-| **Benchmarks** | Top-10 LLM position paper with verified leaderboard data and the calibration/replay axes no vendor publishes (`evastar/docs/benchmark_top5_2026-09-27.md`); probe suite (toy + file-env + chat) with scripted oracles, runnable against any API |
+| **Benchmarks** | Top-10 LLM position paper with verified leaderboard data and the calibration/replay axes no vendor publishes (`helioslm_v5/docs/benchmark_top5_2026-09-27.md`); probe suite (toy + file-env + chat) with scripted oracles, runnable against any API |
 | **Disaggregation** | v5.25 Mooncake-style prefill/decode module behind a monotonicity gate; v5.28 three-axis **Pareto sweep** (makespan / workers / worker-seconds) with latency-cost curves per workload — cache-aware anti-monotonicity recorded as a structural finding, not hidden |
 | **Speculative decoding** | DeepSeek-style MTP with **strict verification** (residual (p−q)₊ resampling), batch support, O(1) cache-truncation rollback; hybrid recurrent-state rollback via restore+replay. |
 | **Serving** | vLLM-style engine: paged KV accounting, copy-on-write forks, watermark-aligned continuous batching. |
@@ -366,12 +365,12 @@ print(out)
 | **Expert streaming** | `expert_store.py`: routed experts tiered to a memory-mapped file, LRU residency with hit/miss/eviction telemetry; streaming forward is bitwise-identical to dense (oracle-verified, roadmap #6) |
 | **Toy checkpoints** | `checkpoints/toy_v5.13.pt` — 8.5M char-level model trained on the repo's own source in ~10 CPU-minutes (`examples/train_toy_checkpoint.py`); `checkpoints/tool_tuned_v5.27.pt` — tool-tuned on agent-loop replays (`examples/train_tool_tuned.py`, periodic save + resume); `generate()` / harness / MTP / agent loop run against trained weights |
 | **Quantization** | **True GPTQ** (Hessian OBS with error compensation, optional act-order), AWQ with activation-aware grid search, native FP8, MXFP4 — all with `from_linear` real-weight packing. QAT fake-quant training (STE) targets: MXFP4, AWQ, and NVFP4 (E2M1×16 + E4M3 block scales, local-line v5.22-L). |
-| **Eval** | Log-likelihood harness (`evastar/eval/harness.py`): `loglikelihood` / `multiple_choice` / `run_harness` + built-in synthetic tasks (v5.11), token-id based, lm-eval-harness spirit |
+| **Eval** | Log-likelihood harness (`helioslm_v5/eval/harness.py`): `loglikelihood` / `multiple_choice` / `run_harness` + built-in synthetic tasks (v5.11), token-id based, lm-eval-harness spirit |
 | **Multimodal** | NaViT vision encoder (row/col position decomposition, mixed-resolution packing), streaming audio encoder (causal, sliding-window memory, bit-equivalent to one-shot). |
 
-## Why Evastar vs. alternatives?
+## Why HeliosLM vs. alternatives?
 
-| | Evastar | `transformers` | `vLLM` | nanoGPT-style |
+| | HeliosLM | `transformers` | `vLLM` | nanoGPT-style |
 |---|---|---|---|---|
 | Purpose | Understand + hack the full stack | Run pre-trained models | Max serving throughput | Learn basics |
 | Runs on CPU end-to-end | ✅ | partial | ❌ | ✅ |
@@ -402,18 +401,18 @@ bit-exact).
 **v5.28 serving Pareto** (`benchmarks/disagg_pareto_2026-09-25.json`, regenerate via
 `python examples/disagg_pareto.py`): latency-cost curves for cache-heavy / cold / mixed
 workloads — the cost-axis alignment artifact, see
-[docs/benchmark_alignment.md](https://github.com/tonythetiger168/helioslm/blob/main/evastar/docs/benchmark_alignment.md).
+[docs/benchmark_alignment.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/docs/benchmark_alignment.md).
 
 ## Repository layout
 
 ```
-evastar/          # source (configs, src/{attention,moe,inference,training,vision,audio,quantization}, agent/, tests)
+helioslm_v5/          # source (configs, src/{attention,moe,inference,training,vision,audio,quantization}, agent/, tests)
 examples/             # train_toy_checkpoint.py, train_tool_tuned.py (v5.27), disagg_pareto.py (v5.28)
 benchmarks/           # CPU bench results + disagg_pareto_2026-09-25.json (v5.28 artifact)
 docs/                 # code review reports, benchmark_alignment.md, k3_alignment_targets(.md/.csv),
                       # competitive_intel_2026-09-25.md (+ raw claims CSV), helioslm_handoff.md
 integration_test_v51.py
-evastar/CHANGELOG.md  # full version history (v5.0 → latest)
+helioslm_v5/CHANGELOG.md  # full version history (v5.0 → latest)
 ```
 
 ## Roadmap
@@ -425,7 +424,7 @@ See the [GitHub Project board](https://github.com/tonythetiger168/helioslm/proje
 - [x] Fused quantization kernels (v5.11; measured in v5.84)
 - [x] CUDA end-to-end verification: `cuda_smoke.py` 23/23 on an RTX 6000 Ada (v5.91)
 - [x] Hugging Face Hub: `chienhsinlin/helioslm-agent` hosts the agent layer + tool-tuned artifacts
-- [ ] Example notebooks: "Train a tiny Evastar on your laptop" / "Add a new attention variant in 30 lines"
+- [ ] Example notebooks: "Train a tiny HeliosLM on your laptop" / "Add a new attention variant in 30 lines"
 
 ## Contributing
 
@@ -452,7 +451,7 @@ As of 2026-10-26:
 
 - **Test gate after the rename (v5.153):** `python -m helioslm_v5.tests.test_v5`
   failed after the v5.134 rename because the alias loader had no `get_code`;
-  it now serves the real `evastar` files, and the suite gains a `--list` probe.
+  it now serves the real `helioslm_v5` files, and the suite gains a `--list` probe.
 - **Daily gate covers every suite (v5.155):** the zh-TW corpus, API
   accounting and MoE dispatch tests used to run only under pytest; the daily
   `test_v5` gate now runs them too and fails if a new test is not registered.
@@ -484,8 +483,9 @@ As of 2026-10-26:
 
 ## Version history
 
-Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/evastar/CHANGELOG.md)):
+Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.164** — Name back to HeliosLM（羲和）: `helioslm_v5` is the real package again, `HeliosLMv5*` classes and `HELIOS_*` env vars are primary; `import evastar`, `EvastarV5*` and `EVASTAR_*` keep working as aliases
 - **v5.163** — `pilot_100m.py --kda-kernel` defaults to `fla` (torch kernel off CUDA / without fla)
 - **v5.162** — MoE shared-expert outputs cast to the routed dtype before the add (torch 2.8 inductor fused a mixed-dtype addmm under `--compile`); L4: k3 pilot `--kda-kernel fla --compile` 20.3k tokens/s (2.45x recompute + compile)
 - **v5.161** — `get_adaptive_batch_size` / `fit_micro_batch` (pilot `--auto-batch`, halves the micro-batch on CUDA OOM at equal tokens per step); `safe_grouped_matmul` with an order-keeping fallback without `F.grouped_mm` — T154
@@ -496,7 +496,7 @@ Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/hel
 - **v5.156** — `moe.dispatch="grouped"` runs the batched GEMMs on a torch without `F.grouped_mm` (< 2.10) instead of failing; first L4 MFU numbers in the CHANGELOG
 - **v5.155** — upstream's v5.154 pytest-only sidecar suites (TW2 zh-TW corpus T148, offline API accounting) folded into the daily TESTS registry via wrappers that pin the exact test-function set (upstream additions fail loudly until registered); `test_api_accounting.py` runs without pytest via a two-feature shim (parametrize no-op + raises match); `test_zhtw_corpus.py` UTF-8 read repairs for non-UTF-8 Windows locales — T149, T150
 - **v5.154** — Roadmap TW2: zh-TW pretraining corpus pipeline (`src/training/zhtw_corpus.py`, `examples/tw2_prepare_corpus.py`): zhwiki through OpenCC `s2twp`, FineWeb-2 `cmn_Hani` kept only when already Traditional, local data.gov.tw JSONL; exact + MinHash near-dup filter, per-source drop counts and Traditional share; attributed JSONL shards, sha256 manifest and `ATTRIBUTION.md` — T148
-- **v5.153** — `python -m helioslm_v5.tests.test_v5` (the daily-mandated gate) repaired after the v5.134 rename broke it (`_AliasLoader` lacked `get_code`, required by runpy); alias loader now serves code/source from the real evastar files, and the suite `main()` gains a `--list` probe (prints `TESTS=<count>`, exits 0) — T146, T147
+- **v5.153** — `python -m helioslm_v5.tests.test_v5` (the daily-mandated gate) repaired after the v5.134 rename broke it (`_AliasLoader` lacked `get_code`, required by runpy); alias loader now serves code/source from the real helioslm_v5 files, and the suite `main()` gains a `--list` probe (prints `TESTS=<count>`, exits 0) — T146, T147
 - **v5.152** — `cpt_hf.py --ce-chunk N`: route-B continued pretraining without the full [tokens, vocab] logits (4.3 GB fp32 per 4096-token micro-batch at Gemma's 262k vocab): `logits_to_keep=1` + last hidden state through the DDP wrapper, chunked head + CE with the final soft cap; checked against the full loss on one window before training — T145
 - **v5.149** — `moe.dispatch="grouped"` (`--moe-dispatch grouped`): routed experts as two `F.grouped_mm` calls over the expert-sorted rows, no capacity padding; same outputs and gradients as blocked / batched; CPU fp32 fwd+bwd 1.43x faster than batched (4096 tokens, 16 experts); default stays batched until a GPU measurement
 - **v5.148** — Local deployment packages per tier (`package_tier`, `examples/package_tiers.py`): each of L-Edge / L8 / L16 / L24 / L48+ gets its GGUF files, an Ollama Modelfile, llama.cpp commands and a manifest (sizes, sha256, fits the tier's memory); pilot packages load and run in llama.cpp f5027fb — T142
@@ -512,7 +512,7 @@ Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/hel
 - **v5.137** — Route B pilot B0: `examples/fetch_mixture.py` (licence-checked, filtered uint32 shards per mixture source), `examples/cpt_hf.py` (WSD continued pretraining of a Hugging Face base with DDP and a `--max-hours` stop), `examples/pilot_b0_pod.sh` (one pod: base-gap eval, Gemma 4 E2B pilot on 3B tokens, pilot eval; runbook `docs/PILOT_B0.md`) — T134
 - **v5.135** — Text in for llama.cpp / Ollama: `export_llamacpp_gguf(..., tokenizer="tokenizer.json")` embeds the pretraining byte-level BPE as llama.cpp's `gpt2` vocabulary (`gpt-2` pre-tokenizer); llama.cpp f5027fb gives the same ids on 320 mixed zh-TW / code / emoji / whitespace samples and the same greedy continuations; tokenizers it would split differently are refused — T133
 - **v5.132** — Windows `test_sandbox_limits` repair (Git Bash /c/... path form), CI "LF guard" step (no CRLF blobs in tracked text files), `model_name` never-ahead-of-changelog lock; 3 new locks in `tests/case_harness_repair.py`
-- **v5.130** — llama.cpp-runnable GGUF: `export_llamacpp_gguf` writes llama.cpp's `deepseek2` architecture (MLA as MQA, sigmoid MoE with shared experts, RoPE rows reordered) and `llamacpp_incompatibilities` lists the features it cannot express (KDA, NoPE, cross-layer KV, LatentMoE, LB8 PLE, LB9 conv, ...); f32/f16 logits match Evastar in llama.cpp f5027fb; token-id input only, tokenizer is a follow-up — T131
+- **v5.130** — llama.cpp-runnable GGUF: `export_llamacpp_gguf` writes llama.cpp's `deepseek2` architecture (MLA as MQA, sigmoid MoE with shared experts, RoPE rows reordered) and `llamacpp_incompatibilities` lists the features it cannot express (KDA, NoPE, cross-layer KV, LatentMoE, LB8 PLE, LB9 conv, ...); f32/f16 logits match HeliosLM in llama.cpp f5027fb; token-id input only, tokenizer is a follow-up — T131
 - **v5.129** — Route B base-gap eval: `examples/base_gap_eval.py` scores `google/gemma-4-E4B` and four Taiwanese reference models on TMMLU+ / TW-JusticeBench / C-Eval / CMMLU with one scorer and reports paired-bootstrap gaps (`tw_bench.hf_score_fn`, `tw_bench_run.py --hf`; runbook `docs/BASE_GAP_EVAL.md`) — T132
 - **v5.127** — Route B: continued-pretraining plan on `google/gemma-4-E4B` (Apache-2.0) on Taiwanese data (`docs/CPT_PLAN_B.md`; `cpt_plan.py` cost model, B1 ≈ US$3.8k / 1,360 H100-h, E2B pilot ≈ US$200; `prereg/b1.0.json`; CPT mixture; uint32 token shards) — T130
 - **v5.126** — LB9: LFM2-style gated short-convolution layers (`attention/gated_conv.py` `GatedShortConv`, `gated_conv_layers` / `gated_conv_kernel`, fixed-size StateTensor cache; pilot arch `lfm_conv`) — T129
@@ -576,7 +576,7 @@ Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/hel
 - **v5.29** — Three-mode benchmark on the real checkpoint (direct/routed/oracle): tau-routing curve strictly monotone (v5.22 gate PASS on real confidence); headline finding = systematic overconfidence on wrong answers (conf 0.944) — the exact failure class the v5.22 audit toolkit measures
 - **v5.28** — Cost-axis alignment: disagg three-axis Pareto sweep (latency-cost curves per workload; cache-aware anti-monotonicity recorded as structural finding)
 - **v5.27** — Tool-tuned checkpoint: agent-loop-replay training, T17 end-to-end (parse 0.15/finish 1/9 baseline, regression-guard floors), sparse_top_k=4 ~= dense in agent inference; agent hardened (TOOL_ERROR recovery, ASCII-safe docs)
-- **v5.26** — Stage A real-model oracles (T15): zero-gate attention residuals bitwise-verified on EvastarV5; sparse top-k decode oracle (k≥L bit-identical, selection validity + determinism); agent-loop smoke on the real toy checkpoint
+- **v5.26** — Stage A real-model oracles (T15): zero-gate attention residuals bitwise-verified on HeliosLMv5; sparse top-k decode oracle (k≥L bit-identical, selection validity + determinism); agent-loop smoke on the real toy checkpoint
 - **v5.25** — Disagg evolver module: Mooncake-style prefill/decode separation as a HarnessEvolver search module, monotonicity gate, three-axis Pareto (makespan / workers / worker-seconds)
 - **v5.24** — Attention variants with two-layer oracles: DSA sparse decode (fp32 certificate ⇒ fp64 gate), AttnRes mixing (zero-init ⇒ bitwise migration gate)
 - **v5.23** — Agent layer: strict tool-call schema + parser, deterministic sandboxed tools, trajectory bitwise-replay oracle, ground-truth-by-construction envs, routing gates in the agent loop
@@ -607,18 +607,18 @@ Apache License 2.0 — see [LICENSE](https://github.com/tonythetiger168/helioslm
 <!-- HELIOSLM_PRODUCT_ROADMAP_START -->
 ## Product roadmap (proposed; not a release claim)
 
-> **Planning baseline: October 2026.** This roadmap describes **future product generations**, not the existing `evastar` Python package, historical v5.x research iterations, or harness plugin releases. The current repository is primarily a correctness-focused reference implementation. None of the model sizes below should be interpreted as already-trained checkpoints or committed delivery dates. Promotion requires benchmark, reproducibility, security and budget gates.
+> **Planning baseline: October 2026.** This roadmap describes **future product generations**, not the existing `helioslm_v5` Python package, historical v5.x research iterations, or harness plugin releases. The current repository is primarily a correctness-focused reference implementation. None of the model sizes below should be interpreted as already-trained checkpoints or committed delivery dates. Promotion requires benchmark, reproducibility, security and budget gates.
 
 ### Vision and product portfolio
 
-Evastar aims to evolve from a verifiable, modifiable LLM research stack into an independent model and agent platform. Commercial rollout priority: **Evastar Code → Evastar Cloud → Evastar Enterprise → Frontier research commercialization**.
+HeliosLM aims to evolve from a verifiable, modifiable LLM research stack into an independent model and agent platform. Commercial rollout priority: **HeliosLM Code → HeliosLM Cloud → HeliosLM Enterprise → Frontier research commercialization**.
 
 | Product | Audience | Proposed offering |
 | --- | --- | --- |
-| **Evastar Models** | Researchers and developers | Open research components, independent model weights when trained and licensed, SDK and inference |
-| **Evastar Code** | Software engineers and teams | Auditable GitHub coding agent, sandboxed tools, tests, patch review and rollback |
-| **Evastar Cloud** | AI application builders | Model-serving API, routing, metering, monitoring and usage-based billing |
-| **Evastar Enterprise** | Organizations | Private deployment, RBAC, audit trails, enterprise integrations and support |
+| **HeliosLM Models** | Researchers and developers | Open research components, independent model weights when trained and licensed, SDK and inference |
+| **HeliosLM Code** | Software engineers and teams | Auditable GitHub coding agent, sandboxed tools, tests, patch review and rollback |
+| **HeliosLM Cloud** | AI application builders | Model-serving API, routing, metering, monitoring and usage-based billing |
+| **HeliosLM Enterprise** | Organizations | Private deployment, RBAC, audit trails, enterprise integrations and support |
 
 ### Six proposed product generations and parameter targets
 
@@ -626,12 +626,12 @@ Evastar aims to evolve from a verifiable, modifiable LLM research stack into an 
 
 | Product generation | Target model | Total parameters | Active parameters / token | Architecture | Proposed deliverable |
 | --- | --- | ---: | ---: | --- | --- |
-| **v1.0 — Foundation** | Evastar Lite | **0.5B** | 0.5B | Dense | Reproducible training/inference, CLI, tests, developer preview |
-| **v2.0 — Training & API** | Evastar Base | **3B** | 3B | Dense | Data pipeline, SFT/LoRA, checkpoints, evaluation, SDK/API |
-| **v3.0 — Advanced MoE / Code** | Evastar MoE | **30B** | ~3B | MoE | Expert routing, quantized serving, Evastar Code beta |
-| **v4.0 — Reasoning / Cloud** | Evastar Reasoner | **100B** | ~10B | MoE | Reasoning, coding agent, cloud API, metering and safety gates |
-| **v5.0 — Pro / Enterprise** | Evastar Pro | **300B** | ~20B | MoE | Multimodal/long-context R&D, enterprise pilot, distributed serving |
-| **v6.0 — Frontier** | Evastar Frontier | **1T (1,000B)** | ~40B | MoE | Frontier research candidate; competitive performance on defined evaluations |
+| **v1.0 — Foundation** | HeliosLM Lite | **0.5B** | 0.5B | Dense | Reproducible training/inference, CLI, tests, developer preview |
+| **v2.0 — Training & API** | HeliosLM Base | **3B** | 3B | Dense | Data pipeline, SFT/LoRA, checkpoints, evaluation, SDK/API |
+| **v3.0 — Advanced MoE / Code** | HeliosLM MoE | **30B** | ~3B | MoE | Expert routing, quantized serving, HeliosLM Code beta |
+| **v4.0 — Reasoning / Cloud** | HeliosLM Reasoner | **100B** | ~10B | MoE | Reasoning, coding agent, cloud API, metering and safety gates |
+| **v5.0 — Pro / Enterprise** | HeliosLM Pro | **300B** | ~20B | MoE | Multimodal/long-context R&D, enterprise pilot, distributed serving |
+| **v6.0 — Frontier** | HeliosLM Frontier | **1T (1,000B)** | ~40B | MoE | Frontier research candidate; competitive performance on defined evaluations |
 
 These are **stretch targets, not mandatory training commitments**. A version may ship with a smaller verified model if quality, economics or safety gates are not met. The 1T target is contingent on major external funding, training data rights, infrastructure and distributed-systems validation; matching parameter count alone does not imply matching DeepSeek, Kimi, OpenAI or Anthropic capabilities.
 
@@ -678,8 +678,8 @@ Context sizes assume the default MLA cache (latent 512 + RoPE 64, about 37 KB pe
 | --- | --- | --- |
 | **2026 Q4** | Foundation developer preview | Windows/Linux CI, reproducible test suite, documented local inference |
 | **2027 Q1** | Training & SDK/API | End-to-end train → save → restore → evaluate reproducibility |
-| **2027 Q2** | Evastar Code beta | Auditable tool execution, human approval for writes, benchmarked real-repo tasks |
-| **2027 H2** | Evastar Cloud pilot | API reliability, authentication, tenant isolation, billing reconciliation |
+| **2027 Q2** | HeliosLM Code beta | Auditable tool execution, human approval for writes, benchmarked real-repo tasks |
+| **2027 H2** | HeliosLM Cloud pilot | API reliability, authentication, tenant isolation, billing reconciliation |
 | **2028 (tentative)** | Enterprise pilots and Pro research | Private deployment security review and paid pilot validation |
 | **2029+ (conditional)** | Frontier challenger research | Pre-registered, reproducible domain-specific evaluation against current baselines |
 
@@ -696,11 +696,11 @@ Context sizes assume the default MLA cache (latent 512 + RoPE 64, about 37 KB pe
 - **Local RTX 4060:** development, CPU/CUDA oracles, tiny-model training and CI reproduction.
 - **On-demand RTX PRO 6000 Blackwell 96GB:** prototyping, fine-tuning/quantized inference for suitably sized models, memory and performance measurements; **not** a single-GPU path to training 300B–1T models.
 - **Multi-GPU clusters:** only after measured throughput, interconnect, memory, data, reliability and cost justify the scale.
-- **Independent model + optional external APIs:** research open architectures (including DeepSeek/Kimi ideas) while using properly licensed OpenAI/Anthropic or other APIs for routing/benchmarks where permitted. Do not present external model output as an independently trained Evastar model or assume API outputs may be used for competitive training.
+- **Independent model + optional external APIs:** research open architectures (including DeepSeek/Kimi ideas) while using properly licensed OpenAI/Anthropic or other APIs for routing/benchmarks where permitted. Do not present external model output as an independently trained HeliosLM model or assume API outputs may be used for competitive training.
 
 ### Roadmap governance
 
-This section tracks **intent**, not verified implementation status. Track actual completion in GitHub Issues/Milestones and link benchmark artifacts, commit SHAs, reproducible commands and release notes before marking an item complete. Keep the historical `evastar` code/release numbering distinct from these forward-looking product-generation labels.
+This section tracks **intent**, not verified implementation status. Track actual completion in GitHub Issues/Milestones and link benchmark artifacts, commit SHAs, reproducible commands and release notes before marking an item complete. Keep the historical `helioslm_v5` code/release numbering distinct from these forward-looking product-generation labels.
 <!-- HELIOSLM_PRODUCT_ROADMAP_END -->
 
 ## Offline API cost and comparison audit

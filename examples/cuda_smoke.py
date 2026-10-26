@@ -58,8 +58,8 @@ import torch.nn.functional as F
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.configs.config_v5 import EvastarV5Config  # noqa: E402
-from evastar.src.model_v5 import EvastarV5  # noqa: E402
+from helioslm_v5.configs.config_v5 import HeliosLMv5Config  # noqa: E402
+from helioslm_v5.src.model_v5 import HeliosLMv5  # noqa: E402
 
 DEV = torch.device("cuda")
 CHECKS = []
@@ -72,10 +72,10 @@ def check(fn):
 
 def _lite(seed=0, **attn):
     torch.manual_seed(seed)
-    cfg = EvastarV5Config(size="lite")
+    cfg = HeliosLMv5Config(size="lite")
     for k, v in attn.items():
         setattr(cfg.attention, k, v)
-    return EvastarV5(cfg).eval(), cfg
+    return HeliosLMv5(cfg).eval(), cfg
 
 
 @check
@@ -137,7 +137,7 @@ def fp8_kv_cache():
 
 
 def _pilot(arch):
-    from evastar.src.training.pretrain import (
+    from helioslm_v5.src.training.pretrain import (
         TokenShard, pilot_config, pretrain, write_shards)
     cfg = pilot_config(arch, vocab_size=512, hidden_size=128, num_layers=4,
                        intermediate_size=256, max_seq=128)
@@ -176,7 +176,7 @@ for _arch in ("dense", "moe", "k3_block", "mimo_hybrid"):
 
 
 def _quant(method):
-    from evastar.src.quantization.standard_quant import (
+    from helioslm_v5.src.quantization.standard_quant import (
         AWQLinear, GPTQLinear, MXFP4Linear)
     torch.manual_seed(5)
     lin = torch.nn.Linear(512, 1024, bias=False)
@@ -200,7 +200,7 @@ for _m in ("awq", "gptq", "mxfp4"):
 
 @check
 def fp8_trainer():
-    from evastar.src.training.fp8_trainer import FP8Trainer
+    from helioslm_v5.src.training.fp8_trainer import FP8Trainer
     model, cfg = _lite(6)
     model = model.to(DEV)
     trainer = FP8Trainer(model, cfg)
@@ -216,7 +216,7 @@ def fp8_trainer():
 
 @check
 def gpu_monitor():
-    from evastar.src.inference.vllm_engine import GPUMonitor
+    from helioslm_v5.src.inference.vllm_engine import GPUMonitor
     mon = GPUMonitor(export_prometheus=False)
     mon.collect()
     total = mon.metrics["gpu_memory_total"]
@@ -307,7 +307,7 @@ def grad_accum_equivalence():
 @check
 def compile_train():
     """The v5.83 loop with torch.compile: finite, loss falls."""
-    from evastar.src.training.pretrain import (
+    from helioslm_v5.src.training.pretrain import (
         TokenShard, pilot_config, pretrain, write_shards)
     cfg = pilot_config("dense", vocab_size=512, hidden_size=128, num_layers=4,
                        intermediate_size=256, max_seq=128)
@@ -341,7 +341,7 @@ def checkpoint_portability():
     buf = io.BytesIO()
     torch.save(model.state_dict(), buf)
     buf.seek(0)
-    cpu_model = EvastarV5(cfg).eval()
+    cpu_model = HeliosLMv5(cfg).eval()
     cpu_model.load_state_dict(torch.load(buf, map_location="cpu", weights_only=True))
     with torch.no_grad():
         on_cpu = cpu_model(ids)[0]
@@ -386,7 +386,7 @@ def mtp_train_step():
 @check
 def grpo_train_step():
     """GRPOTrainer.train_step (integration T4) with both models on the device."""
-    from evastar.src.training.grpo import GRPOTrainer
+    from helioslm_v5.src.training.grpo import GRPOTrainer
     model, cfg = _lite(4)
     ref, _ = _lite(14)
     cfg.grpo.group_size = 4
@@ -402,10 +402,10 @@ def grpo_train_step():
 
 def _real_size(arch, batch=8, seq=1024, moe_dispatch="blocked"):
     """One bf16 optimizer step of the real ~100M pilot model: memory and speed."""
-    from evastar.src.training.pretrain import count_params, pilot_config
+    from helioslm_v5.src.training.pretrain import count_params, pilot_config
     cfg = pilot_config(arch, moe_dispatch=moe_dispatch)
     torch.manual_seed(0)
-    model = EvastarV5(cfg).to(DEV).train()
+    model = HeliosLMv5(cfg).to(DEV).train()
     opt = torch.optim.AdamW(model.parameters(), lr=1e-4)
     x = torch.randint(3, cfg.vocab_size, (batch, seq + 1), device=DEV)
     if DEV.type == "cuda":
@@ -444,9 +444,9 @@ def moe_batched_dispatch():
     """v5.106: batched MoE dispatch equals blocked on this device (fp32
     outputs and gradients), and under bf16 autocast."""
     import copy
-    from evastar.configs.config_v5 import MoEConfig
-    from evastar.src.moe.sigmoid_moe import DeviceLimitedMoE
-    cfg = EvastarV5Config(size="lite", moe=MoEConfig(num_experts=16,
+    from helioslm_v5.configs.config_v5 import MoEConfig
+    from helioslm_v5.src.moe.sigmoid_moe import DeviceLimitedMoE
+    cfg = HeliosLMv5Config(size="lite", moe=MoEConfig(num_experts=16,
                            num_activated_experts=2, device_group_size=1))
     torch.manual_seed(15)
     blocked = DeviceLimitedMoE(cfg).to(DEV).train()
@@ -477,9 +477,9 @@ def kda_chunked():
     on this device (outputs, state, gradients), and how much faster one
     layer's forward + backward is at 8 x 1024 tokens."""
     import copy
-    from evastar.configs.config_v5 import HybridAttentionConfig
-    from evastar.src.attention.linear_attention import GatedDeltaAttention
-    cfg = EvastarV5Config(size="lite", hybrid_attention=HybridAttentionConfig(
+    from helioslm_v5.configs.config_v5 import HybridAttentionConfig
+    from helioslm_v5.src.attention.linear_attention import GatedDeltaAttention
+    cfg = HeliosLMv5Config(size="lite", hybrid_attention=HybridAttentionConfig(
         enabled=True, per_channel_decay=True))
     torch.manual_seed(16)
     loop = GatedDeltaAttention(cfg).to(DEV)
@@ -534,8 +534,8 @@ def long_seq_4k():
     """A 4096-token bf16 forward / backward (lite width; positions raised
     from the lite default of 2048)."""
     torch.manual_seed(16)
-    cfg = EvastarV5Config(size="lite", max_position_embeddings=4096)
-    model = EvastarV5(cfg).to(DEV).train()
+    cfg = HeliosLMv5Config(size="lite", max_position_embeddings=4096)
+    model = HeliosLMv5(cfg).to(DEV).train()
     x = torch.randint(3, cfg.vocab_size, (1, 4097), device=DEV)
     if DEV.type == "cuda":
         torch.cuda.reset_peak_memory_stats()

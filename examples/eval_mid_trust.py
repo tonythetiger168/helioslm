@@ -28,13 +28,13 @@ from pathlib import Path
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "evastar" / "agent"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "helioslm_v5" / "agent"))
 
 from _mid_common import load_model_tok, make_model_fn
 from chat import ChatSession
 from decision_head import DecisionHead
 from envs import make_envs, make_long_envs
-from evastar.agent.trajectory import text_to_ids   # path anchor
+from helioslm_v5.agent.trajectory import text_to_ids   # path anchor
 from gate import FixedGate, Route
 from trust_gate import TrustGate
 from grounding import GroundingGate

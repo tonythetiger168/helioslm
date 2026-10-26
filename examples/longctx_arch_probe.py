@@ -1,7 +1,7 @@
 """longctx_arch_probe.py — OS7: long-context recall of four attention
 layouts on the same data at the same size (RULER-lite).
 
-Arms (EvastarV5, identical width / depth / MoE / seed / data; the
+Arms (HeliosLMv5, identical width / depth / MoE / seed / data; the
 attention layout is the only change):
 
 - ``dense``: every layer global MLA (reference);
@@ -11,11 +11,11 @@ attention layout is the only change):
 - ``dsa``: dense MLA with DSA-style top-``--topk`` sparse attention in
   prefill too (head-mean indexer, absorbed mode).
 
-CSA / HCA (DeepSeek V4) are not layers of EvastarV5; their comparison
+CSA / HCA (DeepSeek V4) are not layers of HeliosLMv5; their comparison
 stays in examples/repo_longctx_probe.py.
 
 Each arm trains on a mix of the RULER-lite tasks
-(evastar/eval/ruler_lite.py) at ``--train-len`` tokens, then is
+(helioslm_v5/eval/ruler_lite.py) at ``--train-len`` tokens, then is
 evaluated per task at 1x, 2x and 4x that length (needles uniformly
 placed, so distance grows with length).
 
@@ -35,11 +35,11 @@ import torch.nn.functional as F
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.configs.config_v5 import (  # noqa: E402
-    AttentionConfig, EvastarV5Config, HybridAttentionConfig, MoEConfig,
+from helioslm_v5.configs.config_v5 import (  # noqa: E402
+    AttentionConfig, HeliosLMv5Config, HybridAttentionConfig, MoEConfig,
     MTPConfig)
-from evastar.eval import ruler_lite as rl  # noqa: E402
-from evastar.src.model_v5 import EvastarV5  # noqa: E402
+from helioslm_v5.eval import ruler_lite as rl  # noqa: E402
+from helioslm_v5.src.model_v5 import HeliosLMv5  # noqa: E402
 
 ARMS = ("dense", "swa_global", "k3_hybrid", "dsa")
 LAYERS = 4
@@ -55,7 +55,7 @@ def arm_config(arm, hidden=128, window=32, topk=64):
     hyb = (HybridAttentionConfig(enabled=True, full_attention_every=4,
                                  first_layer_full=False, per_channel_decay=True)
            if arm == "k3_hybrid" else HybridAttentionConfig(enabled=False))
-    return EvastarV5Config(
+    return HeliosLMv5Config(
         size="lite", num_hidden_layers=LAYERS, vocab_size=rl.VOCAB,
         hidden_size=hidden, intermediate_size=2 * hidden, attention=att,
         hybrid_attention=hyb, mtp=MTPConfig(enabled=False),
@@ -67,7 +67,7 @@ def arm_config(arm, hidden=128, window=32, topk=64):
 def train_arm(arm, args):
     cfg = arm_config(arm, args.hidden, args.window, args.topk)
     torch.manual_seed(args.seed)
-    model = EvastarV5(cfg).to(args.device)
+    model = HeliosLMv5(cfg).to(args.device)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr)
     sched = torch.optim.lr_scheduler.OneCycleLR(
         opt, max_lr=args.lr, total_steps=max(args.steps, 1), pct_start=0.1)

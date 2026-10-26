@@ -20,7 +20,7 @@ Two modes:
    Output is in the shared probe schema, so it can go straight onto the
    calibration board. Any API error aborts the run — a partial run is
    not a measurement. HumanEval executes the model's code: see the
-   safety note in evastar/eval/std_bench.py.
+   safety note in helioslm_v5/eval/std_bench.py.
 
 Default data is the committed CI subset; --full uses data/std_bench/full/
 (fetch it first with scripts/fetch_std_bench.py).
@@ -35,14 +35,14 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.eval.calibration_board import (  # noqa: E402
+from helioslm_v5.eval.calibration_board import (  # noqa: E402
     canonical_sha256, sha256_file)
-from evastar.eval.std_bench import (  # noqa: E402
+from helioslm_v5.eval.std_bench import (  # noqa: E402
     SCHEMA_ID, gsm8k_prompt, humaneval_prompt, load_gsm8k, load_humaneval,
     run_gsm8k, run_humaneval, summarize)
-from evastar.eval import swe_bench  # noqa: E402
-from evastar.eval.stop_calibration import stop_report  # noqa: E402
-from evastar.eval.term_bench import load_tasks, run_term_bench  # noqa: E402
+from helioslm_v5.eval import swe_bench  # noqa: E402
+from helioslm_v5.eval.stop_calibration import stop_report  # noqa: E402
+from helioslm_v5.eval.term_bench import load_tasks, run_term_bench  # noqa: E402
 
 DATE = "2026-10-15"
 DATA = {
@@ -53,10 +53,10 @@ DATA = {
                   run_humaneval),
     # the terminal tasks are defined in code; their "data file" is the
     # module itself, hashed like any other input
-    "terminal": ("evastar/eval/term_bench.py",
-                 "evastar/eval/term_bench.py",
+    "terminal": ("helioslm_v5/eval/term_bench.py",
+                 "helioslm_v5/eval/term_bench.py",
                  lambda _path: load_tasks(), run_term_bench),
-    "swe": ("evastar/eval/swe_bench.py", "evastar/eval/swe_bench.py",
+    "swe": ("helioslm_v5/eval/swe_bench.py", "helioslm_v5/eval/swe_bench.py",
             lambda _path: swe_bench.load_tasks(), swe_bench.run_swe_bench),
 }
 REFERENCE_OUT = "benchmarks/std_bench_reference_2026-10-15.json"

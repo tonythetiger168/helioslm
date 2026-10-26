@@ -5,7 +5,7 @@ corpus as attributed JSONL shards (v5.154).
       --tokens 1e8 --tokenizer data/pilot/tokenizer.json \\
       --datagov /workspace/datagov_text/
 
-Sources (``evastar/src/training/zhtw_corpus.py`` SOURCES), read in this
+Sources (``helioslm_v5/src/training/zhtw_corpus.py`` SOURCES), read in this
 order so the first copy dedup keeps is the best-attributed one:
 
 1. ``datagov``: local .jsonl files or directories (--datagov), one record
@@ -47,7 +47,7 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.src.training.zhtw_corpus import (  # noqa: E402
+from helioslm_v5.src.training.zhtw_corpus import (  # noqa: E402
     SOURCES, Deduper, new_stats, opencc_converter, process, trad_share)
 
 ORDER = ("datagov", "zhwiki", "fineweb2")

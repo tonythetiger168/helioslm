@@ -44,4 +44,4 @@ python examples/mimo_hybrid_recall.py --arms dense --threads 1 --output d.json  
 python examples/mimo_hybrid_recall.py --merge d.json s.json h.json hs.json --output benchmarks/mimo_hybrid_2026-10-15.json
 ```
 
-測試：`python evastar/tests/test_mimo_hybrid.py`（T96）。
+測試：`python helioslm_v5/tests/test_mimo_hybrid.py`（T96）。

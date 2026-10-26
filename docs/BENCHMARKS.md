@@ -1,4 +1,4 @@
-# Evastar Benchmarks
+# HeliosLM Benchmarks
 
 All numbers reproducible on CPU:
 
@@ -13,7 +13,7 @@ tracked across versions. Suite introduced in **v5.10** (2026-09-15).
 
 ## KV-cache memory (analytic structural counts, bf16 unless noted)
 
-| Config | seq_len | Evastar | MHA reference | savings |
+| Config | seq_len | HeliosLM | MHA reference | savings |
 |---|---|---|---|---|
 | full (48L, hybrid MLA+GDA) | 1k | 52.0 MB | 2013.3 MB | 97.4% |
 | full | 8k | 159.4 MB | 16.1 GB | 99.0% |
@@ -98,7 +98,7 @@ median of 11 runs after 3 warm-up runs; artifacts
   from an fp32 weight, not by the forward pass.
 - Scope: CPU and PyTorch only. This says nothing about GPU kernels
   (auto-gptq / exllama / Marlin) or FP8.
-- Checked by `evastar/tests/test_bench_quant.py`: each median follows
+- Checked by `helioslm_v5/tests/test_bench_quant.py`: each median follows
   from its samples, every parity error is <= 1e-4, and every speedup > 1.5.
 
 ## Multi-seed A/B runs (Issue #55)

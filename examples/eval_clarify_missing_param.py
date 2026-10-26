@@ -19,7 +19,7 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.eval.clarify_missing_param import build_report  # noqa: E402
+from helioslm_v5.eval.clarify_missing_param import build_report  # noqa: E402
 
 DEFAULT_OUT = "benchmarks/clarify_missing_param_2026-10-13.json"
 
