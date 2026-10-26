@@ -19,6 +19,47 @@
   `F.grouped_mm` is missing (torch < 2.10). `DeviceLimitedMoE` keeps its
   own fused dispatch with the v5.156 fallback.
 - T154 `test_adaptive_batch_fallback.py`.
+## v5.160 (2026-10-26) - FLA chunk_kda kernel for the k3 KDA layer
+
+On an RTX A5000 (torch 2.8, triton 3.4) flash-linear-attention 0.5.2's
+`chunk_kda` computed the same k3 recurrence as `chunked_delta_rule`
+(bf16, relative error 4.6e-3) in 0.72 vs 14.8 ms forward and 2.9 vs
+81.5 ms forward + backward at B4 T1024 H16 D64 (B2 T4096: 5.5 vs 261 ms).
+
+- `HybridAttentionConfig.kernel` ("torch" default, "fla"; "fla" needs
+  style "k3"). With "fla", CUDA, fla importable and no packed documents,
+  `GatedDeltaAttention` calls `fla_kda`: q / k / v / beta in the autocast
+  dtype, the log gate and the state in fp32, scale 1 (q is already
+  scaled), the carried state in and out. Otherwise (CPU, fla missing:
+  one warning, position_ids restarts) it uses `chunked_delta_rule`.
+  `recompute` is not applied to the FLA path (FLA recomputes inside).
+- `pilot_config(kda_kernel=)`, `examples/pilot_100m.py --kda-kernel fla`.
+- fla is not a dependency: install it on the GPU machine with
+  `pip install --no-deps flash-linear-attention==0.5.2 fla-core==0.5.2`
+  (0.6.0 needs triton >= 3.5).
+- T153 `test_kda_fla.py` (CPU, stand-in chunk_kda in FLA's layout):
+  arguments, outputs, state and gradients equal the torch kernel; the
+  autocast dtype; the fallbacks.
+## v5.159 (2026-10-26) - MoE compile under bf16 autocast
+
+Second GPU round (RTX A5000 24 GB, torch 2.8, pilot 8 x 1024, bf16):
+the MoE pilot with `--compile` still failed, now after the v5.158
+eager dispatch: the graph dynamo compiles for the code that resumes
+after `_dispatch_batched` ran without the caller's autocast, and an
+fp32 addmm got a bf16 input (`self and mat2 must have the same dtype,
+but got Float and BFloat16`, in the inductor code of that resume graph).
+
+- `DeviceLimitedMoE.forward` reads the autocast state before the
+  dispatch and runs the up projection and shared experts inside an
+  explicit `torch.autocast` with that state. Eager runs are unchanged
+  (the same autocast is entered again, or none).
+- T152: compiled vs eager loss under bf16 autocast.
+
+Same round, k3_llamacpp pilot with `--kda-recompute` (v5.157): 7,238
+tokens/s at 13.55 GB (no OOM), 7,161 at 11.06 GB with `--ce-chunk
+2048`, 13,342 at 10.25 GB with `--compile` (1.84x). FLA 0.5.2
+`chunk_kda` matches `chunked_delta_rule` (bf16, rel. error 4.6e-3) and
+is 20x faster forward, 28-48x forward + backward.
 
 ## v5.158 (2026-10-26) - MoE under torch.compile
 

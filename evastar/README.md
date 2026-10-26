@@ -4,6 +4,11 @@ v5.161 (2026-10-26): `get_adaptive_batch_size` / `fit_micro_batch` (pilot
 `--auto-batch`: halve the micro-batch on CUDA OOM, same tokens per step)
 and `safe_grouped_matmul` (grouped expert matmul with an order-keeping
 fallback for torch without `F.grouped_mm`).
+v5.160 (2026-10-26): `hybrid_attention.kernel="fla"` (pilot `--kda-kernel
+fla`) runs the k3 KDA chunked forward through flash-linear-attention's
+`chunk_kda` on CUDA (28-48x faster forward + backward on an A5000).
+v5.159 (2026-10-26): the MoE layer enters the caller's autocast again
+after the eager dispatch, so `--compile` with bf16 works on CUDA.
 v5.158 (2026-10-26): the MoE dispatch paths run eagerly under
 torch.compile (`torch.compiler.disable`), so `--compile` works on MoE.
 v5.157 (2026-10-26): `hybrid_attention.recompute` (pilot `--kda-recompute`)
