@@ -11,6 +11,20 @@ up by prompt text, so one of the pair always scored wrong.
   instead of a prompt-keyed dict. The generate oracle already did.
 - `tests/test_tw_bench.py::test_phase_a_duplicate_questions` fails on the
   old lookup and passes now.
+## v5.169 (2026-10-26) - hsh H10: ask the user, plan mode, web_fetch
+
+Three upstream interaction tools hsh lacked.
+
+- `helioslm_v5/hsh/interaction.py` (new): the `ctx.questions` seam and
+  `ask_user_question`; plan mode (`plan/mode` log event, plan section in
+  the system prompt, `/plan` commands, `exit_plan_mode` with approve /
+  keep planning, optional `deny_tools`); `web_fetch` with HTML-to-text
+  and a private-address guard re-checked on every redirect.
+- `presets.py`: `tool-ask-user` and `plan-mode` in `standard`;
+  `tool-web-fetch` opt-in.
+
+Tests: `test_hsh_interaction.py` (4 new); preset tool lists updated. All
+hsh tests: 98.
 
 ## v5.168 (2026-10-26) - hsh H9: background jobs
 

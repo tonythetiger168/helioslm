@@ -11,8 +11,9 @@ Shipped presets (dsh's four work modes):
 
 - ``minimal``: ``bash`` + ``str_replace_editor`` and a short persona;
 - ``standard``: ``bash`` (with background jobs), ``read``/``write``/``edit``/``glob``/``grep``,
-  ``todo_write``, ``subagent``, ``skill``; ``AGENTS.md`` in the system
-  prompt; the skill catalog; automatic compaction;
+  ``todo_write``, ``subagent``, ``skill``, ``ask_user_question``,
+  ``exit_plan_mode``; ``AGENTS.md`` in the system prompt; the skill
+  catalog; plan mode; automatic compaction;
 - ``code``: standard plus ``run_code`` in PTC mode: the model sees only
   ``run_code`` and calls the other tools from inside its program;
 - ``creator``: standard plus ``inspect`` for looking at the running
@@ -34,6 +35,7 @@ import json
 
 from .builtin import bash_tool, editor_tool, fs_tools, run_code_tool, todo_tool
 from .compaction import compaction
+from .interaction import ask_user_tool, plan_mode, web_fetch_tool
 from .mcp import mcp_plugin
 from .skills import skills_plugin
 from .subagent import agent_instructions, claude_hooks, subagent_tool
@@ -115,6 +117,9 @@ PLUGINS = {
     "claude-hooks": claude_hooks,
     "skills": skills_plugin,
     "mcp": mcp_plugin,
+    "tool-ask-user": ask_user_tool,
+    "plan-mode": plan_mode,
+    "tool-web-fetch": web_fetch_tool,
 }
 
 _STANDARD = [
@@ -128,6 +133,8 @@ _STANDARD = [
     {"id": "tool-todo", "name": "tool-todo"},
     {"id": "tool-subagent", "name": "tool-subagent"},
     {"id": "skills", "name": "skills"},
+    {"id": "tool-ask-user", "name": "tool-ask-user"},
+    {"id": "plan-mode", "name": "plan-mode"},
     {"id": "compaction", "name": "compaction", "config": {"threshold_tokens": 24000}},
 ]
 
