@@ -19,3 +19,5 @@ from .subagent import agent_instructions, claude_hooks, subagent_tool  # noqa: F
 from .skills import (FilesystemSkills, SkillError, Skills,  # noqa: F401
                      parse_frontmatter, skills_plugin)
 from .mcp import MCPError, MCPServer, mcp_plugin  # noqa: F401
+from .interaction import (ask_user_tool, html_to_text, plan_mode,  # noqa: F401
+                          plan_state, set_plan_mode, web_fetch_tool)
