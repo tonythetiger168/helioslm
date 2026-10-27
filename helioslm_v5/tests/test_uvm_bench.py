@@ -13,7 +13,8 @@ Pins:
    testbench tells apart from the reference;
 6. with Verilator >= 5.052 and a UVM cache in ``HELIOS_UVM_CACHE``: the
    reference testbench builds, is clean on the golden design and kills
-   every mutant; a testbench that never checks kills none;
+   every mutant (and ``calibrate`` keeps them all); a testbench that
+   never checks kills none; the reference testbench asserts reset rarely;
 7. CVDP ``language`` and ``pass@k_by_language``; ``area_ratio``;
 8. ``default_workers`` follows the cgroup CPU quota and memory limit.
 
@@ -124,6 +125,9 @@ def test_reference_tb_kills_mutants():
                         '$sformatf("out=%0h exp %0h", tb.out, tb.out_exp), UVM_LOW)')
     r = ub.run_tb(lazy, task, ub.uvm_dir(UVM_CACHE))
     assert r["build"] and r["golden"] and r["killed"] == 0 and not r["passed"]
+    assert r["kills"] == [False] * len(task["mutants"])
+    kept, dropped = ub.calibrate([task], ub.uvm_dir(UVM_CACHE), workers=1)
+    assert kept == [task] and dropped == {}
 
 
 def test_cvdp_language():
@@ -155,3 +159,11 @@ def test_default_workers_reads_cgroup(tmp_path):
     assert ub.default_workers(root=tmp_path) == min(3, min(16, os.cpu_count()) // 2)
     (tmp_path / "cpu.max").write_text("max 100000\n")
     assert ub.cpu_limit(tmp_path) == os.cpu_count()
+
+
+def test_reference_tb_resets_rarely():
+    p = _prob("Prob120_fsm3s")
+    tb = ub.reference_tb({"ports": ub.parse_ports(p["ref"])}, cycles=50)
+    assert "tb.reset = (first || $urandom_range(15) == 0) ? 1'b1 : 1'b0;" in tb
+    assert "tb.in = $urandom;" in tb and "repeat (50)" in tb
+    assert "TopModule_v0 gold (" in tb and "run_test(\"t\")" in tb

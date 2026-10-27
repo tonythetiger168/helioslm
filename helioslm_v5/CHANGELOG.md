@@ -10,8 +10,10 @@ holds the golden design and up to three mutants, selected at run time
 with `+UVMB_VARIANT`. `prepare` keeps only mutants that VerilogEval's
 own testbench tells apart from the reference (129 of 156 designs).
 Reported: `build@k`, `golden@k`, `pass@k` (clean on the golden design,
-every mutant caught) and `kill_rate`; `self-check` runs a generated
-reference UVM testbench on every task.
+every mutant caught) and `kill_rate`. `calibrate` keeps only mutants
+that a generated random-stimulus reference UVM testbench catches on
+two-state Verilator; `self-check` runs that testbench on every task.
+Parallel builds follow the container's cgroup CPU and memory limits.
 
 `cvdp_bench.score` adds `pass@k_by_language` (SystemVerilog vs
 Verilog outputs). `hdl_bench.score(extra=True)` adds yosys gate counts:

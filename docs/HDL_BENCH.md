@@ -84,7 +84,9 @@ UVM 2017-1.0 (no DPI) and run on the golden design and on up to three
 mutants (one operator or constant changed). `prepare` keeps a mutant
 only when VerilogEval's own testbench tells it apart from the
 reference, so no mutant is equivalent: 129 of the 156 designs have at
-least one. Scores: `build@k`, `golden@k` (UVM_ERROR and UVM_FATAL are
+least one. `calibrate` then keeps only the mutants that a random-stimulus
+reference UVM testbench catches on Verilator, which is two-state (a
+mutant that differs only in X or Z values cannot be caught here). Scores: `build@k`, `golden@k` (UVM_ERROR and UVM_FATAL are
 0 on the golden design), `pass@k` (golden clean and every mutant
 caught) and `kill_rate`.
 
@@ -93,13 +95,16 @@ caught) and `kill_rate`.
 # Icarus for prepare; ccache speeds up the per-testbench C++ builds
 python -m helioslm_v5.eval.uvm_bench fetch      # UVM package from Verilator's tree
 python -m helioslm_v5.eval.uvm_bench prepare    # mutants, needs the VerilogEval cache
+python -m helioslm_v5.eval.uvm_bench calibrate  # drop mutants no testbench can catch here
 python -m helioslm_v5.eval.uvm_bench self-check # reference testbench must pass all
 python examples/hdl_eval_all.py --model <id> --benches verilog-eval,rtllm,cvdp,uvm \
     --extra --out results/hdl/<name>.json
 ```
 
 A build takes about 80 s of two CPU cores (UVM is compiled with every
-testbench), so score UVM on a pod with many cores.
+testbench) and about 3.3 GB of memory; the number of parallel builds
+follows the container's CPU and memory limits (a pod's `nproc` shows the
+host's cores).
 
 CVDP results now also carry `pass@k_by_language` (`sv` when an expected
 output file is `.sv`/`.svh`, `v` for Verilog). `--extra` runs yosys

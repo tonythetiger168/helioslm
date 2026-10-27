@@ -331,7 +331,8 @@ def run_tb(tb, task, uvm, build_timeout=BUILD_TIMEOUT_S, run_timeout=RUN_TIMEOUT
            jobs=BUILD_JOBS):
     """Build ``tb`` against the task's design and run every variant.
 
-    Returns ``{"build", "golden", "killed", "mutants", "passed", "log"}``.
+    Returns ``{"build", "golden", "killed", "kills", "mutants", "passed",
+    "log"}``; ``kills`` has one bool per mutant.
     """
     verilator = need_verilator()
     uvm = Path(uvm).resolve()
@@ -344,7 +345,8 @@ def run_tb(tb, task, uvm, build_timeout=BUILD_TIMEOUT_S, run_timeout=RUN_TIMEOUT
                        td, build_timeout)
         n_mut = len(task["mutants"])
         res = {"build": rc == 0 and (td / "obj_dir" / "Vtb").is_file(),
-               "golden": False, "killed": 0, "mutants": n_mut, "passed": False}
+               "golden": False, "killed": 0, "kills": [False] * n_mut,
+               "mutants": n_mut, "passed": False}
         if not res["build"]:
             res["log"] = log[-4000:]
             return res
@@ -362,6 +364,7 @@ def run_tb(tb, task, uvm, build_timeout=BUILD_TIMEOUT_S, run_timeout=RUN_TIMEOUT
             elif rc is not None and (counts is None or counts["ERROR"] or counts["FATAL"]
                                      or rc != 0):
                 res["killed"] += 1          # a timeout is not counted as a kill
+                res["kills"][v - 1] = True
         res["passed"] = res["golden"] and res["killed"] == n_mut
         res["log"] = "\n".join(logs)[-4000:]
     return res
@@ -409,11 +412,15 @@ def _random_expr(rng):
     return "$urandom" if calls == 1 else "{" + ", ".join(["$urandom"] * calls) + "}"
 
 
-def reference_tb(task):
-    """A small hand-written UVM testbench used by ``self-check``: it drives
-    random inputs and compares every output with the golden design
-    instantiated inside the testbench, so it is clean on the golden
-    variant and catches every mutant that VerilogEval's testbench does."""
+_RESET = re.compile(r"^a?(reset|rst)(_?n)?$", re.I)
+
+
+def reference_tb(task, cycles=2000):
+    """A small UVM testbench used by ``calibrate`` and ``self-check``: it
+    drives random inputs (a reset-named input is asserted in the first
+    cycle and then one cycle in 16, so state machines get long runs) and
+    compares every output with the golden design instantiated inside the
+    testbench, so it is clean on the golden variant."""
     ports = [tuple(p) for p in task["ports"]]
     ins = [(r, n) for d, r, n in ports if d == "input"]
     outs = [(r, n) for d, r, n in ports if d == "output"]
@@ -423,7 +430,12 @@ def reference_tb(task):
     conn = ", ".join(f".{n}({n})" for _, _, n in ports)
     conn_e = ", ".join(f".{n}({n}_exp)" if d == "output" else f".{n}({n})"
                        for d, _, n in ports)
-    drive = "\n".join(f"        tb.{n} = {_random_expr(r)};" for r, n in ins if n != "clk")
+    def value(r, n):
+        if _RESET.match(n):
+            on = "0" if n.lower().endswith("n") else "1"
+            return f"(first || $urandom_range(15) == 0) ? 1'b{on} : 1'b{1 - int(on)}"
+        return _random_expr(r)
+    drive = "\n".join(f"        tb.{n} = {value(r, n)};" for r, n in ins if n != "clk")
     check = "\n".join(
         f"        if (tb.{n} !== tb.{n}_exp) `uvm_error(\"MISMATCH\", "
         f"$sformatf(\"{n}=%0h exp %0h\", tb.{n}, tb.{n}_exp))" for _, n in outs)
@@ -443,9 +455,11 @@ module tb;
       super.new(name, parent);
     endfunction
     task run_phase(uvm_phase phase);
+      bit first = 1;
       phase.raise_objection(this);
-      repeat (400) begin
+      repeat ({cycles}) begin
 {drive}
+        first = 0;
         {wait}
         {settle}
 {check}
@@ -456,6 +470,29 @@ module tb;
   initial run_test("t");
 endmodule
 """
+
+
+def calibrate(tasks, uvm, workers=None):
+    """Keep only the mutants that ``reference_tb`` catches on Verilator
+    (two-state, so a mutant that differs only in X or Z values cannot be
+    caught by any testbench here). Tasks whose reference testbench does
+    not build or is not clean on the golden design, or that keep no
+    mutant, are dropped. Returns ``(tasks, dropped)``."""
+    def one(t):
+        return t, run_tb(reference_tb(t), t, uvm)
+    with ThreadPoolExecutor(max_workers=workers or default_workers()) as ex:
+        res = list(ex.map(one, tasks))
+    kept, dropped = [], {}
+    for t, r in res:
+        if not (r["build"] and r["golden"]):
+            dropped[t["name"]] = "reference testbench fails on the golden design"
+            continue
+        muts = [m for m, k in zip(t["mutants"], r["kills"]) if k]
+        if not muts:
+            dropped[t["name"]] = "no mutant caught by the reference testbench"
+            continue
+        kept.append(dict(t, mutants=muts))
+    return kept, dropped
 
 
 def self_check(tasks, uvm, workers=None):
@@ -474,7 +511,7 @@ def self_check(tasks, uvm, workers=None):
 def main(argv=None):
     import argparse
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("cmd", choices=("fetch", "prepare", "self-check"))
+    ap.add_argument("cmd", choices=("fetch", "prepare", "calibrate", "self-check"))
     ap.add_argument("--cache", default="data/hdl_bench/uvm")
     ap.add_argument("--ve-cache", default="data/hdl_bench/verilog_eval_v2")
     ap.add_argument("--limit", type=int)
@@ -494,6 +531,20 @@ def main(argv=None):
         return 0
     tasks = load(cache / "tasks.json")[:a.limit]
     workers = a.workers or default_workers()
+    if a.cmd == "calibrate":
+        if a.limit:
+            ap.error("calibrate rewrites tasks.json: run it on every task")
+        data = json.loads((cache / "tasks.json").read_text(encoding="utf-8"))
+        kept, dropped = calibrate(tasks, uvm_dir(cache), workers)
+        n_before = sum(len(t["mutants"]) for t in tasks)
+        data.update(tasks=kept, calibrated=True,
+                    skipped={**data["skipped"], **dropped})
+        (cache / "tasks.json").write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
+        print(f"calibrate: {len(kept)} tasks, {sum(len(t['mutants']) for t in kept)}"
+              f"/{n_before} mutants kept, {len(dropped)} tasks dropped")
+        for name, why in sorted(dropped.items()):
+            print(f"  drop {name}: {why}")
+        return 0
     print(f"self-check on {workers} parallel builds", flush=True)
     ok, fails = self_check(tasks, uvm_dir(cache), workers)
     print(f"self-check: {ok}/{len(tasks)} reference testbenches pass")
