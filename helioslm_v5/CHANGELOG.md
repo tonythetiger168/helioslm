@@ -1,5 +1,13 @@
 # HeliosLM v5 Changelog
 
+## v5.180 (2026-10-27) - cpt_hf: ce-chunk check under autocast with bf16 frozen parameters
+
+`cpt_hf.py --ce-chunk --frozen-bf16` failed before the first step: the
+chunked-head check ran its forward in fp32, so a bf16 frozen layer met
+fp32 activations ("expected mat1 and mat2 to have the same dtype").
+`check_chunked_head` now takes `autocast`, and `main` runs it under bf16
+autocast with a 2e-2 tolerance when `--frozen-bf16` is set. T145 pins it.
+
 ## v5.179 (2026-10-27) - HDL pod fixes: CVDP env_file lists, frozen bf16
 
 Fixes from the first HDL pod runs:

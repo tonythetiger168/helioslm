@@ -127,11 +127,14 @@ def lm_loss(model, x, y, ce_chunk=0):
     return loss + 0.0 * out.logits.float().sum()
 
 
-def check_chunked_head(model, x, y, ce_chunk, tol=1e-3):
+def check_chunked_head(model, x, y, ce_chunk, tol=1e-3, autocast=False):
     """Raise ValueError unless ``lm_loss(ce_chunk)`` equals the full-logits
-    loss on (x, y) (fp32, no grad): guards against a model whose last
-    hidden state is not the output head's input. Returns both losses."""
-    with torch.no_grad():
+    loss on (x, y) (fp32 or, with ``autocast``, bf16; no grad): guards
+    against a model whose last hidden state is not the output head's
+    input. ``autocast`` is needed once frozen parameters are bf16
+    (v5.180). Returns both losses."""
+    with torch.no_grad(), torch.autocast(x.device.type, dtype=torch.bfloat16,
+                                         enabled=autocast):
         full = lm_loss(model, x, y).item()
         chunked = lm_loss(model, x, y, ce_chunk).item()
     if not abs(full - chunked) <= tol * max(1.0, abs(full)):
@@ -331,7 +334,10 @@ def main(argv=None):
     phases = load_phases(a.data, a.seq)
     if a.ce_chunk:
         x, y = phases["main"].batch(1, min(a.seq, 128), 0, a.seed)
-        full, chunked = check_chunked_head(model, x.to(device), y.to(device), a.ce_chunk)
+        # bf16 matmuls round differently in the two paths: looser tolerance
+        full, chunked = check_chunked_head(
+            model, x.to(device), y.to(device), a.ce_chunk,
+            tol=2e-2 if a.frozen_bf16 else 1e-3, autocast=a.frozen_bf16)
         if rank == 0:
             print(f"ce-chunk check: full {full:.6f} chunked {chunked:.6f}", flush=True)
     per_micro = a.micro_batch * a.seq * world
