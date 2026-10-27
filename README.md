@@ -683,6 +683,7 @@ As of 2026-10-26:
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.183** — HDL track H5: `git:` mixture sources (pinned commit, LICENSE check, include/exclude globs) and the SystemVerilog / UVM mixture `hdl_h5_sv_uvm_v1.json` (OpenTitan, Ibex, core-v-verif) — T160
 - **v5.181** — hsh network egress audit: tool subprocesses go through a local proxy and a Python audit hook; hosts off the allow list are blocked (`deny`) or recorded (`audit`); `web --egress` / `--egress-allow`; optional `unshare -rn` isolation — T158
 - **v5.180** — `cpt_hf.py --ce-chunk --frozen-bf16` runs its chunked-head check under bf16 autocast (it failed on the first H3 pod) — T145
 - **v5.179** — HDL pod fixes: CVDP `env_file` lists, `hdl_eval_all.py` keeps generations before scoring, `cpt_hf.py` / `sft_hf.py --frozen-bf16` (frozen parameters in bf16, E4B fits 96 GB) — T144, T157

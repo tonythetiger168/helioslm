@@ -59,3 +59,24 @@ are checked against the teacher whitelist:
 |---|---|---|
 | `zhuyaoyu/CodeV-R1-dataset` (`codev_r1_sft.jsonl`, RL parquet) | CC-BY-SA-4.0 | DeepSeek-V3 instructions, DeepSeek-R1 responses (open weights) |
 | `HPAI-BSC/SystemVerilog-SFT-86k` | none on the card (ask the authors) | Gemma-4-31B, testbenches checked by simulation |
+
+## SystemVerilog and UVM mixture (H5, v5.183)
+
+`data/mixtures/hdl_h5_sv_uvm_v1.json` continues from the H3 checkpoint
+with SystemVerilog design and verification code. Three sources are git
+repositories pinned to a commit (`git:<url>@<commit>`, `include` /
+`exclude` globs); `fetch_mixture.py` checks out each one, reads its
+top-level LICENSE file as the licence, and uses every matching file as a
+document.
+
+| Source | Licence (LICENSE file) | SystemVerilog | Of which UVM |
+|---|---|---|---|
+| `lowRISC/opentitan` @ `ecedaa5a` | Apache-2.0 | ~38 MB | ~12 MB |
+| `lowRISC/ibex` @ `c0c07085` | Apache-2.0 | 1.7 MB (190 files) | 92 files |
+| `openhwgroup/core-v-verif` @ `1dfa4836` | Solderpad Hardware 2.0 (may be taken as Apache-2.0) | ~4.3 MB | ~3.6 MB |
+
+Directories matching `*vendor*` (third-party code under other licences)
+are excluded; exact duplicate files and files over 1 MB are dropped.
+`stack-systemverilog` stays `review` until the account has accepted The
+Stack's terms on the Hub and the rows are filtered by repository
+licence. Verilog GitHub code and English + maths are kept as replay.
