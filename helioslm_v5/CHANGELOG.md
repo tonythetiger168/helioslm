@@ -1,6 +1,6 @@
 # HeliosLM v5 Changelog
 
-## v5.177 (2026-10-27) - HDL track H1: HDL training-data mixture
+## v5.178 (2026-10-27) - HDL track H1: HDL training-data mixture, eval runner, SFT
 
 `data/mixtures/hdl_h1_cpt_v1.json` is the draft corpus for HDL continued
 pretraining (H2): Verilog from `shailja/Verilog_GitHub`, SystemVerilog
@@ -21,6 +21,77 @@ drop. `load_mixture` checks their types; `fetch_mixture.py` uses them.
 review sources' share to the usable ones; bad options are refused;
 heuristics=False keeps a short module; `fetch_mixture.main` passes
 `data_dir` and the source's column to the loader.
+
+`examples/hdl_eval_all.py` scores one model on VerilogEval v2, RTLLM v2.1
+and CVDP in one vLLM batch, with each benchmark's own prompts and
+scoring, so a pod spends its GPU time on generation only.
+`examples/sft_hf.py` fine-tunes a Hugging Face causal LM on prompt /
+response records (chat template, loss on response tokens only, packed
+windows), reusing `cpt_hf.py`'s freeze, chunked loss and training setup;
+H3 uses it on the CodeV-R1 SFT records after HDL continued pretraining.
+`test_hdl_train_eval.py` (T157) pins the masking, packing and a tiny
+training run, and scores RTLLM references through the eval runner.
+
+## v5.177 (2026-10-27) - HDL track H0: CVDP harness without docker
+
+Third HDL benchmark. `helioslm_v5/eval/cvdp_bench.py` runs NVIDIA CVDP
+v1.1.0 non-agentic code generation (open-source flow only) on a pod that
+has no docker:
+
+- `load` keeps datapoints whose harness uses the stock simulator image
+  and a code-generation category, and lists every other id with a reason;
+- prompts and response parsing follow upstream (plain text for one
+  output file, the `{"code": [...]}` JSON schema for several);
+- `run` writes the repo and harness files to a temp dir, points the
+  harness's `/code`, `/src` and `/rundir` paths there, and runs each
+  docker-compose service's command with its `.env`; pass = every command
+  exits 0, as upstream; model-chosen file names cannot leave the repo dir;
+- `score` takes responses (generation and simulation are separate, so
+  simulation can run on CPU after GPU time) and reports pass@k overall
+  and per category; `self-check` runs golden outputs.
+
+CI gains a step that installs cocotb 2.0.1 and runs T144
+(test_cvdp_bench.py) against one upstream example datapoint; the main
+suite still runs without cocotb.
+
+## v5.176 (2026-10-27) - HDL track H0: RTLLM v2.1 harness
+
+Second HDL benchmark. `helioslm_v5/eval/rtllm_bench.py` scores RTLLM v2.1
+(hkust-zhiyao/RTLLM, MIT, 50 designs) with Icarus Verilog instead of
+upstream's Synopsys VCS, keeping upstream's two rules (compiles with the
+testbench = syntax; output contains "pass" = function):
+
+- `fetch` git-fetches the pinned commit and caches each design's
+  description, testbench, reference and data files with a sha256
+  manifest; `load` rejects a changed cache;
+- the requested module name comes from the description (one design's
+  folder name differs from its module name);
+- `self-check` runs every reference with its top module renamed (two
+  references use other file and module names) and prints the designs
+  Icarus cannot run, to pass as `--exclude` rather than score as 0;
+- `syntax@k` and `pass@k` are plain means over designs.
+- code extraction keeps helper modules: without a [BEGIN]/fenced block
+  it takes the first `module` to the last `endmodule` (VerilogEval's
+  fallback stops at the first one, which drops RTLLM submodules).
+
+`examples/hdl_bench_run.py --bench rtllm` runs it on the pod. T143
+(test_rtllm_bench.py) pins the cache, naming and scoring, and simulates
+three upstream designs under Icarus in CI (fixtures, MIT notice included).
+
+## v5.175 (2026-10-27) - pilot B0: run without gated sources, skip the gap eval
+
+`examples/pilot_b0_pod.sh` gains two opt-in switches; the defaults are
+unchanged.
+
+- `ALLOW_BLOCKED=1` passes `--allow-blocked` to `fetch_mixture.py` (preflight
+  and fetch), so the pilot trains on the sources this HF account can download
+  now; a blocked source's share goes to the rest of its phase and the skip is
+  logged in `fetch_mixture.log` and the manifest.
+- `SKIP_GAP=1` skips the step-1 base-gap eval (it already ran on its own
+  pod), so the pod no longer needs a 141 GB GPU for the 8x7B reference.
+  Step 3 then fetches the TW benches itself, limited to `BENCHES` when set
+  (e.g. `BENCHES="tmmluplus ceval cmmlu"` while a bench is still gated).
+
 ## v5.174 (2026-10-26) - KDA layer: no as_subclass graph breaks
 
 `GatedDeltaAttention.forward` dropped the `StateTensor` marker with

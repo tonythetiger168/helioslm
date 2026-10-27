@@ -32,7 +32,7 @@ python examples/fetch_mixture.py --mixture data/mixtures/hdl_h1_cpt_v1.json \
     --tokenizer google/gemma-4-E2B --tokens 5e8 --out /workspace/hdl_data --check-only
 ```
 
-Per-source options added for this mixture (v5.177): `field` (the text
+Per-source options added for this mixture (v5.178): `field` (the text
 column), `data_dir` / `data_files` (passed to `datasets.load_dataset`)
 and `"heuristics": false`, because the prose heuristics drop most source
 code (short modules, repeated `end` lines).

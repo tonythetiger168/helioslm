@@ -22,7 +22,7 @@ or ``trace``: D1 teacher records rendered as chat transcripts with their
 reasoning (``mid_train.render_trace``; optional ``think_ratio``). ``license_verified`` false is allowed for
 planning; ``usable_sources`` returns only verified ones.
 
-Per-source loading options (v5.177, HDL H1): ``field`` (the text column,
+Per-source loading options (v5.178, HDL H1): ``field`` (the text column,
 default the fetcher's ``--field``), ``data_dir`` / ``data_files`` (passed
 to ``datasets.load_dataset``, e.g. ``data/vhdl`` of the-stack) and
 ``heuristics`` (false skips the prose heuristics, which drop most source

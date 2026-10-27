@@ -1,5 +1,5 @@
 """T156 — HDL track H1: the HDL continued-pretraining mixture and the
-per-source loading options of fetch_mixture (v5.177).
+per-source loading options of fetch_mixture (v5.178).
 
 Pins:
 
