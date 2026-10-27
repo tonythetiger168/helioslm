@@ -23,7 +23,6 @@ scoring, so a scoring failure never costs the GPU time (v5.179).
 """
 import argparse
 import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -84,7 +83,7 @@ def score_all(jobs, outputs, data, n, ks, exclude=(), workers=8, extra=False):
             ks=ks, workers=workers), skipped_unsupported=data["cvdp_skipped"]),
         "uvm": lambda: ub.score(
             data["uvm"], {t["name"]: got[("uvm", t["name"])] for t in data["uvm"]},
-            data.get("uvm_dir"), ks=ks, workers=max(1, workers // 2)),
+            data.get("uvm_dir"), ks=ks, workers=min(workers, ub.default_workers())),
     }
     res = {}
     for b, fn in runs.items():
@@ -159,7 +158,8 @@ def main(argv=None):
     ap.add_argument("--max-new-tokens", type=int, default=2048)
     ap.add_argument("--max-model-len", type=int, default=16384)
     ap.add_argument("--gpu-mem", type=float, default=0.9)
-    ap.add_argument("--workers", type=int, default=os.cpu_count() or 4)
+    ap.add_argument("--workers", type=int, default=ub.cpu_limit(),
+                    help="simulation jobs (default: the container's CPU limit)")
     a = ap.parse_args(argv)
     if a.n > 1 and a.temperature == 0:
         ap.error("--n > 1 needs --temperature > 0")

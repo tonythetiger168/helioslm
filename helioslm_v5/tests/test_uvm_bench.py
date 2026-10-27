@@ -14,7 +14,8 @@ Pins:
 6. with Verilator >= 5.052 and a UVM cache in ``HELIOS_UVM_CACHE``: the
    reference testbench builds, is clean on the golden design and kills
    every mutant; a testbench that never checks kills none;
-7. CVDP ``language`` and ``pass@k_by_language``; ``area_ratio``.
+7. CVDP ``language`` and ``pass@k_by_language``; ``area_ratio``;
+8. ``default_workers`` follows the cgroup CPU quota and memory limit.
 
 Run from repo root: python3 -m pytest helioslm_v5/tests/test_uvm_bench.py
 """
@@ -143,3 +144,14 @@ def test_random_expr_covers_wide_ports():
     assert ub._random_expr("") == "$urandom"
     assert ub._random_expr("[31:0]") == "$urandom"
     assert ub._random_expr("[99:0]") == "{$urandom, $urandom, $urandom, $urandom}"
+
+
+def test_default_workers_reads_cgroup(tmp_path):
+    (tmp_path / "cpu.max").write_text("1600000 100000\n")        # 16 CPUs
+    (tmp_path / "memory.max").write_text(str(62 << 30) + "\n")
+    assert ub.cpu_limit(tmp_path) == min(16, os.cpu_count())
+    assert ub.default_workers(root=tmp_path) == min(16, os.cpu_count()) // 2
+    (tmp_path / "memory.max").write_text(str(12 << 30) + "\n")   # memory bound
+    assert ub.default_workers(root=tmp_path) == min(3, min(16, os.cpu_count()) // 2)
+    (tmp_path / "cpu.max").write_text("max 100000\n")
+    assert ub.cpu_limit(tmp_path) == os.cpu_count()

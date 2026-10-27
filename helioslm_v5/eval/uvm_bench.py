@@ -29,6 +29,7 @@ them on the pod.
 """
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -89,6 +90,38 @@ _SWAPS = (
 )
 _PORT_HEAD = re.compile(r"\bmodule\s+RefModule\s*(#\s*\(.*?\)\s*)?\((.*?)\)\s*;", re.S)
 _SUMMARY = re.compile(r"UVM_(ERROR|FATAL)\s*:\s*(\d+)")
+
+
+BUILD_MEM_BYTES = 4 << 30      # peak of one build with -j 2 is about 3.3 GB
+BUILD_JOBS = 2
+
+
+def cpu_limit(root="/sys/fs/cgroup"):
+    """CPUs this container may use: its cgroup v2 quota when set, else
+    ``os.cpu_count()`` (which on a pod reports the host's cores)."""
+    cpus = os.cpu_count() or 1
+    try:
+        quota, period = Path(root, "cpu.max").read_text().split()
+        if quota != "max":
+            cpus = min(cpus, max(1, int(quota) // int(period)))
+    except (OSError, ValueError):
+        pass
+    return cpus
+
+
+def default_workers(build_mem=BUILD_MEM_BYTES, root="/sys/fs/cgroup"):
+    """Parallel builds this machine can hold: ``cpu_limit`` over the jobs
+    per build, and the cgroup memory limit (else physical memory) over
+    ``build_mem``."""
+    cpus = cpu_limit(root)
+    try:
+        mem = Path(root, "memory.max").read_text().strip()
+        mem = int(mem) if mem != "max" else None
+    except (OSError, ValueError):
+        mem = None
+    if mem is None:
+        mem = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    return max(1, min(cpus // BUILD_JOBS, mem // build_mem))
 
 
 class UvmBenchError(ValueError):
@@ -295,7 +328,7 @@ def _run(cmd, cwd, timeout):
 
 
 def run_tb(tb, task, uvm, build_timeout=BUILD_TIMEOUT_S, run_timeout=RUN_TIMEOUT_S,
-           jobs=2):
+           jobs=BUILD_JOBS):
     """Build ``tb`` against the task's design and run every variant.
 
     Returns ``{"build", "golden", "killed", "mutants", "passed", "log"}``.
@@ -334,7 +367,7 @@ def run_tb(tb, task, uvm, build_timeout=BUILD_TIMEOUT_S, run_timeout=RUN_TIMEOUT
     return res
 
 
-def score(tasks, texts, uvm, ks=(1,), workers=4):
+def score(tasks, texts, uvm, ks=(1,), workers=None):
     """Score ``texts[name] -> [response, ...]`` (same n for every task)."""
     ns = {len(texts[t["name"]]) for t in tasks}
     if len(ns) != 1:
@@ -347,7 +380,7 @@ def score(tasks, texts, uvm, ks=(1,), workers=4):
         r = run_tb(hb.extract_code(x), t, uvm)
         return t["name"], {k: r[k] for k in ("build", "golden", "killed", "mutants", "passed")}
 
-    with ThreadPoolExecutor(max_workers=workers) as ex:
+    with ThreadPoolExecutor(max_workers=workers or default_workers()) as ex:
         results = list(ex.map(one, jobs))
     per = {t["name"]: [] for t in tasks}
     for name, r in results:
@@ -425,16 +458,16 @@ endmodule
 """
 
 
-def self_check(tasks, uvm, workers=4):
+def self_check(tasks, uvm, workers=None):
     """Run ``reference_tb`` on every task: must build, be clean on the
-    golden design and kill every mutant. Returns ``(passed, failures)``."""
+    golden design and kill every mutant. Returns ``(passed, failures)``;
+    each failure is ``(name, result)`` and keeps the result's log."""
     def one(t):
         r = run_tb(reference_tb(t), t, uvm)
         return t["name"], r
-    with ThreadPoolExecutor(max_workers=workers) as ex:
+    with ThreadPoolExecutor(max_workers=workers or default_workers()) as ex:
         res = list(ex.map(one, tasks))
-    fails = [(n, {k: r[k] for k in ("build", "golden", "killed", "mutants")})
-             for n, r in res if not r["passed"]]
+    fails = [(n, r) for n, r in res if not r["passed"]]
     return len(tasks) - len(fails), fails
 
 
@@ -445,7 +478,8 @@ def main(argv=None):
     ap.add_argument("--cache", default="data/hdl_bench/uvm")
     ap.add_argument("--ve-cache", default="data/hdl_bench/verilog_eval_v2")
     ap.add_argument("--limit", type=int)
-    ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--workers", type=int,
+                    help="parallel jobs (default: from the CPU and memory limits)")
     a = ap.parse_args(argv)
     cache = Path(a.cache)
     if a.cmd == "fetch":
@@ -453,16 +487,20 @@ def main(argv=None):
         return 0
     if a.cmd == "prepare":
         probs = hb.load(a.ve_cache)[:a.limit]
-        data = prepare(probs, workers=a.workers)
+        data = prepare(probs, workers=a.workers or cpu_limit())
         cache.mkdir(parents=True, exist_ok=True)
         (cache / "tasks.json").write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
         print(f"{len(data['tasks'])} tasks, {len(data['skipped'])} skipped -> {cache / 'tasks.json'}")
         return 0
     tasks = load(cache / "tasks.json")[:a.limit]
-    ok, fails = self_check(tasks, uvm_dir(cache), a.workers)
+    workers = a.workers or default_workers()
+    print(f"self-check on {workers} parallel builds", flush=True)
+    ok, fails = self_check(tasks, uvm_dir(cache), workers)
     print(f"self-check: {ok}/{len(tasks)} reference testbenches pass")
     for name, r in fails:
-        print(f"  FAIL {name}: {r}")
+        print(f"  FAIL {name}: " + str({k: r[k] for k in ("build", "golden", "killed", "mutants")}))
+    if fails:
+        print("first failure log:\n" + fails[0][1].get("log", "")[-3000:])
     return 0 if not fails else 1
 
 
