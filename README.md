@@ -681,6 +681,7 @@ As of 2026-10-26:
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.177** — HDL track H0: CVDP v1.1 non-agentic code-generation harness without docker (`helioslm_v5/eval/cvdp_bench.py`): upstream cocotb + Icarus test commands run in a temp root, pass when every command exits 0, `pass@k` overall and per category — T144
 - **v5.176** — HDL track H0: RTLLM v2.1 harness on Icarus (`helioslm_v5/eval/rtllm_bench.py`, `hdl_bench_run.py --bench rtllm`): pinned 50-design cache, `syntax@k` / `pass@k`, `self-check` lists designs Icarus cannot run — T143
 - **v5.175** — pilot B0 script: `ALLOW_BLOCKED=1` trains without still-gated mixture sources, `SKIP_GAP=1` skips the already-run base-gap eval so smaller GPUs fit
 - **v5.174** — KDA layer skips `as_subclass` on plain tensors, so `--compile` no longer breaks the graph there (k3 pilot: 14 -> 11 breaks) — T155

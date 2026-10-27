@@ -58,6 +58,12 @@ jobs:
         run: python -m pytest helioslm_v5/tests/ -q -x -n 4 --ignore=helioslm_v5/tests/test_v5.py
       - name: Integration test (v5.1 serving stack)
         run: python integration_test_v51.py
+      # v5.177: CVDP harnesses are cocotb tests; cocotb is installed only
+      # for this step so the main suite runs without it.
+      - name: CVDP harness on cocotb + Icarus
+        run: |
+          pip install cocotb==2.0.1
+          python -m pytest -q helioslm_v5/tests/test_cvdp_bench.py
 
   build-release:
     name: Build Release
