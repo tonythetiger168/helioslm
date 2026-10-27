@@ -62,3 +62,15 @@ python -m helioslm_v5.eval.cvdp_bench self-check --file <with_solutions.jsonl>
 
 Generation and scoring are separate (`cvdp_bench.score(rows, texts)`),
 so simulations can run on CPU after the GPU time ends.
+
+## All three in one run (v5.178)
+
+```bash
+python examples/hdl_eval_all.py --model <hf-id or checkpoint dir> \
+    --rtllm-exclude <list from self-check> --out results/hdl/<name>.json
+```
+
+Generates every prompt of the three benchmarks in one vLLM batch, then
+simulates on all CPU cores. CVDP has no public golden outputs for the
+`no_commercial` file, so its harness failures are not separated from
+model failures; compare models only against each other.

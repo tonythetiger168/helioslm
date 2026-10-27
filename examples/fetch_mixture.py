@@ -13,8 +13,10 @@ For every ``hf:`` source of the mixture (``hf:repo[:config]``):
 2. its token budget is ``data_mixture.token_budget`` over the usable
    sources (weights renormalised within each phase, so a skipped source's
    share goes to the others);
-3. rows are streamed (``datasets``, ``streaming=True``), passed through
-   the LB3 heuristics and the source's ``zh_variants``, tokenised in
+3. rows are streamed (``datasets``, ``streaming=True``; the source's
+   ``data_dir`` / ``data_files``), its ``field`` (default ``--field``) is
+   passed through the LB3 heuristics (unless ``"heuristics": false``) and
+   the source's ``zh_variants``, tokenised in
    batches (``tokenizers`` ``encode_batch``, multithreaded), wrapped as
    BOS + ids + EOS and appended to ``<out>/<phase>/<name>.bin`` (uint32)
    until the budget is reached.
@@ -122,16 +124,19 @@ def blocked(rows):
 
 
 def write_source(texts, encode_batch, path, budget, bos, eos, *,
-                 variants=None, batch=1000):
+                 variants=None, heuristics=True, batch=1000):
     """Filter, tokenise and append documents to ``path`` (uint32) until
-    ``budget`` tokens. Returns {"tokens", "docs", "seen", "filter"}."""
+    ``budget`` tokens. ``heuristics`` False keeps documents the prose
+    heuristics would drop (source code). Returns {"tokens", "docs",
+    "seen", "filter"}."""
     n = docs = seen = 0
     report = {"in": 0, "kept": 0, "dropped": {}}
     buf = []
     with open(path, "wb") as f:
         def flush(chunk):
             nonlocal n, docs
-            kept, rep = filter_docs(chunk, variants=variants)
+            kept, rep = filter_docs(chunk, heuristics=heuristics,
+                                    variants=variants)
             report["in"] += rep["in"]
             report["kept"] += rep["kept"]
             for k, v in rep["dropped"].items():
@@ -155,6 +160,11 @@ def write_source(texts, encode_batch, path, budget, bos, eos, *,
         if buf and n < budget:
             flush(buf)
     return {"tokens": n, "docs": docs, "seen": seen, "filter": report}
+
+
+def load_kwargs(s):
+    """A source's ``data_dir`` / ``data_files`` for ``load_dataset``."""
+    return {k: s[k] for k in ("data_dir", "data_files") if k in s}
 
 
 def _card_licence(api, repo):
@@ -251,14 +261,15 @@ def main(argv=None):
         t0 = time.time()
         try:
             ds = load_dataset(repo, cfg, split="train", streaming=True,
-                              revision=r["revision"])
-            texts = (row.get(a.field) or "" for row in ds)
+                              revision=r["revision"], **load_kwargs(s))
+            field = s.get("field", a.field)
+            texts = (row.get(field) or "" for row in ds)
             res = write_source(
                 texts, lambda b: [e.ids for e in tok.encode_batch(
                     b, add_special_tokens=False)],
                 path, r["budget"], bos, eos,
                 variants=set(s["zh_variants"]) if s.get("zh_variants")
-                else None)
+                else None, heuristics=s.get("heuristics", True))
             r.update(res, path=str(path.relative_to(out)),
                      status="ok" if res["tokens"] >= r["budget"] else "short")
         except Exception as e:

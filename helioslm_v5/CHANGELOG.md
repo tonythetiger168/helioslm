@@ -1,5 +1,37 @@
 # HeliosLM v5 Changelog
 
+## v5.178 (2026-10-27) - HDL track H1: HDL training-data mixture, eval runner, SFT
+
+`data/mixtures/hdl_h1_cpt_v1.json` is the draft corpus for HDL continued
+pretraining (H2): Verilog from `shailja/Verilog_GitHub`, SystemVerilog
+and VHDL from `bigcode/the-stack-dedup` (under review until rows are
+filtered by their per-file licences), `rtl-llm/vhdl_github_deduplicated`,
+the reference Verilog of VeriThoughts, plus 25% fineweb-edu / finemath
+replay. Only raw code columns are read; model-written descriptions and
+traces are left for the instruct stage. `docs/HDL_DATA.md` lists each
+source's licence, size and column, what was left out and why, and the
+instruct-stage candidates with their generator models.
+
+Mixture sources take new loading options: `field` (the text column),
+`data_dir` / `data_files` (passed to `datasets.load_dataset`) and
+`"heuristics": false` for source code, which the prose heuristics mostly
+drop. `load_mixture` checks their types; `fetch_mixture.py` uses them.
+
+`test_hdl_data.py` (T156): the mixture loads and plan() moves the
+review sources' share to the usable ones; bad options are refused;
+heuristics=False keeps a short module; `fetch_mixture.main` passes
+`data_dir` and the source's column to the loader.
+
+`examples/hdl_eval_all.py` scores one model on VerilogEval v2, RTLLM v2.1
+and CVDP in one vLLM batch, with each benchmark's own prompts and
+scoring, so a pod spends its GPU time on generation only.
+`examples/sft_hf.py` fine-tunes a Hugging Face causal LM on prompt /
+response records (chat template, loss on response tokens only, packed
+windows), reusing `cpt_hf.py`'s freeze, chunked loss and training setup;
+H3 uses it on the CodeV-R1 SFT records after HDL continued pretraining.
+`test_hdl_train_eval.py` (T157) pins the masking, packing and a tiny
+training run, and scores RTLLM references through the eval runner.
+
 ## v5.177 (2026-10-27) - HDL track H0: CVDP harness without docker
 
 Third HDL benchmark. `helioslm_v5/eval/cvdp_bench.py` runs NVIDIA CVDP
@@ -45,6 +77,7 @@ testbench = syntax; output contains "pass" = function):
 `examples/hdl_bench_run.py --bench rtllm` runs it on the pod. T143
 (test_rtllm_bench.py) pins the cache, naming and scoring, and simulates
 three upstream designs under Icarus in CI (fixtures, MIT notice included).
+
 ## v5.175 (2026-10-27) - pilot B0: run without gated sources, skip the gap eval
 
 `examples/pilot_b0_pod.sh` gains two opt-in switches; the defaults are
