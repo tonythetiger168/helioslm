@@ -11,7 +11,8 @@ A tiny model with the Hugging Face causal-LM surface (``logits_to_keep``,
    output head still gets its gradient;
 3. ``check_chunked_head`` accepts that model and refuses one whose last
    hidden state is not the head input (pre-norm), and a head with a bias;
-4. ``train(ce_chunk=...)`` follows the same loss curve as full logits.
+4. ``train(ce_chunk=...)`` follows the same loss curve as full logits;
+5. with frozen parameters in bf16 the check runs under autocast (v5.180).
 """
 import json
 import sys
@@ -97,6 +98,19 @@ def test_check_chunked_head():
         cpt_hf.check_chunked_head(TinyHF(prenorm_hidden=True), x, y, 8)
     with pytest.raises(ValueError, match="without bias"):
         cpt_hf.lm_loss(TinyHF(bias=True), x, y, ce_chunk=8)
+
+
+def test_check_chunked_head_frozen_bf16():
+    """v5.180: with frozen parameters in bf16 the check runs under autocast
+    (fp32 inputs to a bf16 layer failed on the pod)."""
+    x, y = _batch()
+    m = TinyHF(softcap=3.0)
+    cpt_hf.freeze(m, ["embed"])
+    assert cpt_hf.cast_frozen(m, torch.bfloat16) > 0
+    with pytest.raises(RuntimeError):                  # the pod failure
+        cpt_hf.check_chunked_head(m, x, y, 8)
+    full, chunked = cpt_hf.check_chunked_head(m, x, y, 8, tol=2e-2, autocast=True)
+    assert abs(full - chunked) < 2e-2 * max(1.0, abs(full))
 
 
 def test_ddp_style_wrapper_is_unwrapped():
