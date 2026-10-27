@@ -9,11 +9,21 @@
 # Tunables: PER_HOUR (the pod's real US$/h), MAX_COST (hard ceiling for
 # this script, US$), TOKENS (pilot training tokens), EVAL_RESERVE_H (hours
 # kept after training for saving and steps 3-4).
+# v5.175: ALLOW_BLOCKED=1 trains without mixture sources this account
+# cannot download yet (their share goes to the rest of the phase; the
+# skipped sources are listed in fetch_mixture.log and the manifest).
+# SKIP_GAP=1 skips the step-1 base-gap eval (already run on its own pod),
+# so the pod no longer needs a 141 GB GPU for the 8x7B reference; step 3
+# then fetches only BENCHES (default: every bench this account can read).
 set -uo pipefail
 PER_HOUR=${PER_HOUR:-30}
 MAX_COST=${MAX_COST:-300}
 TOKENS=${TOKENS:-3e9}
 EVAL_RESERVE_H=${EVAL_RESERVE_H:-2.0}
+ALLOW_BLOCKED=${ALLOW_BLOCKED:-0}
+SKIP_GAP=${SKIP_GAP:-0}
+BENCHES=${BENCHES:-}
+MIXARGS=(); [ "$ALLOW_BLOCKED" = 1 ] && MIXARGS=(--allow-blocked)
 export HF_HOME=/workspace/hf
 cd /workspace
 [ -d helioslm ] || git clone https://github.com/tonythetiger168/helioslm
@@ -35,8 +45,10 @@ pip install -q transformers==5.20.2 accelerate==1.15.0 datasets==5.1.0 \
 
 # 0. Preflight (about a minute, CPU only): stop before any GPU work if this
 #    HF account cannot download an eval set or a mixture source.
-if ! python examples/base_gap_eval.py --check-access \
-     || ! python examples/fetch_mixture.py --check-only \
+GAPCHECK=(python examples/base_gap_eval.py --check-access)
+[ "$SKIP_GAP" = 1 ] && GAPCHECK=(true)
+if ! "${GAPCHECK[@]}" \
+     || ! python examples/fetch_mixture.py --check-only "${MIXARGS[@]}" \
           --mixture data/mixtures/b1_gemma4_e4b_cpt_v1.json \
           --tokenizer google/gemma-4-E2B --tokens "$TOKENS" \
           --out /workspace/cpt_data; then
@@ -51,11 +63,15 @@ mkdir -p /workspace/results /workspace/runs
 
 # 1. In parallel: base-gap eval on the GPUs (E4B vs the 4 reference models)
 #    and the pilot corpus on CPU / network.
-timeout 3h python examples/base_gap_eval.py --fetch --cleanup --gpus "$GPUS" \
-    --data /workspace/tw_bench --out-dir /workspace/results \
-    > /workspace/base_gap.log 2>&1 &
-GAP=$!
-timeout 3h python examples/fetch_mixture.py \
+if [ "$SKIP_GAP" = 1 ]; then
+  echo "base-gap eval skipped (SKIP_GAP=1)"; true & GAP=$!
+else
+  timeout 3h python examples/base_gap_eval.py --fetch --cleanup --gpus "$GPUS" \
+      --data /workspace/tw_bench --out-dir /workspace/results \
+      > /workspace/base_gap.log 2>&1 &
+  GAP=$!
+fi
+timeout 3h python examples/fetch_mixture.py "${MIXARGS[@]}" \
     --mixture data/mixtures/b1_gemma4_e4b_cpt_v1.json \
     --tokenizer google/gemma-4-E2B --tokens "$TOKENS" --out /workspace/cpt_data \
     > /workspace/fetch_mixture.log 2>&1
@@ -79,7 +95,9 @@ echo "cpt_hf exit ${PIPESTATUS[0]}"
 
 # 3. Pilot vs its own base on the same four tasks.
 if [ -f /workspace/runs/b0/final/config.json ]; then
-  timeout 1h python examples/base_gap_eval.py --gpus 0,1 \
+  FETCH=(); [ "$SKIP_GAP" = 1 ] && FETCH=(--fetch)
+  [ -n "$BENCHES" ] && FETCH+=(--benches $BENCHES)
+  timeout 1h python examples/base_gap_eval.py "${FETCH[@]}" --gpus 0,1 \
       --models /workspace/runs/b0/final google/gemma-4-E2B \
       --base /workspace/runs/b0/final --refs google/gemma-4-E2B \
       --data /workspace/tw_bench --out-dir /workspace/results/pilot_b0 \

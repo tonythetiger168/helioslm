@@ -1,5 +1,5 @@
 """HDL benchmark harness: NVIDIA CVDP v1.1.0, non-agentic code generation
-(v5.176, HDL track H0).
+(v5.177, HDL track H0).
 
 CVDP (nvidia/cvdp-benchmark-dataset; text CC-BY-4.0, code Apache-2.0)
 datapoints carry a prompt, optional input files, the files the model must

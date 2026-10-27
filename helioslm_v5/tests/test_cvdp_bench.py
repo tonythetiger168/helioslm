@@ -1,4 +1,4 @@
-"""T144 — HDL track H0: CVDP v1.1.0 non-agentic code generation, v5.176.
+"""T144 — HDL track H0: CVDP v1.1.0 non-agentic code generation, v5.177.
 
 Pins:
 
