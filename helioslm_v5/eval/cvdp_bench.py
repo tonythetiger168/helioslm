@@ -82,6 +82,17 @@ def category(row):
     return int(str(cats[0])[3:])
 
 
+def language(row):
+    """"sv" when an expected output is SystemVerilog (.sv/.svh), "v" for
+    Verilog (.v/.vh), else "other" (v5.182)."""
+    exts = {Path(f).suffix for f in row["output"]["context"]}
+    if exts & {".sv", ".svh"}:
+        return "sv"
+    if exts & {".v", ".vh"}:
+        return "v"
+    return "other"
+
+
 def parse_compose(text):
     """Services of a harness docker-compose.yml: ``{name: {key: value}}``.
 
@@ -321,12 +332,14 @@ def score(rows, texts, ks=(1,), workers=4, timeout=RUN_TIMEOUT_S):
     correct = {r["id"]: 0 for r in rows}
     for rid, ok in results:
         correct[rid] += ok
-    by_cat = {}
+    by_cat, by_lang = {}, {}
     for r in rows:
         by_cat.setdefault(category(r), []).append(correct[r["id"]])
+        by_lang.setdefault(language(r), []).append(correct[r["id"]])
     out = {"schema": SCHEMA_ID, "bench": "cvdp-v1.1.0/nonagentic-codegen-oss",
            "n_problems": len(rows), "n": n,
            "problems": [{"id": r["id"], "category": category(r),
+                         "language": language(r),
                          "correct": correct[r["id"]]} for r in rows]}
     m = max(len(rows), 1)
     for k in ks:
@@ -335,6 +348,9 @@ def score(rows, texts, ks=(1,), workers=4, timeout=RUN_TIMEOUT_S):
             out[f"pass@{k}_by_category"] = {
                 f"cid{c:03d}": sum(hb.pass_at_k(n, x, k) for x in v) / len(v)
                 for c, v in sorted(by_cat.items())}
+            out[f"pass@{k}_by_language"] = {
+                lang: sum(hb.pass_at_k(n, x, k) for x in v) / len(v)
+                for lang, v in sorted(by_lang.items())}
     return out
 
 

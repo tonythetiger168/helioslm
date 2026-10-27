@@ -11,7 +11,8 @@ Pins:
 4. model-chosen file names cannot leave the repo dir;
 5. with Icarus Verilog and cocotb installed: the golden output passes,
    a wrong one fails, and score reports pass@k per category;
-6. env_file as a list is read (v5.179).
+6. env_file as a list is read (v5.179);
+7. pass@k is also split by language, SystemVerilog vs Verilog (v5.182).
 
 Fixtures: two upstream example datapoints (CC BY 4.0 / Apache-2.0) in
 tests/fixtures/cvdp/.
@@ -135,3 +136,4 @@ def test_score():
     assert out["pass@1"] == pytest.approx(0.25)
     assert out["pass@4"] == pytest.approx(1.0)
     assert out["pass@1_by_category"] == {"cid003": pytest.approx(0.25)}
+    assert out["pass@1_by_language"] == {"sv": pytest.approx(0.25)}
