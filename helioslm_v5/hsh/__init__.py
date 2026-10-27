@@ -21,3 +21,4 @@ from .skills import (FilesystemSkills, SkillError, Skills,  # noqa: F401
 from .mcp import MCPError, MCPServer, mcp_plugin  # noqa: F401
 from .interaction import (ask_user_tool, html_to_text, plan_mode,  # noqa: F401
                           plan_state, set_plan_mode, web_fetch_tool)
+from .egress import Egress, egress_note  # noqa: F401

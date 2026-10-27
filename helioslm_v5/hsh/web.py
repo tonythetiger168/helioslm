@@ -48,6 +48,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from .builtin import Workspace
+from .egress import Egress
 from .interaction import plan_state, set_plan_mode
 from .kernel import Context
 from .llm import LLM, OpenAICompatAdapter, ScriptedAdapter
@@ -275,7 +276,7 @@ class Store:
 
 class HarnessApp:
     def __init__(self, workspace, data_dir="~/.hsh/web", providers=None, demo=False,
-                 preset="standard", skill_dirs=(), mcp_config=None):
+                 preset="standard", skill_dirs=(), mcp_config=None, egress=None):
         self.workspace = Path(workspace).resolve()
         self.store = Store(data_dir, self.workspace)
         self.default_preset = preset
@@ -286,6 +287,8 @@ class HarnessApp:
         for p in (Tools, LLM, Agents):
             self.ctx.plugin(p)
         self.ctx.plugin(Workspace, {"root": str(self.workspace)})
+        if egress is not None:
+            self.ctx.plugin(Egress, egress)
         self.providers = {}
         for name, spec in (DEFAULT_PROVIDERS if providers is None else providers).items():
             adapter = spec.get("adapter") or OpenAICompatAdapter(
@@ -698,11 +701,17 @@ def main(argv=None):
     ap.add_argument("--mcp", help="MCP config (.mcp.json), relative to the workspace")
     ap.add_argument("--demo", action="store_true", help="add a keyless demo model")
     ap.add_argument("--open", action="store_true", help="open a browser")
+    ap.add_argument("--egress", choices=["deny", "audit"], help="record network access "
+                    "from bash/run_code; deny blocks hosts not given with --egress-allow")
+    ap.add_argument("--egress-allow", action="append", default=[], metavar="HOST",
+                    help="host pattern the tools may reach (e.g. '*.pypi.org'), repeatable")
     args = ap.parse_args(argv)
     if args.host not in ("127.0.0.1", "localhost", "::1") and not args.allow_remote:
         ap.error("--host other than loopback needs --allow-remote")
     app = HarnessApp(args.workspace, args.data_dir, load_providers(args), demo=args.demo,
-                     preset=args.preset, skill_dirs=args.skills, mcp_config=args.mcp)
+                     preset=args.preset, skill_dirs=args.skills, mcp_config=args.mcp,
+                     egress=({"mode": args.egress, "allow": args.egress_allow}
+                             if args.egress else None))
     srv = serve(app, args.host, args.port)
     srv.allow_remote = args.allow_remote
     url = f"http://{args.host}:{srv.server_address[1]}/"
