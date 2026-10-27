@@ -20,7 +20,10 @@ published ones:
 
 Two optional extra checks, reported but never part of the pass rate:
 ``pyslang`` lint (SystemVerilog front end) and ``yosys`` synthesis, which
-catches designs that simulate but are not synthesizable.
+catches designs that simulate but are not synthesizable. With synthesis,
+each passing sample also gets ``area_ratio`` = reference cells / sample
+cells, averaged as ``area_ratio_mean`` (v5.182; gate count, higher is
+smaller).
 
 Data is fetched from a pinned upstream commit into a cache directory with
 a sha256 manifest (``fetch``); nothing is vendored. ``self_check`` renames
@@ -347,13 +350,14 @@ def score(probs, generate_fn, n=1, ks=(1,), prefix="", extra=False):
 
     Returns the result dict (schema ``hdl-bench/1``).
     """
-    rows, codes = [], {}
+    rows, codes, ratios = [], {}, []
     for i, prob in enumerate(probs):
         system, user = build_prompt(prob["prompt"], prefix)
         texts = generate_fn(system, user, i)
         if len(texts) != n:
             raise HdlBenchError(f"{prob['name']}: got {len(texts)} samples, want {n}")
         samples = []
+        ref = synth(reference_sample(prob)) if extra else None
         for t in texts:
             code = extract_code(t)
             sim = simulate(code, prob)
@@ -361,10 +365,16 @@ def score(probs, generate_fn, n=1, ks=(1,), prefix="", extra=False):
             s = {"code": sim["code"], "passed": sim["passed"]}
             if extra:
                 s["lint"], s["synth"] = lint(code), synth(code)
+                r = area_ratio(ref, s["synth"]) if s["passed"] else None
+                if r is not None:
+                    s["area_ratio"] = r
+                    ratios.append(r)
             samples.append(s)
         c = sum(s["passed"] for s in samples)
-        rows.append({"name": prob["name"], "n": n, "correct": c,
-                     "samples": samples})
+        row = {"name": prob["name"], "n": n, "correct": c, "samples": samples}
+        if ref is not None:
+            row["ref_cells"] = ref["cells"]
+        rows.append(row)
     out = {"schema": SCHEMA_ID, "bench": "verilog-eval-v2/spec-to-rtl",
            "commit": COMMIT, "n_problems": len(rows), "n": n,
            "failure_codes": dict(sorted(codes.items())), "problems": rows}
@@ -372,7 +382,21 @@ def score(probs, generate_fn, n=1, ks=(1,), prefix="", extra=False):
         if k <= n:
             out[f"pass@{k}"] = (sum(pass_at_k(n, r["correct"], k) for r in rows)
                                 / max(len(rows), 1))
+    if ratios:
+        out["area_ratio_mean"] = sum(ratios) / len(ratios)
+        out["area_ratio_n"] = len(ratios)
     return out
+
+
+def area_ratio(ref, sample):
+    """Reference cells / sample cells after yosys ``synth`` (v5.182): above
+    1 the passing sample is smaller than the reference design. None when
+    either side did not synthesize or has no cells."""
+    if not ref or not sample or not ref.get("cells") or not sample.get("cells"):
+        return None
+    if not (ref["ok"] and sample["ok"]):
+        return None
+    return ref["cells"] / sample["cells"]
 
 
 def self_check(probs):
