@@ -74,3 +74,35 @@ Generates every prompt of the three benchmarks in one vLLM batch, then
 simulates on all CPU cores. CVDP has no public golden outputs for the
 `no_commercial` file, so its harness failures are not separated from
 model failures; compare models only against each other.
+
+## UVM testbenches, SystemVerilog split and gate count (v5.182)
+
+`helioslm_v5/eval/uvm_bench.py` asks the model for a self-checking UVM
+testbench (top module `tb`) for a VerilogEval design, given its spec and
+working RTL. Each testbench is built once with Verilator and upstream
+UVM 2017-1.0 (no DPI) and run on the golden design and on up to three
+mutants (one operator or constant changed). `prepare` keeps a mutant
+only when VerilogEval's own testbench tells it apart from the
+reference, so no mutant is equivalent: 129 of the 156 designs have at
+least one. Scores: `build@k`, `golden@k` (UVM_ERROR and UVM_FATAL are
+0 on the golden design), `pass@k` (golden clean and every mutant
+caught) and `kill_rate`.
+
+```bash
+# Verilator >= 5.052 (built from source; Ubuntu's package is too old),
+# Icarus for prepare; ccache speeds up the per-testbench C++ builds
+python -m helioslm_v5.eval.uvm_bench fetch      # UVM package from Verilator's tree
+python -m helioslm_v5.eval.uvm_bench prepare    # mutants, needs the VerilogEval cache
+python -m helioslm_v5.eval.uvm_bench self-check # reference testbench must pass all
+python examples/hdl_eval_all.py --model <id> --benches verilog-eval,rtllm,cvdp,uvm \
+    --extra --out results/hdl/<name>.json
+```
+
+A build takes about 80 s of two CPU cores (UVM is compiled with every
+testbench), so score UVM on a pod with many cores.
+
+CVDP results now also carry `pass@k_by_language` (`sv` when an expected
+output file is `.sv`/`.svh`, `v` for Verilog). `--extra` runs yosys
+`synth` on VerilogEval samples and the reference; each passing sample
+gets `area_ratio` = reference cells / sample cells (above 1 is smaller
+than the reference), averaged as `area_ratio_mean`.

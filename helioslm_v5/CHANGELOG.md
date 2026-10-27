@@ -1,5 +1,24 @@
 # HeliosLM v5 Changelog
 
+## v5.182 (2026-10-27) - HDL track: UVM testbench benchmark, SystemVerilog split, gate count
+
+`helioslm_v5/eval/uvm_bench.py`: the model writes a self-checking UVM
+testbench for a VerilogEval v2 design from its spec and RTL. Verilator
+(>= 5.052) with upstream UVM 2017-1.0 (Apache-2.0, fetched from
+Verilator's tree at a pinned tag) builds it once against a wrapper that
+holds the golden design and up to three mutants, selected at run time
+with `+UVMB_VARIANT`. `prepare` keeps only mutants that VerilogEval's
+own testbench tells apart from the reference (129 of 156 designs).
+Reported: `build@k`, `golden@k`, `pass@k` (clean on the golden design,
+every mutant caught) and `kill_rate`; `self-check` runs a generated
+reference UVM testbench on every task.
+
+`cvdp_bench.score` adds `pass@k_by_language` (SystemVerilog vs
+Verilog outputs). `hdl_bench.score(extra=True)` adds yosys gate counts:
+`area_ratio` per passing sample (reference cells / sample cells) and
+`area_ratio_mean`. `hdl_eval_all.py` gains `--benches ...,uvm`,
+`--uvm-new-tokens` and `--extra`. T159; T144 checks the language split.
+
 ## v5.181 (2026-10-27) - hsh: network egress audit for tool subprocesses
 
 The harness ran `bash` and `run_code` with a scrubbed environment and

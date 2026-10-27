@@ -1,6 +1,7 @@
-Two VerilogEval v2 spec-to-rtl problems (Prob001_zero, Prob031_dff), copied
-unchanged from NVlabs/verilog-eval at commit
-c498220d0a52248f8e3fdffe279075215bde2da6 for the hdl_bench unit tests.
+Three VerilogEval v2 spec-to-rtl problems (Prob001_zero, Prob031_dff,
+Prob120_fsm3s), copied unchanged from NVlabs/verilog-eval at commit
+c498220d0a52248f8e3fdffe279075215bde2da6 for the hdl_bench and uvm_bench
+unit tests.
 
 MIT License
 
