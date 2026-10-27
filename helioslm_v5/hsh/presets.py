@@ -19,6 +19,10 @@ Shipped presets (dsh's four work modes):
 - ``creator``: standard plus ``inspect`` for looking at the running
   harness (plugins, services, tools, events, the session log, the preset).
 
+Any preset can add ``{"id": "egress", "name": "egress", "config":
+{"allow": [...]}}`` to record and block network access from ``bash`` and
+``run_code`` (egress.py).
+
 Patches (applied in order, like dsh's profile layers):
 
 - ``{"insert": [rows], "after": "<id>"}`` (default: append);
@@ -35,6 +39,7 @@ import json
 
 from .builtin import bash_tool, editor_tool, fs_tools, run_code_tool, todo_tool
 from .compaction import compaction
+from .egress import Egress
 from .interaction import ask_user_tool, plan_mode, web_fetch_tool
 from .llm import request_retry
 from .mcp import mcp_plugin
@@ -122,6 +127,7 @@ PLUGINS = {
     "plan-mode": plan_mode,
     "tool-web-fetch": web_fetch_tool,
     "request-retry": request_retry,
+    "egress": Egress,
 }
 
 _STANDARD = [

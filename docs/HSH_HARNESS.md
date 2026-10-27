@@ -320,3 +320,29 @@ python -m helioslm_v5.hsh.web --workspace . --demo                    # no model
   the turn ends with reason `cancelled`.
 
 Tests: `helioslm_v5/tests/test_hsh_web.py` (4).
+
+## H13: network egress audit (`hsh/egress.py`, v5.181)
+
+A local model that runs commands should reach the network only where the
+operator allows it, and every attempt should be visible. Mount the
+`Egress` service (`ctx.plugin(Egress, {"allow": ["*.pypi.org"]})`, the
+`egress` preset row, or `web --egress deny --egress-allow HOST`) and the
+`bash` and `run_code` children get:
+
+- a proxy on 127.0.0.1 in `HTTP(S)_PROXY` / `ALL_PROXY`: `CONNECT` and
+  plain HTTP to an allowed host pass, anything else gets 403;
+- a Python audit hook on `socket.getaddrinfo` / `socket.connect`
+  (`sitecustomize` on `PYTHONPATH` for Python started from `bash`,
+  prepended to the `run_code` child): a host off the allow list is
+  refused before DNS in `deny` mode.
+
+`audit` mode records and lets through. Loopback is always allowed.
+Each call's attempts come back as `egress` in its value and a
+`[network blocked by the harness: host:port]` line the model reads;
+`ctx.egress.report()` sums the session per host.
+
+Without `isolate` this is an audit trail, not a sandbox: a non-Python
+program that ignores the proxy variables can still connect.
+`{"isolate": true}` runs `bash` under `unshare -rn` (Linux user
+namespaces) so the child has loopback only. T158 pins it without leaving
+the machine.

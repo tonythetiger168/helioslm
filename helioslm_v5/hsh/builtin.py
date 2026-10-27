@@ -23,6 +23,10 @@ presets work the same way).
   ``tools.<name>(**args)`` and each call goes back through the host's full
   pipeline (``parent`` set). The program runs in a child process with the
   same confinement as ``bash``; tool calls cross a JSON-lines pipe.
+
+With the ``egress`` service mounted (egress.py), both children run with
+its proxy and audit hook; the network attempts of a call come back as
+``egress`` in its value and a ``[network blocked ...]`` line in its output.
 """
 from __future__ import annotations
 
@@ -35,6 +39,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from .egress import HOOK, egress_note
 from .kernel import Service
 from .tools import ToolDefinition
 
@@ -84,6 +89,26 @@ def _env(root):
     # within the same second, at the same size, would import stale bytecode
     return keep | {"HOME": str(root), "HSH_WORKSPACE": str(root),
                    "PYTHONDONTWRITEBYTECODE": "1"}
+
+
+def _child(ctx, root):
+    """Env for a tool child plus the egress service, when one is mounted."""
+    eg = ctx.get("egress")
+    env = _env(root)
+    return (env | eg.env() if eg else env), eg
+
+
+def _drained(value, eg):
+    records = eg.drain() if eg else []
+    if records:
+        value["egress"] = records
+    return value
+
+
+def _note(ctx, value):
+    eg = ctx.get("egress")
+    note = egress_note(value.get("egress") or [], eg.mode if eg else "deny")
+    return "\n" + note if note else ""
 
 
 def _mount(ctx, *defs):
@@ -209,20 +234,24 @@ def bash_tool(ctx, config=None):
         timeout = min(args.get("timeout_s", cfg.get("timeout_s", 60)), 600)
         if jobs is not None:
             return run_job(args, cwd, timeout)
+        env, eg = _child(ctx, ws.root)
+        argv = ["bash", "-c", args["command"]]
         try:
-            p = subprocess.run(["bash", "-c", args["command"]], cwd=cwd,
-                               env=_env(ws.root), capture_output=True, text=True,
+            p = subprocess.run(eg.wrap(argv) if eg else argv, cwd=cwd,
+                               env=env, capture_output=True, text=True,
                                timeout=timeout,
                                preexec_fn=_limits(int(timeout) + 1, cfg.get("mem_mb", 2048)))
         except subprocess.TimeoutExpired:
-            return {"exit_code": None, "output": f"timed out after {timeout}s"}
-        return {"exit_code": p.returncode, "output": _clip(p.stdout + p.stderr)}
+            return _drained({"exit_code": None, "output": f"timed out after {timeout}s"}, eg)
+        return _drained({"exit_code": p.returncode, "output": _clip(p.stdout + p.stderr)}, eg)
 
     def run_job(args, cwd, timeout):
         out_path = jobs.spill_path()
+        env, eg = _child(ctx, ws.root)
+        argv = ["bash", "-c", args["command"]]
         with open(out_path, "wb") as fh:
             proc = subprocess.Popen(
-                ["bash", "-c", args["command"]], cwd=cwd, env=_env(ws.root),
+                eg.wrap(argv) if eg else argv, cwd=cwd, env=env,
                 stdin=subprocess.DEVNULL, stdout=fh, stderr=subprocess.STDOUT,
                 start_new_session=hasattr(os, "setsid"),
                 preexec_fn=_limits(cfg.get("job_cpu_s", 3600), cfg.get("mem_mb", 2048)))
@@ -237,17 +266,18 @@ def bash_tool(ctx, config=None):
             first = jobs.read(jid)
             note = ("started in the background" if args.get("run_in_background")
                     else f"still running after {timeout}s; moved to the background")
-            return {"exit_code": None, "job_id": jid, "note": note,
-                    "output": first["output"]}
+            return _drained({"exit_code": None, "job_id": jid, "note": note,
+                             "output": first["output"]}, eg)
         done = jobs.read(jid)
         del jobs.jobs[jid]
-        return {"exit_code": proc.returncode, "output": done["output"]}
+        return _drained({"exit_code": proc.returncode, "output": done["output"]}, eg)
 
     def render(a, v):
+        note = _note(ctx, v)
         if v.get("job_id"):
             head = f"[{v['job_id']}: {v['note']}; read it with job_output, stop it with job_kill]"
-            return head + ("\n" + v["output"] if v["output"] else "")
-        return f"[exit {v['exit_code']}]\n{v['output']}"
+            return head + ("\n" + v["output"] if v["output"] else "") + note
+        return f"[exit {v['exit_code']}]\n{v['output']}" + note
 
     schema = BASH_SCHEMA
     if jobs is not None:
@@ -525,8 +555,11 @@ def run_code_tool(ctx, config=None):
     max_calls = cfg.get("max_calls", 64)
 
     def run(args, exe):
-        proc = subprocess.Popen([sys.executable, "-I", "-c", _CHILD], cwd=ws.root,
-                                env=_env(ws.root), stdin=subprocess.PIPE,
+        env, eg = _child(ctx, ws.root)
+        # -I ignores PYTHONPATH, so the egress hook goes in front of the child
+        child = (HOOK + _CHILD) if eg else _CHILD
+        proc = subprocess.Popen([sys.executable, "-I", "-c", child], cwd=ws.root,
+                                env=env, stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                 preexec_fn=_limits(cfg.get("cpu_s", 60), cfg.get("mem_mb", 2048)))
         dispatches = []
@@ -556,17 +589,19 @@ def run_code_tool(ctx, config=None):
             proc.kill()
             proc.wait()
         if not done["ok"]:
-            raise RuntimeError(done["error"] + ("\n" + done["stdout"] if done["stdout"] else ""))
-        return {"value": done.get("value"), "stdout": _clip(done["stdout"]),
-                "dispatches": dispatches}
+            note = egress_note(eg.drain(), eg.mode) if eg else ""
+            raise RuntimeError(done["error"] + ("\n" + done["stdout"] if done["stdout"] else "")
+                               + ("\n" + note if note else ""))
+        return _drained({"value": done.get("value"), "stdout": _clip(done["stdout"]),
+                         "dispatches": dispatches}, eg)
 
     _mount(ctx, ToolDefinition(
         "run_code", "Run one Python program that calls the other tools as "
         "functions (tools.<name>(**args)). Use it to batch several tool calls "
         "into one step.", RUN_CODE_SCHEMA, run,
-        render=lambda a, v: (v["stdout"] + ("\nresult = " + json.dumps(v["value"], ensure_ascii=False)
-                                            if v["value"] is not None else "")).strip()
-        or "(no output)"))
+        render=lambda a, v: ((v["stdout"] + ("\nresult = " + json.dumps(v["value"], ensure_ascii=False)
+                                             if v["value"] is not None else "")).strip()
+                             or "(no output)") + _note(ctx, v)))
 
 
 run_code_tool.inject = ["tools", "workspace"]

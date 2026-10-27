@@ -1,5 +1,18 @@
 # HeliosLM v5 Changelog
 
+## v5.181 (2026-10-27) - hsh: network egress audit for tool subprocesses
+
+The harness ran `bash` and `run_code` with a scrubbed environment and
+rlimits but nothing watched the network: a model could fetch or upload
+anything without the operator seeing it. The new `Egress` service
+(`hsh/egress.py`, `ctx.egress`) gives tool children a local proxy and a
+Python audit hook. Hosts off the allow list are refused in `deny` mode
+(the default) or only recorded in `audit` mode, and each call's attempts
+come back in its result and as a `[network blocked ...]` line.
+`isolate` runs `bash` under `unshare -rn`. The web UI takes `--egress
+deny|audit` and `--egress-allow HOST`; presets can add an `egress` row.
+Design: docs/HSH_HARNESS.md H13. T158 pins it.
+
 ## v5.180 (2026-10-27) - cpt_hf: ce-chunk check under autocast with bf16 frozen parameters
 
 `cpt_hf.py --ce-chunk --frozen-bf16` failed before the first step: the

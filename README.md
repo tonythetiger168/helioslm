@@ -95,7 +95,9 @@ python -m helioslm_v5.hsh.web --workspace /path/to/your/repo --open
 - Sessions are saved as JSONL logs under `~/.hsh/web` (change with
   `--data-dir`) and come back after a restart.
 - Other options: `--port`, `--preset minimal|standard|code|creator`,
-  `--skills DIR` (extra skill folder, repeatable), `--mcp .mcp.json`.
+  `--skills DIR` (extra skill folder, repeatable), `--mcp .mcp.json`,
+  `--egress deny --egress-allow HOST` (block and log network access from
+  the agent's commands except to the hosts you allow; `audit` only logs).
   The server listens on 127.0.0.1 only.
 
 ### 4. From Python
@@ -681,6 +683,7 @@ As of 2026-10-26:
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.181** — hsh network egress audit: tool subprocesses go through a local proxy and a Python audit hook; hosts off the allow list are blocked (`deny`) or recorded (`audit`); `web --egress` / `--egress-allow`; optional `unshare -rn` isolation — T158
 - **v5.180** — `cpt_hf.py --ce-chunk --frozen-bf16` runs its chunked-head check under bf16 autocast (it failed on the first H3 pod) — T145
 - **v5.179** — HDL pod fixes: CVDP `env_file` lists, `hdl_eval_all.py` keeps generations before scoring, `cpt_hf.py` / `sft_hf.py --frozen-bf16` (frozen parameters in bf16, E4B fits 96 GB) — T144, T157
 - **v5.178** — HDL track H1: `data/mixtures/hdl_h1_cpt_v1.json` (Verilog / SystemVerilog / VHDL code + English and maths replay, licences and columns in `docs/HDL_DATA.md`); mixture sources take `field`, `data_dir` / `data_files` and `"heuristics": false`; `hdl_eval_all.py` (all three HDL benchmarks in one vLLM batch) and `sft_hf.py` (response-only SFT of a Hugging Face model) — T156, T157
