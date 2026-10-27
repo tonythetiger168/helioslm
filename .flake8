@@ -5,4 +5,4 @@
 [flake8]
 select = E9,F63,F7,F82,F401,F811,F841,F541
 per-file-ignores =
-    evastar/tests/*:F401
+    helioslm_v5/tests/*:F401

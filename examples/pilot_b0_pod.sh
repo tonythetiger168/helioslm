@@ -89,7 +89,7 @@ fi
 
 # 5 (runs during step 4, network only). Keep the pilot after the pod is
 #    gone: upload the final checkpoint to a private HF model repo
-#    (HF_REPO, default <account>/evastar-pilot-b0); results follow after
+#    (HF_REPO, default <account>/helioslm-pilot-b0); results follow after
 #    step 4. GGUF
 #    conversion and the llama.cpp check run later on a local GPU, not here.
 UP=
@@ -98,7 +98,7 @@ if [ -f /workspace/runs/b0/final/config.json ]; then
 import os
 from huggingface_hub import HfApi
 api = HfApi()
-repo = os.environ.get("HF_REPO") or f"{api.whoami()['name']}/evastar-pilot-b0"
+repo = os.environ.get("HF_REPO") or f"{api.whoami()['name']}/helioslm-pilot-b0"
 api.create_repo(repo, private=True, exist_ok=True)
 api.upload_folder(repo_id=repo, folder_path="/workspace/runs/b0/final",
                   commit_message="pilot B0 final checkpoint")
@@ -156,7 +156,7 @@ if [ -n "$UP" ]; then
 import os
 from huggingface_hub import HfApi
 api = HfApi()
-repo = os.environ.get("HF_REPO") or f"{api.whoami()['name']}/evastar-pilot-b0"
+repo = os.environ.get("HF_REPO") or f"{api.whoami()['name']}/helioslm-pilot-b0"
 api.upload_folder(repo_id=repo, folder_path="/workspace/results",
                   path_in_repo="results", commit_message="pilot B0 results")
 print("results uploaded to", repo)

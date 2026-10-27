@@ -51,7 +51,7 @@ Why Gemma 4 E4B:
   covers the L8 and L16 local tiers from the product-line review without
   a custom GGUF architecture.
 - **Architecture.** It uses the per-layer embeddings that LB8 added to
-  Evastar, so the team already knows the design.
+  HeliosLM, so the team already knows the design.
 
 The main risk is the base's Chinese. Gemma 4 is weaker in Traditional
 Chinese than some other open 4B models, so continued pretraining carries
@@ -76,7 +76,7 @@ in the pre-registration are filled in.
 - **#40 (0.5B).** Unchanged. It stays a research line with its v1.0 gate.
 - **#42–#45 (MoE).** Unchanged. They are later and would also start
   from open bases if route B works.
-- **Evastar components.** Architecture features such as MLA, KDA and
+- **HeliosLM components.** Architecture features such as MLA, KDA and
   LatentMoE do not apply to a continued Gemma model. The data,
   distillation and RL work does carry over: LB2 WSD schedule, LB3
   mixtures and quality filter, LB5 decay traces, LB6 thinking switch and
@@ -150,7 +150,7 @@ US$5.5k without contingency), before the B1 run rather than after it.
 
 ## What the CPU prep PR contains (v5.127)
 
-- `evastar/src/training/cpt_plan.py`: the approved bases, the plan schema and the cost model.
+- `helioslm_v5/src/training/cpt_plan.py`: the approved bases, the plan schema and the cost model.
 - `examples/cpt_plan.py`: prints the cost table and, with `--bases`, the
   candidate list.
 - `data/cpt/b1_gemma4_e4b.json` and `data/cpt/b0_gemma4_e2b_pilot.json`:

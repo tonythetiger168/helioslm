@@ -9,8 +9,8 @@ NVlabs/verilog-eval at commit `c498220d`, MIT).
 ```bash
 apt-get install -y iverilog yosys      # yosys optional
 pip install pyslang==12.0.0            # optional lint
-python -m evastar.eval.hdl_bench fetch
-python -m evastar.eval.hdl_bench self-check          # must print 156/156
+python -m helioslm_v5.eval.hdl_bench fetch
+python -m helioslm_v5.eval.hdl_bench self-check          # must print 156/156
 python examples/hdl_bench_run.py --model <hf-id> --out results/hdl/<name>.json
 # upstream-style pass@1: --n 20 --temperature 0.8
 ```
@@ -26,7 +26,7 @@ python examples/hdl_bench_run.py --model <hf-id> --out results/hdl/<name>.json
 Samples are untrusted code; run them only inside the pod or another
 container. Next in H0: CVDP (CC-BY-4.0 + Apache-2.0) and RTLLM.
 
-## CVDP v1.1.0, non-agentic code generation (v5.151)
+## CVDP v1.1.0, non-agentic code generation (v5.176)
 
 NVIDIA's CVDP (`nvidia/cvdp-benchmark-dataset`, text CC BY 4.0, code
 Apache-2.0). Only the open-source flow: the `no_commercial` file and
@@ -37,10 +37,10 @@ when every harness command exits 0, as upstream.
 
 ```bash
 pip install cocotb==2.0.1 pytest==8.3.2 cocotb-bus==0.3.0 cocotbext-axi==0.1.28
-python -m evastar.eval.cvdp_bench fetch          # needs HF access
-python -m evastar.eval.cvdp_bench list           # runnable vs skipped
+python -m helioslm_v5.eval.cvdp_bench fetch          # needs HF access
+python -m helioslm_v5.eval.cvdp_bench list           # runnable vs skipped
 # golden check needs the *_with_solutions file, if you have it:
-python -m evastar.eval.cvdp_bench self-check --file <with_solutions.jsonl>
+python -m helioslm_v5.eval.cvdp_bench self-check --file <with_solutions.jsonl>
 ```
 
 Generation and scoring are separate (`cvdp_bench.score(rows, texts)`),

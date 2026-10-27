@@ -1,5 +1,5 @@
 """zh_train_speed.py — Traditional-Chinese training speed: Big5-seeded BPE
-vs plain BPE (evastar/eval/zh_train_speed.py).
+vs plain BPE (helioslm_v5/eval/zh_train_speed.py).
 
 Five byte-level BPEs (32000 requested), trained as in TW4:
 
@@ -30,9 +30,9 @@ os.environ.setdefault("RAYON_NUM_THREADS", "1")   # deterministic BPE training
 
 import torch  # noqa: E402
 
-from evastar.eval.zh_tokenizer_coverage import (  # noqa: E402
+from helioslm_v5.eval.zh_tokenizer_coverage import (  # noqa: E402
     Bpe, eval_split, measure, train_bpe, training_corpus, zh_seed_text)
-from evastar.eval.zh_train_speed import run, zh_training_text  # noqa: E402
+from helioslm_v5.eval.zh_train_speed import run, zh_training_text  # noqa: E402
 
 # arm -> (BPE training corpus, seed scripts or None)
 ARM_SPEC = {"code_only": ("code_only", None),

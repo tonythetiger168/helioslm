@@ -15,11 +15,11 @@ import torch
 def load_model_tok(device=None, ckpt_dir=None):
     """Paired artifact loading (v5.33 P3-P5 discipline): the tokenizer
     travels WITH the checkpoint; never retrain at eval time."""
-    from evastar.configs.config_v5 import EvastarV5Config
-    from evastar.src.model_v5 import EvastarV5
-    from evastar.src.tokenizer.bpe import BOS, HeliosBPE
+    from helioslm_v5.configs.config_v5 import HeliosLMv5Config
+    from helioslm_v5.src.model_v5 import HeliosLMv5
+    from helioslm_v5.src.tokenizer.bpe import BOS, HeliosBPE
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-    ck = Path(ckpt_dir or os.environ.get("EVASTAR_CKPT_DIR") or os.environ.get("HELIOS_CKPT_DIR", "checkpoints"))
+    ck = Path(ckpt_dir or os.environ.get("HELIOS_CKPT_DIR") or os.environ.get("EVASTAR_CKPT_DIR", "checkpoints"))
     tok_path = ck / "mid_sft_v5.33.tok.json"
     # v5.37f structural guard: the training run stores a sha256
     # fingerprint of ITS tokenizer (.tokfp). If the pairing file was
@@ -41,7 +41,7 @@ def load_model_tok(device=None, ckpt_dir=None):
         print("tokenizer fingerprint verified against .tokfp", flush=True)
     tok = HeliosBPE.load(str(tok_path))
     print("loaded paired tokenizer from checkpoint", flush=True)
-    model = EvastarV5(EvastarV5Config(size="mid")).to(device)
+    model = HeliosLMv5(HeliosLMv5Config(size="mid")).to(device)
     model.load_state_dict(torch.load(ck / "mid_sft_v5.33.pt",
                                      map_location=device,
                                      weights_only=True))
@@ -53,7 +53,7 @@ def make_model_fn(model, tok, device, max_new=128, fewshot="",
                   state=None):
     """Greedy decode closure; records softmax-max confidence per call in
     state['conf'] (a dict the caller owns)."""
-    from evastar.src.tokenizer.bpe import BOS
+    from helioslm_v5.src.tokenizer.bpe import BOS
     bos = tok.vocab[BOS]
 
     def model_fn(prompt, seed, step):

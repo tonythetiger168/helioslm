@@ -1,7 +1,7 @@
 # #42 30B-A3B 的 MoE 配置決策表（OS6）
 
 來源：2026-10-22 開源模型評析的 OS6。各模型數值讀自各自 Hugging Face repo 的
-`config.json`（2026-10-22）。計算在 `evastar/eval/moe_config_table.py`，
+`config.json`（2026-10-22）。計算在 `helioslm_v5/eval/moe_config_table.py`，
 測試是 `tests/test_moe_config_table.py`。
 
 ## 五個模型的 MoE 欄位
@@ -24,14 +24,14 @@ embedding。
 
 - **啟用比例：** top-k ÷ experts 在 2.1%（MiMo-Pro）到 4.2%（Hy3）之間，五家
   都是細粒度 MoE。
-- **路由：** 六個裡五個用 sigmoid 分數，加上無輔助損失的 bias 平衡。Evastar
+- **路由：** 六個裡五個用 sigmoid 分數，加上無輔助損失的 bias 平衡。HeliosLM
   已有這套（aux-free bias，加上 quantile、SMEBU、quantile_balancing 策略）。
 - **expert 寬度：** 是 hidden 的 1/3 到 1/2。
 - **shared expert：** 四家用 1 個，小米兩個都不用。
 - **dense 層：** 前 0–3 層 dense；DeepSeek 改成前 3 層 hash 路由。
 - **top-k：** 只有 MiniMax M3 走粗粒度路線（128 選 4、expert 寬 3072）。
 
-Evastar 的 `MoEConfig`（num_experts、num_shared_experts、
+HeliosLM 的 `MoEConfig`（num_experts、num_shared_experts、
 num_activated_experts、expert_hidden_size、first_k_dense）可以直接表達表中
 每一列，不需要新程式碼。sqrtsoftplus 分數和 hash 路由層例外，目前沒有實作。
 

@@ -25,9 +25,9 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from evastar.agent.finetune_data import build_chat_dataset
-from evastar.configs.config_v5 import EvastarV5Config
-from evastar.src.model_v5 import EvastarV5
+from helioslm_v5.agent.finetune_data import build_chat_dataset
+from helioslm_v5.configs.config_v5 import HeliosLMv5Config
+from helioslm_v5.src.model_v5 import HeliosLMv5
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from train_tool_tuned import BOS, EOS, PAD, MAX_CHAR, collate, encode, generate
@@ -75,7 +75,7 @@ def eval_exact_and_modes(model, evals):
     generate() is greedy (argmax), so failures are the model's, not
     sampling noise.
     """
-    from evastar.agent.schema import (ToolCallError, parse_chat_turn)
+    from helioslm_v5.agent.schema import (ToolCallError, parse_chat_turn)
     res = {"exact": 0, "tool_n": 0, "tool_ok": 0, "text_n": 0, "text_ok": 0}
     for prompt, want in evals:
         got = generate(model, prompt, max_new=len(want) + 20)
@@ -101,14 +101,14 @@ def main():
     print(f"split: {len(train)} train / {len(evals)} eval "
           f"(20 tool + 20 text)", flush=True)
 
-    cfg = EvastarV5Config(size="lite")
-    model = EvastarV5(cfg)
+    cfg = HeliosLMv5Config(size="lite")
+    model = HeliosLMv5(cfg)
     # Checkpoint dir: overridable because a periodic sandbox cleanup re-
     # chowns files inside the repo tree to root, breaking later saves
     # (observed 2026-09-26 twice). Default keeps the historical location.
     import os
-    out_dir = Path(os.environ.get("EVASTAR_CKPT_DIR") or os.environ.get(
-        "HELIOS_CKPT_DIR",
+    out_dir = Path(os.environ.get("HELIOS_CKPT_DIR") or os.environ.get(
+        "EVASTAR_CKPT_DIR",
         str(Path(__file__).resolve().parent.parent / "checkpoints")))
     out_dir.mkdir(exist_ok=True, parents=True)
     ckpt = out_dir / "chat_tuned_v5.30.2.pt"
@@ -179,7 +179,7 @@ def main():
           f"(tool {r['tool_ok']}/{r['tool_n']}, text {r['text_ok']}/{r['text_n']})",
           flush=True)
 
-    meta = {"arch": "evastar_lite", "params": sum(p.numel()
+    meta = {"arch": "helioslm_v5_lite", "params": sum(p.numel()
             for p in model.parameters()), "vocab_size": cfg.vocab_size,
             "tokenizer": "char(ord<1024); BOS=1023 EOS=1022 PAD=1021",
             "init_from": "tool_tuned_v5.27.pt (hot-start)",
