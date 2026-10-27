@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HeliosLM Harness</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<div id="app" class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="side-top">
+      <a class="brand" href="/" id="brand">
+        <img src="/icon.svg" alt="" class="brand-mark">
+        <span class="brand-name">helioslm</span><span class="brand-badge">HARNESS</span>
+      </a>
+      <button class="icon-btn" id="collapse" title="Hide sidebar" aria-label="Hide sidebar">
+        <svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="2.5"/><path d="M8 4v12"/></svg>
+      </button>
+    </div>
+    <button class="new-session" id="new-session">
+      <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 7v6M7 10h6"/></svg>
+      New Session
+    </button>
+    <nav class="side-list" id="session-list" aria-label="Sessions"></nav>
+    <div class="side-foot">
+      <button class="foot-btn" id="open-settings">
+        <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.8v2M10 15.2v2M2.8 10h2M15.2 10h2M4.9 4.9l1.4 1.4M13.7 13.7l1.4 1.4M4.9 15.1l1.4-1.4M13.7 6.3l1.4-1.4"/></svg>
+        <span>Settings</span>
+      </button>
+    </div>
+  </aside>
+  <main class="main" id="main">
+    <button class="icon-btn reopen" id="reopen" title="Show sidebar" aria-label="Show sidebar">
+      <svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="2.5"/><path d="M8 4v12"/></svg>
+    </button>
+    <header class="conv-head" id="conv-head" hidden>
+      <div class="conv-title" id="conv-title"></div>
+      <div class="conv-meta" id="conv-meta"></div>
+      <button class="icon-btn" id="conv-menu" title="Session actions" aria-label="Session actions">
+        <svg viewBox="0 0 20 20"><circle cx="5" cy="10" r="1.2"/><circle cx="10" cy="10" r="1.2"/><circle cx="15" cy="10" r="1.2"/></svg>
+      </button>
+    </header>
+    <section class="scroll" id="scroll">
+      <div class="hero" id="hero">
+        <div class="hero-title"><img src="/icon.svg" alt="" class="hero-mark"><span>What should we build?</span><span class="hero-tag">Preview</span></div>
+      </div>
+      <div class="conversation" id="conversation"></div>
+    </section>
+    <div class="dock" id="dock">
+      <div class="ws-chip" id="ws-chip"></div>
+      <div class="pending" id="pending"></div>
+      <div class="composer" id="composer">
+        <div class="slash" id="slash" hidden></div>
+        <textarea id="input" rows="1" placeholder="Describe what you want to build, / for skills and commands"></textarea>
+        <div class="composer-bar">
+          <div class="bar-left">
+            <button class="chip" id="preset-chip" title="Agent preset"></button>
+            <button class="chip" id="perm-chip" title="Permission mode"></button>
+            <button class="chip" id="plan-chip" title="Plan mode"></button>
+          </div>
+          <div class="bar-right">
+            <button class="chip model" id="model-chip" title="Model"></button>
+            <button class="send" id="send" title="Send (Enter)" aria-label="Send">
+              <svg class="i-send" viewBox="0 0 20 20"><path d="M10 15V5M5.5 9.5 10 5l4.5 4.5"/></svg>
+              <svg class="i-stop" viewBox="0 0 20 20"><rect x="6" y="6" width="8" height="8" rx="1.5"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="dock-note" id="dock-note"></div>
+    </div>
+  </main>
+</div>
+<div class="menu" id="menu" hidden></div>
+<div class="modal-mask" id="settings" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="modal-nav">
+      <h2 id="settings-title">Settings</h2>
+      <nav id="settings-nav"></nav>
+    </div>
+    <div class="modal-body">
+      <button class="icon-btn modal-close" id="close-settings" aria-label="Close">
+        <svg viewBox="0 0 20 20"><path d="M5 5l10 10M15 5 5 15"/></svg>
+      </button>
+      <div id="settings-body"></div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+<script src="/app.js"></script>
+</body>
+</html>

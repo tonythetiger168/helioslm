@@ -8,7 +8,7 @@
 
 ## 1. Test suite on the GPU machine
 
-`pytest evastar/tests -n 4` gave 574 passed, and `integration_test_v51.py`
+`pytest helioslm_v5/tests -n 4` gave 574 passed, and `integration_test_v51.py`
 gave 9/9 PASS.
 
 **This is not a CUDA test:** no test in the suite moves a model to the GPU.

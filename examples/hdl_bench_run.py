@@ -2,20 +2,20 @@
 VerilogEval v2 spec-to-rtl (v5.147) or RTLLM v2.1 (v5.150).
 
   # on the pod (needs iverilog; yosys and pyslang optional)
-  python -m evastar.eval.hdl_bench fetch
-  python -m evastar.eval.hdl_bench self-check      # must be 156/156
+  python -m helioslm_v5.eval.hdl_bench fetch
+  python -m helioslm_v5.eval.hdl_bench self-check      # must be 156/156
   python examples/hdl_bench_run.py --model google/gemma-4-E2B \\
       --n 1 --out results/hdl/e2b_pass1.json
   # pass@1 with 20 samples at temperature 0.8 (upstream setting):
   python examples/hdl_bench_run.py --model ... --n 20 --temperature 0.8
   # RTLLM: fetch, self-check (prints any --exclude list), then score
-  python -m evastar.eval.rtllm_bench fetch
-  python -m evastar.eval.rtllm_bench self-check
+  python -m helioslm_v5.eval.rtllm_bench fetch
+  python -m helioslm_v5.eval.rtllm_bench self-check
   python examples/hdl_bench_run.py --bench rtllm --model ... --out results/hdl/rtllm.json
 
 Greedy (``--n 1 --temperature 0``) is the cheap first number. Instruct
 models get the system and user messages through their chat template;
-base models get one plain prompt. Results follow evastar/eval/hdl_bench's
+base models get one plain prompt. Results follow helioslm_v5/eval/hdl_bench's
 ``hdl-bench/1`` schema. A greedy run of all 156 problems takes minutes on
 one GPU, so results are written once at the end.
 """
@@ -27,8 +27,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from evastar.eval import hdl_bench as hb  # noqa: E402
-from evastar.eval import rtllm_bench as rb  # noqa: E402
+from helioslm_v5.eval import hdl_bench as hb  # noqa: E402
+from helioslm_v5.eval import rtllm_bench as rb  # noqa: E402
 
 
 def make_generate(model_id, n, temperature, top_p, max_new_tokens):

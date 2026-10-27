@@ -26,8 +26,8 @@ import torch
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.configs.config_v5 import EvastarV5Config, MoEConfig  # noqa: E402
-from evastar.src.moe.sigmoid_moe import DeviceLimitedMoE  # noqa: E402
+from helioslm_v5.configs.config_v5 import HeliosLMv5Config, MoEConfig  # noqa: E402
+from helioslm_v5.src.moe.sigmoid_moe import DeviceLimitedMoE  # noqa: E402
 
 
 def _sync(dev):
@@ -68,7 +68,7 @@ def main():
     args = ap.parse_args()
     dev = torch.device(args.device)
     dtype = torch.bfloat16 if args.dtype == "bf16" else torch.float32
-    cfg = EvastarV5Config(size="lite", hidden_size=args.hidden, moe=MoEConfig(
+    cfg = HeliosLMv5Config(size="lite", hidden_size=args.hidden, moe=MoEConfig(
         num_experts=args.experts, num_activated_experts=args.top_k,
         expert_hidden_size=args.expert_hidden, device_group_size=1))
     torch.manual_seed(args.seed)
@@ -90,6 +90,8 @@ def main():
     payload = {"args": vars(args), "max_abs_diff_fp32": diff,
                "max_abs_diff_fp32_grouped": diff_grouped,
                "median_fwd_bwd": res,
+               # False: "grouped" ran the batched GEMMs (torch < 2.10)
+               "grouped_mm": hasattr(torch.nn.functional, "grouped_mm"),
                "environment": {"torch": torch.__version__,
                                "platform": platform.platform(),
                                "device": torch.cuda.get_device_name(0)

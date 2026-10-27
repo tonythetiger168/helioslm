@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from evastar.agent.disagg import (DisaggConfig, Request, evaluate,
+from helioslm_v5.agent.disagg import (DisaggConfig, Request, evaluate,
                                       monotonicity_gate)
 
 SEED = 20260925

@@ -1,12 +1,12 @@
-# Contributing to Evastar
+# Contributing to HeliosLM
 
 Thanks for your interest in contributing! This project values **correctness you can verify** over feature velocity. If that sounds like your kind of codebase, you're in the right place.
 
 ## Ground rules
 
-1. **Every change needs a test.** Unit tests live in `evastar/tests/`; end-to-end checks in `integration_test_v51.py`. Run both before opening a PR:
+1. **Every change needs a test.** Unit tests live in `helioslm_v5/tests/`; end-to-end checks in `integration_test_v51.py`. Run both before opening a PR:
    ```bash
-   python -m evastar.tests.test_v5
+   python -m helioslm_v5.tests.test_v5
    python integration_test_v51.py
    ```
 2. **Correctness claims need evidence.** If you optimize or refactor a core path (MLA absorption, hybrid decode, DualPipe, speculative sampling), include an equivalence check (bitwise or tight tolerance, matching existing style) — not just "loss looks fine."
@@ -42,7 +42,7 @@ More starters:
 ## Code style
 
 - Pure PyTorch; avoid heavyweight dependencies (the only install is `torch`)
-- Match the existing module layout under `evastar/src/`
+- Match the existing module layout under `helioslm_v5/src/`
 - Comment *why*, not *what* — the code should read like a paper's appendix
 
 ## Roadmap (where help is most wanted)
@@ -55,7 +55,7 @@ Maintainer priorities — comment on the issue (or open one) before starting:
 | CUDA verification | Run the static-checked CUDA paths end-to-end on real hardware | Medium |
 | Fused quantization kernels | Speed up GPTQ/AWQ packing paths | Hard |
 | HF Hub integration | Load/save configs and checkpoints from Hugging Face | Easy–medium |
-| Example notebooks | "Train a tiny Evastar on your laptop", "Add an attention variant in 30 lines" | Easy |
+| Example notebooks | "Train a tiny HeliosLM on your laptop", "Add an attention variant in 30 lines" | Easy |
 | Benchmarks | Standardized CPU benchmark suite for engine + quantization | Easy–medium |
 | GGUF / llama.cpp export | Export MLA-variant weights to GGUF for the LocalLLaMA community | Hard |
 

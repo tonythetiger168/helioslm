@@ -36,7 +36,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "evastar" / "agent"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "helioslm_v5" / "agent"))
 
 from envs import make_envs, make_long_envs
 from gate import FixedGate, Route

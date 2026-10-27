@@ -63,7 +63,7 @@ GPU 小時是用兩個公開的實際訓練紀錄等比推算的：
 | 推理 / 知識 | HLE、ARC-AGI-3、MathArena AIME 2026、GPQA | 用新題或私有題來對抗污染 |
 | 工具呼叫 | BFCL v4、tau2-bench | Epoch AI 評 BFCL v4 為「Flawed」（抽查 50 題有 24 題有問題） |
 | 中文 | OpenCompass、C-Eval、CMMLU | MCQ 類在前沿已飽和 |
-| **繁體中文** | **TMMLU+**（2026-09 推出 v1.1，22,690 題）、TMLU、Open TW LLM Leaderboard、TCEval | 繁中專屬榜的維護多半停滯，Evastar 在這裡最有機會做出差異 |
+| **繁體中文** | **TMMLU+**（2026-09 推出 v1.1，22,690 題）、TMLU、Open TW LLM Leaderboard、TCEval | 繁中專屬榜的維護多半停滯，HeliosLM 在這裡最有機會做出差異 |
 
 **小模型的比較對象：**
 
@@ -76,7 +76,7 @@ GPU 小時是用兩個公開的實際訓練紀錄等比推算的：
 - **0.5B–3B 模型：** 這些題目仍然有鑑別力。
 - 可信度較高：題目在模型訓練截止後才出的評測（LiveCodeBench、MathArena），以及私有測試集（SWE-bench Pro、ARC）。
 
-## 3. Evastar 現況差距
+## 3. HeliosLM 現況差距
 
 1. **沒有任何模型能上榜。** 所有證據都是 CPU 玩具規模，repo 裡也沒有標準評測 harness 的介接。
 2. **沒有污染檢查。** `pilot_prepare_data.py` 還不會比對訓練資料和評測集。

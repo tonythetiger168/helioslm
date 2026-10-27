@@ -22,7 +22,7 @@
 | C-Eval | val | 5-shot |
 | CMMLU | test | 5-shot |
 
-評分器是 `evastar/eval/tw_bench.py`。所有模型用同一個評分器、同樣的 shots，
+評分器是 `helioslm_v5/eval/tw_bench.py`。所有模型用同一個評分器、同樣的 shots，
 分數可以互相比較，但不能和論文上的數字比。
 
 結果會寫出底模減去每個參考模型的差距，附 95% paired-bootstrap 信賴區間。

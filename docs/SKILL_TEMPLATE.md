@@ -4,7 +4,7 @@ Adapted from [`dslsdzc/rev-skills`](https://github.com/dslsdzc/rev-skills)
 `docs/skill-template.md` (skill documentation: CC BY 4.0, attribution
 required and preserved here). HeliosLM adaptations: English-only docs,
 skills rooted at `skills/`, validation by `validate_skills.py` (pure
-stdlib, gated in CI by `evastar/tests/test_skill_docs.py`).
+stdlib, gated in CI by `helioslm_v5/tests/test_skill_docs.py`).
 
 ## Layout
 
@@ -99,7 +99,7 @@ gate (which guards *numerical* confidence, not *authorization*).
 python validate_skills.py        # repo root; exit 1 on any violation
 ```
 
-CI runs the same check through `evastar/tests/test_skill_docs.py`
+CI runs the same check through `helioslm_v5/tests/test_skill_docs.py`
 (the pytest step collects it; the `test_v5.py` runner does not). A
 repository with no `skills/` directory passes vacuously — the gate
 becomes load-bearing the moment the first skill lands.

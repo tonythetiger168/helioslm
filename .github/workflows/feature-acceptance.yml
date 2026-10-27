@@ -4,16 +4,16 @@ on:
   push:
     branches: [main]
     paths:
-      - 'evastar/hub.py'
-      - 'evastar/tests/test_hub.py'
-      - 'evastar/tests/test_toy_bpe.py'
-      - 'evastar/tests/test_bench_quant.py'
-      - 'evastar/tests/test_custom_attention_notebook.py'
+      - 'helioslm_v5/hub.py'
+      - 'helioslm_v5/tests/test_hub.py'
+      - 'helioslm_v5/tests/test_toy_bpe.py'
+      - 'helioslm_v5/tests/test_bench_quant.py'
+      - 'helioslm_v5/tests/test_custom_attention_notebook.py'
       - 'examples/train_toy_bpe.py'
       - 'examples/notebooks/custom_attention.ipynb'
       - 'benchmarks/bench_quant.py'
-      - 'evastar/eval/lm_harness.py'
-      - 'evastar/tests/test_lm_harness.py'
+      - 'helioslm_v5/eval/lm_harness.py'
+      - 'helioslm_v5/tests/test_lm_harness.py'
       - '.github/workflows/feature-acceptance.yml'
   workflow_dispatch:
 
@@ -36,11 +36,11 @@ jobs:
       - name: Run focused regression tests
         run: |
           python -m pytest -q -x \
-            evastar/tests/test_bench_quant.py \
-            evastar/tests/test_custom_attention_notebook.py \
-            evastar/tests/test_hub.py \
-            evastar/tests/test_lm_harness.py \
-            evastar/tests/test_toy_bpe.py
+            helioslm_v5/tests/test_bench_quant.py \
+            helioslm_v5/tests/test_custom_attention_notebook.py \
+            helioslm_v5/tests/test_hub.py \
+            helioslm_v5/tests/test_lm_harness.py \
+            helioslm_v5/tests/test_toy_bpe.py
       - name: Capture runtime environment
         if: always()
         run: |

@@ -1,15 +1,15 @@
 # Hugging Face Hub interchange (Issue #4)
 
-This module adds **optional** Hub interoperability to the existing `evastar` model. It does not imply that a pretrained public checkpoint exists.
+This module adds **optional** Hub interoperability to the existing `helioslm_v5` model. It does not imply that a pretrained public checkpoint exists.
 
 ## Offline round-trip
 
 ```python
-from evastar.configs.config_v5 import EvastarV5Config
-from evastar.src.model_v5 import EvastarV5
-from evastar.hub import save_pretrained, load_pretrained
+from helioslm_v5.configs.config_v5 import HeliosLMv5Config
+from helioslm_v5.src.model_v5 import HeliosLMv5
+from helioslm_v5.hub import save_pretrained, load_pretrained
 
-model = EvastarV5(EvastarV5Config(size="lite"))
+model = HeliosLMv5(HeliosLMv5Config(size="lite"))
 save_pretrained(model, "checkpoints/hub_demo")
 restored = load_pretrained("checkpoints/hub_demo")
 ```
@@ -23,7 +23,7 @@ pip install huggingface_hub
 ```
 
 ```python
-from evastar.hub import push_to_hub, from_hub
+from helioslm_v5.hub import push_to_hub, from_hub
 
 # Auth via huggingface-cli login or an explicitly provided token.
 push_to_hub(model, "YOUR_USERNAME/helioslm-toy", private=True)
@@ -38,7 +38,7 @@ model2 = from_hub("YOUR_USERNAME/helioslm-toy",
 
 ## Acceptance checklist
 
-- [ ] Offline `pytest -q evastar/tests/test_hub.py` passes
+- [ ] Offline `pytest -q helioslm_v5/tests/test_hub.py` passes
 - [ ] Nested config and model state round-trip exactly
 - [ ] Upload to an authorized test Hub repository succeeds
 - [ ] Download at a pinned revision reproduces state and logits

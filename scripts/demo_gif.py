@@ -14,8 +14,8 @@ ShareX). Keep the clip under ~15 seconds, 800x450px or so, loop-friendly.
 import sys
 import time
 
-from evastar.configs.config_v5 import EvastarV5Config
-from evastar.src.model_v5 import EvastarV5
+from helioslm_v5.configs.config_v5 import HeliosLMv5Config
+from helioslm_v5.src.model_v5 import HeliosLMv5
 
 PROMPT_IDS = [11, 7, 42, 19]   # untrained model: pseudo-vocab ids, demo only
 MAX_NEW_TOKENS = 16
@@ -34,8 +34,8 @@ def main() -> None:
     type_out("$ python demo_gif.py", delay=0.012)
     time.sleep(0.3)
 
-    cfg = EvastarV5Config(size="lite")
-    model = EvastarV5(cfg)
+    cfg = HeliosLMv5Config(size="lite")
+    model = HeliosLMv5(cfg)
     model.eval()
     type_out(
         f"[load] HeliosLM {cfg.model_name} ({cfg.size}) ready — "
