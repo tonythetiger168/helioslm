@@ -1,5 +1,28 @@
 # HeliosLM v5 Changelog
 
+## v5.176 (2026-10-27) - HDL track H0: RTLLM v2.1 harness
+
+Second HDL benchmark. `helioslm_v5/eval/rtllm_bench.py` scores RTLLM v2.1
+(hkust-zhiyao/RTLLM, MIT, 50 designs) with Icarus Verilog instead of
+upstream's Synopsys VCS, keeping upstream's two rules (compiles with the
+testbench = syntax; output contains "pass" = function):
+
+- `fetch` git-fetches the pinned commit and caches each design's
+  description, testbench, reference and data files with a sha256
+  manifest; `load` rejects a changed cache;
+- the requested module name comes from the description (one design's
+  folder name differs from its module name);
+- `self-check` runs every reference with its top module renamed (two
+  references use other file and module names) and prints the designs
+  Icarus cannot run, to pass as `--exclude` rather than score as 0;
+- `syntax@k` and `pass@k` are plain means over designs.
+- code extraction keeps helper modules: without a [BEGIN]/fenced block
+  it takes the first `module` to the last `endmodule` (VerilogEval's
+  fallback stops at the first one, which drops RTLLM submodules).
+
+`examples/hdl_bench_run.py --bench rtllm` runs it on the pod. T143
+(test_rtllm_bench.py) pins the cache, naming and scoring, and simulates
+three upstream designs under Icarus in CI (fixtures, MIT notice included).
 ## v5.175 (2026-10-27) - pilot B0: run without gated sources, skip the gap eval
 
 `examples/pilot_b0_pod.sh` gains two opt-in switches; the defaults are

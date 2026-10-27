@@ -1,5 +1,5 @@
 """hdl_bench_run.py — HDL track H0: score a Hugging Face model on
-VerilogEval v2 spec-to-rtl (v5.147).
+VerilogEval v2 spec-to-rtl (v5.147) or RTLLM v2.1 (v5.176).
 
   # on the pod (needs iverilog; yosys and pyslang optional)
   python -m helioslm_v5.eval.hdl_bench fetch
@@ -8,6 +8,10 @@ VerilogEval v2 spec-to-rtl (v5.147).
       --n 1 --out results/hdl/e2b_pass1.json
   # pass@1 with 20 samples at temperature 0.8 (upstream setting):
   python examples/hdl_bench_run.py --model ... --n 20 --temperature 0.8
+  # RTLLM: fetch, self-check (prints any --exclude list), then score
+  python -m helioslm_v5.eval.rtllm_bench fetch
+  python -m helioslm_v5.eval.rtllm_bench self-check
+  python examples/hdl_bench_run.py --bench rtllm --model ... --out results/hdl/rtllm.json
 
 Greedy (``--n 1 --temperature 0``) is the cheap first number. Instruct
 models get the system and user messages through their chat template;
@@ -24,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from helioslm_v5.eval import hdl_bench as hb  # noqa: E402
+from helioslm_v5.eval import rtllm_bench as rb  # noqa: E402
 
 
 def make_generate(model_id, n, temperature, top_p, max_new_tokens):
@@ -60,7 +65,11 @@ def make_generate(model_id, n, temperature, top_p, max_new_tokens):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--model", required=True)
-    ap.add_argument("--cache", default="data/hdl_bench/verilog_eval_v2")
+    ap.add_argument("--bench", choices=("verilog-eval", "rtllm"),
+                    default="verilog-eval")
+    ap.add_argument("--cache", help="default: data/hdl_bench/<bench>")
+    ap.add_argument("--exclude", default="",
+                    help="rtllm: comma-separated designs to skip (from self-check)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--n", type=int, default=1)
     ap.add_argument("--temperature", type=float, default=0.0)
@@ -73,16 +82,24 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.n > 1 and a.temperature == 0:
         ap.error("--n > 1 needs --temperature > 0")
-    probs = hb.load(a.cache)[:a.limit]
+    rtllm = a.bench == "rtllm"
+    cache = a.cache or ("data/hdl_bench/rtllm_v2" if rtllm
+                        else "data/hdl_bench/verilog_eval_v2")
+    probs = (rb.load(cache) if rtllm else hb.load(cache))[:a.limit]
     gen = make_generate(a.model, a.n, a.temperature, a.top_p, a.max_new_tokens)
     ks = tuple(k for k in (1, 5, 10) if k <= a.n)
-    res = hb.score(probs, gen, n=a.n, ks=ks,
-                   prefix=hb.shot_prefix(a.cache, a.shots), extra=a.extra)
+    if rtllm:
+        res = rb.score(probs, gen, n=a.n, ks=ks,
+                       exclude=tuple(x for x in a.exclude.split(",") if x))
+    else:
+        res = hb.score(probs, gen, n=a.n, ks=ks,
+                       prefix=hb.shot_prefix(cache, a.shots), extra=a.extra)
     res.update(model=a.model, temperature=a.temperature, top_p=a.top_p,
                shots=a.shots)
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     Path(a.out).write_text(json.dumps(res, indent=1) + "\n", encoding="utf-8")
-    print(json.dumps({k: v for k, v in res.items() if k != "problems"}))
+    print(json.dumps({k: v for k, v in res.items()
+                      if k not in ("problems", "designs")}))
     return 0
 
 

@@ -681,6 +681,7 @@ As of 2026-10-26:
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.176** — HDL track H0: RTLLM v2.1 harness on Icarus (`helioslm_v5/eval/rtllm_bench.py`, `hdl_bench_run.py --bench rtllm`): pinned 50-design cache, `syntax@k` / `pass@k`, `self-check` lists designs Icarus cannot run — T143
 - **v5.175** — pilot B0 script: `ALLOW_BLOCKED=1` trains without still-gated mixture sources, `SKIP_GAP=1` skips the already-run base-gap eval so smaller GPUs fit
 - **v5.174** — KDA layer skips `as_subclass` on plain tensors, so `--compile` no longer breaks the graph there (k3 pilot: 14 -> 11 breaks) — T155
 - **v5.173** — `tw_bench` Phase A gate: the loglik oracle follows task order, so a set with two identical questions that have different answers (C-Eval val) no longer fails the gate
