@@ -72,7 +72,8 @@ def test_mutants_and_wrapper():
     w = ub.wrapper(ub.parse_ports(p["ref"]), 3)
     assert w.startswith("module TopModule (\n  input clk,")
     assert "TopModule_v2 u_v2 (.clk(clk), .in(in), .reset(reset), .out(out_v2));" in w
-    assert "assign out = (sel == 1) ? out_v1 : (sel == 2) ? out_v2 : out_v0;" in w
+    assert ("assign out = (uvmb_variant == 1) ? out_v1 : (uvmb_variant == 2) ? out_v2 "
+            ": out_v0;") in w
     task = {"ref": p["ref"], "ports": ub.parse_ports(p["ref"]),
             "mutants": [{"text": t} for _, t in ms[:2]]}
     src = ub.design_sources(task)
@@ -136,3 +137,9 @@ def test_area_ratio():
     assert hb.area_ratio({"ok": True, "cells": 10}, {"ok": False, "cells": 5}) is None
     assert hb.area_ratio(None, {"ok": True, "cells": 5}) is None
     assert hb.area_ratio({"ok": True, "cells": 10}, {"ok": True, "cells": None}) is None
+
+
+def test_random_expr_covers_wide_ports():
+    assert ub._random_expr("") == "$urandom"
+    assert ub._random_expr("[31:0]") == "$urandom"
+    assert ub._random_expr("[99:0]") == "{$urandom, $urandom, $urandom, $urandom}"

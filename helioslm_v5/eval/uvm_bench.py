@@ -192,8 +192,9 @@ def wrapper(ports, n_variants):
     by ``+UVMB_VARIANT=<k>`` (0 = golden)."""
     decl = ",\n".join("  " + _decl(d, r, n) for d, r, n in ports)
     lines = [f"module TopModule (\n{decl}\n);",
-             "  int sel = 0;",
-             f'  initial if (!$value$plusargs("{VARIANT_ARG}=%d", sel)) sel = 0;']
+             "  int uvmb_variant = 0;",       # not a name any design port uses
+             f'  initial if (!$value$plusargs("{VARIANT_ARG}=%d", uvmb_variant)) '
+             "uvmb_variant = 0;"]
     outs = [(r, n) for d, r, n in ports if d == "output"]
     for v in range(n_variants):
         for r, n in outs:
@@ -202,7 +203,8 @@ def wrapper(ports, n_variants):
                           for d, r, n in ports)
         lines.append(f"  TopModule_v{v} u_v{v} ({conns});")
     for r, n in outs:
-        chain = " : ".join([f"(sel == {v}) ? {n}_v{v}" for v in range(1, n_variants)]
+        chain = " : ".join([f"(uvmb_variant == {v}) ? {n}_v{v}"
+                            for v in range(1, n_variants)]
                            + [f"{n}_v0"])
         lines.append(f"  assign {n} = {chain};")
     lines.append("endmodule")
@@ -365,6 +367,15 @@ def score(tasks, texts, uvm, ks=(1,), workers=4):
     return out
 
 
+def _random_expr(rng):
+    """Random value for a port of packed range ``rng``: one ``$urandom``
+    per 32 bits, so wide inputs are random in every bit."""
+    m = re.search(r"\[(\d+)\s*:\s*(\d+)\]", rng)
+    width = abs(int(m.group(1)) - int(m.group(2))) + 1 if m else 1
+    calls = (width + 31) // 32
+    return "$urandom" if calls == 1 else "{" + ", ".join(["$urandom"] * calls) + "}"
+
+
 def reference_tb(task):
     """A small hand-written UVM testbench used by ``self-check``: it drives
     random inputs and compares every output with the golden design
@@ -379,7 +390,7 @@ def reference_tb(task):
     conn = ", ".join(f".{n}({n})" for _, _, n in ports)
     conn_e = ", ".join(f".{n}({n}_exp)" if d == "output" else f".{n}({n})"
                        for d, _, n in ports)
-    drive = "\n".join(f"        tb.{n} = $urandom;" for r, n in ins if n != "clk")
+    drive = "\n".join(f"        tb.{n} = {_random_expr(r)};" for r, n in ins if n != "clk")
     check = "\n".join(
         f"        if (tb.{n} !== tb.{n}_exp) `uvm_error(\"MISMATCH\", "
         f"$sformatf(\"{n}=%0h exp %0h\", tb.{n}, tb.{n}_exp))" for _, n in outs)
