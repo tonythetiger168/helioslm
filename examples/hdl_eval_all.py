@@ -14,6 +14,8 @@ The prompts are built exactly as each benchmark's own harness builds them
 (``hdl_bench_run.py`` is the transformers path for one benchmark). The
 output holds one ``hdl-bench/1``-style result per benchmark plus a
 summary line. ``--model`` may also be a local checkpoint directory.
+The raw generations are written to ``<out>.samples.json`` before any
+scoring, so a scoring failure never costs the GPU time (v5.179).
 """
 import argparse
 import json
@@ -54,22 +56,28 @@ def collect(benches, ve_cache, rtllm_cache, cvdp_file, exclude=()):
 
 
 def score_all(jobs, outputs, data, n, ks, exclude=(), workers=8):
-    """Score generated ``outputs`` (aligned with ``jobs``) per benchmark."""
+    """Score generated ``outputs`` (aligned with ``jobs``) per benchmark.
+    A benchmark whose scoring raises gets ``{"error": ...}`` and the
+    others are still scored (v5.179)."""
     got = {(b, k): o for (b, k, _, _), o in zip(jobs, outputs)}
-    res = {}
-    if "verilog-eval" in data:
-        res["verilog-eval"] = hb.score(
+    runs = {
+        "verilog-eval": lambda: hb.score(
             data["verilog-eval"], lambda s, u, i: got[("verilog-eval", i)],
-            n=n, ks=ks)
-    if "rtllm" in data:
-        res["rtllm"] = rb.score(
+            n=n, ks=ks),
+        "rtllm": lambda: rb.score(
             data["rtllm"], lambda s, u, i: got[("rtllm", i)], n=n, ks=ks,
-            exclude=tuple(exclude))
-    if "cvdp" in data:
-        res["cvdp"] = cb.score(
+            exclude=tuple(exclude)),
+        "cvdp": lambda: dict(cb.score(
             data["cvdp"], {r["id"]: got[("cvdp", r["id"])] for r in data["cvdp"]},
-            ks=ks, workers=workers)
-        res["cvdp"]["skipped_unsupported"] = data["cvdp_skipped"]
+            ks=ks, workers=workers), skipped_unsupported=data["cvdp_skipped"]),
+    }
+    res = {}
+    for b, fn in runs.items():
+        if b in data:
+            try:
+                res[b] = fn()
+            except Exception as e:          # keep the other benchmarks
+                res[b] = {"error": f"{type(e).__name__}: {e}"[:500]}
     return res
 
 
@@ -140,14 +148,16 @@ def main(argv=None):
     outputs = vllm_generate(a.model, jobs, a.n, a.temperature, a.top_p,
                             a.max_new_tokens, a.max_model_len, a.gpu_mem)
     gen_s = time.time() - t0
+    samples = [{"bench": b, "key": k, "outputs": o}
+               for (b, k, _, _), o in zip(jobs, outputs)]
+    Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+    Path(a.out).with_suffix(".samples.json").write_text(   # before scoring
+        json.dumps(samples) + "\n", encoding="utf-8")
     ks = tuple(k for k in (1, 5, 10) if k <= a.n)
     res = score_all(jobs, outputs, data, a.n, ks, exclude, a.workers)
     out = {"model": a.model, "n": a.n, "temperature": a.temperature,
            "generate_seconds": round(gen_s), "summary": summary(res),
-           "results": res,
-           "samples": [{"bench": b, "key": k, "outputs": o}
-                       for (b, k, _, _), o in zip(jobs, outputs)]}
-    Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+           "results": res, "samples": samples}
     Path(a.out).write_text(json.dumps(out, indent=1) + "\n", encoding="utf-8")
     print(json.dumps({"model": a.model, **out["summary"]}))
     return 0

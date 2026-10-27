@@ -1,5 +1,5 @@
 """T157 — HDL track: SFT on prompt / response records and the
-three-benchmark eval runner (v5.178).
+three-benchmark eval runner (v5.178, v5.179).
 
 Pins:
 
@@ -9,7 +9,9 @@ Pins:
 2. sft_hf.masked_loss scores mask-1 targets only (prompt tokens do not
    change it); train() on a tiny torch LM lowers the masked loss and
    reports a validation loss;
-3. hdl_eval_all.collect / score_all: every VerilogEval and RTLLM fixture
+3. cpt_hf.cast_frozen (v5.179): frozen parameters in bf16 stay fixed
+   while the rest trains under autocast;
+4. hdl_eval_all.collect / score_all: every VerilogEval and RTLLM fixture
    gets one job with its harness's own prompt, RTLLM exclusions are
    skipped, and generated references score pass@1 = 1 (needs iverilog).
 
@@ -109,6 +111,27 @@ def test_train_lowers_masked_loss():
     assert res["steps"] == 8 * 56 // 4 and res["stopped"] is None
     assert rows[-1]["loss"] < rows[0]["loss"] / 4
     assert res["val_loss"] < 0.5
+
+
+def test_frozen_bf16_trains():
+    """v5.179: frozen parameters stored in bf16 stay fixed; training of the
+    rest still runs under autocast."""
+    from cpt_hf import cast_frozen, freeze
+    torch.manual_seed(0)
+    m = TinyLM()
+    m.norm = torch.nn.LayerNorm(32)
+    tr, fr = freeze(m, ["emb"])
+    saved = cast_frozen(m, torch.bfloat16)
+    assert fr == 64 * 32 and saved == fr * 2
+    assert m.emb.weight.dtype == torch.bfloat16
+    assert m.head.weight.dtype == torch.float32
+    before = m.emb.weight.detach().clone()
+    ids = np.full((8, 9), 7, dtype=np.uint32)
+    mask = np.ones((8, 9), dtype=np.uint8)
+    res = sft_hf.train(m, ids, mask, epochs=2, micro_batch=4, grad_accum=1,
+                       lr=1e-2, warmup=1, autocast=True, eval_every=0)
+    assert res["steps"] == 4 and res["stopped"] is None
+    assert torch.equal(m.emb.weight, before)
 
 
 @pytest.mark.skipif(shutil.which("iverilog") is None, reason="needs iverilog")

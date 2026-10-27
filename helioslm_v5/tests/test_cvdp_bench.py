@@ -10,7 +10,8 @@ Pins:
    several; response parsing for both;
 4. model-chosen file names cannot leave the repo dir;
 5. with Icarus Verilog and cocotb installed: the golden output passes,
-   a wrong one fails, and score reports pass@k per category.
+   a wrong one fails, and score reports pass@k per category;
+6. env_file as a list is read (v5.179).
 
 Fixtures: two upstream example datapoints (CC BY 4.0 / Apache-2.0) in
 tests/fixtures/cvdp/.
@@ -57,6 +58,20 @@ def test_compose_env_rewrite():
     assert env["TOPLEVEL"] == "lfsr_8bit" and env["SIM"] == "icarus"
     assert cb._rewrite("A=/code/rtl/x.sv P=/src q=rtl/src/y", "/T") == \
         "A=/T/code/rtl/x.sv P=/T/src q=rtl/src/y"
+
+
+@pytest.mark.skipif(not shutil.which("iverilog"), reason="needs iverilog")
+def test_env_file_list():
+    """v5.179: env_file given as a YAML list (seen on the full dataset)."""
+    row = json.loads(json.dumps(cb.load(OSS)[0][0]))
+    files = row["harness"]["files"]
+    files["docker-compose.yml"] = (
+        "services:\n  direct:\n    image: __OSS_SIM_IMAGE__\n"
+        "    env_file:\n      - ./src/.env\n"
+        "    command: test \"$TOPLEVEL\" = lfsr_8bit\n")
+    svc = cb.parse_compose(files["docker-compose.yml"])
+    assert svc["direct"]["env_file"] == ["./src/.env"]
+    assert cb.run(row, row["output"]["context"])["passed"]
 
 
 def test_prompt_single_file():

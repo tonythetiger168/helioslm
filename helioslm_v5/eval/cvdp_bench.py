@@ -277,14 +277,19 @@ def run(row, outputs, timeout=RUN_TIMEOUT_S):
         log, ok = [], True
         for name, svc in services.items():
             env = dict(os.environ)
-            env_file = svc.get("env_file", "").replace("./", "", 1)
-            if env_file and (root / env_file).is_file():
-                env.update(parse_env((root / env_file).read_text(encoding="utf-8")))
+            files = svc.get("env_file", [])       # a path or a list of paths
+            for env_file in [files] if isinstance(files, str) else files:
+                env_file = env_file.strip("'\"").replace("./", "", 1)
+                if env_file and (root / env_file).is_file():
+                    env.update(parse_env((root / env_file).read_text(encoding="utf-8")))
             for item in svc.get("environment", []):
                 if "=" in item:
                     k, v = item.split("=", 1)
                     env[k.strip()] = _rewrite(v.strip(), root)
-            cmd = _rewrite(svc["command"], root)
+            cmd = svc.get("command")
+            if not cmd:
+                continue
+            cmd = _rewrite(" ".join(cmd) if isinstance(cmd, list) else cmd, root)
             try:
                 r = subprocess.run(cmd, shell=True, cwd=root / "code", env=env,
                                    capture_output=True, text=True, timeout=timeout)

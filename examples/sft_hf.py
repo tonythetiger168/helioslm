@@ -209,7 +209,7 @@ def cmd_prepare(a):
 def cmd_train(a):
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
-    from cpt_hf import freeze
+    from cpt_hf import cast_frozen, freeze
     meta = json.loads((Path(a.data) / "meta.json").read_text())
     ids = np.load(Path(a.data) / "ids.npy")
     mask = np.load(Path(a.data) / "mask.npy")
@@ -223,6 +223,8 @@ def cmd_train(a):
         torch.backends.cuda.matmul.allow_tf32 = True
     model = AutoModelForCausalLM.from_pretrained(a.model, dtype=torch.float32)
     trainable, frozen = freeze(model, a.freeze)
+    if a.frozen_bf16:
+        cast_frozen(model, torch.bfloat16)
     model.gradient_checkpointing_enable(
         gradient_checkpointing_kwargs={"use_reentrant": False})
     model.config.use_cache = False
@@ -278,6 +280,7 @@ def main(argv=None):
     t.add_argument("--freeze", nargs="*",
                    default=["per_layer", "vision", "audio"])
     t.add_argument("--ce-chunk", type=int, default=0)
+    t.add_argument("--frozen-bf16", action="store_true")
     t.add_argument("--max-hours", type=float)
     t.add_argument("--val-fraction", type=float, default=0.01)
     t.add_argument("--eval-every", type=int, default=200)

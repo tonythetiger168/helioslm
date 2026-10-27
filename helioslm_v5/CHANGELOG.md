@@ -1,5 +1,23 @@
 # HeliosLM v5 Changelog
 
+## v5.179 (2026-10-27) - HDL pod fixes: CVDP env_file lists, frozen bf16
+
+Fixes from the first HDL pod runs:
+
+- `cvdp_bench.run` reads `env_file` given as a YAML list (several full
+  dataset harnesses use it; the scorer crashed on it) and skips services
+  without a command;
+- `hdl_eval_all.py` writes the raw generations to `<out>.samples.json`
+  before scoring and scores each benchmark separately, so one scoring
+  error no longer loses the GPU time or the other benchmarks;
+- `cpt_hf.py --frozen-bf16` / `sft_hf.py train --frozen-bf16` store the
+  `--freeze` parameters in bf16 (`cast_frozen`): Gemma 4 E4B with fp32
+  master weights ran out of memory on a 96 GB GPU, and its frozen
+  per-layer tables, towers and embeddings are about 4B parameters.
+
+T144 gains the env_file list case; T157 checks that bf16 frozen
+parameters stay fixed while the rest trains under autocast.
+
 ## v5.178 (2026-10-27) - HDL track H1: HDL training-data mixture, eval runner, SFT
 
 `data/mixtures/hdl_h1_cpt_v1.json` is the draft corpus for HDL continued
