@@ -167,3 +167,47 @@ def test_reference_tb_resets_rarely():
     assert "tb.reset = (first || $urandom_range(15) == 0) ? 1'b1 : 1'b0;" in tb
     assert "tb.in = $urandom;" in tb and "repeat (50)" in tb
     assert "TopModule_v0 gold (" in tb and "run_test(\"t\")" in tb
+
+
+def test_extract_tb_end_markers():
+    # v5.184: answers that close with [END] / [END_OF_CODE] or are cut off
+    # must not keep the [BEGIN] line in the code
+    for tail in ("[DONE]\ntrailing words\n", "[END]\n", "[END_OF_CODE]\n", ""):
+        assert ub.extract_tb("[BEGIN]\nmodule tb;\nendmodule\n" + tail) \
+            == "module tb;\nendmodule\n"
+    assert ub.extract_tb("text\n```systemverilog\nmodule tb;\nendmodule\n```\nmore") \
+        == "module tb;\nendmodule\n"
+    assert ub.extract_tb("[BEGIN]\n```sv\nmodule tb; endmodule\n```\n[DONE]") \
+        == "module tb; endmodule\n"
+
+
+def test_compat_macros_cover_uvm12_sequence_macros():
+    for name in ("uvm_do_with", "uvm_do_on", "uvm_do_on_with", "uvm_rand_send_with",
+                 "uvm_create_on", "uvm_send_pri"):
+        assert f"`ifndef {name}\n`define {name}(" in ub.COMPAT_SVH
+    assert "`define uvm_do_with(S, C) `uvm_do(S, get_sequencer(), -1, C)" in ub.COMPAT_SVH
+
+
+def test_stat_cells():
+    assert hb.stat_cells("   Number of cells:                 12\n") == 12
+    assert hb.stat_cells("=== a ===\n   Number of cells: 3\n=== top ===\n"
+                         "   Number of cells: 7\n") == 7
+    assert hb.stat_cells("        5 cells\n  2 $_AND_\n") == 5
+    assert hb.stat_cells("no report") is None
+
+
+@pytest.mark.skipif(not shutil.which("yosys"), reason="yosys not installed")
+def test_synth_counts_cells():
+    # v5.184: `yosys -q` used to swallow the stat report (cells None)
+    s = hb.synth("module TopModule(input a, b, output y); assign y = a & b; endmodule\n")
+    assert s == {"ok": True, "cells": 1}
+
+
+@needs_uvm
+def test_reference_tb_with_compat_and_pkg_include():
+    p = _prob("Prob120_fsm3s")
+    task = {"name": p["name"], "ports": ub.parse_ports(p["ref"]), "ref": p["ref"],
+            "mutants": []}
+    tb = '`include "uvm_pkg.sv"\n' + ub.reference_tb(task, cycles=20)
+    r = ub.run_tb(tb, task, ub.uvm_dir(UVM_CACHE))
+    assert r["build"] and r["golden"], r["log"]

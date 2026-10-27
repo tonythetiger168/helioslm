@@ -48,6 +48,29 @@ N_MUTANTS = 3
 BUILD_TIMEOUT_S = 900
 RUN_TIMEOUT_S = 60
 VARIANT_ARG = "UVMB_VARIANT"
+# a testbench that includes the package source as well as importing it gets
+# an empty file: the package is already compiled from UVM_FILE
+PKG_STUBS = ("uvm_pkg.sv", "uvm_pkg.svh")
+# UVM 1.2 sequence macros that IEEE 1800.2-2017 folded into `uvm_do /
+# `uvm_send / `uvm_rand_send / `uvm_create; most UVM code in the wild still
+# uses them, so they are mapped onto the 2017 forms
+COMPAT_FILE = "uvmb_compat.svh"
+_COMPAT = {
+    "uvm_do_with(S, C)": "`uvm_do(S, get_sequencer(), -1, C)",
+    "uvm_do_pri(S, P)": "`uvm_do(S, get_sequencer(), P)",
+    "uvm_do_pri_with(S, P, C)": "`uvm_do(S, get_sequencer(), P, C)",
+    "uvm_do_on(S, Q)": "`uvm_do(S, Q)",
+    "uvm_do_on_with(S, Q, C)": "`uvm_do(S, Q, -1, C)",
+    "uvm_do_on_pri(S, Q, P)": "`uvm_do(S, Q, P)",
+    "uvm_do_on_pri_with(S, Q, P, C)": "`uvm_do(S, Q, P, C)",
+    "uvm_create_on(S, Q)": "`uvm_create(S, Q)",
+    "uvm_send_pri(S, P)": "`uvm_send(S, P)",
+    "uvm_rand_send_with(S, C)": "`uvm_rand_send(S, -1, C)",
+    "uvm_rand_send_pri(S, P)": "`uvm_rand_send(S, P)",
+    "uvm_rand_send_pri_with(S, P, C)": "`uvm_rand_send(S, P, C)",
+}
+COMPAT_SVH = "// UVM 1.2 sequence macros on the 1800.2-2017 ones\n" + "".join(
+    f"`ifndef {k.split('(')[0]}\n`define {k} {v}\n`endif\n" for k, v in _COMPAT.items())
 VERILATOR_FLAGS = ("--binary", "--timing", "-CFLAGS", "-O0", "-Wno-fatal", "-Wno-lint",
                    "-Wno-style", "--top-module", "tb")
 
@@ -327,6 +350,35 @@ def _run(cmd, cwd, timeout):
         return None, hb._text(e.stdout) + "\nTIMEOUT\n"
 
 
+_END_MARK = re.compile(r"^\s*\[(?:DONE|END|END_OF_CODE)\]\s*$")
+
+
+def extract_tb(text):
+    """The testbench in a response. Like ``hdl_bench.extract_code`` but
+    for long SystemVerilog answers: the code after ``[BEGIN]`` up to the
+    first ``[DONE]``, ``[END]`` or ``[END_OF_CODE]`` line, or to the end
+    when the closing tag is missing (a cut-off answer); without
+    ``[BEGIN]``, the first fenced block, else the whole text. Marker
+    lines are never left in the code."""
+    lines = text.splitlines()
+    begin = next((i for i, ln in enumerate(lines) if ln.strip().startswith("[BEGIN]")), None)
+    if begin is not None:
+        first = lines[begin].strip()[len("[BEGIN]"):]
+        body = ([first] if first.strip() else []) + lines[begin + 1:]
+    else:
+        fences = [i for i, ln in enumerate(lines) if ln.lstrip().startswith("```")]
+        body = lines[fences[0] + 1:fences[1]] if len(fences) >= 2 else lines
+    out = []
+    for ln in body:
+        if _END_MARK.match(ln) or ln.strip() == "[DONE]":
+            break
+        if ln.rstrip().endswith("[DONE]"):
+            out.append(ln.rstrip()[:-len("[DONE]")])
+            break
+        out.append(ln)
+    return "\n".join(ln for ln in out if not ln.lstrip().startswith("```")) + "\n"
+
+
 def run_tb(tb, task, uvm, build_timeout=BUILD_TIMEOUT_S, run_timeout=RUN_TIMEOUT_S,
            jobs=BUILD_JOBS):
     """Build ``tb`` against the task's design and run every variant.
@@ -340,8 +392,12 @@ def run_tb(tb, task, uvm, build_timeout=BUILD_TIMEOUT_S, run_timeout=RUN_TIMEOUT
         td = Path(td)
         (td / "dut.sv").write_text(design_sources(task), encoding="utf-8")
         (td / "tb.sv").write_text(tb, encoding="utf-8")
+        for stub in PKG_STUBS:
+            (td / stub).write_text("// uvm_pkg is compiled separately\n", encoding="utf-8")
+        (td / COMPAT_FILE).write_text(COMPAT_SVH, encoding="utf-8")
         rc, log = _run([verilator, *VERILATOR_FLAGS, "-j", str(jobs),
-                        f"+incdir+{uvm}", str(uvm / UVM_FILE), "dut.sv", "tb.sv"],
+                        f"+incdir+{uvm}", "+incdir+.", str(uvm / UVM_FILE), COMPAT_FILE,
+                        "dut.sv", "tb.sv"],
                        td, build_timeout)
         n_mut = len(task["mutants"])
         res = {"build": rc == 0 and (td / "obj_dir" / "Vtb").is_file(),
@@ -380,7 +436,7 @@ def score(tasks, texts, uvm, ks=(1,), workers=None):
 
     def one(job):
         t, x = job
-        r = run_tb(hb.extract_code(x), t, uvm)
+        r = run_tb(extract_tb(x), t, uvm)
         return t["name"], {k: r[k] for k in ("build", "golden", "killed", "mutants", "passed")}
 
     with ThreadPoolExecutor(max_workers=workers or default_workers()) as ex:
