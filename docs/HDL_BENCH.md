@@ -106,6 +106,20 @@ testbench) and about 3.3 GB of memory; the number of parallel builds
 follows the container's CPU and memory limits (a pod's `nproc` shows the
 host's cores).
 
+The testbench is taken from the answer after `[BEGIN]`, up to `[DONE]`,
+`[END]` or `[END_OF_CODE]` (or the end of a cut-off answer). Every build
+also gets empty `uvm_pkg.sv` / `uvm_pkg.svh` files, for testbenches that
+include the package source as well as importing it, and maps the UVM 1.2
+sequence macros (`uvm_do_with`, `uvm_do_on`, `uvm_rand_send_with`, ...)
+onto the 1800.2-2017 ones (v5.184).
+
+First baseline (2026-10-27, n=1, 128 tasks): no testbench from
+Gemma 4 E4B-it or CodeV-R1-RL-Qwen-7B passes. Most do not parse (an
+interface declared inside a package, include files that do not exist,
+declarations after statements, missing forward declarations); one
+CodeV-R1 testbench builds and then ends with `$finish` before the UVM
+report. UVM testbench writing has to be trained.
+
 CVDP results now also carry `pass@k_by_language` (`sv` when an expected
 output file is `.sv`/`.svh`, `v` for Verilog). `--extra` runs yosys
 `synth` on VerilogEval samples and the reference; each passing sample

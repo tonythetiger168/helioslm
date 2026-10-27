@@ -319,15 +319,24 @@ def synth(sample, timeout=120):
         p = Path(td) / "sample.sv"
         p.write_text(sample, encoding="utf-8")
         try:
+            # -q also silences stat, so its report goes to a file (v5.184)
             r = subprocess.run([yosys, "-q", "-p",
                                 "read_verilog -sv sample.sv; "
-                                "synth -top TopModule; stat"],
+                                "synth -top TopModule; tee -q -o stat.txt stat"],
                                cwd=td, capture_output=True, text=True,
                                timeout=timeout)
         except subprocess.TimeoutExpired:
             return {"ok": False, "cells": None}
-    m = re.search(r"Number of cells:\s+(\d+)", r.stdout)
-    return {"ok": r.returncode == 0, "cells": int(m.group(1)) if m else None}
+        st = Path(td) / "stat.txt"
+        report = st.read_text(encoding="utf-8", errors="replace") if st.is_file() else ""
+    return {"ok": r.returncode == 0, "cells": stat_cells(report)}
+
+
+def stat_cells(report):
+    """Cell count from a yosys ``stat`` report: ``Number of cells: N``
+    (yosys <= 0.4x) or ``N cells`` (newer); the last one is the top."""
+    found = re.findall(r"Number of cells:\s+(\d+)|^\s*(\d+)\s+cells\s*$", report, re.M)
+    return int(next(g for g in found[-1] if g)) if found else None
 
 
 def reference_sample(prob):

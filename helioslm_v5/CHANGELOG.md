@@ -1,5 +1,18 @@
 # HeliosLM v5 Changelog
 
+## v5.184 (2026-10-27) - HDL eval fixes from the first UVM baseline
+
+`uvm_bench.extract_tb`: a testbench answer is the code after `[BEGIN]`
+up to `[DONE]`, `[END]` or `[END_OF_CODE]`, or to the end of a cut-off
+answer (VerilogEval's `extract_code` kept the `[BEGIN]` line when the
+answer closed with anything but `[DONE]`). `run_tb` also gives every
+build empty `uvm_pkg.sv` / `uvm_pkg.svh` (the package is already
+compiled) and `uvmb_compat.svh`, which maps the UVM 1.2 sequence macros
+(`uvm_do_with`, `uvm_do_on`, `uvm_rand_send_with`, ...) onto their IEEE
+1800.2-2017 forms. `hdl_bench.synth` reads the yosys `stat` report from
+a file: under `yosys -q` it printed nothing, so `area_ratio` was never
+computed. T159.
+
 ## v5.183 (2026-10-27) - HDL track H5: git sources and the SystemVerilog / UVM mixture
 
 `fetch_mixture.py` reads `git:<https url>@<commit>` sources: a shallow
