@@ -21,6 +21,7 @@ has no docker:
 CI gains a step that installs cocotb 2.0.1 and runs T144
 (test_cvdp_bench.py) against one upstream example datapoint; the main
 suite still runs without cocotb.
+
 ## v5.176 (2026-10-27) - HDL track H0: RTLLM v2.1 harness
 
 Second HDL benchmark. `helioslm_v5/eval/rtllm_bench.py` scores RTLLM v2.1
