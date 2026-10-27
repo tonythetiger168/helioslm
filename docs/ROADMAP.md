@@ -1,4 +1,4 @@
-# Evastar Roadmap — Local Decision Engine Direction
+# HeliosLM Roadmap — Local Decision Engine Direction
 
 > **Reconstruction note (2026-10-06):** this document was drafted in the
 > 2026-10-06 overnight session but never reached `origin/main` (the push
@@ -13,11 +13,11 @@
 | **Jev (TypeSafe AI)** | Cloud decision model | Closed-source, API dependency, cannot be verified locally |
 | **Harness-MU** | Multi-user agent safety architecture | Gatekeeper is hard rules, no calibration capability |
 
-**Evastar's opportunity:** become the locally deployable "Jev +
+**HeliosLM's opportunity:** become the locally deployable "Jev +
 Harness-MU" — a verifiable, calibratable, correctness-first **decision
 engine**.
 
-## Why Evastar is positioned for this
+## Why HeliosLM is positioned for this
 
 - Correctness-first reference implementation; every mechanism carries
   oracle tests (the "verified" half of "verifiable")
@@ -45,14 +45,14 @@ class DecisionHead(nn.Module):
         self.score = nn.Linear(hidden_size, 1)      # continuous score
 ```
 
-Implemented as `evastar/src/decision_head.py` (v5.41, LM-backed).
+Implemented as `helioslm_v5/src/decision_head.py` (v5.41, LM-backed).
 The toy-scale self-contained variant remains at
-`evastar/agent/decision_head.py` (v5.32).
+`helioslm_v5/agent/decision_head.py` (v5.32).
 
 ## Training path
 
 ```
-Stage 1: SFT        (Evastar 360M SFT, 0.796 AUROC starting point)
+Stage 1: SFT        (HeliosLM 360M SFT, 0.796 AUROC starting point)
 Stage 2: RLCD + Brier  (on the dedicated Decision Head, not a general LM)
 Stage 3: DPO + Multi-env GRPO  (Math / Code / Alignment-audit environments)
 ```

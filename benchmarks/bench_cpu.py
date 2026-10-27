@@ -28,8 +28,8 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from evastar.configs.config_v5 import EvastarV5Config
-from evastar.src.model_v5 import EvastarV5
+from helioslm_v5.configs.config_v5 import HeliosLMv5Config
+from helioslm_v5.src.model_v5 import HeliosLMv5
 
 DTYPE_BYTES = {
     torch.float32: 4,
@@ -44,7 +44,7 @@ DTYPE_BYTES = {
 # Analytic cache accounting
 # --------------------------------------------------------------------------
 
-def _is_gda_layer(cfg: EvastarV5Config, layer_idx: int) -> bool:
+def _is_gda_layer(cfg: HeliosLMv5Config, layer_idx: int) -> bool:
     hy = cfg.hybrid_attention
     if not hy.enabled:
         return False
@@ -52,7 +52,7 @@ def _is_gda_layer(cfg: EvastarV5Config, layer_idx: int) -> bool:
                 == hy.full_attention_every - 1)
 
 
-def mla_bytes_per_token(cfg: EvastarV5Config) -> int:
+def mla_bytes_per_token(cfg: HeliosLMv5Config) -> int:
     """Absorbed-mode MLA cache: c_kv latent + shared k_rope, per layer."""
     a = cfg.attention
     elt = 1 if a.kv_cache_dtype == "fp8" else 2  # bf16 default
@@ -63,13 +63,13 @@ def mla_bytes_per_token(cfg: EvastarV5Config) -> int:
             + a.rope_head_dim) * elt
 
 
-def mha_reference_bytes_per_token(cfg: EvastarV5Config) -> int:
+def mha_reference_bytes_per_token(cfg: HeliosLMv5Config) -> int:
     """MHA reference: every head caches K (head_dim) + V (v_head_dim)."""
     a = cfg.attention
     return (a.num_attention_heads * (a.head_dim + a.v_head_dim)) * 2
 
 
-def gda_state_bytes(cfg: EvastarV5Config) -> int:
+def gda_state_bytes(cfg: HeliosLMv5Config) -> int:
     """Fixed recurrent state per hybrid Gated-Delta layer (per sequence).
 
     Delta-rule state is (head_dim x head_dim) per linear head.
@@ -78,7 +78,7 @@ def gda_state_bytes(cfg: EvastarV5Config) -> int:
     return hy.linear_num_heads * hy.linear_head_dim * hy.linear_head_dim * 2
 
 
-def cache_bytes(cfg: EvastarV5Config, seq_len: int) -> dict:
+def cache_bytes(cfg: HeliosLMv5Config, seq_len: int) -> dict:
     """Total cache bytes at ``seq_len`` for this config."""
     hy = cfg.hybrid_attention
     n_layers = cfg.num_hidden_layers
@@ -103,10 +103,10 @@ def cache_bytes(cfg: EvastarV5Config, seq_len: int) -> dict:
 # Wall-clock generation
 # --------------------------------------------------------------------------
 
-def bench_generation(cfg: EvastarV5Config, prompt_len: int = 32,
+def bench_generation(cfg: HeliosLMv5Config, prompt_len: int = 32,
                      new_tokens: int = 32, warmup: int = 1) -> dict:
     """Greedy generate on CPU; split prefill vs decode wall time."""
-    model = EvastarV5(cfg)
+    model = HeliosLMv5(cfg)
     model.eval()
     prompt = torch.randint(0, min(cfg.vocab_size, 32000), (1, prompt_len))
 
@@ -146,7 +146,7 @@ def bench_generation(cfg: EvastarV5Config, prompt_len: int = 32,
 # Chart (optional; requires matplotlib)
 # --------------------------------------------------------------------------
 
-def plot_kv_cache(cfg: EvastarV5Config, path: str) -> None:
+def plot_kv_cache(cfg: HeliosLMv5Config, path: str) -> None:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -191,7 +191,7 @@ def main() -> None:
     ap.add_argument("--out", default=None, help="override JSON output path")
     args = ap.parse_args()
 
-    cfg = EvastarV5Config(size=args.size)
+    cfg = HeliosLMv5Config(size=args.size)
     print(f"HeliosLM {cfg.model_name}  (size={cfg.size}, "
           f"{cfg.num_hidden_layers} layers, hybrid={cfg.hybrid_attention.enabled})")
     print("=" * 72)

@@ -29,8 +29,33 @@ import torch
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.src.training.pretrain import (  # noqa: E402
-    ARCHS, EvastarV5, KDShard, TokenShard, count_params, pilot_config, pretrain)
+from helioslm_v5.src.training.adaptive_batch import fit_micro_batch  # noqa: E402
+from helioslm_v5.src.training.pretrain import (  # noqa: E402
+    ARCHS, HeliosLMv5, KDShard, TokenShard, chunked_lm_loss, count_params,
+    pilot_config, pretrain)
+
+
+def _probe_step(cfg, micro_batch, seq, device, dtype, ce_chunk):
+    """One forward + backward at ``micro_batch`` x ``seq`` (random
+    tokens) on a throwaway model, as --auto-batch's fit test."""
+    model = HeliosLMv5(cfg).to(device).train()
+    try:
+        x = torch.randint(0, cfg.vocab_size, (micro_batch, seq), device=device)
+        with torch.autocast(torch.device(device).type, dtype=dtype,
+                            enabled=dtype != torch.float32):
+            if ce_chunk:
+                hidden = model(x, return_logits=False)[1]
+                loss = chunked_lm_loss(hidden, model.lm_head.weight, x, None,
+                                       cfg.final_logit_soft_cap, ce_chunk)
+            else:
+                logits = model(x)[0]
+                loss = torch.nn.functional.cross_entropy(
+                    logits.float().reshape(-1, logits.shape[-1]), x.reshape(-1))
+        loss.backward()
+    finally:
+        del model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
 
 def main():
@@ -91,9 +116,23 @@ def main():
                     help="k3_block: chunked-parallel KDA recurrence with "
                          "this chunk length (v5.107; default 64 since "
                          "v5.139); 0 = per-token loop, 8-18x slower")
+    ap.add_argument("--kda-recompute", action="store_true",
+                    help="k3: recompute the chunked KDA recurrence in the "
+                         "backward pass instead of saving it (v5.157; "
+                         "~220 MB less per KDA layer per 1024-token row)")
+    ap.add_argument("--kda-kernel", choices=["torch", "fla"], default="fla",
+                    help="k3_llamacpp: chunked KDA kernel; fla = "
+                         "flash-linear-attention chunk_kda on CUDA (v5.160; "
+                         "default since v5.163, 1.7x eager / 2.45x compiled "
+                         "on an L4); falls back to torch off CUDA or "
+                         "without fla installed")
     ap.add_argument("--ple-dim", type=int, default=0,
                     help="LB8: per-layer embedding width (Gemma 3n); "
                          "0 = off")
+    ap.add_argument("--auto-batch", action="store_true",
+                    help="CUDA: if --batch runs out of memory, halve the "
+                         "micro-batch and double --grad-accum (same tokens "
+                         "per step) until one step fits (v5.161)")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the config and parameter counts and exit")
     args = ap.parse_args()
@@ -103,9 +142,11 @@ def main():
                        intermediate_size=args.intermediate,
                        max_seq=args.seq, balance=args.balance,
                        moe_dispatch=args.moe_dispatch,
-                       kda_chunk=args.kda_chunk, ple_dim=args.ple_dim)
+                       kda_chunk=args.kda_chunk, ple_dim=args.ple_dim,
+                       kda_recompute=args.kda_recompute,
+                       kda_kernel=args.kda_kernel)
     with torch.device("meta"):
-        params = count_params(EvastarV5(cfg))
+        params = count_params(HeliosLMv5(cfg))
     print("params", json.dumps(params))
     if args.dry_run:
         return
@@ -114,6 +155,11 @@ def main():
         device = "cuda" if torch.cuda.is_available() else "cpu"
     dtype = torch.bfloat16 if (args.dtype == "bf16" and device != "cpu") \
         else torch.float32
+    if args.auto_batch and device != "cpu":
+        args.batch, args.grad_accum = fit_micro_batch(
+            lambda mb: _probe_step(cfg, mb, args.seq, device, dtype, args.ce_chunk),
+            args.batch, args.grad_accum)
+        print("micro-batch", args.batch, "grad_accum", args.grad_accum)
     run = {k: v for k, v in vars(args).items() if k != "dry_run"}
     run.update(device=device, dtype=str(dtype), params=params,
                tokenizer_sha256=meta["tokenizer_sha256"])

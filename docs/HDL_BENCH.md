@@ -9,8 +9,8 @@ NVlabs/verilog-eval at commit `c498220d`, MIT).
 ```bash
 apt-get install -y iverilog yosys      # yosys optional
 pip install pyslang==12.0.0            # optional lint
-python -m evastar.eval.hdl_bench fetch
-python -m evastar.eval.hdl_bench self-check          # must print 156/156
+python -m helioslm_v5.eval.hdl_bench fetch
+python -m helioslm_v5.eval.hdl_bench self-check          # must print 156/156
 python examples/hdl_bench_run.py --model <hf-id> --out results/hdl/<name>.json
 # upstream-style pass@1: --n 20 --temperature 0.8
 ```

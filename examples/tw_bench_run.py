@@ -1,5 +1,5 @@
 """tw_bench_run.py — score a pilot checkpoint on TMMLU+ / TW-JusticeBench /
-C-Eval / CMMLU without lm-eval (plan E3, evastar/eval/tw_bench.py).
+C-Eval / CMMLU without lm-eval (plan E3, helioslm_v5/eval/tw_bench.py).
 
     # files fetched where the Hub is reachable (the pod), kept local only
     python examples/tw_bench_run.py --bench tmmluplus \\
@@ -28,7 +28,7 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.eval import tw_bench  # noqa: E402
+from helioslm_v5.eval import tw_bench  # noqa: E402
 
 
 def load_hf(model_id, revision=None, device="cuda"):
@@ -93,7 +93,7 @@ def main():
         model, tok, revision = load_hf(args.hf, args.hf_revision, args.device)
         score = tw_bench.hf_score_fn(model, tok, args.max_length)
     else:
-        from evastar.eval.lm_harness import load_pilot
+        from helioslm_v5.eval.lm_harness import load_pilot
         model, tok, max_len = load_pilot(args.run, device=args.device,
                                          checkpoint=args.checkpoint)
         score = tw_bench.model_score_fn(model, tok, max_len)

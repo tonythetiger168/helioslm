@@ -97,6 +97,6 @@ B1 不跑，這次只把結果和建議帶回來。
 | `/workspace/cpt_data/manifest.json` | 實際用到的資料 |
 | `/workspace/runs/b0/` | 續訓紀錄與權重 |
 | `/workspace/*.log` | 各步驟 log |
-| HF 私人 repo `<帳號>/evastar-pilot-b0`（`HF_REPO` 可改） | 最終權重和 `results/`，pod 關掉後也留得住（v5.146） |
+| HF 私人 repo `<帳號>/helioslm-pilot-b0`（`HF_REPO` 可改） | 最終權重和 `results/`，pod 關掉後也留得住（v5.146） |
 
 權重上傳在步驟 4 跑 benchmark 的同時進行，只用網路，不多佔 GPU 時間。轉 GGUF 和 llama.cpp 生成檢查之後在本機顯卡上做，不在 pod 上花錢。

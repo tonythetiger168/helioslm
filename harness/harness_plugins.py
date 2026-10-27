@@ -3,7 +3,7 @@ import concurrent.futures
 import os
 import sys
 
-# The agent modules live in evastar/agent (repo-internal convention).
+# The agent modules live in helioslm_v5/agent (repo-internal convention).
 # 2026-10-09 (v5.47): the original line built this path with a
 # forward-slash rsplit, which on Windows leaves the path untouched and
 # silently points at a nonexistent directory — every bare import below
@@ -11,7 +11,7 @@ import sys
 # missing directory is now loud at insert time rather than confusing
 # at first import.
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_AGENT = os.path.join(_ROOT, "evastar", "agent")
+_AGENT = os.path.join(_ROOT, "helioslm_v5", "agent")
 if not os.path.isdir(_AGENT):
     raise ValueError(f"harness plugins cannot find the agent modules at "
                      f"{_AGENT} — refusing to run with a broken import "
@@ -174,12 +174,12 @@ class MidModelPlugin:
 
     def apply(self, ctx):
         import os, torch
-        from evastar.configs.config_v5 import EvastarV5Config
-        from evastar.src.model_v5 import EvastarV5
-        from evastar.src.tokenizer.bpe import BOS, HeliosBPE
+        from helioslm_v5.configs.config_v5 import HeliosLMv5Config
+        from helioslm_v5.src.model_v5 import HeliosLMv5
+        from helioslm_v5.src.tokenizer.bpe import BOS, HeliosBPE
         ck = self.ckpt_dir
         tok = HeliosBPE.load(os.path.join(ck, "mid_sft_v5.33.tok.json"))
-        model = EvastarV5(EvastarV5Config(size="mid"))
+        model = HeliosLMv5(HeliosLMv5Config(size="mid"))
         model.load_state_dict(torch.load(
             os.path.join(ck, "mid_sft_v5.33.pt"), map_location="cpu",
             weights_only=True))
@@ -1951,7 +1951,7 @@ class RLPlugin:
     def apply(self, ctx):
         def train_grpo(model, ref, config, questions, answers, steps=10):
             try:
-                from evastar.src.training.grpo import GRPOTrainer
+                from helioslm_v5.src.training.grpo import GRPOTrainer
                 trainer = GRPOTrainer(model, ref, config, tokenizer=None)
                 metrics = []
                 for i in range(steps):
@@ -1964,7 +1964,7 @@ class RLPlugin:
                 return {"error": f"training module not available: {e}"}
         def rlcd_reward(rewards, confs, outcomes, lam=1.0):
             try:
-                from evastar.agent.decision_data import \
+                from helioslm_v5.agent.decision_data import \
                     rlcd_reward_adjustment
                 return rlcd_reward_adjustment(rewards, confs, outcomes, lam)
             except ImportError:

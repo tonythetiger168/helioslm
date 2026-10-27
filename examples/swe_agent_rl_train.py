@@ -2,7 +2,7 @@
 the mini SWE sandbox with the repo's GRPO update.
 
 Trains a tiny HeliosLM policy (macro actions, see
-evastar/src/training/swe_agent_rl.py) on the first 10 SWE tasks and
+helioslm_v5/src/training/swe_agent_rl.py) on the first 10 SWE tasks and
 evaluates greedy pass rate on those tasks AND on the 10 held-out tasks,
 before and after training, over 3 shuffled candidate orders each. The
 reward is the real verifier (visible + hidden tests) run in the sandbox.
@@ -25,16 +25,16 @@ import torch
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.configs.config_v5 import (  # noqa: E402
-    GRPOConfig, EvastarV5Config, HybridAttentionConfig, MoEConfig, MTPConfig)
-from evastar.eval import swe_bench as sb  # noqa: E402
-from evastar.src.model_v5 import EvastarV5  # noqa: E402
-from evastar.src.training import swe_agent_rl as ar  # noqa: E402
-from evastar.src.training.grpo import GRPOTrainer  # noqa: E402
+from helioslm_v5.configs.config_v5 import (  # noqa: E402
+    GRPOConfig, HeliosLMv5Config, HybridAttentionConfig, MoEConfig, MTPConfig)
+from helioslm_v5.eval import swe_bench as sb  # noqa: E402
+from helioslm_v5.src.model_v5 import HeliosLMv5  # noqa: E402
+from helioslm_v5.src.training import swe_agent_rl as ar  # noqa: E402
+from helioslm_v5.src.training.grpo import GRPOTrainer  # noqa: E402
 
 
 def policy_config(args):
-    return EvastarV5Config(
+    return HeliosLMv5Config(
         size="lite", num_hidden_layers=2, vocab_size=ar.VOCAB,
         hidden_size=128, intermediate_size=256,
         hybrid_attention=HybridAttentionConfig(enabled=False),
@@ -85,7 +85,7 @@ def main():
 
     torch.manual_seed(args.seed)
     cfg = policy_config(args)
-    model = EvastarV5(cfg)
+    model = HeliosLMv5(cfg)
     ref = copy.deepcopy(model)
     trainer = GRPOTrainer(model, ref, cfg)
     train_tasks, held_tasks = sb.TASKS[:10], sb.TASKS[10:]

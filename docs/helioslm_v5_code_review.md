@@ -1,7 +1,7 @@
 # helioslm v5.0 — Code Review Report
 
 **Date:** 2026-09-12
-**Scope:** `/mnt/agents/output/evastar/` — 14 Python modules, ~1,850 LOC
+**Scope:** `/mnt/agents/output/helioslm_v5/` — 14 Python modules, ~1,850 LOC
 **Method:** 4 parallel specialist reviews (model core / training / inference / multimodal-quant-tests-README), with empirical runtime verification of key findings on torch 2.8 + independent orchestrator spot-checks (all confirmed).
 
 ---
@@ -110,7 +110,7 @@ No `zero_grad()` anywhere → gradients accumulate across all steps → runaway 
 ### CRITICAL
 
 **C8. MTPDecoder unpacks a 4-tuple the model never returns** — `mtp.py:130`
-`main_logits, main_hidden, _, _ = self.main_model(...)` but `EvastarV5.forward` returns a 2-tuple and never returns hidden states → `ValueError` on first iteration (verified). The entire `use_mtp=True` generate path is dead code.
+`main_logits, main_hidden, _, _ = self.main_model(...)` but `HeliosLMv5.forward` returns a 2-tuple and never returns hidden states → `ValueError` on first iteration (verified). The entire `use_mtp=True` generate path is dead code.
 
 **C9. MTP decode shapes collapse to an empty sequence** — `mtp.py:63-70, 141-143`
 Decode path feeds `[B,L,H]` hidden + `[B,1]` token; training-time shift slices `next_emb[:,1:]` to length 0; `min_len` reconciliation empties both → `IndexError` at `mtp_logits[:,-1,:]` (verified).
@@ -198,7 +198,7 @@ Read path matmuls model-dtype queries against bf16 cache → `RuntimeError: expe
 | "vLLM engine integration" (65) | **PARTIAL** | Custom vLLM-*style* class; no `import vllm` |
 | "GPU monitoring with Prometheus" (66) | **UNSUPPORTED** | Python lists only; no prometheus_client; `src/monitoring/` empty |
 | "HPA autoscaling" (67) | **PARTIAL** | Heuristic only; unit-mismatched (M27); no K8s manifests; `src/deployment/` empty |
-| Quick Start `python -m evastar.tests.test_v5` (72) | **PARTIAL** | Runs but OOMs at `test_v5_model` and always exits 0 (M34) |
+| Quick Start `python -m helioslm_v5.tests.test_v5` (72) | **PARTIAL** | Runs but OOMs at `test_v5_model` and always exits 0 (M34) |
 | Architecture existence (MLA/MTP/MoE/GRPO/FP8/DualPipe files) | **PARTIAL** | Files exist; core math deviates or is broken as detailed above |
 
 ---

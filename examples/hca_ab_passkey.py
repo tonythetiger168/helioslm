@@ -62,8 +62,8 @@ import torch.nn as nn
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from evastar.eval import multiseed  # noqa: E402
-from evastar.src.attention.kv_compress import HighCompressionAttention
+from helioslm_v5.eval import multiseed  # noqa: E402
+from helioslm_v5.src.attention.kv_compress import HighCompressionAttention
 
 SCORING_TAG = "constructive-oracle-passkey-readout"
 PROBE_VERSION = 1

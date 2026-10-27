@@ -1,6 +1,6 @@
 # hsh — the HeliosLM harness after DeepSeek Harness
 
-`evastar/hsh/` rebuilds the agent harness on the design of
+`helioslm_v5/hsh/` rebuilds the agent harness on the design of
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`,
 MIT, developer preview released 2026-08-13). dsh is a TypeScript/Node
 project; hsh is pure Python, written from dsh's design documents
@@ -59,7 +59,7 @@ OpenAI-compatible adapter and the local HeliosLM model.
   any other method, or an undeclared event, raises `EventModeError`.
 - `ctx.scoped(key)` tags registrations and dispatches with `key`.
 
-Tests: `evastar/tests/test_hsh_kernel.py` (16).
+Tests: `helioslm_v5/tests/test_hsh_kernel.py` (16).
 
 ## H2: the session log (`hsh/session.py`)
 
@@ -76,7 +76,7 @@ Tests: `evastar/tests/test_hsh_kernel.py` (16).
 - `Session.repair()` seals an interrupted tail; `Session.fork(after_turn)`
   starts a child at a turn boundary.
 
-Tests: `evastar/tests/test_hsh_session.py` (15).
+Tests: `helioslm_v5/tests/test_hsh_session.py` (15).
 
 ## H3: tools (`hsh/tools.py`, `hsh/schema.py`)
 
@@ -95,7 +95,7 @@ Tests: `evastar/tests/test_hsh_session.py` (15).
 - `ToolResult.session_data(turn, step, call_id)` is the `tool/result`
   payload for the log.
 
-Tests: `evastar/tests/test_hsh_tools.py` (21).
+Tests: `helioslm_v5/tests/test_hsh_tools.py` (21).
 
 ## H4: model seam and agent loop (`hsh/llm.py`, `hsh/loop.py`)
 
@@ -114,7 +114,7 @@ Tests: `evastar/tests/test_hsh_tools.py` (21).
 A real model in five lines:
 
 ```python
-from evastar.hsh import *
+from helioslm_v5.hsh import *
 ctx = Context()
 for p in (Sessions, Tools, LLM, Agents): ctx.plugin(p)
 ctx.llm.register("deepseek", OpenAICompatAdapter("https://api.deepseek.com", "DEEPSEEK_API_KEY"))
@@ -122,7 +122,7 @@ agent = ctx.agents.create("demo", {"provider": "deepseek", "model": "deepseek-v4
 print(agent.send("hello"))
 ```
 
-Tests: `evastar/tests/test_hsh_loop.py` (12).
+Tests: `helioslm_v5/tests/test_hsh_loop.py` (12).
 
 ## H5: presets and built-in tools (`hsh/presets.py`, `hsh/builtin.py`)
 
@@ -144,7 +144,7 @@ environment, timeout, rlimits) but are not a security sandbox; dsh uses
 Landlock/Seatbelt for that. Keep HeliosLM's TrustGate as a guard when the
 model is untrusted.
 
-Tests: `evastar/tests/test_hsh_presets.py` (10).
+Tests: `helioslm_v5/tests/test_hsh_presets.py` (10).
 
 ## H6: compaction, subagents, instructions, hooks
 
@@ -165,8 +165,158 @@ Tests: `evastar/tests/test_hsh_presets.py` (10).
   Stop with matchers, exit code 2 and the JSON decision fields. Argument
   rewriting is not supported: the logged call runs as logged.
 
-Not done (and why): MCP client (needs an MCP package; out of scope without
-a dependency decision), Web UI / desktop app, Landlock-class sandboxing,
-background jobs, goals and schedules.
+Not done in H6 (and why; MCP came in H8, the web UI in H12): desktop app, Landlock-class sandboxing,
+goals and schedules.
 
-Tests: `evastar/tests/test_hsh_extras.py` (8). All hsh tests: 82.
+Tests: `helioslm_v5/tests/test_hsh_extras.py` (8). All hsh tests: 82.
+
+## H7: agent skills (`hsh/skills.py`)
+
+After dsh's skill family (`docs/subsystems/skills.md`, upstream master of
+2026-10-23).
+
+- A skill is `<root>/<name>/SKILL.md` (a bundle; files next to it are its
+  resources) or a flat `<root>/<name>.md`, with `name` and `description`
+  in a frontmatter block. Optional keys: `when_to_use`,
+  `disable-model-invocation: true` (only a human can start it with
+  `/name`), `user-invocable: false` (only the model can load it). Other
+  keys (such as this repo's `type` and `guard`) are kept as metadata.
+- Roots, best first: `.hsh/skills`, `.agents/skills`, `.claude/skills` in
+  the workspace, then the row's `dirs`, then `~/.hsh/skills` and
+  `~/.agents/skills`. A lower rank wins a duplicate name; a skill
+  registered on an agent's scoped context beats the global layer.
+- `ctx.skills` (`Skills` service, optional): `register_provider`,
+  `register` (runtime skills), `list`, `get`. Without it, each agent's
+  `skills` row keeps a private registry.
+- The `skills` row (in `standard`, `code`, `creator`) adds the `skill`
+  tool and, at the start of each turn, logs the catalog (names and
+  descriptions only) as a `user/message` with source `skill-catalog`
+  when it differs from the newest visible one. The catalog is in the
+  log, so requests still rebuild byte for byte. `/name rest` from a
+  human expands to the skill's instructions followed by `rest`.
+- Bodies are re-read on every load, so editing a skill takes effect on
+  the next call without a restart.
+
+Tests: `helioslm_v5/tests/test_hsh_skills.py` (6).
+
+## H8: MCP client (`hsh/mcp.py`)
+
+After dsh's `mcp-client` / `mcp-resources` (`docs/subsystems/mcp.md`), in
+the standard library only (no MCP SDK).
+
+- Transports: stdio (newline-delimited JSON-RPC to a child process) and
+  Streamable HTTP (POST, JSON or SSE reply, `Mcp-Session-Id` kept).
+- The `mcp` row takes `{"servers": {name: {"command", "args", "env",
+  "cwd"} | {"url", "headers"}}}` or `{"path": ".mcp.json"}` (Claude Code's
+  `mcpServers` file works as is). Tools appear as `mcp__<server>__<tool>`;
+  the namespace is the configured name, never the server's own.
+- Child processes get a scrubbed environment (KEY/PASSWORD/SECRET/TOKEN
+  names dropped); `${VAR}` in `env` and `headers` expands from the host,
+  so a secret reaches only the server that names it.
+- Server instructions join the system prompt; `list_mcp_resources` and
+  `read_mcp_resource` read resources. A server that fails to start is
+  recorded in `ctx.errors` and adds no tools (`fail_on_error` raises).
+- Not supported (as upstream): prompts, elicitation, sampling,
+  subscriptions. Images reach the model as a text note; the full MCP
+  result is the tool result's `value`.
+
+Tests: `helioslm_v5/tests/test_hsh_mcp.py` (5).
+
+## H9: background jobs (`bash` with `{"jobs": true}`)
+
+After dsh's `tool-bash` + `tool-jobs`. `standard` turns it on; `minimal`
+keeps the plain one-shot `bash`.
+
+- `run_in_background: true` starts the command and returns a job id at
+  once; a foreground command still running at its timeout moves to the
+  background instead of being killed.
+- `job_list`, `job_output` (output since the last read; `wait` blocks up
+  to `timeout_s`), `job_kill` (kills the process group).
+- Output goes to a spill file outside the workspace; disposing the row
+  kills running jobs and removes the files.
+
+Tests: `test_bash_jobs` in `helioslm_v5/tests/test_hsh_presets.py`.
+
+## H10: asking the user, plan mode, web_fetch (`hsh/interaction.py`)
+
+After dsh's `tool-ask-user`, `plan-mode` and `tool-web`.
+
+- `ctx.questions` is the user-questions seam (like `ctx.approval`): the
+  host provides `fn(execution, questions) -> answers`. Without it the
+  model is told nobody answered.
+- `ask_user_question` (row `tool-ask-user`, in `standard`): up to four
+  questions with optional options and multi-select.
+- Plan mode (row `plan-mode`, in `standard`): logged state `plan/mode`;
+  while on, the plan section joins the system prompt. `/plan`,
+  `/plan off`, `/plan <text>` from a human; `set_plan_mode(agent, on)`
+  from a host (logged when the next turn starts). `exit_plan_mode`
+  shows the plan through `ctx.questions`: "Approve" leaves plan mode
+  before the next step; any other answer is feedback. Guidance only, as
+  upstream; `deny_tools` adds a guard if you want enforcement.
+- `web_fetch` (row `tool-web-fetch`, opt-in): one http(s) GET, HTML to
+  text, size caps; hosts that resolve to private, loopback or link-local
+  addresses are refused (also after each redirect) unless
+  `allow_private`. `web_search` is not included: it needs a search
+  provider.
+
+Tests: `helioslm_v5/tests/test_hsh_interaction.py` (4).
+
+## H11: streaming, HTTP errors and request retry (`hsh/llm.py`)
+
+- `OpenAICompatAdapter(..., stream=True)` reads server-sent events; text
+  and reasoning deltas go to `on_chunk` as they arrive and the loop
+  re-emits them as `agent/assistant-stream` (`emit`, live only: the
+  log keeps the merged stream on `assistant/message`). Tool-call
+  fragments are joined by index; usage includes DeepSeek's
+  `prompt_cache_hit_tokens` as `cached_input_tokens`.
+- HTTP failures raise `LLMError` with `status`, `transient` (408, 409,
+  425, 429, 5xx, dropped connections) and the server's `retry_after`.
+- Row `request-retry` (in every preset): on a transient failure it waits
+  (exponential backoff with jitter, at least `Retry-After`) and retries
+  in the same step, up to `max_retries` (4). Each failed attempt is an
+  `assistant/attempt` in the log, so the rebuild oracle still holds and
+  `usage_summary` counts them apart.
+- `finish_reason` (such as `length`) is kept on the adapter output.
+
+Not copied: dsh's `dsh_session_log` / `dsh_plugin_packages` request
+fields and `x-deepseek-harness-*` headers, which send the session log
+(code, tool output) and an install id to the API on every request.
+hsh sends the chat request only.
+
+Tests: `helioslm_v5/tests/test_hsh_llm.py` (4).
+
+## H12: web UI (`hsh/web.py`, `hsh/webui/`)
+
+Modelled on the DeepSeek Harness web app and written fresh: standard
+library server plus one static page (HTML, CSS, JS; no build step, no
+third-party code). It replaces `helioslm_v5/harness/web_ui_v2.py` as the
+harness UI (that file stays only for the legacy plugin harness).
+
+```
+python -m helioslm_v5.hsh.web --workspace /path/to/repo --open        # DeepSeek (DEEPSEEK_API_KEY)
+python -m helioslm_v5.hsh.web --workspace . --openai-base http://127.0.0.1:8080/v1 --openai-models my-model
+python -m helioslm_v5.hsh.web --workspace . --demo                    # no model, to try the UI
+```
+
+- Layout as upstream: sidebar (brand, New Session, sessions of this
+  workspace with relative times), centred composer (preset, permission,
+  plan and model chips; round send button that becomes stop), streamed
+  replies with collapsible thinking, tool cards with input and output,
+  todo lists, settings dialog (General, Models, Skills, MCP servers,
+  Agent presets), light and dark themes, phone layout.
+- Sessions are hsh agents saved as JSONL logs under `--data-dir`
+  (`~/.hsh/web`), resumed after a restart; a turn cut off mid-way is
+  sealed as `interrupted`.
+- Questions, plan review and tool approvals appear as cards
+  (`ctx.questions`, `ctx.approval`). Permission modes: `auto`, `ask`
+  (approve each command, edit and MCP call), `read-only`.
+- `/` lists skills and `/plan`; Enter sends, Shift+Enter is a new line,
+  Ctrl/Cmd+K starts a new session.
+- Keys come from environment variables only; the page shows whether each
+  is set and never accepts one.
+- Loopback only by default; non-loopback `Host` and cross-origin or
+  non-JSON POSTs are refused; strict CSP (`'self'` only).
+- `Agent.cancel()` (new in `loop.py`) stops at the next step boundary;
+  the turn ends with reason `cancelled`.
+
+Tests: `helioslm_v5/tests/test_hsh_web.py` (4).

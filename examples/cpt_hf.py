@@ -43,8 +43,8 @@ import torch.nn.functional as F
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.src.training.pretrain import (  # noqa: E402
-    TokenShard, lr_at, wsd_decay_start)
+from helioslm_v5.src.training.pretrain import (  # noqa: E402
+    TokenShard, chunked_lm_loss, lr_at, wsd_decay_start)
 
 
 class MixedSource:
@@ -92,19 +92,62 @@ def load_phases(data_dir, seq):
     return phases
 
 
-def lm_loss(model, x, y):
-    out = model(input_ids=x)
-    logits = out.logits if hasattr(out, "logits") else out[0]
-    return F.cross_entropy(logits.float().reshape(-1, logits.size(-1)),
-                           y.reshape(-1))
+def _unwrap(model):
+    return getattr(model, "module", model)          # DDP
+
+
+def final_softcap(model):
+    """The model's final logit soft cap (Gemma), or None."""
+    cfg = getattr(_unwrap(model), "config", None)
+    if cfg is not None and hasattr(cfg, "get_text_config"):
+        cfg = cfg.get_text_config()
+    return getattr(cfg, "final_logit_softcapping", None)
+
+
+def lm_loss(model, x, y, ce_chunk=0):
+    """Next-token cross-entropy. ``ce_chunk`` > 0 (v5.152) never builds
+    the [tokens, vocab] logits: the model runs with ``logits_to_keep=1``
+    and ``output_hidden_states=True`` (through the DDP wrapper, so its
+    gradient sync is unchanged) and ``chunked_lm_loss`` applies the output
+    head and the soft cap ``ce_chunk`` rows at a time. At Gemma's 262k
+    vocabulary the fp32 logits of one 4096-token micro-batch are 4.3 GB."""
+    if not ce_chunk:
+        out = model(input_ids=x)
+        logits = out.logits if hasattr(out, "logits") else out[0]
+        return F.cross_entropy(logits.float().reshape(-1, logits.size(-1)),
+                               y.reshape(-1))
+    out = model(input_ids=x, output_hidden_states=True, logits_to_keep=1)
+    head = _unwrap(model).get_output_embeddings()
+    if getattr(head, "bias", None) is not None:
+        raise ValueError("--ce-chunk needs an output head without bias")
+    loss = chunked_lm_loss(out.hidden_states[-1], head.weight, y,
+                           softcap=final_softcap(model), chunk=ce_chunk)
+    # the one kept logit row stays in the graph, so every parameter the
+    # forward used gets a gradient (DDP find_unused_parameters)
+    return loss + 0.0 * out.logits.float().sum()
+
+
+def check_chunked_head(model, x, y, ce_chunk, tol=1e-3):
+    """Raise ValueError unless ``lm_loss(ce_chunk)`` equals the full-logits
+    loss on (x, y) (fp32, no grad): guards against a model whose last
+    hidden state is not the output head's input. Returns both losses."""
+    with torch.no_grad():
+        full = lm_loss(model, x, y).item()
+        chunked = lm_loss(model, x, y, ce_chunk).item()
+    if not abs(full - chunked) <= tol * max(1.0, abs(full)):
+        raise ValueError(f"chunked CE {chunked:.6f} != full logits {full:.6f}: "
+                         "this model's last hidden state is not the output "
+                         "head input; run without --ce-chunk")
+    return full, chunked
 
 
 def train(model, phases, *, steps, micro_batch, seq, grad_accum, lr,
           warmup, decay_frac=0.2, min_ratio=0.1, weight_decay=0.1,
           seed=0, rank=0, world=1, device="cpu", max_hours=None,
-          log=None, autocast=True):
+          log=None, autocast=True, ce_chunk=0):
     """WSD continued pretraining. Returns {"steps", "tokens", "loss",
-    "stopped"}; ``log(row)`` gets one dict per optimiser step."""
+    "stopped"}; ``log(row)`` gets one dict per optimiser step;
+    ``ce_chunk`` goes to :func:`lm_loss`."""
     params = [p for p in model.parameters() if p.requires_grad]
     opt = torch.optim.AdamW(params, lr=lr, betas=(0.9, 0.95),
                             weight_decay=weight_decay)
@@ -132,7 +175,7 @@ def train(model, phases, *, steps, micro_batch, seq, grad_accum, lr,
             with ctx:
                 with torch.autocast(dev_type, dtype=torch.bfloat16,
                                     enabled=autocast):
-                    loss = lm_loss(model, x, y) / grad_accum
+                    loss = lm_loss(model, x, y, ce_chunk) / grad_accum
                 loss.backward()
             total += loss.item()
         grad_norm = torch.nn.utils.clip_grad_norm_(params, 1.0)
@@ -229,6 +272,11 @@ def main(argv=None):
                     default=["per_layer", "vision", "audio"])
     ap.add_argument("--max-hours", type=float, default=None)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--ce-chunk", type=int, default=0,
+                    help="v5.152: output head + cross-entropy this many "
+                         "tokens at a time, without the full logits "
+                         "(0 = full logits); checked against the full "
+                         "loss on one short window before training")
     ap.add_argument("--out", required=True)
     ap.add_argument("--dry-run", action="store_true",
                     help="load the model, apply --freeze, write "
@@ -262,6 +310,11 @@ def main(argv=None):
         net = torch.nn.parallel.DistributedDataParallel(
             model, device_ids=[local], find_unused_parameters=True)
     phases = load_phases(a.data, a.seq)
+    if a.ce_chunk:
+        x, y = phases["main"].batch(1, min(a.seq, 128), 0, a.seed)
+        full, chunked = check_chunked_head(model, x.to(device), y.to(device), a.ce_chunk)
+        if rank == 0:
+            print(f"ce-chunk check: full {full:.6f} chunked {chunked:.6f}", flush=True)
     per_micro = a.micro_batch * a.seq * world
     grad_accum = max(1, round(a.batch_tokens / per_micro))
     steps = max(1, int(a.tokens // (per_micro * grad_accum)))
@@ -287,7 +340,8 @@ def main(argv=None):
     res = train(net, phases, steps=steps, micro_batch=a.micro_batch,
                 seq=a.seq, grad_accum=grad_accum, lr=a.lr, warmup=warmup,
                 decay_frac=a.decay_frac, seed=a.seed, rank=rank, world=world,
-                device=device, max_hours=a.max_hours, log=log)
+                device=device, max_hours=a.max_hours, log=log,
+                ce_chunk=a.ce_chunk)
     if rank == 0:
         logf.close()
         final = out / "final"

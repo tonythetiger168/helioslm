@@ -34,14 +34,14 @@ _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 sys.path.insert(0, str(_REPO / "examples"))
 
-from evastar.eval import multiseed  # noqa: E402
-from evastar.configs.config_v5 import (  # noqa: E402
-    AttentionConfig, EvastarV5Config, HybridAttentionConfig, MTPConfig)
-from evastar.src.model_v5 import EvastarV5  # noqa: E402
+from helioslm_v5.eval import multiseed  # noqa: E402
+from helioslm_v5.configs.config_v5 import (  # noqa: E402
+    AttentionConfig, HeliosLMv5Config, HybridAttentionConfig, MTPConfig)
+from helioslm_v5.src.model_v5 import HeliosLMv5  # noqa: E402
 
 
 def config(n_share, layers):
-    return EvastarV5Config(
+    return HeliosLMv5Config(
         size="lite", num_hidden_layers=layers,
         attention=AttentionConfig(kv_share_last_n=n_share),
         hybrid_attention=HybridAttentionConfig(enabled=False),
@@ -80,7 +80,7 @@ def experiment(args):
     for n in args.shares:
         cfg = config(n, args.layers)
         torch.manual_seed(args.seed)
-        model = EvastarV5(cfg)
+        model = HeliosLMv5(cfg)
         n_params = sum(p.numel() for p in model.parameters())
         kv_bpt = cache_bytes_per_token(model, vocab)
         model.train()

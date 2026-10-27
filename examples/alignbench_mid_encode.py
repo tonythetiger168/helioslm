@@ -15,9 +15,9 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent))
-from evastar.configs.config_v5 import EvastarV5Config
-from evastar.src.model_v5 import EvastarV5
-from evastar.src.tokenizer.bpe import HeliosBPE
+from helioslm_v5.configs.config_v5 import HeliosLMv5Config
+from helioslm_v5.src.model_v5 import HeliosLMv5
+from helioslm_v5.src.tokenizer.bpe import HeliosBPE
 
 items = [json.loads(l) for l in open("all.jsonl", encoding="utf-8") if l.strip()]
 SUBSET = ["sycophancy_eval", "faith_mt_grounded", "confaide", "injecagent",
@@ -34,8 +34,8 @@ keep = [(i, it) for i, it in enumerate(items) if it["benchmark"] in SUBSET]
 print(f"subset: {len(keep)} states", flush=True)
 
 tok = HeliosBPE.load("checkpoints/mid_sft_v5.33.tok.json")
-cfg = EvastarV5Config(size="mid")
-model = EvastarV5(cfg)
+cfg = HeliosLMv5Config(size="mid")
+model = HeliosLMv5(cfg)
 model.load_state_dict(torch.load("checkpoints/mid_sft_v5.33.pt",
                                  map_location="cpu",
                                  weights_only=True))
