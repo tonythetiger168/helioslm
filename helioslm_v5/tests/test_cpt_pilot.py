@@ -74,7 +74,7 @@ def test_plan():
     assert rows["a"]["usable"] and rows["d"]["usable"]
     assert "card says" in rows["b"]["reason"]
     assert rows["c"]["reason"] == "licence under review"
-    assert rows["e"]["reason"] == "not a hf: source"
+    assert rows["e"]["reason"] == "not a hf: or git: source"
     assert rows["a"]["budget"] == 800 and rows["d"]["budget"] == 200
     assert rows["a"]["weight"] == 1.0
     with pytest.raises(SystemExit):

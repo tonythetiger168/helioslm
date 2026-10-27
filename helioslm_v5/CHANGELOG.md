@@ -1,5 +1,20 @@
 # HeliosLM v5 Changelog
 
+## v5.183 (2026-10-27) - HDL track H5: git sources and the SystemVerilog / UVM mixture
+
+`fetch_mixture.py` reads `git:<https url>@<commit>` sources: a shallow
+checkout of the pinned commit, the licence from the repository's
+LICENSE file (Solderpad 2.x counts as Apache-2.0, which it allows), and
+the files matching the source's `include` globs minus `exclude` as
+documents (sorted, exact duplicates and files over 1 MB dropped, each
+prefixed with its path). `data_mixture` validates `include` / `exclude`
+and requires `include` on a git source.
+
+`data/mixtures/hdl_h5_sv_uvm_v1.json`: OpenTitan, Ibex and core-v-verif
+SystemVerilog (UVM testbenches included, vendored code excluded), the
+Stack SystemVerilog under review, Verilog and English + maths replay
+(docs/HDL_DATA.md). T160.
+
 ## v5.182 (2026-10-27) - HDL track: UVM testbench benchmark, SystemVerilog split, gate count
 
 `helioslm_v5/eval/uvm_bench.py`: the model writes a self-checking UVM

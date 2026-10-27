@@ -21,6 +21,13 @@ For every ``hf:`` source of the mixture (``hf:repo[:config]``):
    BOS + ids + EOS and appended to ``<out>/<phase>/<name>.bin`` (uint32)
    until the budget is reached.
 
+A ``git:<url>@<commit>`` source (v5.183) is checked out at that commit
+(shallow) under ``<out>/_git/<name>``; the licence in its LICENSE file
+stands in for the card licence (Solderpad 2.x counts as Apache-2.0, which
+it lets the user choose), and the files matching ``include`` and not
+``exclude`` (sorted, exact duplicates and files over 1 MB dropped) are the
+documents, each prefixed with a ``// file: <path>`` line.
+
 ``quality_threshold`` is not applied (no trained quality classifier yet).
 ``<out>/manifest.json`` records per source: phase, weight, licence check,
 dataset revision, tokens, documents kept / seen, and the filter report;
@@ -29,7 +36,10 @@ on. Needs ``datasets``, ``huggingface_hub`` and ``tokenizers`` (the pod);
 HF_TOKEN for gated datasets.
 """
 import argparse
+import fnmatch
+import hashlib
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -47,11 +57,67 @@ _LICENSE_ALIASES = {"odc-by-1.0": "odc-by", "cc0-1.0": "cc0"}
 
 
 def parse_source(src):
-    """'hf:repo[:config]' -> (repo, config or None); other schemes -> None."""
+    """'hf:repo[:config]' -> (repo, config or None); 'git:url@commit' ->
+    ("git", url, commit); other schemes -> None."""
+    if src.startswith("git:"):
+        url, _, commit = src[4:].rpartition("@")
+        if not url.startswith("https://") or len(commit) != 40:
+            return None
+        return "git", url, commit
     if not src.startswith("hf:"):
         return None
     parts = src[3:].split(":", 1)
     return parts[0], (parts[1] if len(parts) > 1 else None)
+
+
+MAX_FILE_BYTES = 1 << 20
+_LICENCE_TEXTS = (("Solderpad Hardware Licen", "Apache-2.0"),
+                  ("Apache License", "Apache-2.0"),
+                  ("MIT License", "MIT"),
+                  ("Permission is hereby granted, free of charge", "MIT"))
+
+
+def git_checkout(url, commit, dest):
+    """Shallow checkout of ``commit`` into ``dest``; returns ``dest``."""
+    dest = Path(dest)
+    if not (dest / ".git").is_dir():
+        dest.mkdir(parents=True, exist_ok=True)
+        for cmd in (["git", "init", "-q"], ["git", "remote", "add", "origin", url]):
+            subprocess.run(cmd, cwd=dest, check=True)
+    for cmd in (["git", "fetch", "-q", "--depth", "1", "origin", commit],
+                ["git", "checkout", "-q", "FETCH_HEAD"]):
+        subprocess.run(cmd, cwd=dest, check=True)
+    return dest
+
+
+def git_licence(root):
+    """The licence named by the repo's top-level LICENSE file, or None."""
+    for name in ("LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING"):
+        p = Path(root) / name
+        if p.is_file():
+            head = p.read_text(encoding="utf-8", errors="replace")[:4000]
+            return next((lic for key, lic in _LICENCE_TEXTS if key in head), None)
+    return None
+
+
+def git_texts(root, include, exclude=()):
+    """Documents of a checkout: files matching ``include`` and not
+    ``exclude`` (repo-relative globs), sorted, exact duplicates and files
+    over ``MAX_FILE_BYTES`` dropped, each prefixed ``// file: <path>``."""
+    root, seen = Path(root), set()
+    paths = sorted(p for p in root.rglob("*") if p.is_file() and ".git" not in p.parts)
+    for p in paths:
+        rel = p.relative_to(root).as_posix()
+        if not any(fnmatch.fnmatch(rel, g) for g in include):
+            continue
+        if any(fnmatch.fnmatch(rel, g) for g in exclude):
+            continue
+        data = p.read_bytes()
+        digest = hashlib.sha256(data).hexdigest()
+        if len(data) > MAX_FILE_BYTES or digest in seen:
+            continue
+        seen.add(digest)
+        yield f"// file: {rel}\n" + data.decode("utf-8", errors="replace")
 
 
 def _family(lic):
@@ -88,7 +154,7 @@ def plan(mix, tokens, decay_frac, card_licences, no_access=None):
              "usable": False, "reason": None, "budget": 0}
         rows[s["name"]] = r
         if parse_source(s["source"]) is None:
-            r["reason"] = "not a hf: source"
+            r["reason"] = "not a hf: or git: source"
         elif s.get("license") == "review":
             r["reason"] = "licence under review"
         elif s["name"] in no_access:
@@ -203,6 +269,13 @@ def main(argv=None):
         ps = parse_source(s["source"])
         if ps is None or s.get("license") == "review":
             continue
+        if ps[0] == "git":
+            try:
+                root = git_checkout(ps[1], ps[2], out / "_git" / s["name"])
+                cards[s["name"]], revs[s["name"]] = git_licence(root), ps[2]
+            except Exception as e:
+                no_access[s["name"]] = f"git {type(e).__name__}"
+            continue
         try:
             cards[s["name"]], revs[s["name"]] = _card_licence(api, ps[0])
         except Exception as e:
@@ -255,15 +328,19 @@ def main(argv=None):
         if not r["usable"]:
             save()
             continue
-        repo, cfg = parse_source(s["source"])
+        ps = parse_source(s["source"])
         (out / r["phase"]).mkdir(exist_ok=True)
         path = out / r["phase"] / f"{s['name']}.bin"
         t0 = time.time()
         try:
-            ds = load_dataset(repo, cfg, split="train", streaming=True,
-                              revision=r["revision"], **load_kwargs(s))
-            field = s.get("field", a.field)
-            texts = (row.get(field) or "" for row in ds)
+            if ps[0] == "git":
+                texts = git_texts(out / "_git" / s["name"], s["include"],
+                                  s.get("exclude", ()))
+            else:
+                ds = load_dataset(ps[0], ps[1], split="train", streaming=True,
+                                  revision=r["revision"], **load_kwargs(s))
+                field = s.get("field", a.field)
+                texts = (row.get(field) or "" for row in ds)
             res = write_source(
                 texts, lambda b: [e.ids for e in tok.encode_batch(
                     b, add_special_tokens=False)],

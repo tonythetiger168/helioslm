@@ -27,6 +27,11 @@ default the fetcher's ``--field``), ``data_dir`` / ``data_files`` (passed
 to ``datasets.load_dataset``, e.g. ``data/vhdl`` of the-stack) and
 ``heuristics`` (false skips the prose heuristics, which drop most source
 code: short modules, repeated ``end`` lines).
+
+Git sources (v5.183): ``"source": "git:<https url>@<commit>"`` with
+``include`` (glob list, matched against repo-relative paths) and optional
+``exclude``; the fetcher checks the licence in the repository's LICENSE
+file and reads the matching files as documents.
 """
 import hashlib
 import json
@@ -90,6 +95,13 @@ def validate_mixture(mix):
                 isinstance(df, str) and df or isinstance(df, list) and df
                 and all(isinstance(x, str) and x for x in df)):
             raise ValueError(f"{n}: data_files must be a path or a list of paths")
+        for k in ("include", "exclude"):
+            v = s.get(k)
+            if v is not None and not (isinstance(v, list) and v and all(
+                    isinstance(x, str) and x for x in v)):
+                raise ValueError(f"{n}: {k} must be a non-empty list of globs")
+        if s["source"].startswith("git:") and not s.get("include"):
+            raise ValueError(f"{n}: a git source needs include globs")
         if not isinstance(s.get("heuristics", True), bool):
             raise ValueError(f"{n}: heuristics must be true or false")
     if "main" not in totals:
