@@ -1,5 +1,5 @@
 """hdl_bench_run.py — HDL track H0: score a Hugging Face model on
-VerilogEval v2 spec-to-rtl (v5.147) or RTLLM v2.1 (v5.150).
+VerilogEval v2 spec-to-rtl (v5.147) or RTLLM v2.1 (v5.175).
 
   # on the pod (needs iverilog; yosys and pyslang optional)
   python -m helioslm_v5.eval.hdl_bench fetch

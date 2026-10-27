@@ -1,4 +1,4 @@
-"""HDL benchmark harness: RTLLM v2.1 (v5.150, HDL track H0).
+"""HDL benchmark harness: RTLLM v2.1 (v5.175, HDL track H0).
 
 RTLLM (hkust-zhiyao/RTLLM, MIT) has 50 designs (adders to a RISC-V ALU
 and a calendar). Each one has a natural-language ``design_description.txt``

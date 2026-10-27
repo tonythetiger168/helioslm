@@ -1,4 +1,4 @@
-"""T143 — HDL track H0: RTLLM v2.1 harness (Icarus), v5.150.
+"""T143 — HDL track H0: RTLLM v2.1 harness (Icarus), v5.175.
 
 Pins:
 
