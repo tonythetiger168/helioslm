@@ -33,7 +33,6 @@ import re
 import shutil
 import subprocess
 import tempfile
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
