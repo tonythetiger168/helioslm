@@ -23,7 +23,7 @@ python examples/hdl_bench_run.py --model <hf-id> --out results/hdl/<name>.json
 | `failure_codes` | upstream sv-iv-analyze codes: `.` pass, `S` syntax, `C` compile, `T` timeout, `R` runtime mismatch, `r` reset in sensitivity list, `p` unbound signal, `m` unknown module, `w` reg declared as wire, `n` no sensitivities, `e` cast, `0` zero-width constant, `c` clk not bound |
 | `lint` / `synth` | with `--extra`: pyslang errors and yosys cell count, not part of pass@k |
 
-## RTLLM v2.1 (v5.175)
+## RTLLM v2.1 (v5.176)
 
 50 designs (hkust-zhiyao/RTLLM at `51ed553d`, MIT). Upstream scores with
 Synopsys VCS; we use Icarus with the same two rules (compiles = syntax,
