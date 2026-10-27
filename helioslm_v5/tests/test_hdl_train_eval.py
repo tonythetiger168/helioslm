@@ -64,6 +64,18 @@ def test_render_and_pack():
     assert (wi[1, 0] == ids[8]) and (wi[0, -1] == ids[8])
 
 
+
+def test_no_think_and_drop_long():
+    tok = Tok()
+    assert sft_hf.strip_think("<think>a\nb</think>\n\nmodule m;") == "module m;"
+    assert sft_hf.strip_think("module m;") == "module m;"
+    recs = [{"prompt": "p", "response": "<think>" + "z" * 30 + "</think>ok"},
+            {"prompt": "p", "response": "y" * 40}]
+    ids, mask, st = sft_hf.pack(recs, tok, 20, ("system", "prompt", "response"),
+                                think=False, drop_long=True)
+    assert st["kept"] == 1 and st["dropped_long"] == 1 and st["cut_response"] == 0
+    assert int(mask.sum()) == 3                            # "ok" + EOS
+
 torch = pytest.importorskip("torch")
 
 

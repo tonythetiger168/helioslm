@@ -16,7 +16,9 @@ The token ids and a 0/1 loss mask (1 on response and EOS tokens) are
 concatenated and written as ``ids.npy`` / ``mask.npy``; ``train`` cuts
 them into ``--seq`` windows (documents may share a window, as in
 pretraining). A record whose prompt alone does not fit is dropped; a
-long response is cut at ``--seq``. ``--val-fraction`` of the windows
+long response is cut at ``--seq`` (or the record dropped with
+``--drop-long``); ``--no-think`` removes ``<think>`` reasoning blocks
+from the responses (v5.179). ``--val-fraction`` of the windows
 are held out for the masked validation loss.
 
 ``train`` reuses ``cpt_hf.py``: fp32 master weights under bf16 autocast,
@@ -27,6 +29,7 @@ AdamW, gradient checkpointing, ``--freeze`` patterns, ``--ce-chunk`` and
 import argparse
 import json
 import math
+import re
 import sys
 import time
 from pathlib import Path
@@ -54,20 +57,35 @@ def render(tok, system, prompt, response):
     return pid + rid, [0] * len(pid) + [1] * len(rid)
 
 
-def pack(records, tok, seq, fields):
-    """Concatenate rendered records; returns (ids, mask, stats)."""
+THINK = re.compile(r"<think>.*?</think>\s*", re.S)
+
+
+def strip_think(text):
+    """The response without its ``<think>...</think>`` reasoning."""
+    return THINK.sub("", text, count=1).lstrip()
+
+
+def pack(records, tok, seq, fields, think=True, drop_long=False):
+    """Concatenate rendered records; returns (ids, mask, stats).
+    ``think`` False drops each response's ``<think>`` block (v5.179);
+    ``drop_long`` drops records longer than ``seq`` instead of cutting
+    the response."""
     sf, pf, rf = fields
     ids, mask = [], []
     st = {"records": 0, "kept": 0, "dropped_long_prompt": 0,
-          "cut_response": 0, "response_tokens": 0}
+          "dropped_long": 0, "cut_response": 0, "response_tokens": 0}
     for r in records:
         st["records"] += 1
-        i, m = render(tok, r.get(sf) or "", r[pf], r[rf])
+        resp = r[rf] if think else strip_think(r[rf])
+        i, m = render(tok, r.get(sf) or "", r[pf], resp)
         n_prompt = m.index(1) if 1 in m else len(m)
         if n_prompt >= seq:
             st["dropped_long_prompt"] += 1
             continue
         if len(i) > seq:
+            if drop_long:
+                st["dropped_long"] += 1
+                continue
             i, m = i[:seq], m[:seq]
             st["cut_response"] += 1
         ids += i
@@ -196,7 +214,8 @@ def cmd_prepare(a):
     if a.limit:
         recs = (r for i, r in enumerate(recs) if i < a.limit)
     ids, mask, st = pack(recs, tok, a.seq,
-                         (a.system_field, a.prompt_field, a.response_field))
+                         (a.system_field, a.prompt_field, a.response_field),
+                         think=not a.no_think, drop_long=a.drop_long)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     np.save(out / "ids.npy", ids)
@@ -267,6 +286,10 @@ def main(argv=None):
     p.add_argument("--prompt-field", default="prompt")
     p.add_argument("--response-field", default="response")
     p.add_argument("--limit", type=int)
+    p.add_argument("--no-think", action="store_true",
+                   help="train on the answer only: drop <think>...</think>")
+    p.add_argument("--drop-long", action="store_true",
+                   help="drop records longer than --seq instead of cutting")
     t = sub.add_parser("train")
     t.add_argument("--model", required=True)
     t.add_argument("--tokenizer", help="default: --model")

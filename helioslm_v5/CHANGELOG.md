@@ -15,7 +15,13 @@ Fixes from the first HDL pod runs:
   master weights ran out of memory on a 96 GB GPU, and its frozen
   per-layer tables, towers and embeddings are about 4B parameters.
 
-T144 gains the env_file list case; T157 checks that bf16 frozen
+`sft_hf.py prepare --no-think` drops `<think>` reasoning from the
+responses and `--drop-long` drops over-long records instead of cutting
+them: 79% of the CodeV-R1 records exceed 4,096 tokens with their
+reasoning, and a cut response loses its final code.
+
+T144 gains the env_file list case; T157 checks the think stripping and
+long-record dropping, and that bf16 frozen
 parameters stay fixed while the rest trains under autocast.
 
 ## v5.178 (2026-10-27) - HDL track H1: HDL training-data mixture, eval runner, SFT
