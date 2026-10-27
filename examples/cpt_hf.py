@@ -236,6 +236,18 @@ def freeze(model, patterns):
     return tr, fr
 
 
+def cast_frozen(model, dtype):
+    """Store frozen parameters in ``dtype`` (v5.179, e.g. bf16): they get
+    no gradient or optimizer state, and autocast runs their matmuls in
+    bf16 anyway, so fp32 copies only cost memory. Returns bytes saved."""
+    saved = 0
+    for p in model.parameters():
+        if not p.requires_grad and p.dtype != dtype:
+            saved += p.numel() * (p.element_size() - torch.empty(0, dtype=dtype).element_size())
+            p.data = p.data.to(dtype)
+    return saved
+
+
 def frozen_groups(model, depth=3):
     """{name prefix: frozen parameter count}, so a run can confirm its
     --freeze patterns hit the towers they were meant for."""
@@ -270,6 +282,9 @@ def main(argv=None):
     ap.add_argument("--decay-frac", type=float, default=0.2)
     ap.add_argument("--freeze", nargs="*",
                     default=["per_layer", "vision", "audio"])
+    ap.add_argument("--frozen-bf16", action="store_true",
+                    help="store --freeze parameters in bf16 (saves 2 bytes "
+                         "per frozen parameter of GPU memory)")
     ap.add_argument("--max-hours", type=float, default=None)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--ce-chunk", type=int, default=0,
@@ -301,6 +316,10 @@ def main(argv=None):
     trainable, frozen = freeze(model, a.freeze)
     if a.dry_run:
         return dry_run_report(model, a.out, trainable, frozen)
+    if a.frozen_bf16:
+        saved = cast_frozen(model, torch.bfloat16)
+        if rank == 0:
+            print(f"frozen parameters in bf16: {saved / 2**30:.1f} GiB saved", flush=True)
     model.gradient_checkpointing_enable(
         gradient_checkpointing_kwargs={"use_reentrant": False})
     model.config.use_cache = False
