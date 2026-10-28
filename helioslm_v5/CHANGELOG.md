@@ -18,6 +18,15 @@
   395, Metal on Mac). An MLX export for Mac is not part of this change.
 - T164 in `test_package_tiers.py`.
 
+## v5.189 (2026-10-28) - Pilot B0 on a one-GPU pod
+
+- `examples/pilot_b0_pod.sh`: step 3 (pilot vs E2B base) passed
+  `--gpus 0,1` always; on a 1-GPU pod the second worker got a GPU that
+  does not exist. It now uses `0,1` only with two or more GPUs, else `0`
+  (sequential scoring).
+- `SKIP_STD=1` skips step 4 (lm-eval common benchmarks); the checkpoint
+  and `results/` uploads still run. Default unchanged (0).
+
 ## v5.188 (2026-10-28) - Cloudflare download bundles per GPU-memory tier
 
 The local deployment series is published on Cloudflare by GPU memory,

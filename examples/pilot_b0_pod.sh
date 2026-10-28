@@ -15,6 +15,8 @@
 # SKIP_GAP=1 skips the step-1 base-gap eval (already run on its own pod),
 # so the pod no longer needs a 141 GB GPU for the 8x7B reference; step 3
 # then fetches only BENCHES (default: every bench this account can read).
+# v5.189: SKIP_STD=1 skips step 4 (lm-eval common benchmarks); steps 3
+# and 4 run on a 1-GPU pod too.
 set -uo pipefail
 PER_HOUR=${PER_HOUR:-30}
 MAX_COST=${MAX_COST:-300}
@@ -23,6 +25,7 @@ EVAL_RESERVE_H=${EVAL_RESERVE_H:-2.0}
 ALLOW_BLOCKED=${ALLOW_BLOCKED:-0}
 SKIP_GAP=${SKIP_GAP:-0}
 BENCHES=${BENCHES:-}
+SKIP_STD=${SKIP_STD:-0}
 MIXARGS=(); [ "$ALLOW_BLOCKED" = 1 ] && MIXARGS=(--allow-blocked)
 export HF_HOME=/workspace/hf
 cd /workspace
@@ -59,6 +62,7 @@ if ! "${GAPCHECK[@]}" \
 fi
 NGPU=$(nvidia-smi -L | wc -l)
 GPUS=$(seq -s, 0 $((NGPU - 1)))
+EVGPUS=0,1; [ "$NGPU" -ge 2 ] || EVGPUS=0
 mkdir -p /workspace/results /workspace/runs
 
 # 1. In parallel: base-gap eval on the GPUs (E4B vs the 4 reference models)
@@ -97,7 +101,7 @@ echo "cpt_hf exit ${PIPESTATUS[0]}"
 if [ -f /workspace/runs/b0/final/config.json ]; then
   FETCH=(); [ "$SKIP_GAP" = 1 ] && FETCH=(--fetch)
   [ -n "$BENCHES" ] && FETCH+=(--benches $BENCHES)
-  timeout 1h python examples/base_gap_eval.py "${FETCH[@]}" --gpus 0,1 \
+  timeout 1h python examples/base_gap_eval.py "${FETCH[@]}" --gpus "$EVGPUS" \
       --models /workspace/runs/b0/final google/gemma-4-E2B \
       --base /workspace/runs/b0/final --refs google/gemma-4-E2B \
       --data /workspace/tw_bench --out-dir /workspace/results/pilot_b0 \
@@ -152,22 +156,26 @@ std_bench() {  # $1 model, $2 GPU list, $3 output dir
       --tasks truthfulqa_mc2,gsm8k,bbh_cot_fewshot,minerva_math500,humaneval,mbpp \
       --confirm_run_unsafe_code
 }
-HALF=$((NGPU / 2)); [ "$HALF" -ge 1 ] || HALF=1
-GA=$(seq -s, 0 $((HALF - 1)))
-GB=$(seq -s, "$HALF" $((NGPU - 1))); [ -n "$GB" ] || GB=$GA
-STD_S=$(python3 -c "print(int(3600 * max(0.1, $(left_h) + $EVAL_RESERVE_H - 0.3)))")
-mkdir -p /workspace/results/std_bench
-( export -f std_bench; timeout "$STD_S" bash -c \
-    "std_bench google/gemma-4-E2B $GA /workspace/results/std_bench/e2b_base" \
-    > /workspace/std_bench_base.log 2>&1 ) &
-SB=$!
-if [ -f /workspace/runs/b0/final/config.json ]; then
+if [ "$SKIP_STD" = 1 ]; then
+  echo "step 4 skipped (SKIP_STD=1)"
+else
+  HALF=$((NGPU / 2)); [ "$HALF" -ge 1 ] || HALF=1
+  GA=$(seq -s, 0 $((HALF - 1)))
+  GB=$(seq -s, "$HALF" $((NGPU - 1))); [ -n "$GB" ] || GB=$GA
+  STD_S=$(python3 -c "print(int(3600 * max(0.1, $(left_h) + $EVAL_RESERVE_H - 0.3)))")
+  mkdir -p /workspace/results/std_bench
   ( export -f std_bench; timeout "$STD_S" bash -c \
-      "std_bench /workspace/runs/b0/final $GB /workspace/results/std_bench/pilot_b0" \
-      > /workspace/std_bench_pilot.log 2>&1 )
-  echo "std bench (pilot) exit $?"
+      "std_bench google/gemma-4-E2B $GA /workspace/results/std_bench/e2b_base" \
+      > /workspace/std_bench_base.log 2>&1 ) &
+  SB=$!
+  if [ -f /workspace/runs/b0/final/config.json ]; then
+    ( export -f std_bench; timeout "$STD_S" bash -c \
+        "std_bench /workspace/runs/b0/final $GB /workspace/results/std_bench/pilot_b0" \
+        > /workspace/std_bench_pilot.log 2>&1 )
+    echo "std bench (pilot) exit $?"
+  fi
+  wait $SB; echo "std bench (base) exit $?"
 fi
-wait $SB; echo "std bench (base) exit $?"
 if [ -n "$UP" ]; then
   wait $UP; echo "checkpoint upload exit $?"; tail -2 /workspace/upload.log
   timeout 10m python - <<'PY'
