@@ -1,5 +1,18 @@
 # HeliosLM v5 Changelog
 
+## v5.187 (2026-10-28) - HDL track H5: synth gate measured on real cores
+
+With sv2v, 24 of 38 OpenTitan IPs, Ibex (`ibex_top`, 22,104 cells) and
+CV32E40P (`cv32e40p_top`, 43,201 cells) pass the gate. Fixes found on
+them: an included header is part of a project wherever it lives (Ibex's
+`dv_fcov_macros.svh` sits under `dv/`); an include with a directory part
+(`common_cells/registers.svh`) adds the directory it is relative to;
+synthesis reads copies without `translate_off` regions; a source's
+`projects.tops` names the top when the directory name does not
+(`ibex_top`, not the simulation-only `ibex_top_tracing`), even when
+another module instantiates it. CVA6 is replaced by CV32E40P in the H5
+mixture: sv2v cannot convert CVA6's parameterised structs. T162.
+
 ## v5.186 (2026-10-28) - HDL track H5: projects that synthesise
 
 `hdl_projects.py` reads HDL code as projects (an OpenTitan IP, a core, a

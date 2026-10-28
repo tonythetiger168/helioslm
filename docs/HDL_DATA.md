@@ -73,7 +73,7 @@ document.
 |---|---|---|---|
 | `lowRISC/opentitan` @ `ecedaa5a` | Apache-2.0 | ~38 MB | ~12 MB |
 | `lowRISC/ibex` @ `c0c07085` | Apache-2.0 | 1.7 MB (190 files) | 92 files |
-| `openhwgroup/cva6` @ `742dc82a` (`core/`) | Solderpad Hardware 0.51 (based on Apache-2.0) | ~2 MB | |
+| `openhwgroup/cv32e40p` @ `b353438f` (`rtl/`) | Solderpad Hardware 0.51 (based on Apache-2.0) | ~0.65 MB | |
 | `openhwgroup/core-v-verif` @ `1dfa4836` | Solderpad Hardware 2.0 (may be taken as Apache-2.0) | ~4.3 MB | ~3.6 MB |
 
 Directories matching `*vendor*` (third-party code under other licences)
@@ -89,8 +89,8 @@ is trained on only when it synthesises
 | Source | Project | Weight |
 |---|---|---|
 | OpenTitan | each IP directory (`hw/ip/*`, `hw/ip_templates/*`) | 0.28 |
-| Ibex, CVA6 | the whole core | 0.05, 0.08 |
-| core-v-verif | UVM environments; used only when CVA6 passes (`requires`) | 0.05 |
+| Ibex, CV32E40P | the whole core (`tops`: `ibex_top`, `cv32e40p_top`) | 0.05, 0.08 |
+| core-v-verif | UVM environments; used only when CV32E40P passes (`requires`) | 0.05 |
 | The Stack SystemVerilog | one GitHub repository, permissive licences only | 0.10 |
 | `Verilog_GitHub` | one file (the rows carry no repository name) | 0.20 |
 
@@ -134,7 +134,16 @@ python examples/fetch_mixture.py --mixture data/mixtures/hdl_h5_sv_uvm_v1.json \
     --decontam /workspace/benches --allow-blocked
 ```
 
-First measurement, OpenTitan with Yosys 0.33 and no `sv2v`: Verilator
-lint passes for most IPs, but Yosys' SystemVerilog reader stops on the
-register packages of nearly every IP, so `sv2v` is needed for the gate
-to mean anything on SystemVerilog cores.
+Measured on 2026-10-28 (Yosys 0.33, sv2v v0.0.13, Verilator 5.052, 4 CPUs,
+600 s per project):
+
+| Source | Passed | Notes |
+|---|---|---|
+| OpenTitan IPs (`hw/ip/*` minus the prim libraries) | 24 of 38 | about 10 MB of passing project text; fails: 4 lint (missing cross-IP packages, vendor cell libraries), 3 synth timeouts (otbn, keymgr_dpe, prim_generic), 4 sv2v / Yosys front-end limits, 3 IPs with no top in `hw/ip` (generated from templates) |
+| Ibex (`ibex_top`) | 1 of 1 | 22,104 cells |
+| CV32E40P (`cv32e40p_top`) | 1 of 1 | 43,201 cells |
+| CVA6 (`cva6`) | 0 of 1 | lint passes; sv2v cannot convert its parameterised structs, so CV32E40P replaced it |
+
+Without sv2v, Yosys' own SystemVerilog reader stopped on the register
+package of nearly every IP, and no OpenTitan IP passed. The pod installs
+sv2v from its release (`zachjs/sv2v` v0.0.13, `sv2v-Linux.zip`).

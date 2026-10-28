@@ -235,14 +235,34 @@ def test_h5_mixture():
     src = {s["name"]: s for s in mix["sources"]}
     names = [s["name"] for s in mix["sources"]]
     assert abs(sum(s["weight"] for s in mix["sources"]) - 1) < 1e-9
-    for n in ("opentitan-sv", "ibex-sv", "cva6-sv", "stack-systemverilog",
+    for n in ("opentitan-sv", "ibex-sv", "cv32e40p-sv", "stack-systemverilog",
               "verilog-github"):
         assert isinstance(src[n].get("projects"), dict), n
-    assert src["cva6-sv"]["license"] == "SHL-0.51"
-    assert len(src["cva6-sv"]["source"].rpartition("@")[2]) == 40
-    assert names.index("cva6-sv") < names.index("core-v-verif-sv")
-    assert src["core-v-verif-sv"]["requires"] == ["cva6-sv"]
+    assert src["cv32e40p-sv"]["license"] == "SHL-0.51"
+    assert len(src["cv32e40p-sv"]["source"].rpartition("@")[2]) == 40
+    assert names.index("cv32e40p-sv") < names.index("core-v-verif-sv")
+    assert src["core-v-verif-sv"]["requires"] == ["cv32e40p-sv"]
     curated = sum(src[n]["weight"] for n in ("opentitan-sv", "ibex-sv",
-                                             "cva6-sv", "core-v-verif-sv"))
+                                             "cv32e40p-sv", "core-v-verif-sv"))
     github = src["stack-systemverilog"]["weight"] + src["verilog-github"]["weight"]
     assert curated > github
+
+
+def test_gate_fixes_from_real_cores():
+    """v5.187: what Ibex / CV32E40P / OpenTitan needed."""
+    files = {"rtl/core.sv": '`include "dv_fcov_macros.svh"\n'
+                            '`include "cc/registers.svh"\nmodule core;\nendmodule\n',
+             "rtl/core_tracing.sv": "module core_tracing;\n  core u();\nendmodule\n",
+             "vendor/dv/sv/dv_fcov_macros.svh": "`define FCOV\n",
+             "vendor/cc/include/cc/registers.svh": "`define FF\n"}
+    info, defined = hp.index(files)
+    c = hp.closure(["rtl/core.sv"], info, defined)
+    assert "vendor/dv/sv/dv_fcov_macros.svh" in c       # header on a dv path
+    assert "vendor/cc/include" in hp.include_dirs(sorted(c), info)
+    assert hp.top_candidates(list(files), info, defined)[0][0] == "core_tracing"
+    assert hp.top_candidates(list(files), info, defined,
+                             prefer="core")[0][0] == "core"
+    text = "a;\n// pragma translate_off\nassert property (x);\n" \
+           "// pragma translate_on\nb;\n"
+    out = hp.drop_translate_off(text)
+    assert "assert" not in out and out.count("\n") == text.count("\n")

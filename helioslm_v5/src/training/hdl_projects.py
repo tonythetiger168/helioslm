@@ -146,13 +146,31 @@ def closure(start, info, defined, design_only=True):
         if p in seen:
             continue
         seen.add(p)
+        incs = {_include_target(i, names, p) for i in info[p]["includes"]}
         for d in deps(p, info, defined, names):
             kinds = {k for k, _ in info[d]["defs"]}
-            if design_only and (TB_PATH.search(d) or (
+            # an included header is always needed, wherever it lives
+            if design_only and d not in incs and (TB_PATH.search(d) or (
                     kinds and kinds <= {"class", "program"})):
                 continue
             todo.append(d)
     return seen
+
+
+def include_dirs(files, info):
+    """Include directories for ``files``: each file's directory, plus the
+    root an include with a directory part (``common_cells/registers.svh``)
+    is relative to."""
+    dirs = {str(Path(p).parent) for p in files} | {"."}
+    names = _by_name(files)
+    for p in files:
+        for inc in info[p]["includes"]:
+            if "/" not in inc:
+                continue
+            for t in names.get(Path(inc).name, []):
+                if t.endswith("/" + inc):
+                    dirs.add(t[:-len(inc) - 1] or ".")
+    return sorted(dirs)
 
 
 def _rank(path, info):
@@ -201,7 +219,8 @@ def pack(name, paths, files):
 
 def top_candidates(paths, info, defined, prefer=None):
     """Modules of ``paths`` (non-testbench files) that no other module of
-    ``paths`` instantiates; ``prefer`` (a name) first, then the ones with
+    ``paths`` instantiates; ``prefer`` (a name, kept even when
+    instantiated) first, then the ones with
     the largest design closure."""
     design = [p for p in paths if not TB_PATH.search(p)]
     mods = {n: p for p in design for k, n in info[p]["defs"]
@@ -209,7 +228,7 @@ def top_candidates(paths, info, defined, prefer=None):
     used = set()
     for p in design:
         used |= info[p]["refs"]
-    tops = [n for n in mods if n not in used]
+    tops = [n for n in mods if n not in used or n == prefer]
 
     def size(n):
         return len(closure([mods[n]], info, defined))
@@ -264,7 +283,7 @@ def synth_gate(top, start, root, info, defined, tool=None, timeout=600,
     if not tool.get("verilator") or not tool.get("yosys"):
         res["error"] = "verilator / yosys not found"
         return res
-    incdirs = sorted({str(Path(p).parent) for p in files} | {"."})
+    incdirs = include_dirs(files, info)
     inc = [f"-I{d}" for d in incdirs]
     dfs = [f"-D{d}" for d in defines]
     code, log = _run([tool["verilator"], "--lint-only", "-Wno-fatal",
@@ -276,6 +295,16 @@ def synth_gate(top, start, root, info, defined, tool=None, timeout=600,
         return res
     with tempfile.TemporaryDirectory() as tmp:
         stat = Path(tmp, "stat.txt")
+        # synthesis reads copies without translate_off regions, as
+        # synthesis tools do (simulation-only SVA, $finish)
+        src = Path(tmp, "src")
+        for p in files:
+            f = src / p
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text(drop_translate_off(
+                Path(root, p).read_text(encoding="utf-8", errors="replace")),
+                encoding="utf-8")
+        root = src
         if tool.get("sv2v") and any(p.endswith(".sv") for p in order):
             out = Path(tmp, "sv2v.v")
             code, log = _run([tool["sv2v"], *dfs, *inc, f"--top={top}",
@@ -296,6 +325,17 @@ def synth_gate(top, start, root, info, defined, tool=None, timeout=600,
     if not res["pass"]:
         res["error"] = "synth: " + (_first_error(log) if code else "no cells")
     return res
+
+
+_TRANSLATE = re.compile(
+    r"//\s*(?:pragma|synopsys|synthesis)\s+translate_off\b.*?"
+    r"//\s*(?:pragma|synopsys|synthesis)\s+translate_on\b", re.S)
+
+
+def drop_translate_off(text):
+    """``text`` with ``translate_off`` .. ``translate_on`` regions blanked
+    (line numbers kept)."""
+    return _TRANSLATE.sub(lambda m: "\n" * m.group(0).count("\n"), text)
 
 
 def _first_error(log):
@@ -446,7 +486,8 @@ def unit_of(path, patterns):
 
 def project_docs(name, files, all_files, root, *, units=None, keep=(),
                  gate=True, isolate=False, tool=None, dedup=None,
-                 decontam=None, report=None, timeout=600, workers=1):
+                 decontam=None, report=None, timeout=600, workers=1,
+                 tops=None):
     """Documents of one repository (``files``: the trainable {path: text},
     ``all_files``: every HDL file of the checkout, for dependencies).
 
@@ -460,7 +501,8 @@ def project_docs(name, files, all_files, root, *, units=None, keep=(),
     more document: once a unit passed, its testbench-path files, and
     design files only when a passing unit's synthesis read them.
     ``report`` (a list) receives one row per unit; ``workers`` units are
-    gated at once."""
+    gated at once. ``tops``: {unit ("" for the whole repository): top
+    module name} where the directory name does not name it."""
     import fnmatch
     from concurrent.futures import ThreadPoolExecutor
     groups = defaultdict(list)
@@ -477,7 +519,7 @@ def project_docs(name, files, all_files, root, *, units=None, keep=(),
                                    if (unit_of(p, units) if units else "") == u})
         g = None
         if gate:
-            prefer = Path(u).name if u else None
+            prefer = (tops or {}).get(u) or (Path(u).name if u else None)
             g = gate_project(root, groups[u], info, defined, prefer, tool,
                              timeout=timeout, all_text=all_files)
         return u, info, defined, g
