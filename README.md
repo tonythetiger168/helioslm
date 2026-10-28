@@ -685,8 +685,8 @@ Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/hel
 
 - **v5.190** — Unified-memory tiers: new **L128** (NVIDIA DGX Spark, AMD Ryzen AI Max+ 395, Mac 128 GB) for v4.0 100B-A10B Q4_K or v3.0 30B-A3B Q8_0 / BF16; new **L256** / **L512** (Mac M4 / M5 series incl. Ultra, 256 / 512 GB unified memory) for v4.0 100B-A10B Q8_0 or v5.0 300B-A20B Q4_K, and 300B-A20B Q8_0; GGUF runs on CUDA, Vulkan/ROCm and Metal — T164
 - **v5.189** — Pilot B0 on one GPU: the step-3 eval uses GPU 0 alone on a 1-GPU pod, `SKIP_STD=1` skips the step-4 lm-eval benchmarks
-- **v5.188** — Cloudflare downloads per GPU-memory tier (`examples/publish_cloudflare.py`, `scripts/cloudflare_publish.sh`): one zip per tier and quantization on R2, a static download page on Cloudflare Pages whose links point at the R2 domain (GitHub hosts refused), page deployed by direct upload — T163
-- **v5.188** — `fetch_mixture.py` prints each HDL project's gate result as it comes — T162
+- **v5.192** — Cloudflare downloads per GPU-memory tier (`examples/publish_cloudflare.py`, `scripts/cloudflare_publish.sh`): one zip per tier and quantization on R2, a static download page on Cloudflare Pages whose links point at the R2 domain (GitHub hosts refused), page deployed by direct upload — T163
+- **v5.192** — `fetch_mixture.py` prints each HDL project's gate result as it comes — T162
 - **v5.187** — HDL track H5: synth gate measured with sv2v (24 of 38 OpenTitan IPs, Ibex, CV32E40P pass); include-path and `translate_off` fixes, `projects.tops`; CV32E40P replaces CVA6 — T162
 - **v5.186** — HDL track H5: projects that synthesise. Each OpenTitan IP, core and GitHub repository must pass Verilator lint and a Yosys synth of its top before training; one document per project in dependency order, MinHash near-dedup, 13-gram benchmark decontamination, permissive-licence filter for GitHub rows, CVA6 added — T162
 - **v5.185** — HDL track H4: simulation-equivalence reward with a gate-count bonus (`hdl_reward.py`) and a one-GPU RL loop (`examples/hdl_rl_hf.py`) — T161
@@ -896,7 +896,7 @@ Context sizes assume the default MLA cache (latent 512 + RoPE 64, about 37 KB pe
 
 `examples/package_tiers.py --run <pilot run> --out dist/` (v5.148) writes each tier's GGUF files, an Ollama `Modelfile` (when a tokenizer is embedded), the `llama-cli` / `llama-server` commands and a `manifest.json` with sizes, sha256 and whether the weights fit in 75% of the tier's memory. F16 stands in for the table's BF16 and Q4_K for Q4_K_M / Q6_K. On the pilots, llama.cpp logits match PyTorch at cosine 1.0000 (F16), ≥ 0.989 (Q8_0) and ≥ 0.983 (Q4_K). The cloud series has no packaging step yet; it serves the same checkpoints.
 
-**Downloads (v5.188).** `examples/publish_cloudflare.py --packages dist/ --out cf/ --base-url https://<R2 download domain> --version <v>` zips each tier package once per quantization (GGUF + Modelfile + README + manifest) and writes a static page listing every local tier by GPU memory; `scripts/cloudflare_publish.sh cf/` uploads the zips to R2 (S3 API, multipart) and the page with `wrangler pages deploy` (direct upload, no Git integration). Credentials come only from environment variables. Download links never point at GitHub.
+**Downloads (v5.192).** `examples/publish_cloudflare.py --packages dist/ --out cf/ --base-url https://<R2 download domain> --version <v>` zips each tier package once per quantization (GGUF + Modelfile + README + manifest) and writes a static page listing every local tier by GPU memory; `scripts/cloudflare_publish.sh cf/` uploads the zips to R2 (S3 API, multipart) and the page with `wrangler pages deploy` (direct upload, no Git integration). Credentials come only from environment variables. Download links never point at GitHub.
 
 ### Tentative product windows (subject to gates)
 

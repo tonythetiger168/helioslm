@@ -27,7 +27,7 @@
 - `SKIP_STD=1` skips step 4 (lm-eval common benchmarks); the checkpoint
   and `results/` uploads still run. Default unchanged (0).
 
-## v5.188 (2026-10-28) - Cloudflare download bundles per GPU-memory tier
+## v5.192 (2026-10-28) - Cloudflare download bundles per GPU-memory tier
 
 The local deployment series is published on Cloudflare by GPU memory,
 with downloads served from R2 instead of GitHub.
@@ -54,7 +54,7 @@ with downloads served from R2 instead of GitHub.
   `R2_BUCKET`, `CLOUDFLARE_API_TOKEN`); `DRY_RUN=1` prints the commands.
 - T163 `test_cloudflare_bundles.py`.
 
-## v5.188 (2026-10-28) - fetch_mixture prints gate progress
+## v5.192 (2026-10-28) - fetch_mixture prints gate progress
 
 Each HDL project's gate result is printed (flushed) as it comes, with
 the running pass count, so a long data pod shows where it is. T162.
