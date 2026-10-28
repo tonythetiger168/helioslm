@@ -54,6 +54,11 @@ with downloads served from R2 instead of GitHub.
   `R2_BUCKET`, `CLOUDFLARE_API_TOKEN`); `DRY_RUN=1` prints the commands.
 - T163 `test_cloudflare_bundles.py`.
 
+## v5.188 (2026-10-28) - fetch_mixture prints gate progress
+
+Each HDL project's gate result is printed (flushed) as it comes, with
+the running pass count, so a long data pod shows where it is. T162.
+
 ## v5.187 (2026-10-28) - HDL track H5: synth gate measured on real cores
 
 With sv2v, 24 of 38 OpenTitan IPs, Ibex (`ibex_top`, 22,104 cells) and

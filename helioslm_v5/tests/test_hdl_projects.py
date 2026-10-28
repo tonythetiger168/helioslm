@@ -266,3 +266,13 @@ def test_gate_fixes_from_real_cores():
            "// pragma translate_on\nb;\n"
     out = hp.drop_translate_off(text)
     assert "assert" not in out and out.count("\n") == text.count("\n")
+
+
+def test_progress_report(capsys):
+    rep = fm.ProgressReport("src")
+    rep.append({"project": "a", "pass": True})
+    rep.append({"project": "b", "pass": False, "error": "lint: x"})
+    assert len(rep) == 2 and isinstance(rep, list)
+    lines = [json.loads(x) for x in capsys.readouterr().out.splitlines()]
+    assert lines[-1]["n"] == 2 and lines[-1]["passed"] == 1
+    assert lines[-1]["error"] == "lint: x"
