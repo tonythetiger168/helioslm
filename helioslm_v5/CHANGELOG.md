@@ -21,6 +21,7 @@ gate. Any `projects` key now gates (`project_source`). T162.
 
 Each HDL project's gate result is printed (flushed) as it comes, with
 the running pass count, so a long data pod shows where it is. T162.
+
 ## v5.191 (2026-10-28) - Spatial plugin (pano2world)
 
 Gives the agent a 3D world to reason about. `SpatialPlugin` (harness v1.23,
