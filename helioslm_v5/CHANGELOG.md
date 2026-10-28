@@ -1,5 +1,23 @@
 # HeliosLM v5 Changelog
 
+## v5.185 (2026-10-28) - HDL track H4: simulation-equivalence reward and a small RL loop
+
+`helioslm_v5/eval/hdl_reward.py`: an answer to a Verilog task is
+rewarded 1 when Icarus simulation with random inputs (clock toggled,
+reset asserted first and then rarely) cannot tell its top module from
+the golden design's, else 0; outputs the golden design leaves X are not
+compared. A correct answer gains up to 0.1 for fewer yosys cells than
+the golden design (`log2(ref_cells / cells)`, clamped to [-1, 1]).
+Ports are read from ANSI and non-ANSI headers with parameter defaults
+folded into the widths.
+
+`examples/hdl_rl_hf.py`: `prepare` turns the CodeV-R1 RL parquet into
+tasks (golden designs that compile, can be driven and equal themselves);
+`train` runs rounds of vLLM rollouts (a subprocess per round),
+group-normalised advantages (constant groups dropped), and an
+on-policy token-level policy-gradient update on the `cpt_hf.py`-loaded
+policy, until `--max-hours`. T161.
+
 ## v5.184 (2026-10-27) - HDL eval fixes from the first UVM baseline
 
 `uvm_bench.extract_tb`: a testbench answer is the code after `[BEGIN]`
