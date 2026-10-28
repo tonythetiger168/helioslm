@@ -683,6 +683,7 @@ As of 2026-10-26:
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.189** — Pilot B0 on one GPU: the step-3 eval uses GPU 0 alone on a 1-GPU pod, `SKIP_STD=1` skips the step-4 lm-eval benchmarks
 - **v5.188** — Cloudflare downloads per GPU-memory tier (`examples/publish_cloudflare.py`, `scripts/cloudflare_publish.sh`): one zip per tier and quantization on R2, a static download page on Cloudflare Pages whose links point at the R2 domain (GitHub hosts refused), page deployed by direct upload — T163
 - **v5.187** — HDL track H5: synth gate measured with sv2v (24 of 38 OpenTitan IPs, Ibex, CV32E40P pass); include-path and `translate_off` fixes, `projects.tops`; CV32E40P replaces CVA6 — T162
 - **v5.186** — HDL track H5: projects that synthesise. Each OpenTitan IP, core and GitHub repository must pass Verilator lint and a Yosys synth of its top before training; one document per project in dependency order, MinHash near-dedup, 13-gram benchmark decontamination, permissive-licence filter for GitHub rows, CVA6 added — T162
