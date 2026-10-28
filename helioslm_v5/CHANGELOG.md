@@ -1,5 +1,26 @@
 # HeliosLM v5 Changelog
 
+## v5.194 (2026-10-28) - CVDP timeouts kill the simulators too
+
+`cvdp_bench.run` used `subprocess.run(shell=True, timeout=...)`, which
+kills only the shell; the simulators it started kept running as orphans
+(the H4 eval pod sat at 97% CPU for hours after generation). Commands now
+run in their own session and a timeout kills the whole group
+(`run_shell`). T144.
+
+`examples/hdl_eval_all.py --samples <out>.samples.json` rescores saved
+generations without a GPU.
+
+## v5.193 (2026-10-28) - the Stack is gated too
+
+`fetch_mixture.py` treated the Stack source's empty `projects` dict as
+"no projects", so its repositories went in without the lint + synth
+gate. Any `projects` key now gates (`project_source`). T162.
+
+## v5.192 (2026-10-28) - fetch_mixture prints gate progress
+
+Each HDL project's gate result is printed (flushed) as it comes, with
+the running pass count, so a long data pod shows where it is. T162.
 ## v5.191 (2026-10-28) - Spatial plugin (pano2world)
 
 Gives the agent a 3D world to reason about. `SpatialPlugin` (harness v1.23,

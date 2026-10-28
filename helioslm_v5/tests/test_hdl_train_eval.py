@@ -166,3 +166,13 @@ def test_eval_all_references(tmp_path):
     assert res["rtllm"]["pass@1"] == 1.0 and res["rtllm"]["n_designs"] == 2
     assert ea.summary(res)["rtllm"]["pass@1"] == 1.0
     json.dumps(res)
+    # --samples rescores saved generations without a GPU (v5.194)
+    samples = tmp_path / "s.samples.json"
+    samples.write_text(json.dumps(
+        [{"bench": b, "key": k, "outputs": o} for (b, k, _, _), o in zip(jobs, outs)]
+        + [{"bench": "cvdp", "key": "unused", "outputs": ["x"]}]))
+    out = tmp_path / "r.json"
+    assert ea.main(["--model", "m", "--samples", str(samples), "--out", str(out),
+                    "--benches", "rtllm", "--rtllm-cache", str(tmp_path / "rt"),
+                    "--rtllm-exclude", "multi_pipe_4bit", "--workers", "1"]) == 0
+    assert json.loads(out.read_text())["summary"]["rtllm"]["pass@1"] == 1.0

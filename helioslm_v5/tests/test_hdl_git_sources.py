@@ -121,3 +121,7 @@ def test_h5_mixture():
     # the Stack: rows filtered by repository licence (v5.186)
     stack = next(s for s in mix["sources"] if s["name"] == "stack-systemverilog")
     assert stack["license"] == "per-repository"
+    # an empty projects dict still means "gate every project" (v5.193)
+    assert stack["projects"] == {} and fm.project_source(stack)
+    assert all(fm.project_source(s) for s in mix["sources"]
+               if s["name"] not in ("fineweb-edu", "finemath", "core-v-verif-sv"))
