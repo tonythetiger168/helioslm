@@ -8,6 +8,9 @@ kills only the shell; the simulators it started kept running as orphans
 run in their own session and a timeout kills the whole group
 (`run_shell`). T144.
 
+`examples/hdl_eval_all.py --samples <out>.samples.json` rescores saved
+generations without a GPU.
+
 ## v5.193 (2026-10-28) - the Stack is gated too
 
 `fetch_mixture.py` treated the Stack source's empty `projects` dict as

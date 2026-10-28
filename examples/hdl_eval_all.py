@@ -158,6 +158,9 @@ def main(argv=None):
     ap.add_argument("--max-new-tokens", type=int, default=2048)
     ap.add_argument("--max-model-len", type=int, default=16384)
     ap.add_argument("--gpu-mem", type=float, default=0.9)
+    ap.add_argument("--samples", default=None,
+                    help="score the generations of an earlier <out>.samples.json "
+                         "instead of generating (no GPU, v5.194)")
     ap.add_argument("--workers", type=int, default=ub.cpu_limit(),
                     help="simulation jobs (default: the container's CPU limit)")
     a = ap.parse_args(argv)
@@ -171,15 +174,21 @@ def main(argv=None):
     jobs, data = collect(benches, a.ve_cache, a.rtllm_cache, a.cvdp_file, exclude,
                          a.uvm_cache)
     t0 = time.time()
-    outputs = vllm_generate(a.model, jobs, a.n, a.temperature, a.top_p,
-                            a.max_new_tokens, a.max_model_len, a.gpu_mem,
-                            a.uvm_new_tokens)
+    Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+    if a.samples:
+        got = {(s["bench"], s["key"]): s["outputs"]
+               for s in json.loads(Path(a.samples).read_text(encoding="utf-8"))}
+        outputs = [got[(b, k)] for b, k, _, _ in jobs]
+    else:
+        outputs = vllm_generate(a.model, jobs, a.n, a.temperature, a.top_p,
+                                a.max_new_tokens, a.max_model_len, a.gpu_mem,
+                                a.uvm_new_tokens)
     gen_s = time.time() - t0
     samples = [{"bench": b, "key": k, "outputs": o}
                for (b, k, _, _), o in zip(jobs, outputs)]
-    Path(a.out).parent.mkdir(parents=True, exist_ok=True)
-    Path(a.out).with_suffix(".samples.json").write_text(   # before scoring
-        json.dumps(samples) + "\n", encoding="utf-8")
+    if not a.samples:
+        Path(a.out).with_suffix(".samples.json").write_text(   # before scoring
+            json.dumps(samples) + "\n", encoding="utf-8")
     ks = tuple(k for k in (1, 5, 10) if k <= a.n)
     res = score_all(jobs, outputs, data, a.n, ks, exclude, a.workers, a.extra)
     out = {"model": a.model, "n": a.n, "temperature": a.temperature,
