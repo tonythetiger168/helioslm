@@ -30,11 +30,15 @@ from .package import QUANT_LABEL, TIERS, _slug, modelfile
 
 # memory ranges of the README Product roadmap table (TIERS keeps the floor)
 _MEMORY = {"L-Edge": "CPU, ≤ 8 GB RAM", "L8": "8 GB VRAM", "L16": "12–16 GB VRAM",
-           "L24": "24–32 GB VRAM", "L48+": "48–128 GB"}
+           "L24": "24–32 GB VRAM", "L48+": "48–96 GB", "L128": "128 GB 統一記憶體",
+           "L256": "256 GB 統一記憶體",
+           "L512": "512 GB 統一記憶體"}
 
 # source generation of each local tier (README Product roadmap table)
 _SOURCE = {"L-Edge": "v1.0", "L8": "v2.0", "L16": "v2.0 / v3.0", "L24": "v3.0",
-           "L48+": "v3.0 / v4.0"}
+           "L48+": "v3.0 / v4.0", "L128": "v3.0 / v4.0",
+           "L256": "v4.0 / v5.0",
+           "L512": "v5.0"}
 
 # product generations (README "Six proposed product generations") and the
 # HDL track; status is "開發中" (in development) until a generation passes
@@ -48,9 +52,11 @@ GENERATIONS = (
      "features": "MoE 專家路由、量化部署、HeliosLM Code beta；24–32 GB 顯卡（L24），"
                  "16 GB 加專家卸載"},
     {"version": "v4.0", "name": "HeliosLM Reasoner", "params": "100B（約 10B 啟用）",
-     "features": "推理、程式代理、雲端 API、計量與安全閘門；48 GB 以上（L48+）"},
+     "features": "推理、程式代理、雲端 API、計量與安全閘門；48–96 GB 顯卡（L48+）、"
+                 "128 GB 統一記憶體（L128：DGX Spark、Ryzen AI Max+ 395、Mac 含 Ultra）"},
     {"version": "v5.0", "name": "HeliosLM Pro", "params": "300B（約 20B 啟用）",
-     "features": "多模態與長上下文、企業試點、分散式部署（雲端 C8）"},
+     "features": "多模態與長上下文、企業試點、分散式部署（雲端 C8）；"
+                 "本地 Mac 256 / 512 GB 統一記憶體（L256 / L512，M4 / M5 系列含 Ultra）"},
     {"version": "v6.0", "name": "HeliosLM Frontier", "params": "1T（約 40B 啟用）",
      "features": "前沿研究候選，在既定評測上具競爭力（雲端 CX）"},
     {"version": "HDL", "name": "HeliosLM HDL", "params": "晶片設計專用版",

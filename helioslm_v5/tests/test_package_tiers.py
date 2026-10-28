@@ -150,3 +150,22 @@ def test_cli_packages_a_pilot_run(tmp_path):
                         "--run", str(run), "--out", str(out)],
                        capture_output=True, text=True, cwd=_REPO)
     assert r.returncode != 0 and "--no-tokenizer" in r.stderr
+
+
+def test_unified_memory_tiers():
+    """T164 (v5.190): L128 names the 128 GB unified-memory machines and
+    fits 100B-A10B Q4_K_M (61 GB); L256 / L512 cover Mac 256 / 512 GB
+    unified memory, and their largest estimated file (300B-A20B Q4_K_M
+    183 GB, Q8_0 318 GB) fits 75%."""
+    t = TIERS["L128"]
+    assert t.memory_gb == 128 and t.quants[0] == "q4_k" and 61 <= package.FIT_SHARE * 128
+    for name in ("DGX Spark", "Ryzen AI Max+ 395", "Ultra"):
+        assert name in t.hardware
+    for name, gb, biggest in (("L256", 256, 183), ("L512", 512, 318)):
+        t = TIERS[name]
+        assert t.memory_gb == gb and t.quants == ("q8_0", "q4_k") and t.gpu_layers == 99
+        assert "M4 / M5" in t.hardware and biggest <= package.FIT_SHARE * gb
+    readme = (_REPO / "README.md").read_text(encoding="utf-8")
+    assert "| **L128** | 128 GB unified memory |" in readme
+    assert "| **L256** | 256 GB unified memory |" in readme
+    assert "| **L512** | 512 GB unified memory |" in readme
