@@ -125,3 +125,32 @@ output file is `.sv`/`.svh`, `v` for Verilog). `--extra` runs yosys
 `synth` on VerilogEval samples and the reference; each passing sample
 gets `area_ratio` = reference cells / sample cells (above 1 is smaller
 than the reference), averaged as `area_ratio_mean`.
+
+## RL reward (H4, v5.185)
+
+`helioslm_v5/eval/hdl_reward.py` scores an answer against a golden
+design instead of a fixed testbench: both are simulated with Icarus on
+the same random inputs (400 cycles; a clock-named input toggles, a
+reset-named input is asserted first and then about one cycle in 32) and
+any output difference fails the answer. Outputs the golden design leaves
+X are not compared. A correct answer with fewer yosys cells than the
+golden design gains up to 0.1. Random simulation is a test, not a
+proof, so the reward is for training, and the benchmarks above stay the
+measure.
+
+```bash
+python examples/hdl_rl_hf.py prepare --parquet codev_r1_rl_train.parquet --out tasks.jsonl
+python examples/hdl_rl_hf.py train --model <sft checkpoint> --tasks tasks.jsonl \
+    --out runs/rl --frozen-bf16 --max-hours 5
+```
+
+H3 results (pass@1, n=1; continued pretraining of Gemma 4 E4B on the
+HDL mixture, then SFT on CodeV-R1 answers without the reasoning):
+
+| model | VerilogEval v2 | RTLLM v2.1 | CVDP |
+|---|---|---|---|
+| Gemma 4 E4B (base) | 0.00 | 0.00 | 0.004 |
+| Gemma 4 E4B-it | 0.50 | 0.40 | 0.074 |
+| CodeV-R1-RL-Qwen-7B | 0.29 | 0.58 | 0.198 |
+| H3 continued pretraining only | 0.03 | 0.04 | 0.025 |
+| H3 + SFT | 0.38 | 0.56 | 0.124 |
