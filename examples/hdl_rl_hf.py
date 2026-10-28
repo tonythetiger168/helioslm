@@ -23,7 +23,6 @@ groups, gate bonus), ``<out>/final`` and ``<out>/result.json``.
 """
 import argparse
 import json
-import os
 import random
 import shutil
 import subprocess
@@ -39,6 +38,7 @@ sys.path.insert(0, str(_REPO))
 sys.path.insert(0, str(_REPO / "examples"))
 
 from helioslm_v5.eval import hdl_reward as hr  # noqa: E402
+from helioslm_v5.eval.uvm_bench import cpu_limit  # noqa: E402
 
 PROCESSOR_FILES = ("processor_config.json", "preprocessor_config.json", "chat_template.jinja",
                    "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json")
@@ -105,25 +105,30 @@ def cmd_prepare(a):
             p, g = row_prompt_golden(row)
             return hr.make_task(p, g), None
         except hr.RewardError as e:
-            return None, str(e).split(":")[0][:60]
+            return None, str(e)
         except Exception as e:                       # a golden design we cannot parse
             return None, type(e).__name__
 
-    with ThreadPoolExecutor(max_workers=a.workers or os.cpu_count()) as ex:
+    with ThreadPoolExecutor(max_workers=a.workers or cpu_limit()) as ex:
         res = list(ex.map(one, rows))
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    why = {}
+    why, examples = {}, {}
     with open(out, "w", encoding="utf-8") as fh:
         for t, w in res:
             if t:
                 fh.write(json.dumps(t) + "\n")
             else:
-                why[w] = why.get(w, 0) + 1
+                key = w.split(":")[0][:60]
+                why[key] = why.get(key, 0) + 1
+                examples.setdefault(key, []).append(w[:400])
     kept = sum(1 for t, _ in res if t)
     st = {"rows": len(rows), "kept": kept,
           "with_ref_cells": sum(1 for t, _ in res if t and t.get("ref_cells")),
           "dropped": dict(sorted(why.items(), key=lambda kv: -kv[1])[:12])}
+    for key in list(st["dropped"])[:4]:
+        for w in examples[key][:2]:
+            print("example", json.dumps(w), flush=True)
     print(json.dumps(st), flush=True)
     return st
 
@@ -223,7 +228,7 @@ def cmd_train(a):
     policy = out / "policy"
     gen_model = a.model
     t0, step, cursor, rnd, stopped = time.time(), 0, 0, 0, None
-    workers = a.reward_workers or os.cpu_count()
+    workers = a.reward_workers or cpu_limit()   # a pod's os.cpu_count() is the host's
     while True:
         if a.rounds and rnd >= a.rounds:
             break

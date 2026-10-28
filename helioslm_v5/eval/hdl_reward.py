@@ -358,7 +358,9 @@ def make_task(prompt, golden, synth=synth_cells):
     ports = top_ports(golden, top)
     self_check = simulate(golden, golden, top, ports)
     if not self_check["ok"]:
-        raise RewardError("golden is not equivalent to itself: " + self_check["log"][-300:])
+        kind = ("timeout" if "timeout" in self_check["log"] else
+                "compile" if self_check["mismatches"] is None else "mismatch")
+        raise RewardError(f"golden self-check {kind}: " + self_check["log"][-300:])
     task = {"prompt": prompt, "golden": golden, "top": top,
             "ports": [list(p) for p in ports]}
     if synth is not None:
