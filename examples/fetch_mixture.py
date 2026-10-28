@@ -320,6 +320,12 @@ def hdl_texts(s, ps, out, ds=None, field="text", *, tool=None, dedup=None,
                                   workdir=out, **kw), report
 
 
+def project_source(s):
+    """True when ``s`` is gated per project. An empty ``projects`` dict
+    (the Stack) still gates every repository (v5.193)."""
+    return s.get("projects") is not None
+
+
 def per_row_docs(ds, field, out, kw, batch=256):
     """Rows without repository names (one file each): every row is its
     own project, gated alone, ``batch`` rows at a time (streamed)."""
@@ -468,7 +474,7 @@ def main(argv=None):
             if ps[0] != "git":
                 ds = load_dataset(ps[0], ps[1], split="train", streaming=True,
                                   revision=r["revision"], **load_kwargs(s))
-            if s.get("projects"):
+            if project_source(s):
                 texts, report = hdl_texts(
                     s, ps, out, ds, field, tool=tool, dedup=dedup,
                     decontam=decontam, workers=a.workers,
