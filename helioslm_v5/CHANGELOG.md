@@ -1,5 +1,11 @@
 # HeliosLM v5 Changelog
 
+## v5.193 (2026-10-28) - the Stack is gated too
+
+`fetch_mixture.py` treated the Stack source's empty `projects` dict as
+"no projects", so its repositories went in without the lint + synth
+gate. Any `projects` key now gates (`project_source`). T162.
+
 ## v5.192 (2026-10-28) - fetch_mixture prints gate progress
 
 Each HDL project's gate result is printed (flushed) as it comes, with

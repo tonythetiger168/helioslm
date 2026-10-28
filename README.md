@@ -683,6 +683,7 @@ As of 2026-10-26:
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.193** — The Stack SystemVerilog repositories go through the lint + synth gate too (an empty `projects` setting no longer skips it) — T162
 - **v5.192** — `fetch_mixture.py` prints each HDL project's gate result as it comes — T162
 - **v5.190** — Unified-memory tiers: new **L128** (NVIDIA DGX Spark, AMD Ryzen AI Max+ 395, Mac 128 GB) for v4.0 100B-A10B Q4_K or v3.0 30B-A3B Q8_0 / BF16; new **L256** / **L512** (Mac M4 / M5 series incl. Ultra, 256 / 512 GB unified memory) for v4.0 100B-A10B Q8_0 or v5.0 300B-A20B Q4_K, and 300B-A20B Q8_0; GGUF runs on CUDA, Vulkan/ROCm and Metal — T164
 - **v5.189** — Pilot B0 on one GPU: the step-3 eval uses GPU 0 alone on a 1-GPU pod, `SKIP_STD=1` skips the step-4 lm-eval benchmarks
