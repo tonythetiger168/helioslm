@@ -1,4 +1,7 @@
-# HeliosLM v5.174 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.186 - DeepSeek/K3-Style Architecture
+
+v5.186 (2026-10-28): Cloudflare download bundles per GPU-memory tier
+(R2 zips + a static download page; links never point at GitHub).
 
 v5.174 (2026-10-26): the KDA layer compiles without `as_subclass` graph
 breaks.

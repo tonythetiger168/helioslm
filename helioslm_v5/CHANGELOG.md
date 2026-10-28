@@ -1,5 +1,32 @@
 # HeliosLM v5 Changelog
 
+## v5.186 (2026-10-28) - Cloudflare download bundles per GPU-memory tier
+
+The local deployment series is published on Cloudflare by GPU memory,
+with downloads served from R2 instead of GitHub.
+
+- `helioslm_v5/src/export/cloudflare.py`: `bundle_package` zips a tier
+  package (`package_tier` output) once per quantization, each zip
+  self-contained (the GGUF, an Ollama `Modelfile` pointing at that GGUF,
+  the tier README, the manifest; stored, GGUF does not compress), keyed
+  `<version>/<zip>` with size and sha256. `build_site` writes
+  `index.html` + `packages.json` listing all five local tiers (L-Edge /
+  L8 / L16 / L24 / L48+) with their memory range and hardware; tiers
+  without a package show as 開發中 (in development) with their source
+  generation, pilot packages are tagged preview. A second table lists the
+  six product generations (v1.0 Lite 0.5B ... v6.0 Frontier 1T) and the
+  HDL chip-design variant with their features, all 開發中 until released. Links are `<base_url>/<key>`; `check_base_url` requires https
+  and refuses github.com, githubusercontent.com and github.io.
+- `examples/publish_cloudflare.py`: runs both over a `package_tiers.py`
+  output tree into `cf/r2/<version>/` and `cf/site/`.
+- `scripts/cloudflare_publish.sh`: uploads the zips to R2 through its S3
+  API (`aws s3 cp`, multipart for multi-GB files, immutable cache) and the
+  page with `wrangler pages deploy` (direct upload, the Pages project is
+  not connected to the repository). Credentials from environment only
+  (`CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
+  `R2_BUCKET`, `CLOUDFLARE_API_TOKEN`); `DRY_RUN=1` prints the commands.
+- T162 `test_cloudflare_bundles.py`.
+
 ## v5.184 (2026-10-27) - HDL eval fixes from the first UVM baseline
 
 `uvm_bench.extract_tb`: a testbench answer is the code after `[BEGIN]`

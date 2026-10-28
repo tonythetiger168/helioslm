@@ -231,7 +231,7 @@ def main():
         # point without paying for the full suite.
         print(f"TESTS={len(TESTS)}")
         sys.exit(0)
-    print("HeliosLM v5.174 Test Suite (lite config, CPU)")
+    print("HeliosLM v5.186 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:
