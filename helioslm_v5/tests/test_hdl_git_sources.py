@@ -112,7 +112,7 @@ def test_plan_git_source():
 def test_h5_mixture():
     mix = load_mixture(ROOT / "data" / "mixtures" / "hdl_h5_sv_uvm_v1.json")
     git = [s for s in mix["sources"] if s["source"].startswith("git:")]
-    assert {s["name"] for s in git} == {"opentitan-sv", "ibex-sv", "cva6-sv",
+    assert {s["name"] for s in git} == {"opentitan-sv", "ibex-sv", "cv32e40p-sv",
                                         "core-v-verif-sv"}
     for s in git:
         kind, url, commit = fm.parse_source(s["source"])

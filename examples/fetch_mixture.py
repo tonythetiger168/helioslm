@@ -283,6 +283,8 @@ def hdl_texts(s, ps, out, ds=None, field="text", *, tool=None, dedup=None,
     kw = dict(gate=gate and cfg.get("gate", True), tool=tool, dedup=dedup,
               decontam=decontam, report=report, workers=workers,
               timeout=cfg.get("timeout", 600))
+    if cfg.get("tops"):
+        kw["tops"] = cfg["tops"]
     if ps[0] == "git":
         root = out / "_git" / s["name"]
         all_files = hdl_projects.read_tree(root, MAX_FILE_BYTES)
