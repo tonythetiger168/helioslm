@@ -21,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from evastar.src.training import distill_agent as da  # noqa: E402
+from helioslm_v5.src.training import distill_agent as da  # noqa: E402
 
 
 def write_jsonl(path, rows):

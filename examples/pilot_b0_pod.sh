@@ -9,11 +9,24 @@
 # Tunables: PER_HOUR (the pod's real US$/h), MAX_COST (hard ceiling for
 # this script, US$), TOKENS (pilot training tokens), EVAL_RESERVE_H (hours
 # kept after training for saving and steps 3-4).
+# v5.175: ALLOW_BLOCKED=1 trains without mixture sources this account
+# cannot download yet (their share goes to the rest of the phase; the
+# skipped sources are listed in fetch_mixture.log and the manifest).
+# SKIP_GAP=1 skips the step-1 base-gap eval (already run on its own pod),
+# so the pod no longer needs a 141 GB GPU for the 8x7B reference; step 3
+# then fetches only BENCHES (default: every bench this account can read).
+# v5.189: SKIP_STD=1 skips step 4 (lm-eval common benchmarks); steps 3
+# and 4 run on a 1-GPU pod too.
 set -uo pipefail
 PER_HOUR=${PER_HOUR:-30}
 MAX_COST=${MAX_COST:-300}
 TOKENS=${TOKENS:-3e9}
 EVAL_RESERVE_H=${EVAL_RESERVE_H:-2.0}
+ALLOW_BLOCKED=${ALLOW_BLOCKED:-0}
+SKIP_GAP=${SKIP_GAP:-0}
+BENCHES=${BENCHES:-}
+SKIP_STD=${SKIP_STD:-0}
+MIXARGS=(); [ "$ALLOW_BLOCKED" = 1 ] && MIXARGS=(--allow-blocked)
 export HF_HOME=/workspace/hf
 cd /workspace
 [ -d helioslm ] || git clone https://github.com/tonythetiger168/helioslm
@@ -35,8 +48,10 @@ pip install -q transformers==5.20.2 accelerate==1.15.0 datasets==5.1.0 \
 
 # 0. Preflight (about a minute, CPU only): stop before any GPU work if this
 #    HF account cannot download an eval set or a mixture source.
-if ! python examples/base_gap_eval.py --check-access \
-     || ! python examples/fetch_mixture.py --check-only \
+GAPCHECK=(python examples/base_gap_eval.py --check-access)
+[ "$SKIP_GAP" = 1 ] && GAPCHECK=(true)
+if ! "${GAPCHECK[@]}" \
+     || ! python examples/fetch_mixture.py --check-only "${MIXARGS[@]}" \
           --mixture data/mixtures/b1_gemma4_e4b_cpt_v1.json \
           --tokenizer google/gemma-4-E2B --tokens "$TOKENS" \
           --out /workspace/cpt_data; then
@@ -47,15 +62,20 @@ if ! python examples/base_gap_eval.py --check-access \
 fi
 NGPU=$(nvidia-smi -L | wc -l)
 GPUS=$(seq -s, 0 $((NGPU - 1)))
+EVGPUS=0,1; [ "$NGPU" -ge 2 ] || EVGPUS=0
 mkdir -p /workspace/results /workspace/runs
 
 # 1. In parallel: base-gap eval on the GPUs (E4B vs the 4 reference models)
 #    and the pilot corpus on CPU / network.
-timeout 3h python examples/base_gap_eval.py --fetch --cleanup --gpus "$GPUS" \
-    --data /workspace/tw_bench --out-dir /workspace/results \
-    > /workspace/base_gap.log 2>&1 &
-GAP=$!
-timeout 3h python examples/fetch_mixture.py \
+if [ "$SKIP_GAP" = 1 ]; then
+  echo "base-gap eval skipped (SKIP_GAP=1)"; true & GAP=$!
+else
+  timeout 3h python examples/base_gap_eval.py --fetch --cleanup --gpus "$GPUS" \
+      --data /workspace/tw_bench --out-dir /workspace/results \
+      > /workspace/base_gap.log 2>&1 &
+  GAP=$!
+fi
+timeout 3h python examples/fetch_mixture.py "${MIXARGS[@]}" \
     --mixture data/mixtures/b1_gemma4_e4b_cpt_v1.json \
     --tokenizer google/gemma-4-E2B --tokens "$TOKENS" --out /workspace/cpt_data \
     > /workspace/fetch_mixture.log 2>&1
@@ -79,7 +99,9 @@ echo "cpt_hf exit ${PIPESTATUS[0]}"
 
 # 3. Pilot vs its own base on the same four tasks.
 if [ -f /workspace/runs/b0/final/config.json ]; then
-  timeout 1h python examples/base_gap_eval.py --gpus 0,1 \
+  FETCH=(); [ "$SKIP_GAP" = 1 ] && FETCH=(--fetch)
+  [ -n "$BENCHES" ] && FETCH+=(--benches $BENCHES)
+  timeout 1h python examples/base_gap_eval.py "${FETCH[@]}" --gpus "$EVGPUS" \
       --models /workspace/runs/b0/final google/gemma-4-E2B \
       --base /workspace/runs/b0/final --refs google/gemma-4-E2B \
       --data /workspace/tw_bench --out-dir /workspace/results/pilot_b0 \
@@ -89,7 +111,7 @@ fi
 
 # 5 (runs during step 4, network only). Keep the pilot after the pod is
 #    gone: upload the final checkpoint to a private HF model repo
-#    (HF_REPO, default <account>/evastar-pilot-b0); results follow after
+#    (HF_REPO, default <account>/helioslm-pilot-b0); results follow after
 #    step 4. GGUF
 #    conversion and the llama.cpp check run later on a local GPU, not here.
 UP=
@@ -98,7 +120,7 @@ if [ -f /workspace/runs/b0/final/config.json ]; then
 import os
 from huggingface_hub import HfApi
 api = HfApi()
-repo = os.environ.get("HF_REPO") or f"{api.whoami()['name']}/evastar-pilot-b0"
+repo = os.environ.get("HF_REPO") or f"{api.whoami()['name']}/helioslm-pilot-b0"
 api.create_repo(repo, private=True, exist_ok=True)
 api.upload_folder(repo_id=repo, folder_path="/workspace/runs/b0/final",
                   commit_message="pilot B0 final checkpoint")
@@ -134,29 +156,33 @@ std_bench() {  # $1 model, $2 GPU list, $3 output dir
       --tasks truthfulqa_mc2,gsm8k,bbh_cot_fewshot,minerva_math500,humaneval,mbpp \
       --confirm_run_unsafe_code
 }
-HALF=$((NGPU / 2)); [ "$HALF" -ge 1 ] || HALF=1
-GA=$(seq -s, 0 $((HALF - 1)))
-GB=$(seq -s, "$HALF" $((NGPU - 1))); [ -n "$GB" ] || GB=$GA
-STD_S=$(python3 -c "print(int(3600 * max(0.1, $(left_h) + $EVAL_RESERVE_H - 0.3)))")
-mkdir -p /workspace/results/std_bench
-( export -f std_bench; timeout "$STD_S" bash -c \
-    "std_bench google/gemma-4-E2B $GA /workspace/results/std_bench/e2b_base" \
-    > /workspace/std_bench_base.log 2>&1 ) &
-SB=$!
-if [ -f /workspace/runs/b0/final/config.json ]; then
+if [ "$SKIP_STD" = 1 ]; then
+  echo "step 4 skipped (SKIP_STD=1)"
+else
+  HALF=$((NGPU / 2)); [ "$HALF" -ge 1 ] || HALF=1
+  GA=$(seq -s, 0 $((HALF - 1)))
+  GB=$(seq -s, "$HALF" $((NGPU - 1))); [ -n "$GB" ] || GB=$GA
+  STD_S=$(python3 -c "print(int(3600 * max(0.1, $(left_h) + $EVAL_RESERVE_H - 0.3)))")
+  mkdir -p /workspace/results/std_bench
   ( export -f std_bench; timeout "$STD_S" bash -c \
-      "std_bench /workspace/runs/b0/final $GB /workspace/results/std_bench/pilot_b0" \
-      > /workspace/std_bench_pilot.log 2>&1 )
-  echo "std bench (pilot) exit $?"
+      "std_bench google/gemma-4-E2B $GA /workspace/results/std_bench/e2b_base" \
+      > /workspace/std_bench_base.log 2>&1 ) &
+  SB=$!
+  if [ -f /workspace/runs/b0/final/config.json ]; then
+    ( export -f std_bench; timeout "$STD_S" bash -c \
+        "std_bench /workspace/runs/b0/final $GB /workspace/results/std_bench/pilot_b0" \
+        > /workspace/std_bench_pilot.log 2>&1 )
+    echo "std bench (pilot) exit $?"
+  fi
+  wait $SB; echo "std bench (base) exit $?"
 fi
-wait $SB; echo "std bench (base) exit $?"
 if [ -n "$UP" ]; then
   wait $UP; echo "checkpoint upload exit $?"; tail -2 /workspace/upload.log
   timeout 10m python - <<'PY'
 import os
 from huggingface_hub import HfApi
 api = HfApi()
-repo = os.environ.get("HF_REPO") or f"{api.whoami()['name']}/evastar-pilot-b0"
+repo = os.environ.get("HF_REPO") or f"{api.whoami()['name']}/helioslm-pilot-b0"
 api.upload_folder(repo_id=repo, folder_path="/workspace/results",
                   path_in_repo="results", commit_message="pilot B0 results")
 print("results uploaded to", repo)

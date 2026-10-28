@@ -8,7 +8,7 @@ Combines three existing HeliosLM assets:
 2. the disagg simulator/Pareto machinery behind
    ``benchmarks/disagg_pareto_2026-09-25.json`` supplies worker-seconds
    and the latency/cost front,
-3. ``evastar.eval.score_stream`` scores the same final answers under
+3. ``helioslm_v5.eval.score_stream`` scores the same final answers under
    the toy checkpoint as a quality-audit channel.
 
 The USD number is deliberately a UNIT-PRICE NORMALIZATION
@@ -29,13 +29,13 @@ import torch
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.configs.config_v5 import EvastarV5Config  # noqa: E402
-from evastar.eval.artifact_tiers import load_registry, tier_of  # noqa: E402
-from evastar.eval.cost_per_task import (SCHEMA_ID, attach_score_audit,  # noqa: E402
+from helioslm_v5.configs.config_v5 import HeliosLMv5Config  # noqa: E402
+from helioslm_v5.eval.artifact_tiers import load_registry, tier_of  # noqa: E402
+from helioslm_v5.eval.cost_per_task import (SCHEMA_ID, attach_score_audit,  # noqa: E402
                                             cost_front, load_completion_records,
                                             sha256_file, canonical_sha256)
-from evastar.eval.score_stream import score_record  # noqa: E402
-from evastar.src.model_v5 import EvastarV5  # noqa: E402
+from helioslm_v5.eval.score_stream import score_record  # noqa: E402
+from helioslm_v5.src.model_v5 import HeliosLMv5  # noqa: E402
 
 DATE = "2026-10-13"
 DEFAULT_EVAL = "benchmarks/mid_agent_eval_v5.json"
@@ -47,7 +47,7 @@ DEFAULT_OUT = "benchmarks/cost_per_completed_task_2026-10-13.json"
 def load_toy_scorer(checkpoint_path: Path):
     ckpt = torch.load(checkpoint_path, map_location="cpu",
                       weights_only=False)
-    model = EvastarV5(EvastarV5Config(size="lite"))
+    model = HeliosLMv5(HeliosLMv5Config(size="lite"))
     model.load_state_dict(ckpt["state_dict"])
     model.eval()
     vocab = int(ckpt["vocab_size"])

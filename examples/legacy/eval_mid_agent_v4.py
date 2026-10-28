@@ -18,14 +18,14 @@ from pathlib import Path
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "evastar" / "agent"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "helioslm_v5" / "agent"))
 
 from chat import ChatSession
 from envs import make_envs, make_long_envs
 from gate import FixedGate, Route
-from evastar.configs.config_v5 import EvastarV5Config
-from evastar.src.model_v5 import EvastarV5
-from evastar.src.tokenizer.bpe import BOS, HeliosBPE
+from helioslm_v5.configs.config_v5 import HeliosLMv5Config
+from helioslm_v5.src.model_v5 import HeliosLMv5
+from helioslm_v5.src.tokenizer.bpe import BOS, HeliosBPE
 from trajectory import ids_to_text
 from tools import build_default_registry
 
@@ -35,11 +35,11 @@ MAX_NEW = 128
 def main():
     torch.manual_seed(0)
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    ck = Path(os.environ.get("EVASTAR_CKPT_DIR") or os.environ.get("HELIOS_CKPT_DIR", "checkpoints"))
+    ck = Path(os.environ.get("HELIOS_CKPT_DIR") or os.environ.get("EVASTAR_CKPT_DIR", "checkpoints"))
     tok = HeliosBPE.load(str(ck / "mid_sft_v5.33.tok.json"))
     print("loaded paired tokenizer from checkpoint", flush=True)
     bos = tok.vocab[BOS]
-    model = EvastarV5(EvastarV5Config(size="mid")).to(device)
+    model = HeliosLMv5(HeliosLMv5Config(size="mid")).to(device)
     model.load_state_dict(torch.load(ck / "mid_sft_v5.33.pt",
                                      map_location=device,
                                      weights_only=True))

@@ -33,15 +33,15 @@ import torch
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.eval import multiseed  # noqa: E402
-from evastar.configs.config_v5 import EvastarV5Config, MoEConfig  # noqa: E402
-from evastar.src.moe.sigmoid_moe import DeviceLimitedMoE  # noqa: E402
+from helioslm_v5.eval import multiseed  # noqa: E402
+from helioslm_v5.configs.config_v5 import HeliosLMv5Config, MoEConfig  # noqa: E402
+from helioslm_v5.src.moe.sigmoid_moe import DeviceLimitedMoE  # noqa: E402
 
 N_EXPERTS, TOP_K = 32, 4
 
 
 def build(strategy, lam, seed):
-    cfg = EvastarV5Config(size="lite", moe=MoEConfig(
+    cfg = HeliosLMv5Config(size="lite", moe=MoEConfig(
         num_experts=N_EXPERTS, num_activated_experts=TOP_K,
         device_group_size=1, balance_strategy=strategy,
         bias_update_rate=lam))

@@ -1,0 +1,151 @@
+"""Pretraining data mixture manifests (v5.116, LB3).
+
+A mixture is a JSON file naming every source of a pretraining corpus, its
+licence, its share of the tokens and its filters, so the #40 corpus is a
+reviewed, hashed artifact instead of a command line. Two phases match the
+LB2 WSD schedule: ``main`` sources fill the stable phase and ``decay``
+sources the decay phase (``pretrain(decay_train=...)``).
+
+    {"name": "lb3-0.5b-v1",
+     "sources": [
+       {"name": "fineweb2-cmn", "source": "hf:HuggingFaceFW/fineweb-2:cmn_Hani",
+        "license": "ODC-BY-1.0", "license_verified": false,
+        "phase": "main", "weight": 0.3,
+        "zh_variants": ["tw", "mixed"], "quality_threshold": 0.5}, ...]}
+
+Rules ``load_mixture`` enforces: unique names; phase main or decay;
+weights > 0 summing to 1 within each phase; a licence from
+``ALLOWED_LICENSES``, or ``"license": "review"`` with a ``license_note``
+(``per-repository``, v5.186: an hf source of GitHub code whose rows are
+kept only when their repository licences are permissive, see
+``fetch_mixture.stack_rows``)
+(then the source cannot be used until ``license_verified`` is true and
+the licence is filled in). ``format`` (v5.121, LB5) is ``text`` (default)
+or ``trace``: D1 teacher records rendered as chat transcripts with their
+reasoning (``mid_train.render_trace``; optional ``think_ratio``). ``license_verified`` false is allowed for
+planning; ``usable_sources`` returns only verified ones.
+
+Per-source loading options (v5.178, HDL H1): ``field`` (the text column,
+default the fetcher's ``--field``), ``data_dir`` / ``data_files`` (passed
+to ``datasets.load_dataset``, e.g. ``data/vhdl`` of the-stack) and
+``heuristics`` (false skips the prose heuristics, which drop most source
+code: short modules, repeated ``end`` lines).
+
+Git sources (v5.183): ``"source": "git:<https url>@<commit>"`` with
+``include`` (glob list, matched against repo-relative paths) and optional
+``exclude``; the fetcher checks the licence in the repository's LICENSE
+file and reads the matching files as documents.
+"""
+import hashlib
+import json
+from pathlib import Path
+
+PER_REPOSITORY = "per-repository"
+ALLOWED_LICENSES = {
+    "Apache-2.0", "MIT", "ODC-BY-1.0", "CC-BY-4.0", "CC-BY-SA-4.0",
+    "CC0-1.0", "public-domain", "SHL-0.51", PER_REPOSITORY,
+}
+PHASES = ("main", "decay")
+ZH_VARIANTS = {"tw", "cn", "mixed", "none"}
+FORMATS = ("text", "trace")    # trace: D1 records rendered by mid_train (LB5)
+
+
+def validate_mixture(mix):
+    if not isinstance(mix.get("name"), str) or not mix["name"]:
+        raise ValueError("mixture needs a name")
+    srcs = mix.get("sources") or []
+    if not srcs:
+        raise ValueError("mixture has no sources")
+    names = [s.get("name") for s in srcs]
+    if len(set(names)) != len(names) or not all(names):
+        raise ValueError("source names must be present and unique")
+    totals = {}
+    for s in srcs:
+        n = s["name"]
+        if not s.get("source"):
+            raise ValueError(f"{n}: no source")
+        ph = s.get("phase", "main")
+        if ph not in PHASES:
+            raise ValueError(f"{n}: phase must be one of {PHASES}")
+        w = s.get("weight")
+        if not isinstance(w, (int, float)) or w <= 0:
+            raise ValueError(f"{n}: weight must be > 0")
+        totals[ph] = totals.get(ph, 0.0) + w
+        lic = s.get("license")
+        if lic == "review":
+            if not s.get("license_note"):
+                raise ValueError(f"{n}: license 'review' needs license_note")
+            if s.get("license_verified"):
+                raise ValueError(f"{n}: a 'review' licence cannot be verified")
+        elif lic not in ALLOWED_LICENSES:
+            raise ValueError(f"{n}: licence {lic!r} not in the allow list")
+        bad = set(s.get("zh_variants") or []) - ZH_VARIANTS
+        if bad:
+            raise ValueError(f"{n}: unknown zh_variants {sorted(bad)}")
+        if s.get("format", "text") not in FORMATS:
+            raise ValueError(f"{n}: format must be one of {FORMATS}")
+        tr = s.get("think_ratio")
+        if tr is not None and (s.get("format") != "trace"
+                               or not 0.0 <= tr <= 1.0):
+            raise ValueError(f"{n}: think_ratio in [0, 1], trace sources only")
+        q = s.get("quality_threshold")
+        if q is not None and not 0.0 <= q <= 1.0:
+            raise ValueError(f"{n}: quality_threshold must be in [0, 1]")
+        for k in ("field", "data_dir"):
+            if k in s and (not isinstance(s[k], str) or not s[k]):
+                raise ValueError(f"{n}: {k} must be a non-empty string")
+        df = s.get("data_files")
+        if df is not None and not (
+                isinstance(df, str) and df or isinstance(df, list) and df
+                and all(isinstance(x, str) and x for x in df)):
+            raise ValueError(f"{n}: data_files must be a path or a list of paths")
+        for k in ("include", "exclude"):
+            v = s.get(k)
+            if v is not None and not (isinstance(v, list) and v and all(
+                    isinstance(x, str) and x for x in v)):
+                raise ValueError(f"{n}: {k} must be a non-empty list of globs")
+        if lic == PER_REPOSITORY and not (
+                s["source"].startswith("hf:") and isinstance(
+                    s.get("projects"), dict)):
+            raise ValueError(f"{n}: a per-repository licence needs an hf "
+                             "source with projects (the repository filter)")
+        if s["source"].startswith("git:") and not s.get("include"):
+            raise ValueError(f"{n}: a git source needs include globs")
+        if not isinstance(s.get("heuristics", True), bool):
+            raise ValueError(f"{n}: heuristics must be true or false")
+    if "main" not in totals:
+        raise ValueError("mixture needs at least one main-phase source")
+    for ph, t in totals.items():
+        if abs(t - 1.0) > 1e-6:
+            raise ValueError(f"{ph} weights sum to {t}, not 1")
+    return mix
+
+
+def load_mixture(path):
+    return validate_mixture(json.loads(Path(path).read_text(encoding="utf-8")))
+
+
+def mixture_sha256(mix):
+    """Hash of the canonical JSON: two equal mixtures hash equal."""
+    return hashlib.sha256(json.dumps(mix, sort_keys=True,
+                                     ensure_ascii=False).encode()).hexdigest()
+
+
+def token_budget(mix, total_tokens, decay_frac=0.2):
+    """Tokens per source: main sources share (1 - decay_frac) of the
+    total, decay sources share decay_frac (or the whole total goes to the
+    main phase when the mixture has no decay sources)."""
+    has_decay = any(s.get("phase", "main") == "decay" for s in mix["sources"])
+    if has_decay and not 0.0 < decay_frac < 1.0:
+        raise ValueError("decay_frac must be in (0, 1) with decay sources")
+    share = {"main": 1.0 - decay_frac if has_decay else 1.0,
+             "decay": decay_frac}
+    return {s["name"]: int(round(total_tokens * share[s.get("phase", "main")]
+                                 * s["weight"]))
+            for s in mix["sources"]}
+
+
+def usable_sources(mix):
+    """Sources cleared to download: verified licence, not under review."""
+    return [s for s in mix["sources"]
+            if s.get("license_verified") and s.get("license") != "review"]

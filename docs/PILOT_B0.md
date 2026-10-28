@@ -36,7 +36,7 @@ PER_HOUR=<pod 實際每小時美金> bash helioslm/examples/pilot_b0_pod.sh 2>&1
 - 每個來源先讀 HF dataset card 的授權，和配方上寫的比對（同一授權家族即可，例如 Wikipedia card 的 cc-by-sa-3.0 對 CC-BY-SA-4.0）。
   不一致、配方標 `review`、或不是 `hf:` 來源，一律跳過並寫進 manifest，不會拿來訓練。
 - 跳過的來源，份額依權重分給同一階段的其他來源。
-- 也會用 pod 的 HF 帳號檢查每個來源能不能下載（gated 資料集要先在 Hub 申請）。有來源沒權限時預設直接停下，不會用少掉的資料默默訓練；確定要照樣訓練才加 `--allow-blocked`。
+- 也會用 pod 的 HF 帳號檢查每個來源能不能下載（gated 資料集要先在 Hub 申請）。有來源沒權限時預設直接停下，不會用少掉的資料默默訓練；確定要照樣訓練才加 `--allow-blocked`（pod 腳本用 `ALLOW_BLOCKED=1`，v5.175）。底模差距評測已另外跑過時，`SKIP_GAP=1` 會跳過第 1 步，pod 就不需要 141 GB 的卡；第 3 步自己下載評測集，`BENCHES` 可限定只跑有權限的幾個。
 - pod 上的套件版本固定（transformers 5.20.2、accelerate 1.15.0、datasets 5.1.0、huggingface_hub 2.3.0、tokenizers 0.23.3）。
 - 每份文件經過 LB3 heuristics 和該來源的 `zh_variants` 篩選，包成 BOS + ids + EOS。
 - 還沒有訓練好的品質分類器，所以 `quality_threshold` 這次不套用。
@@ -97,6 +97,6 @@ B1 不跑，這次只把結果和建議帶回來。
 | `/workspace/cpt_data/manifest.json` | 實際用到的資料 |
 | `/workspace/runs/b0/` | 續訓紀錄與權重 |
 | `/workspace/*.log` | 各步驟 log |
-| HF 私人 repo `<帳號>/evastar-pilot-b0`（`HF_REPO` 可改） | 最終權重和 `results/`，pod 關掉後也留得住（v5.146） |
+| HF 私人 repo `<帳號>/helioslm-pilot-b0`（`HF_REPO` 可改） | 最終權重和 `results/`，pod 關掉後也留得住（v5.146） |
 
 權重上傳在步驟 4 跑 benchmark 的同時進行，只用網路，不多佔 GPU 時間。轉 GGUF 和 llama.cpp 生成檢查之後在本機顯卡上做，不在 pod 上花錢。

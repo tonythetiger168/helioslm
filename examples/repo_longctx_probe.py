@@ -1,7 +1,7 @@
 """repo_longctx_probe.py — roadmap AC4: find a definition among many files
 and reference it correctly; dense vs sliding/global hybrid vs CSA.
 
-Every arm is the same 4-layer stack (evastar/eval/repo_longctx.py)
+Every arm is the same 4-layer stack (helioslm_v5/eval/repo_longctx.py)
 with only the attention module swapped. Trained on repositories of
 ``--train-files`` files (separate train stream, seed 1000 + seed), then
 evaluated on a held-out stream (seed 0) at the training size and at 2x
@@ -26,7 +26,7 @@ import torch
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.eval.repo_longctx import (  # noqa: E402
+from helioslm_v5.eval.repo_longctx import (  # noqa: E402
     ARMS, N_VALUES, RepoProbeLM, make_batch, max_query_distance,
     query_loss_and_acc, seed_rng)
 

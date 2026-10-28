@@ -26,9 +26,9 @@ import torch.nn as nn
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from evastar.configs.config_v5 import EvastarV5Config
-from evastar.eval.quant_calib import compare_bf16_vs_nvfp4
-from evastar.src.model_v5 import EvastarV5
+from helioslm_v5.configs.config_v5 import HeliosLMv5Config
+from helioslm_v5.eval.quant_calib import compare_bf16_vs_nvfp4
+from helioslm_v5.src.model_v5 import HeliosLMv5
 
 
 def _tiny_mc_tasks(n, choices=8):
@@ -47,9 +47,9 @@ def run_probe_demo(n_tasks=8, seed=0):
     printed banner says so, and so does the report's "method" field.
     """
     torch.manual_seed(seed)
-    model = EvastarV5(EvastarV5Config(size="lite"))
+    model = HeliosLMv5(HeliosLMv5Config(size="lite"))
     report = compare_bf16_vs_nvfp4(model, _tiny_mc_tasks(n_tasks),
-                                   model_tag="EvastarV5-lite-untrained")
+                                   model_tag="HeliosLMv5-lite-untrained")
     print("=== quant-calib probe (MECHANICS on an untrained lite model — "
           "not a drift claim) ===")
     for side in ("bf16", "nvfp4"):
@@ -71,7 +71,7 @@ def run_gate_demo(report, p_trust=0.84, cost_wrong=1.0, cost_escalate=0.2):
     (the agent/ directory predates package-ization)."""
     agent_dir = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "evastar", "agent")
+        "helioslm_v5", "agent")
     if agent_dir not in sys.path:
         sys.path.insert(0, agent_dir)
     from decision_head import DecisionHead

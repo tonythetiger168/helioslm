@@ -50,9 +50,9 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from evastar.configs.config_v5 import EvastarV5Config
-from evastar.src.inference.mtp import MTPDecoder
-from evastar.src.model_v5 import EvastarV5
+from helioslm_v5.configs.config_v5 import HeliosLMv5Config
+from helioslm_v5.src.inference.mtp import MTPDecoder
+from helioslm_v5.src.model_v5 import HeliosLMv5
 
 PROMPTS = [
     "HeliosLM", "The model", "import torch", "def forward",
@@ -71,11 +71,11 @@ def encode(prompt, vocab=1024):
 
 
 def _build_model(state_dict, sparse_top_k, indexer):
-    cfg = EvastarV5Config(size="lite")
+    cfg = HeliosLMv5Config(size="lite")
     cfg.attention.sparse_top_k = sparse_top_k
     if sparse_top_k is not None:
         cfg.attention.sparse_indexer = indexer
-    model = EvastarV5(cfg)
+    model = HeliosLMv5(cfg)
     missing, unexpected = model.load_state_dict(state_dict, strict=False)
     # A distilled checkpoint carries indexer.* weights; dense/head-mean
     # baselines tolerate (and ignore) exactly those keys. EVERYTHING else

@@ -43,7 +43,7 @@ import torch.nn.functional as F
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.src.training.pretrain import (  # noqa: E402
+from helioslm_v5.src.training.pretrain import (  # noqa: E402
     TokenShard, chunked_lm_loss, lr_at, wsd_decay_start)
 
 
@@ -127,11 +127,14 @@ def lm_loss(model, x, y, ce_chunk=0):
     return loss + 0.0 * out.logits.float().sum()
 
 
-def check_chunked_head(model, x, y, ce_chunk, tol=1e-3):
+def check_chunked_head(model, x, y, ce_chunk, tol=1e-3, autocast=False):
     """Raise ValueError unless ``lm_loss(ce_chunk)`` equals the full-logits
-    loss on (x, y) (fp32, no grad): guards against a model whose last
-    hidden state is not the output head's input. Returns both losses."""
-    with torch.no_grad():
+    loss on (x, y) (fp32 or, with ``autocast``, bf16; no grad): guards
+    against a model whose last hidden state is not the output head's
+    input. ``autocast`` is needed once frozen parameters are bf16
+    (v5.180). Returns both losses."""
+    with torch.no_grad(), torch.autocast(x.device.type, dtype=torch.bfloat16,
+                                         enabled=autocast):
         full = lm_loss(model, x, y).item()
         chunked = lm_loss(model, x, y, ce_chunk).item()
     if not abs(full - chunked) <= tol * max(1.0, abs(full)):
@@ -236,6 +239,18 @@ def freeze(model, patterns):
     return tr, fr
 
 
+def cast_frozen(model, dtype):
+    """Store frozen parameters in ``dtype`` (v5.179, e.g. bf16): they get
+    no gradient or optimizer state, and autocast runs their matmuls in
+    bf16 anyway, so fp32 copies only cost memory. Returns bytes saved."""
+    saved = 0
+    for p in model.parameters():
+        if not p.requires_grad and p.dtype != dtype:
+            saved += p.numel() * (p.element_size() - torch.empty(0, dtype=dtype).element_size())
+            p.data = p.data.to(dtype)
+    return saved
+
+
 def frozen_groups(model, depth=3):
     """{name prefix: frozen parameter count}, so a run can confirm its
     --freeze patterns hit the towers they were meant for."""
@@ -270,6 +285,9 @@ def main(argv=None):
     ap.add_argument("--decay-frac", type=float, default=0.2)
     ap.add_argument("--freeze", nargs="*",
                     default=["per_layer", "vision", "audio"])
+    ap.add_argument("--frozen-bf16", action="store_true",
+                    help="store --freeze parameters in bf16 (saves 2 bytes "
+                         "per frozen parameter of GPU memory)")
     ap.add_argument("--max-hours", type=float, default=None)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--ce-chunk", type=int, default=0,
@@ -301,6 +319,10 @@ def main(argv=None):
     trainable, frozen = freeze(model, a.freeze)
     if a.dry_run:
         return dry_run_report(model, a.out, trainable, frozen)
+    if a.frozen_bf16:
+        saved = cast_frozen(model, torch.bfloat16)
+        if rank == 0:
+            print(f"frozen parameters in bf16: {saved / 2**30:.1f} GiB saved", flush=True)
     model.gradient_checkpointing_enable(
         gradient_checkpointing_kwargs={"use_reentrant": False})
     model.config.use_cache = False
@@ -312,7 +334,10 @@ def main(argv=None):
     phases = load_phases(a.data, a.seq)
     if a.ce_chunk:
         x, y = phases["main"].batch(1, min(a.seq, 128), 0, a.seed)
-        full, chunked = check_chunked_head(model, x.to(device), y.to(device), a.ce_chunk)
+        # bf16 matmuls round differently in the two paths: looser tolerance
+        full, chunked = check_chunked_head(
+            model, x.to(device), y.to(device), a.ce_chunk,
+            tol=2e-2 if a.frozen_bf16 else 1e-3, autocast=a.frozen_bf16)
         if rank == 0:
             print(f"ce-chunk check: full {full:.6f} chunked {chunked:.6f}", flush=True)
     per_micro = a.micro_batch * a.seq * world

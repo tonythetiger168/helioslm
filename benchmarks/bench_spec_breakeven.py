@@ -30,12 +30,12 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from evastar.configs.config_v5 import EvastarV5Config
-from evastar.src.inference.expert_store import (attach_streaming_store,
+from helioslm_v5.configs.config_v5 import HeliosLMv5Config
+from helioslm_v5.src.inference.expert_store import (attach_streaming_store,
                                                     detach_streaming_store)
-from evastar.src.inference.mtp import MTPDecoder
-from evastar.src.model_v5 import EvastarV5
-from evastar.src.moe.sigmoid_moe import DeviceLimitedMoE
+from helioslm_v5.src.inference.mtp import MTPDecoder
+from helioslm_v5.src.model_v5 import HeliosLMv5
+from helioslm_v5.src.moe.sigmoid_moe import DeviceLimitedMoE
 
 PROMPTS = [
     "HeliosLM", "The model", "import torch", "def forward",
@@ -51,7 +51,7 @@ def encode(prompt, vocab=1024):
 def bench_toy_model(ckpt_path, max_new, iters):
     """Part A: draft on/off x cache states on the toy checkpoint."""
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-    model = EvastarV5(EvastarV5Config(size="lite"))
+    model = HeliosLMv5(HeliosLMv5Config(size="lite"))
     model.load_state_dict(ckpt["state_dict"])
     model.eval()
 
@@ -70,7 +70,7 @@ def bench_toy_model(ckpt_path, max_new, iters):
                 t0 = time.perf_counter()
                 if use_draft:
                     dec = MTPDecoder(model, model.mtp_modules,
-                                     EvastarV5Config(size="lite"))
+                                     HeliosLMv5Config(size="lite"))
                     r = dec.generate(ids, max_new_tokens=max_new, temperature=0)
                     n = len(r.output_token_ids) if hasattr(r, "output_token_ids") \
                         else max_new
@@ -100,7 +100,7 @@ def bench_toy_model(ckpt_path, max_new, iters):
 def bench_expert_hit_curve(budgets):
     """Part B: disk-tier store hit rate vs resident budget (the x-axis)."""
     torch.manual_seed(1616)
-    cfg = EvastarV5Config(size="lite")
+    cfg = HeliosLMv5Config(size="lite")
     cfg.hidden_size = 32
     cfg.moe.num_experts = 8
     cfg.moe.num_shared_experts = 0

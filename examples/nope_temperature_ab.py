@@ -29,11 +29,11 @@ import torch.nn.functional as F
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from evastar.eval import multiseed  # noqa: E402
-from evastar.configs.config_v5 import (  # noqa: E402
-    AttentionConfig, EvastarV5Config, HybridAttentionConfig, MoEConfig,
+from helioslm_v5.eval import multiseed  # noqa: E402
+from helioslm_v5.configs.config_v5 import (  # noqa: E402
+    AttentionConfig, HeliosLMv5Config, HybridAttentionConfig, MoEConfig,
     MTPConfig)
-from evastar.src.model_v5 import EvastarV5  # noqa: E402
+from helioslm_v5.src.model_v5 import HeliosLMv5  # noqa: E402
 
 N_PAIRS, N_KEYS = 8, 16
 KEY0, VAL0, FILL0, VOCAB = 4, 20, 36, 64
@@ -42,7 +42,7 @@ EVAL_SEQS = (64, 128, 256)
 
 
 def config(temp_scale):
-    return EvastarV5Config(
+    return HeliosLMv5Config(
         size="lite", num_hidden_layers=4, vocab_size=VOCAB, hidden_size=128,
         intermediate_size=256,
         attention=AttentionConfig(
@@ -86,7 +86,7 @@ def experiment(args):
     """One run at args.seed; returns the payload (not written)."""
 
     torch.manual_seed(args.seed)
-    model = EvastarV5(config(0.0))
+    model = HeliosLMv5(config(0.0))
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr)
     sched = torch.optim.lr_scheduler.OneCycleLR(
         opt, max_lr=args.lr, total_steps=args.steps, pct_start=0.1)
@@ -109,7 +109,7 @@ def experiment(args):
 
     results = []
     for scale in [0.0] + list(args.scales):
-        m = EvastarV5(config(scale))
+        m = HeliosLMv5(config(scale))
         m.load_state_dict(state)
         m.eval()
         row = {"nope_temp_scale": scale,
