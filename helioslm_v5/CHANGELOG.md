@@ -1,5 +1,26 @@
 # HeliosLM v5 Changelog
 
+## v5.186 (2026-10-28) - HDL track H5: projects that synthesise
+
+`hdl_projects.py` reads HDL code as projects (an OpenTitan IP, a core, a
+GitHub repository) and trains on a project only when its top module
+passes `verilator --lint-only` and a Yosys `synth` (through `sv2v` when
+installed), with its dependencies collected from the whole checkout. A
+passing project is one document, files in dependency order (packages,
+interfaces, modules, then UVM components by role). MinHash drops
+near-duplicate projects (forks), and `--decontam` drops files sharing a
+13-gram with the benchmarks.
+
+`fetch_mixture.py`: a source with `projects` goes through the gate (git:
+`units` and shared `keep` libraries; hf: rows grouped by repository
+after a permissive-licence filter, or `per_row`); `requires` skips a
+source until another one has a passing project; `per-repository` is a
+licence for hf GitHub code filtered row by row; Solderpad 0.51 LICENSE
+files read as `SHL-0.51`. The manifest records each project's top, lint,
+synth and cell count. The H5 mixture adds CVA6 and gives the curated
+cores most of the HDL weight, GitHub code the rest (docs/HDL_DATA.md).
+T162.
+
 ## v5.185 (2026-10-28) - HDL track H4: simulation-equivalence reward and a small RL loop
 
 `helioslm_v5/eval/hdl_reward.py`: an answer to a Verilog task is

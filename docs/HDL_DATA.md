@@ -73,10 +73,68 @@ document.
 |---|---|---|---|
 | `lowRISC/opentitan` @ `ecedaa5a` | Apache-2.0 | ~38 MB | ~12 MB |
 | `lowRISC/ibex` @ `c0c07085` | Apache-2.0 | 1.7 MB (190 files) | 92 files |
+| `openhwgroup/cva6` @ `742dc82a` (`core/`) | Solderpad Hardware 0.51 (based on Apache-2.0) | ~2 MB | |
 | `openhwgroup/core-v-verif` @ `1dfa4836` | Solderpad Hardware 2.0 (may be taken as Apache-2.0) | ~4.3 MB | ~3.6 MB |
 
 Directories matching `*vendor*` (third-party code under other licences)
 are excluded; exact duplicate files and files over 1 MB are dropped.
-`stack-systemverilog` stays `review` until the account has accepted The
-Stack's terms on the Hub and the rows are filtered by repository
-licence. Verilog GitHub code and English + maths are kept as replay.
+Verilog GitHub code and English + maths are kept as replay.
+
+### Projects that synthesise (v5.186)
+
+Every HDL source of the H5 mixture is read as *projects*, and a project
+is trained on only when it synthesises
+(`helioslm_v5/src/training/hdl_projects.py`):
+
+| Source | Project | Weight |
+|---|---|---|
+| OpenTitan | each IP directory (`hw/ip/*`, `hw/ip_templates/*`) | 0.28 |
+| Ibex, CVA6 | the whole core | 0.05, 0.08 |
+| core-v-verif | UVM environments; used only when CVA6 passes (`requires`) | 0.05 |
+| The Stack SystemVerilog | one GitHub repository, permissive licences only | 0.10 |
+| `Verilog_GitHub` | one file (the rows carry no repository name) | 0.20 |
+
+The gate finds the project's top module (the module named like the IP
+directory, else the uninstantiated module with the largest design;
+testbench paths never count), collects the files it needs from the whole
+checkout (vendored dependencies included, though they are not trained
+on), and runs `verilator --lint-only` and a Yosys `synth` of that top
+with `SYNTHESIS` defined. The project passes when both succeed and the
+netlist has cells. SystemVerilog goes through `sv2v` first when it is
+installed: Yosys' own reader stops on most SystemVerilog packages.
+
+A passing project is one document: a `// project:` line, then each file
+as `// file: <path>` and its text, in dependency order (packages,
+interfaces, modules, then the UVM interface, package, item, driver,
+monitor, agent, scoreboard, environment, sequences and tests). Shared
+libraries (OpenTitan's `hw/ip/prim`, `hw/ip/prim_generic` and `hw/dv`)
+form one more document: their verification code once an IP passed, and
+their design files only when a passing IP's synthesis read them.
+
+Then, across the whole run:
+
+- **near-duplicates**: a project whose MinHash (128 permutations, 16
+  bands, about 0.8 Jaccard) matches an earlier one is dropped, so forks of
+  the curated cores in GitHub data are not trained on twice (curated
+  sources come first in the mixture);
+- **decontamination**: `--decontam <bench files or directories>` drops
+  every file sharing a 13-token window with VerilogEval, RTLLM or CVDP
+  prompts and reference solutions;
+- **licences**: a Stack row is kept only when every licence in
+  `max_stars_repo_licenses` is permissive (`fetch_mixture.PERMISSIVE`:
+  MIT, Apache-2.0, BSD, ISC, CC0, Unlicense, Solderpad, ...). The source
+  still needs the account to accept The Stack's terms on the Hub.
+
+`manifest.json` records every project: top module, lint, synth, cell
+count, files, and why it failed.
+
+```
+python examples/fetch_mixture.py --mixture data/mixtures/hdl_h5_sv_uvm_v1.json \
+    --tokenizer google/gemma-4-E2B --tokens 2e8 --out /workspace/h5_data \
+    --decontam /workspace/benches --allow-blocked
+```
+
+First measurement, OpenTitan with Yosys 0.33 and no `sv2v`: Verilator
+lint passes for most IPs, but Yosys' SystemVerilog reader stops on the
+register packages of nearly every IP, so `sv2v` is needed for the gate
+to mean anything on SystemVerilog cores.
