@@ -77,14 +77,20 @@ def row_prompt_golden(row):
         p = users[-1] if users else "\n".join(_strings(p))
     if not isinstance(p, str) or not p.strip():
         raise hr.RewardError("no prompt")
-    cands = []
-    for k, v in row.items():
-        if k in ("prompt", "question", "instruction"):
-            continue
-        for s in _strings(_maybe_json(v) if isinstance(v, str) else v):
-            for t in _strings(_maybe_json(s)):
-                if "module" in t and "endmodule" in t:
-                    cands.append(t)
+    def found(keys):
+        out = []
+        for k in keys:
+            v = row.get(k)
+            for s in _strings(_maybe_json(v) if isinstance(v, str) else v):
+                for t in _strings(_maybe_json(s)):
+                    if "module" in t and "endmodule" in t:
+                        out.append(t)
+        return out
+    # the golden code lives in ground_truth; a model response column
+    # (r1_response) is longer but is reasoning plus an answer, not the golden
+    cands = found(("ground_truth", "reward_model")) or found(
+        [k for k in row if k not in ("prompt", "question", "instruction")
+         and "response" not in k])
     if not cands:
         raise hr.RewardError("no golden code")
     golden = max(cands, key=len)
