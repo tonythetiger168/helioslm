@@ -28,6 +28,16 @@ it lets the user choose), and the files matching ``include`` and not
 ``exclude`` (sorted, exact duplicates and files over 1 MB dropped) are the
 documents, each prefixed with a ``// file: <path>`` line.
 
+A source with ``projects`` (v5.186, HDL track H5) is read as projects
+that must synthesise (``hdl_projects``): git sources by ``units`` globs
+plus shared ``keep`` libraries, hf GitHub code grouped by repository
+after the permissive-licence filter (``per-repository`` licence), or one
+row per project (``per_row``). Each passing project is one document in
+dependency order; near-duplicate projects and files overlapping the
+``--decontam`` benchmarks are dropped. ``requires`` skips a source until
+the named sources have a passing project (its share is not given to
+the others).
+
 ``quality_threshold`` is not applied (no trained quality classifier yet).
 ``<out>/manifest.json`` records per source: phase, weight, licence check,
 dataset revision, tokens, documents kept / seen, and the filter report;
@@ -52,6 +62,7 @@ sys.path.insert(0, str(_REPO))
 from helioslm_v5.src.training.data_mixture import (  # noqa: E402
     load_mixture, mixture_sha256, token_budget)
 from helioslm_v5.src.training.data_quality import filter_docs  # noqa: E402
+from helioslm_v5.src.training import hdl_projects  # noqa: E402
 
 _LICENSE_ALIASES = {"odc-by-1.0": "odc-by", "cc0-1.0": "cc0"}
 
@@ -71,7 +82,8 @@ def parse_source(src):
 
 
 MAX_FILE_BYTES = 1 << 20
-_LICENCE_TEXTS = (("Solderpad Hardware Licen", "Apache-2.0"),
+_LICENCE_TEXTS = (("solderpad hardware license version 0.51", "SHL-0.51"),
+                  ("Solderpad Hardware Licen", "Apache-2.0"),
                   ("Apache License", "Apache-2.0"),
                   ("MIT License", "MIT"),
                   ("Permission is hereby granted, free of charge", "MIT"))
@@ -96,7 +108,9 @@ def git_licence(root):
         p = Path(root) / name
         if p.is_file():
             head = p.read_text(encoding="utf-8", errors="replace")[:4000]
-            return next((lic for key, lic in _LICENCE_TEXTS if key in head), None)
+            low = head.lower()
+            return next((lic for key, lic in _LICENCE_TEXTS
+                         if key.lower() in low), None)
     return None
 
 
@@ -159,6 +173,9 @@ def plan(mix, tokens, decay_frac, card_licences, no_access=None):
             r["reason"] = "licence under review"
         elif s["name"] in no_access:
             r["reason"] = f"{NO_ACCESS} ({no_access[s['name']]})"
+        elif s.get("license") == "per-repository":
+            r["usable"] = True
+            usable.append(s)
         elif card_licences.get(s["name"]) is None:
             r["reason"] = "card licence unreadable"
         elif not licence_matches(s["license"], card_licences[s["name"]]):
@@ -228,6 +245,77 @@ def write_source(texts, encode_batch, path, budget, bos, eos, *,
     return {"tokens": n, "docs": docs, "seen": seen, "filter": report}
 
 
+PERMISSIVE = {"mit", "apache-2.0", "bsd-2-clause", "bsd-3-clause", "isc",
+              "0bsd", "cc0-1.0", "unlicense", "zlib", "shl-0.51", "shl-2.0",
+              "shl-2.1", "bsl-1.0", "mit-0", "x11"}
+
+
+def licence_ok(lics, allow=PERMISSIVE):
+    """True when every licence of a row is in ``allow`` (and there is at
+    least one): The Stack's ``max_stars_repo_licenses``."""
+    if isinstance(lics, str):
+        lics = [lics]
+    lics = [str(x).lower() for x in (lics or [])]
+    return bool(lics) and all(x in allow for x in lics)
+
+
+def stack_rows(ds, s, field):
+    """(repo, path, text) of rows whose repository licences are all
+    permissive (source keys ``repo_field``, ``path_field``,
+    ``licence_field``, ``allow_licences``)."""
+    allow = {x.lower() for x in s.get("allow_licences", PERMISSIVE)}
+    lf = s.get("licence_field", "max_stars_repo_licenses")
+    rf = s.get("repo_field", "max_stars_repo_name")
+    pf = s.get("path_field", "max_stars_repo_path")
+    for row in ds:
+        if licence_ok(row.get(lf), allow):
+            yield row.get(rf), row.get(pf), row.get(field) or ""
+
+
+def hdl_texts(s, ps, out, ds=None, field="text", *, tool=None, dedup=None,
+              decontam=None, workers=1, gate=True):
+    """Project documents of an HDL source with ``projects`` (v5.186), and
+    the per-project gate report. git: every HDL file of the checkout is
+    read (vendored ones for dependencies only), the ``include`` /
+    ``exclude`` files are grouped into ``projects.units``. hf: rows are
+    grouped by repository after the licence filter."""
+    cfg, report = s["projects"], []
+    kw = dict(gate=gate and cfg.get("gate", True), tool=tool, dedup=dedup,
+              decontam=decontam, report=report, workers=workers,
+              timeout=cfg.get("timeout", 600))
+    if cfg.get("tops"):
+        kw["tops"] = cfg["tops"]
+    if ps[0] == "git":
+        root = out / "_git" / s["name"]
+        all_files = hdl_projects.read_tree(root, MAX_FILE_BYTES)
+        files = {p: t for p, t in all_files.items()
+                 if any(fnmatch.fnmatch(p, g) for g in s["include"])
+                 and not any(fnmatch.fnmatch(p, g)
+                             for g in s.get("exclude", ()))}
+        docs = hdl_projects.project_docs(
+            s["name"], files, all_files, root, units=cfg.get("units"),
+            keep=cfg.get("keep", ()), **kw)
+        return iter(docs), report
+    if cfg.get("per_row"):
+        return per_row_docs(ds, field, out, kw), report
+    return hdl_projects.repo_docs(stack_rows(ds, s, field),
+                                  workdir=out, **kw), report
+
+
+def per_row_docs(ds, field, out, kw, batch=256):
+    """Rows without repository names (one file each): every row is its
+    own project, gated alone, ``batch`` rows at a time (streamed)."""
+    import itertools
+    rows = ((f"row/{i:09d}", "file.sv", row.get(field) or "")
+            for i, row in enumerate(ds))
+    while True:
+        chunk = list(itertools.islice(rows, batch))
+        if not chunk:
+            return
+        yield from hdl_projects.repo_docs(chunk, batch=batch, workdir=out,
+                                          **kw)
+
+
 def load_kwargs(s):
     """A source's ``data_dir`` / ``data_files`` for ``load_dataset``."""
     return {k: s[k] for k in ("data_dir", "data_files") if k in s}
@@ -254,6 +342,13 @@ def main(argv=None):
     ap.add_argument("--allow-blocked", action="store_true",
                     help="go on when a source has no download access "
                          "(its share goes to the rest of its phase)")
+    ap.add_argument("--decontam", nargs="*", default=[],
+                    help="benchmark files / directories: HDL documents "
+                         "sharing a 13-gram with them are dropped")
+    ap.add_argument("--no-gate", action="store_true",
+                    help="skip the lint + synth gate of HDL projects")
+    ap.add_argument("--workers", type=int, default=0,
+                    help="parallel gate jobs (0: the CPUs this container may use)")
     a = ap.parse_args(argv)
 
     from datasets import load_dataset
@@ -321,6 +416,15 @@ def main(argv=None):
         raise SystemExit("tokenizer has no EOS token")
     manifest.update(bos=bos, eos=eos)
 
+    dedup = hdl_projects.MinHashDedup()
+    decontam = hdl_projects.Decontam(hdl_projects.bench_texts(a.decontam))
+    tool = hdl_projects.tools()
+    if a.workers <= 0:
+        from helioslm_v5.eval.uvm_bench import cpu_limit
+        a.workers = cpu_limit()
+    manifest["hdl_gate"] = {k: bool(v) for k, v in tool.items()}
+    manifest["decontam_grams"] = len(decontam.grams)
+
     for s in mix["sources"]:
         r = dict(rows[s["name"]], card_licence=cards.get(s["name"]),
                  revision=revs.get(s["name"]))
@@ -328,18 +432,33 @@ def main(argv=None):
         if not r["usable"]:
             save()
             continue
+        need = [n for n in s.get("requires", ())
+                if not manifest["sources"].get(n, {}).get("projects_passed")]
+        if need:
+            r.update(usable=False, status="skipped",
+                     reason=f"needs a passing project in {', '.join(need)}")
+            save()
+            continue
         ps = parse_source(s["source"])
         (out / r["phase"]).mkdir(exist_ok=True)
         path = out / r["phase"] / f"{s['name']}.bin"
         t0 = time.time()
         try:
-            if ps[0] == "git":
+            report = None
+            ds = None
+            field = s.get("field", a.field)
+            if ps[0] != "git":
+                ds = load_dataset(ps[0], ps[1], split="train", streaming=True,
+                                  revision=r["revision"], **load_kwargs(s))
+            if s.get("projects"):
+                texts, report = hdl_texts(
+                    s, ps, out, ds, field, tool=tool, dedup=dedup,
+                    decontam=decontam, workers=a.workers,
+                    gate=not a.no_gate)
+            elif ps[0] == "git":
                 texts = git_texts(out / "_git" / s["name"], s["include"],
                                   s.get("exclude", ()))
             else:
-                ds = load_dataset(ps[0], ps[1], split="train", streaming=True,
-                                  revision=r["revision"], **load_kwargs(s))
-                field = s.get("field", a.field)
                 texts = (row.get(field) or "" for row in ds)
             res = write_source(
                 texts, lambda b: [e.ids for e in tok.encode_batch(
@@ -349,6 +468,11 @@ def main(argv=None):
                 else None, heuristics=s.get("heuristics", True))
             r.update(res, path=str(path.relative_to(out)),
                      status="ok" if res["tokens"] >= r["budget"] else "short")
+            if report is not None:
+                r["projects"] = report
+                r["projects_passed"] = sum(1 for x in report if x.get("pass"))
+                r["projects_gated"] = sum(1 for x in report
+                                          if x.get("pass") is not None)
         except Exception as e:
             r.update(status="FAILED", error=f"{type(e).__name__}: {e}"[:500])
         r["seconds"] = round(time.time() - t0)

@@ -1,6 +1,6 @@
 # HeliosLM v5 Changelog
 
-## v5.186 (2026-10-28) - Cloudflare download bundles per GPU-memory tier
+## v5.188 (2026-10-28) - Cloudflare download bundles per GPU-memory tier
 
 The local deployment series is published on Cloudflare by GPU memory,
 with downloads served from R2 instead of GitHub.
@@ -25,7 +25,59 @@ with downloads served from R2 instead of GitHub.
   not connected to the repository). Credentials from environment only
   (`CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
   `R2_BUCKET`, `CLOUDFLARE_API_TOKEN`); `DRY_RUN=1` prints the commands.
-- T162 `test_cloudflare_bundles.py`.
+- T163 `test_cloudflare_bundles.py`.
+
+## v5.187 (2026-10-28) - HDL track H5: synth gate measured on real cores
+
+With sv2v, 24 of 38 OpenTitan IPs, Ibex (`ibex_top`, 22,104 cells) and
+CV32E40P (`cv32e40p_top`, 43,201 cells) pass the gate. Fixes found on
+them: an included header is part of a project wherever it lives (Ibex's
+`dv_fcov_macros.svh` sits under `dv/`); an include with a directory part
+(`common_cells/registers.svh`) adds the directory it is relative to;
+synthesis reads copies without `translate_off` regions; a source's
+`projects.tops` names the top when the directory name does not
+(`ibex_top`, not the simulation-only `ibex_top_tracing`), even when
+another module instantiates it. CVA6 is replaced by CV32E40P in the H5
+mixture: sv2v cannot convert CVA6's parameterised structs. T162.
+
+## v5.186 (2026-10-28) - HDL track H5: projects that synthesise
+
+`hdl_projects.py` reads HDL code as projects (an OpenTitan IP, a core, a
+GitHub repository) and trains on a project only when its top module
+passes `verilator --lint-only` and a Yosys `synth` (through `sv2v` when
+installed), with its dependencies collected from the whole checkout. A
+passing project is one document, files in dependency order (packages,
+interfaces, modules, then UVM components by role). MinHash drops
+near-duplicate projects (forks), and `--decontam` drops files sharing a
+13-gram with the benchmarks.
+
+`fetch_mixture.py`: a source with `projects` goes through the gate (git:
+`units` and shared `keep` libraries; hf: rows grouped by repository
+after a permissive-licence filter, or `per_row`); `requires` skips a
+source until another one has a passing project; `per-repository` is a
+licence for hf GitHub code filtered row by row; Solderpad 0.51 LICENSE
+files read as `SHL-0.51`. The manifest records each project's top, lint,
+synth and cell count. The H5 mixture adds CVA6 and gives the curated
+cores most of the HDL weight, GitHub code the rest (docs/HDL_DATA.md).
+T162.
+
+## v5.185 (2026-10-28) - HDL track H4: simulation-equivalence reward and a small RL loop
+
+`helioslm_v5/eval/hdl_reward.py`: an answer to a Verilog task is
+rewarded 1 when Icarus simulation with random inputs (clock toggled,
+reset asserted first and then rarely) cannot tell its top module from
+the golden design's, else 0; outputs the golden design leaves X are not
+compared. A correct answer gains up to 0.1 for fewer yosys cells than
+the golden design (`log2(ref_cells / cells)`, clamped to [-1, 1]).
+Ports are read from ANSI and non-ANSI headers with parameter defaults
+folded into the widths.
+
+`examples/hdl_rl_hf.py`: `prepare` turns the CodeV-R1 RL parquet into
+tasks (golden designs that compile, can be driven and equal themselves);
+`train` runs rounds of vLLM rollouts (a subprocess per round),
+group-normalised advantages (constant groups dropped), and an
+on-policy token-level policy-gradient update on the `cpt_hf.py`-loaded
+policy, until `--max-hours`. T161.
 
 ## v5.184 (2026-10-27) - HDL eval fixes from the first UVM baseline
 

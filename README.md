@@ -683,7 +683,10 @@ As of 2026-10-26:
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
-- **v5.186** — Cloudflare downloads per GPU-memory tier (`examples/publish_cloudflare.py`, `scripts/cloudflare_publish.sh`): one zip per tier and quantization on R2, a static download page on Cloudflare Pages whose links point at the R2 domain (GitHub hosts refused), page deployed by direct upload — T162
+- **v5.188** — Cloudflare downloads per GPU-memory tier (`examples/publish_cloudflare.py`, `scripts/cloudflare_publish.sh`): one zip per tier and quantization on R2, a static download page on Cloudflare Pages whose links point at the R2 domain (GitHub hosts refused), page deployed by direct upload — T163
+- **v5.187** — HDL track H5: synth gate measured with sv2v (24 of 38 OpenTitan IPs, Ibex, CV32E40P pass); include-path and `translate_off` fixes, `projects.tops`; CV32E40P replaces CVA6 — T162
+- **v5.186** — HDL track H5: projects that synthesise. Each OpenTitan IP, core and GitHub repository must pass Verilator lint and a Yosys synth of its top before training; one document per project in dependency order, MinHash near-dedup, 13-gram benchmark decontamination, permissive-licence filter for GitHub rows, CVA6 added — T162
+- **v5.185** — HDL track H4: simulation-equivalence reward with a gate-count bonus (`hdl_reward.py`) and a one-GPU RL loop (`examples/hdl_rl_hf.py`) — T161
 - **v5.184** — HDL eval fixes: UVM answer extraction (`[END]` / cut-off answers), UVM 1.2 sequence-macro compatibility, yosys cell counts for `area_ratio` — T159
 - **v5.183** — HDL track H5: `git:` mixture sources (pinned commit, LICENSE check, include/exclude globs) and the SystemVerilog / UVM mixture `hdl_h5_sv_uvm_v1.json` (OpenTitan, Ibex, core-v-verif) — T160
 - **v5.182** — HDL track: UVM testbench benchmark (`uvm_bench.py`, Verilator + UVM 2017, golden design plus mutants), CVDP `pass@k_by_language`, yosys gate-count `area_ratio` — T159
@@ -884,7 +887,7 @@ Context sizes assume the default MLA cache (latent 512 + RoPE 64, about 37 KB pe
 
 `examples/package_tiers.py --run <pilot run> --out dist/` (v5.148) writes each tier's GGUF files, an Ollama `Modelfile` (when a tokenizer is embedded), the `llama-cli` / `llama-server` commands and a `manifest.json` with sizes, sha256 and whether the weights fit in 75% of the tier's memory. F16 stands in for the table's BF16 and Q4_K for Q4_K_M / Q6_K. On the pilots, llama.cpp logits match PyTorch at cosine 1.0000 (F16), ≥ 0.989 (Q8_0) and ≥ 0.983 (Q4_K). The cloud series has no packaging step yet; it serves the same checkpoints.
 
-**Downloads (v5.186).** `examples/publish_cloudflare.py --packages dist/ --out cf/ --base-url https://<R2 download domain> --version <v>` zips each tier package once per quantization (GGUF + Modelfile + README + manifest) and writes a static page listing every local tier by GPU memory; `scripts/cloudflare_publish.sh cf/` uploads the zips to R2 (S3 API, multipart) and the page with `wrangler pages deploy` (direct upload, no Git integration). Credentials come only from environment variables. Download links never point at GitHub.
+**Downloads (v5.188).** `examples/publish_cloudflare.py --packages dist/ --out cf/ --base-url https://<R2 download domain> --version <v>` zips each tier package once per quantization (GGUF + Modelfile + README + manifest) and writes a static page listing every local tier by GPU memory; `scripts/cloudflare_publish.sh cf/` uploads the zips to R2 (S3 API, multipart) and the page with `wrangler pages deploy` (direct upload, no Git integration). Credentials come only from environment variables. Download links never point at GitHub.
 
 ### Tentative product windows (subject to gates)
 

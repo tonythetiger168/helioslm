@@ -1,4 +1,4 @@
-"""Cloudflare download bundles per GPU-memory tier (v5.186).
+"""Cloudflare download bundles per GPU-memory tier (v5.188).
 
 Turns the tier packages that :func:`package.package_tier` writes
 (``dist/<tier>/``) into one zip per (tier, quantization) for Cloudflare R2,

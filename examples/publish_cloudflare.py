@@ -1,8 +1,8 @@
-"""publish_cloudflare.py — per-VRAM download bundles and page (v5.186).
+"""publish_cloudflare.py — per-VRAM download bundles and page (v5.188).
 
   python examples/package_tiers.py --run runs/dense --out dist/
   python examples/publish_cloudflare.py --packages dist/ --out cf/ \\
-      --base-url https://dl.example.com --version v5.186-pilot
+      --base-url https://dl.example.com --version v5.188-pilot
 
 Reads the tier packages in --packages (one directory per tier, as
 package_tiers.py writes them) and writes:
@@ -31,7 +31,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--base-url", required=True,
                     help="R2 download domain, e.g. https://dl.example.com")
-    ap.add_argument("--version", required=True, help="e.g. v5.186-pilot")
+    ap.add_argument("--version", required=True, help="e.g. v5.188-pilot")
     ap.add_argument("--status", choices=["preview", "release"], default="preview",
                     help="preview = pilot weights (tagged on the page)")
     ap.add_argument("--name", default="HeliosLM")

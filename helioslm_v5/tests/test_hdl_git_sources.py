@@ -112,9 +112,12 @@ def test_plan_git_source():
 def test_h5_mixture():
     mix = load_mixture(ROOT / "data" / "mixtures" / "hdl_h5_sv_uvm_v1.json")
     git = [s for s in mix["sources"] if s["source"].startswith("git:")]
-    assert {s["name"] for s in git} == {"opentitan-sv", "ibex-sv", "core-v-verif-sv"}
+    assert {s["name"] for s in git} == {"opentitan-sv", "ibex-sv", "cv32e40p-sv",
+                                        "core-v-verif-sv"}
     for s in git:
         kind, url, commit = fm.parse_source(s["source"])
         assert kind == "git" and url.startswith("https://github.com/")
         assert len(commit) == 40 and "*vendor*" in s["exclude"]
-    assert json.dumps(mix).count('"review"') == 1     # the-stack until accepted
+    # the Stack: rows filtered by repository licence (v5.186)
+    stack = next(s for s in mix["sources"] if s["name"] == "stack-systemverilog")
+    assert stack["license"] == "per-repository"

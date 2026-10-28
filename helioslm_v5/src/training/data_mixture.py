@@ -16,6 +16,9 @@ sources the decay phase (``pretrain(decay_train=...)``).
 Rules ``load_mixture`` enforces: unique names; phase main or decay;
 weights > 0 summing to 1 within each phase; a licence from
 ``ALLOWED_LICENSES``, or ``"license": "review"`` with a ``license_note``
+(``per-repository``, v5.186: an hf source of GitHub code whose rows are
+kept only when their repository licences are permissive, see
+``fetch_mixture.stack_rows``)
 (then the source cannot be used until ``license_verified`` is true and
 the licence is filled in). ``format`` (v5.121, LB5) is ``text`` (default)
 or ``trace``: D1 teacher records rendered as chat transcripts with their
@@ -37,9 +40,10 @@ import hashlib
 import json
 from pathlib import Path
 
+PER_REPOSITORY = "per-repository"
 ALLOWED_LICENSES = {
     "Apache-2.0", "MIT", "ODC-BY-1.0", "CC-BY-4.0", "CC-BY-SA-4.0",
-    "CC0-1.0", "public-domain",
+    "CC0-1.0", "public-domain", "SHL-0.51", PER_REPOSITORY,
 }
 PHASES = ("main", "decay")
 ZH_VARIANTS = {"tw", "cn", "mixed", "none"}
@@ -100,6 +104,11 @@ def validate_mixture(mix):
             if v is not None and not (isinstance(v, list) and v and all(
                     isinstance(x, str) and x for x in v)):
                 raise ValueError(f"{n}: {k} must be a non-empty list of globs")
+        if lic == PER_REPOSITORY and not (
+                s["source"].startswith("hf:") and isinstance(
+                    s.get("projects"), dict)):
+            raise ValueError(f"{n}: a per-repository licence needs an hf "
+                             "source with projects (the repository filter)")
         if s["source"].startswith("git:") and not s.get("include"):
             raise ValueError(f"{n}: a git source needs include globs")
         if not isinstance(s.get("heuristics", True), bool):

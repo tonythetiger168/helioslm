@@ -1,4 +1,4 @@
-"""T162 — Cloudflare download bundles per GPU-memory tier, v5.186.
+"""T163 — Cloudflare download bundles per GPU-memory tier, v5.188.
 
 ``bundle_package`` turns a tier package (``package_tier`` output) into
 one self-contained zip per quantization (GGUF + Modelfile + README +

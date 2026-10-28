@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # cloudflare_publish.sh — upload per-VRAM bundles to R2 and the download
-# page to Cloudflare Pages (v5.186).
+# page to Cloudflare Pages (v5.188).
 #
 #   python examples/publish_cloudflare.py --packages dist/ --out cf/ \
-#       --base-url https://dl.example.com --version v5.186-pilot
+#       --base-url https://dl.example.com --version v5.188-pilot
 #   scripts/cloudflare_publish.sh cf/
 #
 # R2 goes through its S3 API (aws CLI), which uploads multi-GB GGUF zips in
