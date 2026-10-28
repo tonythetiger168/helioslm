@@ -1,5 +1,25 @@
 # Evastar v5 Changelog
 
+## v5.155 (2026-10-28) - Spatial plugin (pano2world)
+
+Gives the agent a 3D world to reason about. `SpatialPlugin` (harness v1.23,
+`ctx.spatial.*`) is a stdlib HTTP client for a pano2world server
+(`PANO2WORLD_URL`, default `http://localhost:8000`):
+
+- `generate(prompt, backend, rings)`: text -> panorama -> walkable Gaussian-
+  splat world; TrustGate-gated like the other side-effecting plugins (it
+  spends GPU time), fails closed without `decision.trust`;
+- `scene(world)`: scene graph — objects with 3D centre, distance, bearing,
+  elevation and size (OWLv2 detections lifted with the splats' depth), floor
+  height, per-degree clearance, walk radius;
+- `query(world, op, *args)`: objects / distance / relation / nearest / path /
+  go_to / describe; `describe(world)` is the one-paragraph summary for a
+  prompt.
+
+Every op returns a dict (errors included) and records an effect. T149
+(`evastar/tests/test_v123_spatial.py`) runs it against a stub server: no
+GPU, no torch, no pano2world checkout.
+
 ## v5.154 (2026-10-25) - Roadmap TW2: zh-TW pretraining corpus pipeline
 
 TW2 asks for ~100M tokens of Taiwan Traditional Chinese with
