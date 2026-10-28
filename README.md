@@ -683,6 +683,7 @@ As of 2026-10-26:
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.186** — HDL track H5: projects that synthesise. Each OpenTitan IP, core and GitHub repository must pass Verilator lint and a Yosys synth of its top before training; one document per project in dependency order, MinHash near-dedup, 13-gram benchmark decontamination, permissive-licence filter for GitHub rows, CVA6 added — T162
 - **v5.184** — HDL eval fixes: UVM answer extraction (`[END]` / cut-off answers), UVM 1.2 sequence-macro compatibility, yosys cell counts for `area_ratio` — T159
 - **v5.183** — HDL track H5: `git:` mixture sources (pinned commit, LICENSE check, include/exclude globs) and the SystemVerilog / UVM mixture `hdl_h5_sv_uvm_v1.json` (OpenTitan, Ibex, core-v-verif) — T160
 - **v5.182** — HDL track: UVM testbench benchmark (`uvm_bench.py`, Verilator + UVM 2017, golden design plus mutants), CVDP `pass@k_by_language`, yosys gate-count `area_ratio` — T159
