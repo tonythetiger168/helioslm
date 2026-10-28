@@ -1,5 +1,10 @@
 # HeliosLM v5 Changelog
 
+## v5.192 (2026-10-28) - fetch_mixture prints gate progress
+
+Each HDL project's gate result is printed (flushed) as it comes, with
+the running pass count, so a long data pod shows where it is. T162.
+
 ## v5.190 (2026-10-28) - unified-memory tiers (DGX Spark, Ryzen AI Max+ 395, Mac 128 / 256 / 512 GB)
 
 - L48+ is now 48-96 GB (RTX PRO 6000 96GB, 2x24 GB, 64-96 GB unified
@@ -27,7 +32,7 @@
 - `SKIP_STD=1` skips step 4 (lm-eval common benchmarks); the checkpoint
   and `results/` uploads still run. Default unchanged (0).
 
-## v5.192 (2026-10-28) - Cloudflare download bundles per GPU-memory tier
+## v5.188 (2026-10-28) - Cloudflare download bundles per GPU-memory tier
 
 The local deployment series is published on Cloudflare by GPU memory,
 with downloads served from R2 instead of GitHub.
@@ -53,11 +58,6 @@ with downloads served from R2 instead of GitHub.
   (`CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
   `R2_BUCKET`, `CLOUDFLARE_API_TOKEN`); `DRY_RUN=1` prints the commands.
 - T163 `test_cloudflare_bundles.py`.
-
-## v5.192 (2026-10-28) - fetch_mixture prints gate progress
-
-Each HDL project's gate result is printed (flushed) as it comes, with
-the running pass count, so a long data pod shows where it is. T162.
 
 ## v5.187 (2026-10-28) - HDL track H5: synth gate measured on real cores
 
