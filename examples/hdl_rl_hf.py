@@ -88,7 +88,9 @@ def row_prompt_golden(row):
     if not cands:
         raise hr.RewardError("no golden code")
     golden = max(cands, key=len)
-    return p.strip(), hr.extract_answer(golden) or golden
+    if "```" in golden or "<think>" in golden or "[BEGIN]" in golden:
+        golden = hr.extract_answer(golden) or golden
+    return p.strip(), golden            # raw source keeps its `timescale / `define lines
 
 
 def cmd_prepare(a):
@@ -98,14 +100,15 @@ def cmd_prepare(a):
         rows = rows[:a.limit]
     print("columns:", sorted(rows[0].keys()) if rows else [], flush=True)
     if rows:
-        print("first row:", json.dumps(rows[0], default=str)[:1500], flush=True)
+        print("first row:", json.dumps({k: str(v)[:600] for k, v in rows[0].items()}), flush=True)
 
     def one(row):
+        g = ""
         try:
             p, g = row_prompt_golden(row)
             return hr.make_task(p, g), None
         except hr.RewardError as e:
-            return None, str(e)
+            return None, f"{e} | golden starts: {g[:160]!r}"
         except Exception as e:                       # a golden design we cannot parse
             return None, type(e).__name__
 

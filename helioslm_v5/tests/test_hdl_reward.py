@@ -119,6 +119,10 @@ def test_row_prompt_golden():
     assert p == "Write a mux." and g.startswith("module mux(a, b, s, y);")
     with pytest.raises(hr.RewardError):
         rl.row_prompt_golden({"prompt": "x", "other": "no code here"})
+    raw = "// this module adds\n`timescale 1ns/1ps\nmodule m(input a, output y);\nassign y = a;\nendmodule\n"
+    assert rl.row_prompt_golden({"prompt": "x", "reward_model": {"ground_truth": raw}})[1] == raw
+    assert hr.extract_answer("The module below:\nmodule q(output y); endmodule") \
+        == "module q(output y); endmodule\n"
 
 
 def test_group_advantages():

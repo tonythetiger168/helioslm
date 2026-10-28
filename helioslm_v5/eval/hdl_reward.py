@@ -327,8 +327,9 @@ def extract_answer(text):
     code = hb.extract_code(text)
     if re.search(r"\bmodule\b", code) and "[BEGIN]" in text:
         return code
-    a, b = text.find("module"), text.rfind("endmodule")
-    return text[a:b + len("endmodule")] + "\n" if a >= 0 and b > a else ""
+    m = re.search(r"^[ \t]*module\s+\w+", text, re.M) or re.search(r"\bmodule\s+\w+", text)
+    b = text.rfind("endmodule")
+    return text[m.start():b + len("endmodule")].strip() + "\n" if m and b > m.start() else ""
 
 
 def reward(text, task, gate_weight=GATE_WEIGHT, synth=synth_cells):
