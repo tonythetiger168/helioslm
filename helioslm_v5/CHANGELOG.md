@@ -1,5 +1,13 @@
 # HeliosLM v5 Changelog
 
+## v5.194 (2026-10-28) - CVDP timeouts kill the simulators too
+
+`cvdp_bench.run` used `subprocess.run(shell=True, timeout=...)`, which
+kills only the shell; the simulators it started kept running as orphans
+(the H4 eval pod sat at 97% CPU for hours after generation). Commands now
+run in their own session and a timeout kills the whole group
+(`run_shell`). T144.
+
 ## v5.193 (2026-10-28) - the Stack is gated too
 
 `fetch_mixture.py` treated the Stack source's empty `projects` dict as

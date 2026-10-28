@@ -20,6 +20,7 @@ Run from repo root: python3 -m pytest helioslm_v5/tests/test_cvdp_bench.py
 """
 import importlib.util
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -137,3 +138,17 @@ def test_score():
     assert out["pass@4"] == pytest.approx(1.0)
     assert out["pass@1_by_category"] == {"cid003": pytest.approx(0.25)}
     assert out["pass@1_by_language"] == {"sv": pytest.approx(0.25)}
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process groups are POSIX")
+def test_run_shell_timeout_kills_grandchildren(tmp_path):
+    # v5.194: a timeout kills the simulator children too, not only the shell
+    import time
+    t = time.time()
+    rc, _, _ = cb.run_shell("(sleep 2; touch late) & sleep 30", tmp_path,
+                            dict(os.environ), 1)
+    assert rc is None and time.time() - t < 10
+    time.sleep(3)
+    assert not (tmp_path / "late").exists()      # the background child died
+    rc, so, _ = cb.run_shell("echo ok", tmp_path, dict(os.environ), 10)
+    assert rc == 0 and so.strip() == "ok"

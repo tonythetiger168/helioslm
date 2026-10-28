@@ -265,6 +265,31 @@ def safe_name(name):
     return bool(parts) and not Path(name).is_absolute() and ".." not in parts
 
 
+def run_shell(cmd, cwd, env, timeout):
+    """``cmd`` in a shell -> (exit code, stdout, stderr), exit code None on
+    timeout. The shell runs in its own session and a timeout kills the
+    whole group: ``subprocess.run``'s timeout kills only the shell, and
+    the simulators it started kept running as orphans, each burning a core
+    (H4 eval pod: CPU pinned for hours after generation, v5.194)."""
+    p = subprocess.Popen(cmd, shell=True, cwd=cwd, env=env, text=True,
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         start_new_session=os.name == "posix")
+    try:
+        so, se = p.communicate(timeout=timeout)
+        return p.returncode, so, se
+    except subprocess.TimeoutExpired:
+        if os.name == "posix":
+            import signal
+            try:
+                os.killpg(p.pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+        else:
+            p.kill()
+        p.communicate()
+        return None, "", ""
+
+
 def run(row, outputs, timeout=RUN_TIMEOUT_S):
     """Run a datapoint's harness on ``outputs``; ``{"passed", "log"}``."""
     hb.need_tool("iverilog")
@@ -301,14 +326,13 @@ def run(row, outputs, timeout=RUN_TIMEOUT_S):
             if not cmd:
                 continue
             cmd = _rewrite(" ".join(cmd) if isinstance(cmd, list) else cmd, root)
-            try:
-                r = subprocess.run(cmd, shell=True, cwd=root / "code", env=env,
-                                   capture_output=True, text=True, timeout=timeout)
-                log.append(f"[{name}] exit {r.returncode}\n{r.stdout[-3000:]}{r.stderr[-1000:]}")
-                ok = ok and r.returncode == 0
-            except subprocess.TimeoutExpired:
+            rc, so, se = run_shell(cmd, root / "code", env, timeout)
+            if rc is None:
                 log.append(f"[{name}] TIMEOUT")
                 ok = False
+            else:
+                log.append(f"[{name}] exit {rc}\n{so[-3000:]}{se[-1000:]}")
+                ok = ok and rc == 0
     return {"passed": ok, "log": "\n".join(log)[-6000:]}
 
 
