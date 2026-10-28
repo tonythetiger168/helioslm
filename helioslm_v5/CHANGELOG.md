@@ -1,5 +1,23 @@
 # HeliosLM v5 Changelog
 
+## v5.190 (2026-10-28) - unified-memory tiers (DGX Spark, Ryzen AI Max+ 395, Mac 128 / 256 / 512 GB)
+
+- L48+ is now 48-96 GB (RTX PRO 6000 96GB, 2x24 GB, 64-96 GB unified
+  memory). New **L128**: 128 GB unified memory (NVIDIA DGX Spark, AMD
+  Ryzen AI Max+ 395, Mac M4 / M5 series incl. Max / Ultra 128 GB), Q4_K
+  default (v4.0 100B-A10B, about 61 GB) plus Q8_0 / F16 for v3.0 30B-A3B.
+  Their memory bandwidth (roughly 250-280 GB/s on Spark and the 395)
+  favours the MoE models over dense ones.
+- New local tiers for Mac (M4 / M5 series incl. Ultra; Mac Studio M3 Ultra)
+  unified memory, both Q8_0 + Q4_K, 128K context, listed on the Cloudflare page (開發中 until the
+  source generations exist):
+  - **L256** (256 GB): v4.0 100B-A10B at Q8_0 (about 106 GB), or v5.0
+    300B-A20B at Q4_K_M (about 183 GB, within 75% of 256 GB; 32K context).
+  - **L512** (512 GB): v5.0 300B-A20B at Q8_0 (about 318 GB) or Q4_K_M.
+- GGUF runs on all three platforms (CUDA on Spark, Vulkan / ROCm on the
+  395, Metal on Mac). An MLX export for Mac is not part of this change.
+- T164 in `test_package_tiers.py`.
+
 ## v5.189 (2026-10-28) - Pilot B0 on a one-GPU pod
 
 - `examples/pilot_b0_pod.sh`: step 3 (pilot vs E2B base) passed

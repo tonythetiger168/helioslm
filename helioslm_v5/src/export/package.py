@@ -1,7 +1,7 @@
 """Local deployment packages per product tier (v5.148).
 
 One directory per tier of the README *Product roadmap* local series
-(L-Edge / L8 / L16 / L24 / L48+): the tier's llama.cpp GGUF files, an
+(L-Edge / L8 / L16 / L24 / L48+ / L128 / L256 / L512): the tier's llama.cpp GGUF files, an
 Ollama ``Modelfile``, the llama.cpp commands and a ``manifest.json``
 (sizes, sha256, architecture, whether the weights fit the tier's memory).
 
@@ -36,7 +36,17 @@ TIERS = {t.name: t for t in (
          "RTX 3060 12GB, 4070, 4060 Ti / 5060 Ti 16GB"),
     Tier("L24", 24, ("q4_k",), 32768, 99, "RTX 3090, 4090, 5090"),
     Tier("L48+", 48, ("q8_0", "f16", "q4_k"), 131072, 99,
-         "RTX PRO 6000 96GB, 2x24 GB, 128 GB unified memory"),
+         "RTX PRO 6000 96GB, 2x24 GB, 64-96 GB unified memory"),
+    # v5.190: unified-memory tiers. 128 GB runs v4.0 100B-A10B at Q4_K or
+    # v3.0 30B-A3B at Q8_0 / BF16; 256 GB runs 100B-A10B at Q8_0 or v5.0
+    # 300B-A20B at Q4_K; 512 GB runs 300B-A20B at Q8_0
+    Tier("L128", 128, ("q4_k", "q8_0", "f16"), 131072, 99,
+         "128 GB unified memory: NVIDIA DGX Spark, AMD Ryzen AI Max+ 395, "
+         "Mac (M4 / M5 series incl. Max / Ultra) 128 GB"),
+    Tier("L256", 256, ("q8_0", "q4_k"), 131072, 99,
+         "Mac (M4 / M5 series incl. Ultra; Mac Studio M3 Ultra) 256 GB unified memory"),
+    Tier("L512", 512, ("q8_0", "q4_k"), 131072, 99,
+         "Mac (M4 / M5 series incl. Ultra; Mac Studio M3 Ultra) 512 GB unified memory"),
 )}
 
 # weights may use this share of the tier's memory; the rest is KV cache,
