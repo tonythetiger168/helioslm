@@ -1,5 +1,10 @@
 # HeliosLM v5 Changelog
 
+## v5.192 (2026-10-28) - fetch_mixture prints gate progress
+
+Each HDL project's gate result is printed (flushed) as it comes, with
+the running pass count, so a long data pod shows where it is. T162.
+
 ## v5.190 (2026-10-28) - unified-memory tiers (DGX Spark, Ryzen AI Max+ 395, Mac 128 / 256 / 512 GB)
 
 - L48+ is now 48-96 GB (RTX PRO 6000 96GB, 2x24 GB, 64-96 GB unified

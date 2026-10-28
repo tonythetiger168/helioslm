@@ -272,6 +272,24 @@ def stack_rows(ds, s, field):
             yield row.get(rf), row.get(pf), row.get(field) or ""
 
 
+class ProgressReport(list):
+    """The gate report; every row is also printed (flushed) as it comes,
+    so a long pod run shows its progress."""
+
+    def __init__(self, name):
+        super().__init__()
+        self.name, self.t0 = name, time.time()
+
+    def append(self, row):
+        super().append(row)
+        passed = sum(1 for r in self if r.get("pass"))
+        print(json.dumps({"source": self.name, "n": len(self), "passed": passed,
+                          "s": round(time.time() - self.t0),
+                          "project": row.get("project"), "pass": row.get("pass"),
+                          "error": (row.get("error") or "")[:120]},
+                         ensure_ascii=False), flush=True)
+
+
 def hdl_texts(s, ps, out, ds=None, field="text", *, tool=None, dedup=None,
               decontam=None, workers=1, gate=True):
     """Project documents of an HDL source with ``projects`` (v5.186), and
@@ -279,7 +297,7 @@ def hdl_texts(s, ps, out, ds=None, field="text", *, tool=None, dedup=None,
     read (vendored ones for dependencies only), the ``include`` /
     ``exclude`` files are grouped into ``projects.units``. hf: rows are
     grouped by repository after the licence filter."""
-    cfg, report = s["projects"], []
+    cfg, report = s["projects"], ProgressReport(s["name"])
     kw = dict(gate=gate and cfg.get("gate", True), tool=tool, dedup=dedup,
               decontam=decontam, report=report, workers=workers,
               timeout=cfg.get("timeout", 600))
