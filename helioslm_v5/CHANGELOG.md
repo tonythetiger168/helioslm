@@ -1,5 +1,13 @@
 # HeliosLM v5 Changelog
 
+## v5.195 (2026-10-29) - cpt_hf --max-repeat
+
+`cpt_hf.py --max-repeat R` caps each source's mixture weight so no source
+is read more than R times over the run; the freed share goes to the other
+sources by their weights (`cap_weights`). The gated H5 data came out far
+shorter than planned for the curated cores (CV32E40P 0.1M tokens against a
+planned 8%, which would be read about 46 times in a 61M-token run). T134.
+
 ## v5.194 (2026-10-28) - CVDP timeouts kill the simulators too
 
 `cvdp_bench.run` used `subprocess.run(shell=True, timeout=...)`, which

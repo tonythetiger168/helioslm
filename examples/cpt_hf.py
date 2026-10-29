@@ -54,8 +54,8 @@ class MixedSource:
         if not shards or len(shards) != len(weights):
             raise ValueError("need one weight per shard")
         w = np.asarray(weights, dtype=np.float64)
-        if (w <= 0).any():
-            raise ValueError("weights must be > 0")
+        if (w < 0).any() or w.sum() <= 0:
+            raise ValueError("weights must be >= 0, not all 0")
         self.shards, self.p = shards, w / w.sum()
 
     def batch(self, batch, seq, step, seed):
@@ -69,15 +69,44 @@ class MixedSource:
         return torch.cat(xs), torch.cat(ys)
 
 
-def load_phases(data_dir, seq):
+def cap_weights(weights, tokens, total, max_repeat):
+    """Mixture weights with no source read more than ``max_repeat`` times
+    over ``total`` training tokens (v5.195). A source whose planned share
+    would repeat it more often is held at ``max_repeat * tokens`` and the
+    freed share goes to the others by their weights (water-filling); when
+    every source is capped the shares follow the caps."""
+    w = np.asarray(weights, dtype=np.float64)
+    cap = max_repeat * np.asarray(tokens, dtype=np.float64) / total
+    share = np.zeros_like(w)
+    free = np.ones(len(w), dtype=bool)
+    left = 1.0
+    while free.any():
+        s = left * w[free] / w[free].sum()
+        over = s > cap[free]
+        if not over.any():
+            share[free] = s
+            break
+        idx = np.flatnonzero(free)[over]
+        share[idx] = cap[idx]
+        left -= cap[idx].sum()
+        free[idx] = False
+        if left <= 0:                   # the capped sources fill the run
+            break
+    return list(share / share.sum())
+
+
+def load_phases(data_dir, seq, tokens=None, max_repeat=None, decay_frac=0.2):
     """{"main": MixedSource, "decay": MixedSource or None} from a
     fetch_mixture.py directory; sources too short for one window are
-    dropped."""
+    dropped. With ``tokens`` and ``max_repeat`` the weights are capped so
+    no source repeats more than ``max_repeat`` times (``cap_weights``)."""
     data_dir = Path(data_dir)
     man = json.loads((data_dir / "manifest.json").read_text(encoding="utf-8"))
+    has_decay = any(r.get("phase") == "decay" and r.get("tokens")
+                    for r in man["sources"].values())
     phases = {}
     for ph in ("main", "decay"):
-        shards, weights = [], []
+        shards, weights, sizes = [], [], []
         for name, r in man["sources"].items():
             if r.get("phase") != ph or not r.get("path") or not r.get("tokens"):
                 continue
@@ -86,6 +115,10 @@ def load_phases(data_dir, seq):
             shards.append(TokenShard(data_dir / r["path"],
                                      dtype=man.get("dtype", "uint32")))
             weights.append(r["weight"])
+            sizes.append(r["tokens"])
+        if shards and tokens and max_repeat:
+            frac = (decay_frac if ph == "decay" else 1 - decay_frac) if has_decay else 1.0
+            weights = cap_weights(weights, sizes, tokens * frac, max_repeat)
         phases[ph] = MixedSource(shards, weights) if shards else None
     if phases["main"] is None:
         raise ValueError(f"{data_dir}: no main-phase shard")
@@ -289,6 +322,9 @@ def main(argv=None):
                     help="store --freeze parameters in bf16 (saves 2 bytes "
                          "per frozen parameter of GPU memory)")
     ap.add_argument("--max-hours", type=float, default=None)
+    ap.add_argument("--max-repeat", type=float, default=None,
+                    help="cap each source's weight so it is read at most this "
+                         "many times (v5.195)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--ce-chunk", type=int, default=0,
                     help="v5.152: output head + cross-entropy this many "
@@ -331,7 +367,7 @@ def main(argv=None):
     if world > 1:
         net = torch.nn.parallel.DistributedDataParallel(
             model, device_ids=[local], find_unused_parameters=True)
-    phases = load_phases(a.data, a.seq)
+    phases = load_phases(a.data, a.seq, a.tokens, a.max_repeat, a.decay_frac)
     if a.ce_chunk:
         x, y = phases["main"].batch(1, min(a.seq, 128), 0, a.seed)
         # bf16 matmuls round differently in the two paths: looser tolerance
