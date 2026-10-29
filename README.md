@@ -684,6 +684,7 @@ As of 2026-10-26:
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.200** — `package_hf.py --quants` (per-tier quantization override) and `--chat` (Modelfile keeps the GGUF chat template) for packaging instruction-tuned models such as the HDL model — T166
 - **v5.199** — v5.134-era compatibility aliases removed: `helioslm_v5`, `HeliosLMv5*` and `HELIOS_*` are the only names
 - **v5.198** — H5 mixture: single Verilog_GitHub files get a 60 s synth-gate timeout (was 600 s), so slow files no longer stall the gate — T162
 - **v5.197** — the `--list` probe also reports `MODEL=<config model_name>` and `CHANGELOG=v<head>` so version drift surfaces in one command; README quick-start test count repaired (92 → actual registry) and locked to `len(TESTS)` — T151, T152

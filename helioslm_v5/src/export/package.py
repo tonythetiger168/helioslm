@@ -68,11 +68,12 @@ def _slug(tier):
     return tier.lower().replace("+", "plus")
 
 
-def modelfile(gguf_name, tier):
-    """Ollama Modelfile text for ``gguf_name`` (a base model: raw prompt)."""
-    return (f"FROM ./{gguf_name}\n"
-            'TEMPLATE """{{ .Prompt }}"""\n'
-            f"PARAMETER num_ctx {tier.ctx}\n")
+def modelfile(gguf_name, tier, chat=False):
+    """Ollama Modelfile text for ``gguf_name``: a base model takes the raw
+    prompt; a chat model (``chat``) keeps the template embedded in the
+    GGUF (``tokenizer.chat_template``), so no TEMPLATE line is written."""
+    template = "" if chat else 'TEMPLATE """{{ .Prompt }}"""\n'
+    return f"FROM ./{gguf_name}\n{template}PARAMETER num_ctx {tier.ctx}\n"
 
 
 def _readme(name, tier, arch, files, has_tokenizer):
@@ -135,9 +136,9 @@ def package_tier(model, config, tier, out_dir, *, name="helioslm", tokenizer=Non
     return _write_package(out, name, t, arch, files, tokenizer is not None)
 
 
-def _write_package(out, name, t, arch, files, has_tokenizer, extra=None):
+def _write_package(out, name, t, arch, files, has_tokenizer, extra=None, chat=False):
     if has_tokenizer:
-        (out / "Modelfile").write_text(modelfile(files[0]["file"], t))
+        (out / "Modelfile").write_text(modelfile(files[0]["file"], t, chat))
     (out / "README.md").write_text(_readme(name, t, arch, files, has_tokenizer))
     manifest = {"name": name, "tier": t.name, "arch": arch, "memory_gb": t.memory_gb,
                 "ctx": t.ctx, "gpu_layers": t.gpu_layers, "hardware": t.hardware,
@@ -147,7 +148,8 @@ def _write_package(out, name, t, arch, files, has_tokenizer, extra=None):
     return manifest
 
 
-def package_gguf(ggufs, tier, out_dir, *, name, arch, ctx=None, base=None):
+def package_gguf(ggufs, tier, out_dir, *, name, arch, ctx=None, base=None, quants=None,
+                 chat=False):
     """Package GGUF files made outside this repo (v5.196).
 
     For a continued-pretraining checkpoint of an open Hugging Face base
@@ -159,7 +161,10 @@ def package_gguf(ggufs, tier, out_dir, *, name, arch, ctx=None, base=None):
     are copied in the tier's order. ``arch`` is the llama.cpp architecture
     (e.g. ``gemma4``), ``base`` the base model id kept in the manifest.
     Converted HF checkpoints carry their tokenizer, so a Modelfile is
-    always written.
+    always written. ``quants`` overrides the tier's quant list (order =
+    file order, first = default), e.g. Q8_0 on L16 for a larger model.
+    ``chat`` marks an instruction-tuned model: its Modelfile keeps the
+    GGUF's own chat template.
     """
     if tier not in TIERS:
         raise ValueError(f"tier must be one of {list(TIERS)}, got {tier!r}")
@@ -169,7 +174,7 @@ def package_gguf(ggufs, tier, out_dir, *, name, arch, ctx=None, base=None):
     bad = [q for q in ggufs if q not in QUANT_LABEL]
     if bad:
         raise ValueError(f"quants must be from {list(QUANT_LABEL)}, got {bad}")
-    quants = [q for q in t.quants if q in ggufs]
+    quants = [q for q in (quants or t.quants) if q in ggufs]
     if not quants:
         raise ValueError(f"{t.name} needs one of {list(t.quants)}, got {list(ggufs)}")
     out = Path(out_dir)
@@ -182,5 +187,5 @@ def package_gguf(ggufs, tier, out_dir, *, name, arch, ctx=None, base=None):
         files.append({"file": fname, "quant": q, "bytes": size,
                       "sha256": _sha256(out / fname),
                       "fits": size <= FIT_SHARE * t.memory_gb * 2**30})
-    return _write_package(out, name, t, arch, files, True,
-                          {"base": base} if base else None)
+    extra = {"chat": chat, **({"base": base} if base else {})}
+    return _write_package(out, name, t, arch, files, True, extra, chat)

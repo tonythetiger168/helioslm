@@ -206,3 +206,27 @@ def test_package_gguf_external_files(tmp_path):
     from helioslm_v5.src.export.cloudflare import bundle_package
     entry = bundle_package(tmp_path / "d" / "L8", tmp_path / "cf", version="b0")
     assert [b["quant"] for b in entry["bundles"]] == ["Q4_K", "Q8_0"]
+
+
+def test_package_gguf_quant_override(tmp_path):
+    """T166 (v5.200): a per-tier quant override picks other files, in its
+    order (a larger model ships Q8_0 on L16 instead of F16); a chat model's
+    Modelfile keeps the GGUF's own chat template."""
+    src = {q: tmp_path / f"{q}.gguf" for q in ("f16", "q8_0", "q4_k")}
+    for p in src.values():
+        p.write_bytes(b"x" * 10)
+    m = package.package_gguf(src, "L16", tmp_path / "L16", name="hdl", arch="gemma4",
+                             quants=["q8_0"])
+    assert [f["quant"] for f in m["files"]] == ["q8_0"]
+    assert "TEMPLATE" in (tmp_path / "L16" / "Modelfile").read_text() and not m["chat"]
+    c = package.package_gguf(src, "L8", tmp_path / "c", name="hdl", arch="gemma4", chat=True)
+    assert c["chat"] and "TEMPLATE" not in (tmp_path / "c" / "Modelfile").read_text()
+    r = subprocess.run([sys.executable, "examples/package_hf.py", "--out", str(tmp_path / "d"),
+                        "--name", "n", "--arch", "gemma4", "--tiers", "L16", "L24",
+                        "--quants", "L16=q8_0", "L24=f16",
+                        "--gguf", *[f"{q}={p}" for q, p in src.items()]],
+                       capture_output=True, text=True, cwd=_REPO)
+    assert r.returncode == 0, r.stderr
+    got = {t: [f["quant"] for f in json.loads((tmp_path / "d" / t / "manifest.json").read_text())["files"]]
+           for t in ("L16", "L24")}
+    assert got == {"L16": ["q8_0"], "L24": ["f16"]}

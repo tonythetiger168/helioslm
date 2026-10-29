@@ -1,5 +1,7 @@
-# HeliosLM v5.197 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.200 - DeepSeek/K3-Style Architecture
 
+v5.200 (2026-10-29): `package_hf.py --quants` / `--chat` for packaging
+instruction-tuned models (per-tier quants, GGUF chat template kept).
 v5.197 (2026-10-29): `--list` reports the MODEL/CHANGELOG version pair;
 README quick-start test count repaired and locked to the registry.
 v5.196 (2026-10-29): tier packages from a Hugging Face checkpoint
