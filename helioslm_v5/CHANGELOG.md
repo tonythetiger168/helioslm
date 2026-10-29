@@ -1,6 +1,6 @@
 # HeliosLM v5 Changelog
 
-## v5.196 (2026-10-29) - 60 s gate timeout for single Verilog files
+## v5.198 (2026-10-29) - 60 s gate timeout for single Verilog files
 
 The H5 mixture's `verilog-github` rows (one file each) are gated with a
 60 s timeout instead of 600 s. Rows are gated 256 at a time, and a few
