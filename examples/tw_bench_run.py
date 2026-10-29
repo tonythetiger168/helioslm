@@ -41,9 +41,19 @@ def load_hf(model_id, revision=None, device="cuda"):
     kw = dict(revision=revision, trust_remote_code=True)
     tok = AutoTokenizer.from_pretrained(model_id, **kw)
     dtype = torch.float32 if device == "cpu" else torch.bfloat16
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id, torch_dtype=dtype,
-        device_map=None if device == "cpu" else "auto", **kw).eval()
+    load = dict(torch_dtype=dtype,
+                device_map=None if device == "cpu" else "auto", **kw)
+    try:
+        model = AutoModelForCausalLM.from_pretrained(model_id, **load).eval()
+    except ValueError as e:
+        # v5.202: image-text checkpoints with no causal-LM mapping (e.g.
+        # Mistral3ForConditionalGeneration) load as image-text-to-text and
+        # are scored on text only, like Gemma 4
+        if "Unrecognized configuration class" not in str(e):
+            raise
+        from transformers import AutoModelForImageTextToText
+        model = AutoModelForImageTextToText.from_pretrained(
+            model_id, **load).eval()
     sha = getattr(model.config, "_commit_hash", None) or revision
     return model, tok, sha
 

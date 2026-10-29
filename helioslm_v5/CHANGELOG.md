@@ -1,5 +1,13 @@
 # HeliosLM v5 Changelog
 
+## v5.202 (2026-10-29) - load_hf: image-text checkpoints without a causal-LM mapping
+
+`examples/tw_bench_run.py load_hf` falls back to
+`AutoModelForImageTextToText` when `AutoModelForCausalLM` rejects the
+config class (the base-gap eval of `mistralai/Mistral-Small-4-119B-2603`,
+a `Mistral3ForConditionalGeneration`, failed this way). Such models are
+scored on text only, as Gemma 4 already is. Other load errors still raise.
+
 ## v5.201 (2026-10-29) - package_hf: per-tier quants, chat models
 
 - `package_gguf(..., quants=[...])` and `package_hf.py --quants L16=q8_0

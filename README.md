@@ -684,6 +684,7 @@ As of 2026-10-26:
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.202** — `load_hf` falls back to image-text-to-text for checkpoints with no causal-LM mapping (Mistral 3 family), so the base-gap eval can score them
 - **v5.201** — `package_hf.py --quants` (per-tier quantization override) and `--chat` (Modelfile keeps the GGUF chat template) for packaging instruction-tuned models such as the HDL model — T166
 - **v5.200** — B0 rerun knobs: `LR` and `MIXTURE` in `pilot_b0_pod.sh`, plus a public mixture that is about 60% Taiwanese Traditional Chinese (`b0_e2b_public_tw_v2.json`)
 - **v5.199** — v5.134-era compatibility aliases removed: `helioslm_v5`, `HeliosLMv5*` and `HELIOS_*` are the only names
