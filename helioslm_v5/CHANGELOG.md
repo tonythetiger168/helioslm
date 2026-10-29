@@ -92,6 +92,26 @@ gate. Any `projects` key now gates (`project_source`). T162.
 Each HDL project's gate result is printed (flushed) as it comes, with
 the running pass count, so a long data pod shows where it is. T162.
 
+## v5.191 (2026-10-28) - Spatial plugin (pano2world)
+
+Gives the agent a 3D world to reason about. `SpatialPlugin` (harness v1.23,
+`ctx.spatial.*`) is a stdlib HTTP client for a pano2world server
+(`PANO2WORLD_URL`, default `http://localhost:8000`):
+
+- `generate(prompt, backend, rings)`: text -> panorama -> walkable Gaussian-
+  splat world; TrustGate-gated like the other side-effecting plugins (it
+  spends GPU time), fails closed without `decision.trust`;
+- `scene(world)`: scene graph — objects with 3D centre, distance, bearing,
+  elevation and size (OWLv2 detections lifted with the splats' depth), floor
+  height, per-degree clearance, walk radius;
+- `query(world, op, *args)`: objects / distance / relation / nearest / path /
+  go_to / describe; `describe(world)` is the one-paragraph summary for a
+  prompt.
+
+Every op returns a dict (errors included) and records an effect. T165
+(`helioslm_v5/tests/test_v123_spatial.py`) runs it against a stub server: no
+GPU, no torch, no pano2world checkout.
+
 ## v5.190 (2026-10-28) - unified-memory tiers (DGX Spark, Ryzen AI Max+ 395, Mac 128 / 256 / 512 GB)
 
 - L48+ is now 48-96 GB (RTX PRO 6000 96GB, 2x24 GB, 64-96 GB unified

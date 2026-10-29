@@ -333,6 +333,7 @@ azure-storage-blob pyttsx3 speech_recognition ultralytics transformers`
 | SLAMPlugin | `ctx.slam.*` | create_map, scan, integrate, frontier |
 | VisionPlugin | `ctx.vision.*` | detect, ocr, caption |
 | AutoDrivePlugin | `ctx.autodrive.*` | simulate (lane keep + obstacle avoid) |
+| SpatialPlugin (v1.23) | `ctx.spatial.*` | generate, scene, query, describe (3D worlds and spatial questions via [pano2world](https://github.com/tonythetiger168/pano2world); `PANO2WORLD_URL`) |
 
 ### Security / Cloud / RL (v1.21-v1.22)
 | Plugin | Namespace | Key ops |

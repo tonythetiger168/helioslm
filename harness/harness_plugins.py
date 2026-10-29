@@ -1623,6 +1623,102 @@ class SLAMPlugin:
         ctx.register("slam.frontier", frontier)
 
 
+class SpatialPlugin:
+    """v1.23: spatial intelligence through pano2world (text -> 360 panorama
+    -> walkable 3D Gaussian-splat world). The language model asks for a
+    world and then asks questions about it; pano2world answers from a
+    scene graph (open-vocabulary detections lifted to 3D with the depth
+    the splats were built from). Ops:
+    - generate(prompt, backend, rings): build a world (GPU job on the
+      pano2world server; TrustGate-gated, it costs GPU time)
+    - scene(world): objects with 3D centre, distance, bearing; floor
+      height; per-degree clearance; walk radius
+    - query(world, op, *args): objects / distance / relation / nearest /
+      path / go_to / describe (see pano2world scripts/spatial_query.py)
+    - describe(world): one paragraph for the prompt
+    Frame: camera at the origin, x right, y up, z forward; bearing 0 =
+    ahead, positive = right. Units are monocular-depth units (roughly
+    metres, not calibrated). Server: PANO2WORLD_URL (default
+    http://localhost:8000)."""
+
+    def __init__(self, base_url=None, poll_s=3.0):
+        self.base_url = (base_url or os.environ.get("PANO2WORLD_URL")
+                         or "http://localhost:8000").rstrip("/")
+        self.poll_s = poll_s
+
+    def apply(self, ctx):
+        import json as _json
+        import time as _time
+        import urllib.error
+        import urllib.request
+
+        def _call(method, path, body=None, timeout=120):
+            data = None if body is None else _json.dumps(body).encode()
+            req = urllib.request.Request(
+                self.base_url + path, data=data, method=method,
+                headers={"Content-Type": "application/json",
+                         "User-Agent": "helios-harness/1.23"})
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as r:
+                    return _json.loads(r.read().decode())
+            except urllib.error.HTTPError as e:
+                return {"error": f"HTTP {e.code}: "
+                                 f"{e.read().decode(errors='replace')[:200]}"}
+            except Exception as e:
+                return {"error": str(e)[:200]}
+
+        def generate(prompt, backend="sd15", rings=1, wait=True,
+                     timeout_s=1800):
+            g = _trust_check(ctx, "spatial", {"op": "generate",
+                                              "prompt": prompt[:80]},
+                             f"spatial.generate {prompt}", "spatial.generate")
+            if g:
+                return g
+            r = _call("POST", "/api/generate",
+                      {"prompt": prompt, "backend": backend,
+                       "rings": rings, "fill": True})
+            if "error" in r:
+                return r
+            job = r["id"]
+            ctx.effect("spatial_generate", {"world": job, "backend": backend},
+                       replay_fn=lambda p: True)
+            if not wait:
+                return {"world": job, "status": "queued"}
+            t0 = _time.time()
+            while _time.time() - t0 < timeout_s:
+                st = _call("GET", f"/api/jobs/{job}")
+                if st.get("status") == "done":
+                    return {"world": job, "file": st.get("file"),
+                            "walk_radius": st.get("radius")}
+                if "error" in st or st.get("status") == "error":
+                    return {"error": st.get("error") or st, "world": job}
+                _time.sleep(self.poll_s)
+            return {"error": "timeout", "world": job}
+
+        def scene(world):
+            r = _call("GET", f"/api/worlds/{world}/scene", timeout=600)
+            if "error" not in r:
+                ctx.effect("spatial_scene",
+                           {"world": world, "objects": len(r.get("objects", []))},
+                           replay_fn=lambda p: True)
+            return r
+
+        def query(world, op, *args, **kwargs):
+            r = _call("POST", f"/api/worlds/{world}/query",
+                      {"op": op, "args": list(args), "kwargs": kwargs})
+            ctx.effect("spatial_query", {"world": world, "op": op},
+                       replay_fn=lambda p: True)
+            return r
+
+        def describe(world):
+            return query(world, "describe")
+
+        ctx.register("spatial.generate", generate)
+        ctx.register("spatial.scene", scene)
+        ctx.register("spatial.query", query)
+        ctx.register("spatial.describe", describe)
+
+
 class VisionPlugin:
     """v1.18: computer vision. Object detection interface (YOLO-class
     stub), OCR (pytesseract or stub), image captioning (transformers
