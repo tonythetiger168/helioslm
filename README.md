@@ -683,6 +683,7 @@ As of 2026-10-26:
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.196** — Tier packages from a Hugging Face checkpoint (`examples/package_hf.py`): llama.cpp converts and quantizes, `package_gguf` writes the same tier layout, so a route-B pilot goes to the Cloudflare download page unchanged — T166
 - **v5.195** — `cpt_hf.py --max-repeat R`: no data source is read more than R times in continued pretraining (short sources no longer get memorised) — T134
 - **v5.194** — CVDP scoring: a test-command timeout now kills its simulators too, not only the shell; `hdl_eval_all.py --samples` rescores saved generations without a GPU — T144
 - **v5.193** — The Stack SystemVerilog repositories go through the lint + synth gate too (an empty `projects` setting no longer skips it) — T162

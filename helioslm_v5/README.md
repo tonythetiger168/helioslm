@@ -1,7 +1,7 @@
-# HeliosLM v5.190 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.196 - DeepSeek/K3-Style Architecture
 
-v5.190 (2026-10-28): unified-memory tiers L128 (DGX Spark / Ryzen AI Max+
-395 / Mac 128 GB), L256 / L512 (Mac M4 / M5 incl. Ultra, 256 / 512 GB).
+v5.196 (2026-10-29): tier packages from a Hugging Face checkpoint
+(`examples/package_hf.py`, llama.cpp converts), for the route-B pilot.
 
 v5.188 (2026-10-28): Cloudflare download bundles per GPU-memory tier
 (R2 zips + a static download page; links never point at GitHub).

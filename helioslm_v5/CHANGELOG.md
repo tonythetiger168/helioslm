@@ -1,5 +1,23 @@
 # HeliosLM v5 Changelog
 
+## v5.196 (2026-10-29) - tier packages from a Hugging Face checkpoint
+
+Route B checkpoints (continued pretraining of an open base, e.g. pilot
+B0 on Gemma 4 E2B) are not HeliosLM models, so `package_tier` cannot
+export them. llama.cpp's own tools make their GGUFs instead:
+
+- `package.package_gguf(ggufs, tier, out_dir, name=, arch=, base=)`
+  copies existing GGUFs into the tier layout `package_tier` writes
+  (GGUF, Modelfile, README, manifest with sizes / sha256 / fit flags, plus
+  `base`), so `publish_cloudflare.py` bundles them unchanged.
+- `examples/package_hf.py --hf <ckpt> --llama-cpp <checkout> --out dist/
+  --tiers L8 L16 --name ... --arch gemma4 --base google/gemma-4-E2B`:
+  `convert_hf_to_gguf.py --outtype f16` once, `llama-quantize` to Q8_0 /
+  Q4_K_M, then one package per tier. `--dry-run` prints the commands;
+  `--gguf q4_k=<file> ...` packages files made elsewhere.
+- Runs on a pod or a local machine with llama.cpp built (not in CI).
+- T166 in `test_package_tiers.py`.
+
 ## v5.195 (2026-10-29) - cpt_hf --max-repeat
 
 `cpt_hf.py --max-repeat R` caps each source's mixture weight so no source

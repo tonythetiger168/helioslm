@@ -12,6 +12,7 @@ Q4_K_M uses for most tensors).
 """
 import hashlib
 import json
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -131,12 +132,55 @@ def package_tier(model, config, tier, out_dir, *, name="helioslm", tokenizer=Non
         size = Path(path).stat().st_size
         files.append({"file": fname, "quant": q, "bytes": size, "sha256": _sha256(path),
                       "fits": size <= FIT_SHARE * t.memory_gb * 2**30})
-    if tokenizer is not None:
+    return _write_package(out, name, t, arch, files, tokenizer is not None)
+
+
+def _write_package(out, name, t, arch, files, has_tokenizer, extra=None):
+    if has_tokenizer:
         (out / "Modelfile").write_text(modelfile(files[0]["file"], t))
-    (out / "README.md").write_text(_readme(name, t, arch, files, tokenizer is not None))
+    (out / "README.md").write_text(_readme(name, t, arch, files, has_tokenizer))
     manifest = {"name": name, "tier": t.name, "arch": arch, "memory_gb": t.memory_gb,
                 "ctx": t.ctx, "gpu_layers": t.gpu_layers, "hardware": t.hardware,
-                "tokenizer": tokenizer is not None, "files": files,
-                "fits": files[0]["fits"]}
+                "tokenizer": has_tokenizer, "files": files,
+                "fits": files[0]["fits"], **(extra or {})}
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     return manifest
+
+
+def package_gguf(ggufs, tier, out_dir, *, name, arch, ctx=None, base=None):
+    """Package GGUF files made outside this repo (v5.196).
+
+    For a continued-pretraining checkpoint of an open Hugging Face base
+    (route B), llama.cpp's own ``convert_hf_to_gguf.py`` and
+    ``llama-quantize`` make the GGUFs; this writes them into the same
+    tier layout as :func:`package_tier` so ``publish_cloudflare.py``
+    bundles them unchanged. ``ggufs`` maps a quant key of
+    :data:`QUANT_LABEL` to a GGUF path; the tier's quants that are present
+    are copied in the tier's order. ``arch`` is the llama.cpp architecture
+    (e.g. ``gemma4``), ``base`` the base model id kept in the manifest.
+    Converted HF checkpoints carry their tokenizer, so a Modelfile is
+    always written.
+    """
+    if tier not in TIERS:
+        raise ValueError(f"tier must be one of {list(TIERS)}, got {tier!r}")
+    t = TIERS[tier]
+    if ctx is not None:
+        t = Tier(t.name, t.memory_gb, t.quants, int(ctx), t.gpu_layers, t.hardware)
+    bad = [q for q in ggufs if q not in QUANT_LABEL]
+    if bad:
+        raise ValueError(f"quants must be from {list(QUANT_LABEL)}, got {bad}")
+    quants = [q for q in t.quants if q in ggufs]
+    if not quants:
+        raise ValueError(f"{t.name} needs one of {list(t.quants)}, got {list(ggufs)}")
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    files = []
+    for q in quants:
+        fname = f"{_slug(name)}-{_slug(t.name)}-{QUANT_LABEL[q]}.gguf"
+        shutil.copyfile(ggufs[q], out / fname)
+        size = (out / fname).stat().st_size
+        files.append({"file": fname, "quant": q, "bytes": size,
+                      "sha256": _sha256(out / fname),
+                      "fits": size <= FIT_SHARE * t.memory_gb * 2**30})
+    return _write_package(out, name, t, arch, files, True,
+                          {"base": base} if base else None)

@@ -169,3 +169,40 @@ def test_unified_memory_tiers():
     assert "| **L128** | 128 GB unified memory |" in readme
     assert "| **L256** | 256 GB unified memory |" in readme
     assert "| **L512** | 512 GB unified memory |" in readme
+
+
+def test_package_gguf_external_files(tmp_path):
+    """T166 (v5.196): GGUFs made by llama.cpp from a Hugging Face checkpoint
+    go into the same tier layout, in the tier's quant order, with sizes /
+    hashes matching the copies, a Modelfile and the base in the manifest;
+    the script's conversion plan quantizes from one F16 file."""
+    src = {}
+    for q, n in (("f16", 3000), ("q8_0", 2000), ("q4_k", 1000)):
+        src[q] = tmp_path / f"{q}.gguf"
+        src[q].write_bytes(bytes([len(q)]) * n)
+    m = package.package_gguf(src, "L16", tmp_path / "L16", name="tw-pilot",
+                             arch="gemma4", base="google/gemma-4-E2B")
+    assert [f["quant"] for f in m["files"]] == ["f16", "q4_k"]
+    assert m["arch"] == "gemma4" and m["base"] == "google/gemma-4-E2B" and m["tokenizer"]
+    for f in m["files"]:
+        data = (tmp_path / "L16" / f["file"]).read_bytes()
+        assert f["bytes"] == len(data) and f["sha256"] == hashlib.sha256(data).hexdigest()
+    assert "tw-pilot-l16-F16.gguf" in (tmp_path / "L16" / "Modelfile").read_text()
+    with pytest.raises(ValueError):
+        package.package_gguf({"q8_0": src["q8_0"]}, "L16", tmp_path / "x",
+                             name="n", arch="gemma4")
+    sys.path.insert(0, str(_REPO / "examples"))
+    import package_hf
+    cmds, paths = package_hf.convert_commands("ckpt", "/llama", tmp_path, ["q4_k", "q8_0"])
+    assert cmds[0][1].endswith("convert_hf_to_gguf.py") and cmds[0][-1] == str(paths["f16"])
+    assert [c[-1] for c in cmds[1:]] == ["Q4_K_M", "Q8_0"]
+    assert all(c[1] == str(paths["f16"]) for c in cmds[1:])
+    r = subprocess.run([sys.executable, "examples/package_hf.py", "--out", str(tmp_path / "d"),
+                        "--name", "n", "--arch", "gemma4", "--tiers", "L8",
+                        "--gguf", f"q4_k={src['q4_k']}", f"q8_0={src['q8_0']}"],
+                       capture_output=True, text=True, cwd=_REPO)
+    assert r.returncode == 0, r.stderr
+    assert json.loads((tmp_path / "d" / "L8" / "manifest.json").read_text())["files"][0]["quant"] == "q4_k"
+    from helioslm_v5.src.export.cloudflare import bundle_package
+    entry = bundle_package(tmp_path / "d" / "L8", tmp_path / "cf", version="b0")
+    assert [b["quant"] for b in entry["bundles"]] == ["Q4_K", "Q8_0"]
