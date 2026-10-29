@@ -209,7 +209,7 @@ def test_package_gguf_external_files(tmp_path):
 
 
 def test_package_gguf_quant_override(tmp_path):
-    """T166 (v5.200): a per-tier quant override picks other files, in its
+    """T166 (v5.201): a per-tier quant override picks other files, in its
     order (a larger model ships Q8_0 on L16 instead of F16); a chat model's
     Modelfile keeps the GGUF's own chat template."""
     src = {q: tmp_path / f"{q}.gguf" for q in ("f16", "q8_0", "q4_k")}

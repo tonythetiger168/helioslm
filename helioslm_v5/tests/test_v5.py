@@ -208,7 +208,7 @@ TESTS = [
     # grouped dispatch (plus cross-dispatch bitwise state equality).
     case_upstream_suites.test_moe_dispatch_suite,
     case_moe.test_balance_state_resume_grouped,
-    # v5.200 (2026-10-29): --list reports MODEL/CHANGELOG versions (drift
+    # v5.201 (2026-10-29): --list reports MODEL/CHANGELOG versions (drift
     # surfaces in one probe); README quick-start test count locked to the
     # registry (was stale: 92 claimed vs 111 registered).
     case_harness_repair.test_list_probe_reports_versions,
@@ -244,7 +244,7 @@ def main():
         # gate) a fast smoke check of the mandated `python -m ...` entry
         # point without paying for the full suite.
         print(f"TESTS={len(TESTS)}")
-        # v5.200: also surface the version pair, so the same probe shows
+        # v5.201: also surface the version pair, so the same probe shows
         # model_name vs changelog-head drift in one shot instead of
         # needing a second command (the drift has recurred: v5.49->v5.109,
         # v5.134->v5.152, both caught by hand).
@@ -260,7 +260,7 @@ def main():
         print(f"MODEL={_m.group(1) if _m else 'UNKNOWN'}")
         print(f"CHANGELOG=v{_h.group(1) if _h else 'UNKNOWN'}")
         sys.exit(0)
-    print("HeliosLM v5.200 Test Suite (lite config, CPU)")
+    print("HeliosLM v5.201 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:

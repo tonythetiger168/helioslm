@@ -1,6 +1,6 @@
 # HeliosLM v5 Changelog
 
-## v5.200 (2026-10-29) - package_hf: per-tier quants, chat models
+## v5.201 (2026-10-29) - package_hf: per-tier quants, chat models
 
 - `package_gguf(..., quants=[...])` and `package_hf.py --quants L16=q8_0
   L24=f16` override a tier's quant list, so a larger model (e.g. the
@@ -10,6 +10,22 @@
   line, so Ollama uses the chat template embedded in the GGUF; the
   manifest records `chat`.
 - T166.
+
+## v5.200 (2026-10-29) - B0 rerun: LR / MIXTURE knobs, public Taiwanese mixture
+
+The first B0 pilot (2.5e8 tokens, lr 5e-5, the B1 draft mixture with
+its gated sources skipped) scored below the E2B base on TMMLU+, C-Eval
+and CMMLU. Its fetch log shows why the mixture was so thin on Taiwanese
+text: `twinkle-ai/fineweb-zhtw-filtered` has no data files, so
+Traditional Chinese was under 20% of the tokens.
+
+- `examples/pilot_b0_pod.sh`: `LR` (passed to `cpt_hf.py --lr`, default
+  5e-5) and `MIXTURE` (mixture JSON, default the B1 draft).
+- `data/mixtures/b0_e2b_public_tw_v2.json`: public sources only, about
+  60% Taiwanese Traditional Chinese (FineWeb-2 `cmn_Hani` and zh
+  Wikipedia kept only where `zh_variant` is `tw`, plus zh_TW C4) and
+  more Chinese replay (chinese-fineweb-edu, 15%) so C-Eval / CMMLU
+  knowledge is kept. Meant for `LR=1.5e-5`.
 
 ## v5.199 (2026-10-29) - drop the v5.134 compatibility aliases
 
