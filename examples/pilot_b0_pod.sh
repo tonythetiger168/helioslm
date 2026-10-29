@@ -17,6 +17,8 @@
 # then fetches only BENCHES (default: every bench this account can read).
 # v5.189: SKIP_STD=1 skips step 4 (lm-eval common benchmarks); steps 3
 # and 4 run on a 1-GPU pod too.
+# v5.200: LR (cpt_hf.py --lr, default 5e-5) and MIXTURE (mixture JSON,
+# default the B1 draft) for the B0 rerun with a gentler recipe.
 set -uo pipefail
 PER_HOUR=${PER_HOUR:-30}
 MAX_COST=${MAX_COST:-300}
@@ -26,6 +28,8 @@ ALLOW_BLOCKED=${ALLOW_BLOCKED:-0}
 SKIP_GAP=${SKIP_GAP:-0}
 BENCHES=${BENCHES:-}
 SKIP_STD=${SKIP_STD:-0}
+LR=${LR:-5e-5}
+MIXTURE=${MIXTURE:-data/mixtures/b1_gemma4_e4b_cpt_v1.json}
 MIXARGS=(); [ "$ALLOW_BLOCKED" = 1 ] && MIXARGS=(--allow-blocked)
 export HF_HOME=/workspace/hf
 cd /workspace
@@ -52,7 +56,7 @@ GAPCHECK=(python examples/base_gap_eval.py --check-access)
 [ "$SKIP_GAP" = 1 ] && GAPCHECK=(true)
 if ! "${GAPCHECK[@]}" \
      || ! python examples/fetch_mixture.py --check-only "${MIXARGS[@]}" \
-          --mixture data/mixtures/b1_gemma4_e4b_cpt_v1.json \
+          --mixture "$MIXTURE" \
           --tokenizer google/gemma-4-E2B --tokens "$TOKENS" \
           --out /workspace/cpt_data; then
   echo "preflight failed: see above; stopping the pod"
@@ -76,7 +80,7 @@ else
   GAP=$!
 fi
 timeout 3h python examples/fetch_mixture.py "${MIXARGS[@]}" \
-    --mixture data/mixtures/b1_gemma4_e4b_cpt_v1.json \
+    --mixture "$MIXTURE" \
     --tokenizer google/gemma-4-E2B --tokens "$TOKENS" --out /workspace/cpt_data \
     > /workspace/fetch_mixture.log 2>&1
 echo "fetch_mixture exit $?"; tail -5 /workspace/fetch_mixture.log
@@ -93,7 +97,7 @@ echo "cpt_hf dry run exit $?"; tail -20 /workspace/cpt_dry_run.log
 MAXH=$(left_h)
 echo "training for at most ${MAXH} h"
 torchrun --nproc_per_node "$NGPU" examples/cpt_hf.py --model google/gemma-4-E2B \
-    --data /workspace/cpt_data --tokens "$TOKENS" --max-hours "$MAXH" \
+    --data /workspace/cpt_data --tokens "$TOKENS" --max-hours "$MAXH" --lr "$LR" \
     --out /workspace/runs/b0 2>&1 | tee /workspace/cpt_b0.log
 echo "cpt_hf exit ${PIPESTATUS[0]}"
 
