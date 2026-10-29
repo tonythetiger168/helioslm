@@ -1,6 +1,6 @@
 # HeliosLM v5 Changelog
 
-## v5.195 (2026-10-29) - tier packages from a Hugging Face checkpoint
+## v5.196 (2026-10-29) - tier packages from a Hugging Face checkpoint
 
 Route B checkpoints (continued pretraining of an open base, e.g. pilot
 B0 on Gemma 4 E2B) are not HeliosLM models, so `package_tier` cannot
@@ -17,6 +17,14 @@ export them. llama.cpp's own tools make their GGUFs instead:
   `--gguf q4_k=<file> ...` packages files made elsewhere.
 - Runs on a pod or a local machine with llama.cpp built (not in CI).
 - T166 in `test_package_tiers.py`.
+
+## v5.195 (2026-10-29) - cpt_hf --max-repeat
+
+`cpt_hf.py --max-repeat R` caps each source's mixture weight so no source
+is read more than R times over the run; the freed share goes to the other
+sources by their weights (`cap_weights`). The gated H5 data came out far
+shorter than planned for the curated cores (CV32E40P 0.1M tokens against a
+planned 8%, which would be read about 46 times in a 61M-token run). T134.
 
 ## v5.194 (2026-10-28) - CVDP timeouts kill the simulators too
 

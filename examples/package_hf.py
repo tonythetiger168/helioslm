@@ -1,4 +1,4 @@
-"""package_hf.py — tier packages from a Hugging Face checkpoint (v5.195).
+"""package_hf.py — tier packages from a Hugging Face checkpoint (v5.196).
 
 For route B (continued pretraining of an open base, e.g. the pilot B0
 checkpoint): llama.cpp converts and quantizes, then each tier gets the

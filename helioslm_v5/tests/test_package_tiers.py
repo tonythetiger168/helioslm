@@ -172,7 +172,7 @@ def test_unified_memory_tiers():
 
 
 def test_package_gguf_external_files(tmp_path):
-    """T166 (v5.195): GGUFs made by llama.cpp from a Hugging Face checkpoint
+    """T166 (v5.196): GGUFs made by llama.cpp from a Hugging Face checkpoint
     go into the same tier layout, in the tier's quant order, with sizes /
     hashes matching the copies, a Modelfile and the base in the manifest;
     the script's conversion plan quantizes from one F16 file."""

@@ -148,7 +148,7 @@ def _write_package(out, name, t, arch, files, has_tokenizer, extra=None):
 
 
 def package_gguf(ggufs, tier, out_dir, *, name, arch, ctx=None, base=None):
-    """Package GGUF files made outside this repo (v5.195).
+    """Package GGUF files made outside this repo (v5.196).
 
     For a continued-pretraining checkpoint of an open Hugging Face base
     (route B), llama.cpp's own ``convert_hf_to_gguf.py`` and

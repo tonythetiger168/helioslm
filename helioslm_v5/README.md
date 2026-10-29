@@ -1,6 +1,6 @@
-# HeliosLM v5.195 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.196 - DeepSeek/K3-Style Architecture
 
-v5.195 (2026-10-29): tier packages from a Hugging Face checkpoint
+v5.196 (2026-10-29): tier packages from a Hugging Face checkpoint
 (`examples/package_hf.py`, llama.cpp converts), for the route-B pilot.
 
 v5.188 (2026-10-28): Cloudflare download bundles per GPU-memory tier
