@@ -92,7 +92,7 @@ def main():
     rng.shuffle(train)
     print(f"total train: {len(train)}", flush=True)
 
-    out_dir = Path(os.environ.get("HELIOS_CKPT_DIR") or os.environ.get("EVASTAR_CKPT_DIR", "checkpoints"))
+    out_dir = Path(os.environ.get("HELIOS_CKPT_DIR", "checkpoints"))
     out_dir.mkdir(exist_ok=True, parents=True)
     ckpt = out_dir / f"{OUT_NAME}.pt"
     model = HeliosLMv5(HeliosLMv5Config(size="mid"))

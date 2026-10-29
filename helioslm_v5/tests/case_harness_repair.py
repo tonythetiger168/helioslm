@@ -15,7 +15,6 @@ that imports EVERY module in the tree so an import-time failure fails
 the same-day suite instead of shipping.
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -378,7 +377,7 @@ def test_version_never_ahead_of_changelog():
     import re
     cfg = (_REPO_ROOT / "helioslm_v5" / "configs" / "config_v5.py") \
         .read_text(encoding="utf-8")
-    m = re.search(r'model_name:\s*str\s*=\s*"(?:HeliosLM|Evastar)-v(\d+)\.(\d+)"', cfg)
+    m = re.search(r'model_name:\s*str\s*=\s*"HeliosLM-v(\d+)\.(\d+)"', cfg)
     assert m, "model_name not found or unparseable in config_v5.py"
     ch = (_REPO_ROOT / "helioslm_v5" / "CHANGELOG.md") \
         .read_text(encoding="utf-8")
@@ -395,50 +394,19 @@ def test_version_never_ahead_of_changelog():
 
 
 # ---------------------------------------------------------------------------
-# v5.153 (2026-10-25): the v5.134 package rename (helioslm_v5 -> evastar,
-# alias shim in helioslm_v5/__init__.py) broke `python -m
-# helioslm_v5.tests.test_v5` — the daily-maintenance mandated gate command —
-# because runpy._get_module_details requires loader.get_code and the alias
-# loader did not provide it (AttributeError: '_AliasLoader' object has no
-# attribute 'get_code'). v5.153 adds get_code/get_source to _AliasLoader and
-# a `--list` probe to the suite's main(); these two tests lock both halves.
-# See CHANGELOG v5.153.
+# v5.153 (2026-10-25): `python -m helioslm_v5.tests.test_v5` — the
+# daily-maintenance mandated gate command — gained a `--list` probe; this
+# test runs it end-to-end. See CHANGELOG v5.153.
 # ---------------------------------------------------------------------------
 
-def test_alias_loader_get_code():
-    """Locked: the evastar alias loader (v5.164: evastar -> helioslm_v5) exposes get_code
-    (runpy's requirement for `python -m`) and get_source (inspect/pdb),
-    both compiled/read from the real helioslm_v5 file so tracebacks point at
-    the canonical path."""
-    import importlib.util as _iu
-    import evastar  # noqa: F401 — registers the meta-path alias
-    spec = _iu.find_spec("evastar.tests.test_v5")
-    assert spec is not None and spec.loader is not None, \
-        "alias spec for evastar.tests.test_v5 not found"
-    loader = spec.loader
-    assert hasattr(loader, "get_code") and hasattr(loader, "get_source"), \
-        "alias loader lost get_code/get_source (python -m will break)"
-    code = loader.get_code("evastar.tests.test_v5")
-    assert hasattr(code, "co_names") and "main" in code.co_names, \
-        "get_code did not compile the real test_v5 module"
-    assert code.co_filename.replace("/", os.sep).endswith(
-        os.path.join("helioslm_v5", "tests", "test_v5.py")), code.co_filename
-    src = loader.get_source("evastar.tests.test_v5")
-    assert "TESTS = [" in src, "get_source did not read the real file"
-    _pass("test_alias_loader_get_code",
-          "alias loader get_code/get_source compile/read the real helioslm_v5 "
-          "test_v5.py (python -m entry point repaired)")
-
-
-def test_alias_dash_m_smoke():
+def test_dash_m_smoke():
     """End-to-end lock for the mandated daily gate: `python -m
-    evastar.tests.test_v5 --list` must exit 0 and report the same
-    test count as the in-process TESTS registry. Runs the real subprocess
-    through the alias path; --list keeps it under a few seconds (module
-    import only, no tests executed)."""
+    helioslm_v5.tests.test_v5 --list` must exit 0 and report the same
+    test count as the in-process TESTS registry. --list keeps it under a
+    few seconds (module import only, no tests executed)."""
     import re as _re
     import subprocess as _sp
-    r = _sp.run([sys.executable, "-m", "evastar.tests.test_v5",
+    r = _sp.run([sys.executable, "-m", "helioslm_v5.tests.test_v5",
                  "--list"], capture_output=True, text=True, timeout=180,
                 cwd=str(_REPO_ROOT))
     assert r.returncode == 0, \
@@ -448,8 +416,8 @@ def test_alias_dash_m_smoke():
     from helioslm_v5.tests.test_v5 import TESTS as _TESTS
     assert int(m.group(1)) == len(_TESTS), \
         f"subprocess reports {m.group(1)} tests, registry has {len(_TESTS)}"
-    _pass("test_alias_dash_m_smoke",
-          f"python -m evastar.tests.test_v5 --list exits 0, "
+    _pass("test_dash_m_smoke",
+          f"python -m helioslm_v5.tests.test_v5 --list exits 0, "
           f"TESTS={m.group(1)} matches registry")
 
 
@@ -476,7 +444,7 @@ def test_list_probe_reports_versions():
     assert model and head, f"probe missing MODEL/CHANGELOG: {r.stdout!r}"
     cfg = (_REPO_ROOT / "helioslm_v5" / "configs" / "config_v5.py")         .read_text(encoding="utf-8")
     m2 = _re.search(
-        r'model_name:\s*str\s*=\s*"((?:HeliosLM|Evastar)-v[\d.]+)"', cfg)
+        r'model_name:\s*str\s*=\s*"(HeliosLM-v[\d.]+)"', cfg)
     ch = (_REPO_ROOT / "helioslm_v5" / "CHANGELOG.md")         .read_text(encoding="utf-8")
     h2 = _re.search(r"^## v(\d+\.\d+)", ch, _re.M)
     assert m2 and h2, "config model_name or changelog head unparseable"

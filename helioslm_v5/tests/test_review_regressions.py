@@ -219,7 +219,7 @@ def test_session_append_and_each_listener_receive_detached_events():
     assert Session.from_jsonl(session.to_jsonl()).events == session.events
 
 
-def test_release_selection_preserves_legacy_imports(tmp_path):
+def test_release_selection_imports(tmp_path):
     root = Path(__file__).resolve().parents[2]
     workflow = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     command = workflow.split("zip -r helioslm-v5-release.zip", 1)[1]
@@ -238,14 +238,12 @@ def test_release_selection_preserves_legacy_imports(tmp_path):
                     z.write(file, name)
     unpacked = tmp_path / "unpacked"
     with zipfile.ZipFile(archive) as z:
-        assert "evastar/__init__.py" in z.namelist()
+        assert "helioslm_v5/configs/config_v5.py" in z.namelist()
         z.extractall(unpacked)
     code = (
         "import sys; sys.path.insert(0, sys.argv[1]); "
-        "from evastar.configs.config_v5 import EvastarV5Config; "
         "from helioslm_v5.configs.config_v5 import HeliosLMv5Config; "
-        "assert EvastarV5Config is HeliosLMv5Config; "
-        "assert EvastarV5Config(size='lite').hidden_size > 0")
+        "assert HeliosLMv5Config(size='lite').hidden_size > 0")
     proc = subprocess.run([sys.executable, "-I", "-c", code, str(unpacked)],
                           cwd=tmp_path, capture_output=True, text=True, timeout=30)
     assert proc.returncode == 0, proc.stderr

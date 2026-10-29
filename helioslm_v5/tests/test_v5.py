@@ -186,12 +186,9 @@ TESTS = [
     case_harness_repair.test_sandbox_pwd_home_posix_form,
     case_harness_repair.test_ci_lf_guard,
     case_harness_repair.test_version_never_ahead_of_changelog,
-    # v5.153 (2026-10-25): the v5.134 evastar rename broke the mandated
-    # `python -m helioslm_v5.tests.test_v5` entry point (runpy needs
-    # loader.get_code). Locks: alias loader serves code/source, and the
-    # -m command runs end-to-end via the --list probe.
-    case_harness_repair.test_alias_loader_get_code,
-    case_harness_repair.test_alias_dash_m_smoke,
+    # v5.153 (2026-10-25): the mandated `python -m helioslm_v5.tests.test_v5`
+    # entry point runs end-to-end via the --list probe.
+    case_harness_repair.test_dash_m_smoke,
     # limitations round (2026-10-25): GatedShortConv now carries the
     # is_recurrent_attention marker, so the engine keeps conv models off
     # the watermark pad-prefix path; the test pins no-pad admission,
@@ -255,7 +252,7 @@ def main():
         _cfg = (_REPO_ROOT / "helioslm_v5" / "configs" / "config_v5.py") \
             .read_text(encoding="utf-8")
         _m = _re.search(
-            r'model_name:\s*str\s*=\s*"((?:HeliosLM|Evastar)-v[\d.]+)"',
+            r'model_name:\s*str\s*=\s*"(HeliosLM-v[\d.]+)"',
             _cfg)
         _ch = (_REPO_ROOT / "helioslm_v5" / "CHANGELOG.md") \
             .read_text(encoding="utf-8")

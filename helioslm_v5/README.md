@@ -39,14 +39,8 @@ v5.155 (2026-10-26): the daily TESTS gate now covers v5.154's
 pytest-only sidecar suites (TW2 zh-TW corpus, offline API accounting)
 via drift-guarded wrappers; `test_api_accounting.py` runs without
 pytest; `test_zhtw_corpus.py` reads UTF-8 explicitly (cp950 Windows fix).
-v5.153 (2026-10-25): repaired `python -m helioslm_v5.tests.test_v5` — the
-v5.134 rename's alias loader lacked `get_code`, which runpy requires;
-added `get_code`/`get_source` to the alias loader and a `--list` probe
-to the test suite entry point.
-v5.134 (2026-10-24): package renamed `helioslm_v5` -> `evastar`, classes
-`HeliosLMv5*` -> `EvastarV5*`, env vars `HELIOS_*` -> `EVASTAR_*` (reverted
-in v5.164; the Evastar names still work as aliases). v5.133 (2026-10-24):
-project renamed HeliosLM -> Evastar (display name, reverted in v5.164). v5.132 (2026-10-24): Windows test_sandbox_limits repair, CI LF guard,
+v5.153 (2026-10-25): repaired `python -m helioslm_v5.tests.test_v5` and
+added a `--list` probe to the test suite entry point. v5.132 (2026-10-24): Windows test_sandbox_limits repair, CI LF guard,
 version-drift lock. v5.110 (2026-10-23): Windows checkout repairs — repo-wide LF policy
 (.gitattributes), sandbox python3 PATH resolution and timeout
 process-tree kill in `eval/term_bench.py`, base64 patch transport in

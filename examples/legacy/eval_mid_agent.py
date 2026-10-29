@@ -46,7 +46,7 @@ def main():
     tok = HeliosBPE.train([corpus[-30000:] + corpus[:170000]], vocab_size=16000)
     bos = tok.vocab[BOS]
     model = HeliosLMv5(HeliosLMv5Config(size="mid")).to(device)
-    ck = Path(os.environ.get("HELIOS_CKPT_DIR") or os.environ.get("EVASTAR_CKPT_DIR", "checkpoints"))
+    ck = Path(os.environ.get("HELIOS_CKPT_DIR", "checkpoints"))
     model.load_state_dict(torch.load(ck / "mid_sft_v5.33.pt", map_location=device,
                                      weights_only=True))
     model.eval()

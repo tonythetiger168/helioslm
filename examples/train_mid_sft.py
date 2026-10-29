@@ -43,7 +43,7 @@ OUT_NAME = "mid_sft_v5.33"
 
 
 def _hf_sync(path, repo_path):
-    if (os.environ.get("HELIOS_HF_SYNC") or os.environ.get("EVASTAR_HF_SYNC")) != "1":
+    if os.environ.get("HELIOS_HF_SYNC") != "1":
         return
     import subprocess as sp
     try:
@@ -146,7 +146,7 @@ def main():
     print(f"mid params: {n_params/1e6:.1f}M | vocab {cfg.vocab_size}",
           flush=True)
 
-    out_dir = Path(os.environ.get("HELIOS_CKPT_DIR") or os.environ.get("EVASTAR_CKPT_DIR", "checkpoints"))
+    out_dir = Path(os.environ.get("HELIOS_CKPT_DIR", "checkpoints"))
     out_dir.mkdir(exist_ok=True, parents=True)
     ckpt = out_dir / f"{OUT_NAME}.pt"
     # tokenizer travels WITH the checkpoint: eval processes must load

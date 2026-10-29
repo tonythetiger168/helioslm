@@ -1427,6 +1427,3 @@ def qwen_next_config(size="lite", num_hidden_layers=None):
     cfg._validate()
     return cfg
 
-
-# Evastar-era name (v5.134-v5.163), kept so existing imports keep working.
-EvastarV5Config = HeliosLMv5Config
