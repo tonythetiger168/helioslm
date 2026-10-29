@@ -100,3 +100,5 @@ B1 不跑，這次只把結果和建議帶回來。
 | HF 私人 repo `<帳號>/helioslm-pilot-b0`（`HF_REPO` 可改） | 最終權重和 `results/`，pod 關掉後也留得住（v5.146） |
 
 權重上傳在步驟 4 跑 benchmark 的同時進行，只用網路，不多佔 GPU 時間。轉 GGUF 和 llama.cpp 生成檢查之後在本機顯卡上做，不在 pod 上花錢。
+
+過關後的打包（v5.195）：在裝好 llama.cpp 的機器上跑 `python examples/package_hf.py --hf <checkpoint> --llama-cpp <llama.cpp> --out dist/ --tiers L8 L16 --name helioslm-tw-e2b-pilot --arch gemma4 --base google/gemma-4-E2B`，再用 `examples/publish_cloudflare.py` 上架。
