@@ -888,7 +888,7 @@ Each generation above is trained once; the deployment series below are cut from 
 
 Context sizes assume the default MLA cache (latent 512 + RoPE 64, about 37 KB per token for a 3B model); plain 8-head GQA needs about 3.5x more. The local series need checkpoints that llama.cpp-family runtimes can load: `src/export/gguf.py` writes Q8_0 / Q4_K blocks since v5.122, and since v5.130 `src/export/llamacpp.py` writes a model as llama.cpp's `deepseek2` architecture when `llamacpp_incompatibilities(config)` is empty (no KDA, NoPE, cross-layer KV, LatentMoE, per-layer embeddings or conv layers). Since v5.135, passing the pretraining `tokenizer.json` embeds the vocabulary, so llama.cpp and Ollama take text; the older HeliosBPE (space-only splitting) has no llama.cpp equivalent and stays id-only. Since v5.142, hybrid KDA + MLA and K3-block configs export as llama.cpp's `kimi-k3` architecture instead of being refused (`llamacpp_arch(config)` picks `deepseek2` or `kimi-k3`). A series whose source generation is still gated (v4.0 and later) inherits that gate.
 
-**Status of the local series (2026-10-26)**
+**Status of the local series (2026-10-29)**
 
 | Series | Package tooling | Runtime check | Weights |
 | --- | --- | --- | --- |
@@ -901,9 +901,24 @@ Context sizes assume the default MLA cache (latent 512 + RoPE 64, about 37 KB pe
 | **L256** | Q8_0 + Q4_K, 128K (v5.190) | same (GGUF on Metal; MLX export not yet) | v4.0 / v5.0 not trained yet |
 | **L512** | Q8_0 + Q4_K, 128K (v5.190) | same (GGUF on Metal; MLX export not yet) | v5.0 not trained yet |
 
+**Download packages by version (2026-10-29).** Every version is listed on the download page as 開發中 (in development) until it passes its gate; nothing below is downloadable yet.
+
+| Version | Packages (tiers) | Quantizations | Status |
+| --- | --- | --- | --- |
+| **Route-B pilot** (Taiwanese continued pretraining of Gemma 4 E2B) | L8, L16 | Q4_K_M + Q8_0 (L8); F16 + Q4_K_M (L16) | pilot B0 training on public data; packaged with `examples/package_hf.py` once it passes (TMMLU+ above its base, C-Eval / CMMLU within 2 points) |
+| **v1.0** Lite 0.5B | L-Edge | Q4_K + Q8_0 | 開發中, not trained |
+| **v2.0** Base 3B | L8, L16 | Q4_K + Q8_0; F16 + Q4_K | 開發中, not trained |
+| **v3.0** MoE 30B-A3B | L16 (experts in RAM), L24, L48+, L128 | Q4_K; Q8_0 / F16 | 開發中, not trained |
+| **v4.0** Reasoner 100B-A10B | L48+, L128, L256 | Q4_K; Q8_0 | 開發中, not trained |
+| **v5.0** Pro 300B-A20B | L256, L512 | Q4_K; Q8_0 | 開發中, not trained |
+| **v6.0** Frontier 1T-A40B | cloud only (CX) | FP8 / MXFP4 | 開發中, not trained |
+| **HDL** (Verilog / SystemVerilog / UVM) | follows its source generation | same | 開發中: eval harness (VerilogEval, RTLLM, CVDP, UVM) and data tools done; no model yet |
+
 `examples/package_tiers.py --run <pilot run> --out dist/` (v5.148) writes each tier's GGUF files, an Ollama `Modelfile` (when a tokenizer is embedded), the `llama-cli` / `llama-server` commands and a `manifest.json` with sizes, sha256 and whether the weights fit in 75% of the tier's memory. F16 stands in for the table's BF16 and Q4_K for Q4_K_M / Q6_K. On the pilots, llama.cpp logits match PyTorch at cosine 1.0000 (F16), ≥ 0.989 (Q8_0) and ≥ 0.983 (Q4_K). The cloud series has no packaging step yet; it serves the same checkpoints.
 
-**Downloads (v5.188).** `examples/publish_cloudflare.py --packages dist/ --out cf/ --base-url https://<R2 download domain> --version <v>` zips each tier package once per quantization (GGUF + Modelfile + README + manifest) and writes a static page listing every local tier by GPU memory; `scripts/cloudflare_publish.sh cf/` uploads the zips to R2 (S3 API, multipart) and the page with `wrangler pages deploy` (direct upload, no Git integration). Credentials come only from environment variables. Download links never point at GitHub.
+**Downloads (v5.188).** `examples/publish_cloudflare.py --packages dist/ --out cf/ --base-url https://<R2 download domain> --version <v>` zips each tier package once per quantization (GGUF + Modelfile + README + manifest) and writes a static page listing every local tier by GPU memory; `scripts/cloudflare_publish.sh cf/` uploads the zips to R2 (S3 API, multipart) and the page with `wrangler pages deploy` (direct upload, no Git integration). Credentials come only from environment variables (kept as RunPod secrets, since the upload runs on a pod). Download links never point at GitHub; they use the R2 bucket's own custom download domain.
+
+**Packages from a Hugging Face checkpoint (v5.196).** Route-B checkpoints are not HeliosLM models, so `examples/package_hf.py --hf <checkpoint> --llama-cpp <checkout> --out dist/ --tiers L8 L16 --name <name> --arch gemma4 --base google/gemma-4-E2B` converts them with llama.cpp's `convert_hf_to_gguf.py` (F16) and `llama-quantize` (Q8_0, Q4_K_M), then writes the same tier layout (`package_gguf`), so `publish_cloudflare.py` bundles them unchanged.
 
 ### Tentative product windows (subject to gates)
 
