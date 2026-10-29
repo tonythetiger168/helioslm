@@ -107,8 +107,8 @@ def main():
     # chowns files inside the repo tree to root, breaking later saves
     # (observed 2026-09-26 twice). Default keeps the historical location.
     import os
-    out_dir = Path(os.environ.get("HELIOS_CKPT_DIR") or os.environ.get(
-        "EVASTAR_CKPT_DIR",
+    out_dir = Path(os.environ.get(
+        "HELIOS_CKPT_DIR",
         str(Path(__file__).resolve().parent.parent / "checkpoints")))
     out_dir.mkdir(exist_ok=True, parents=True)
     ckpt = out_dir / "chat_tuned_v5.30.2.pt"

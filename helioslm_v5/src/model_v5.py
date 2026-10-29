@@ -916,6 +916,3 @@ class HeliosLMv5(nn.Module):
 
         return generated
 
-
-# Evastar-era name (v5.134-v5.163), kept so existing imports keep working.
-EvastarV5 = HeliosLMv5

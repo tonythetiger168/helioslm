@@ -74,14 +74,14 @@ jobs:
       - uses: actions/checkout@v4
       - run: |
           zip -r helioslm-v5-release.zip \
-            helioslm_v5/ evastar/ harness/ agent/ benchmarks/ docs/ examples/ \
+            helioslm_v5/ harness/ agent/ benchmarks/ docs/ examples/ \
             README.md LICENSE \
             -x "*.zip" "*.pyc" "__pycache__/*" "*.pt"
-      - name: Verify legacy imports from the release archive
+      - name: Verify imports from the release archive
         run: |
           unzip -q helioslm-v5-release.zip -d "$RUNNER_TEMP/helios-release"
           cd "$RUNNER_TEMP/helios-release"
-          python3 -I -c "import sys; sys.path.insert(0, '.'); from evastar.configs.config_v5 import EvastarV5Config; from helioslm_v5.configs.config_v5 import HeliosLMv5Config; assert EvastarV5Config is HeliosLMv5Config"
+          python3 -I -c "import sys; sys.path.insert(0, '.'); from helioslm_v5.configs.config_v5 import HeliosLMv5Config; assert HeliosLMv5Config(size='lite').hidden_size > 0"
       - uses: actions/upload-artifact@v4
         with:
           name: helioslm-v5-release

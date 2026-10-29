@@ -13,7 +13,7 @@ pipeline_tag: text-generation
 
 # HeliosLM（羲和）— Verifiable DeepSeek-V3/V4 and Kimi-K3-Style LLM Architectures in Pure PyTorch
 
-> 中文名「羲和」：中國神話中駕日車的太陽神，對應希臘的 Helios。程式套件 `helioslm_v5`；2026-10-24 曾短暫改名 Evastar（v5.133–v5.163），舊的 `import evastar`、`EvastarV5` 類別名和 `EVASTAR_*` 環境變數仍可使用。標語「知止」（《大學》「知止而后有定」）：可驗證的機制，加上知道自己何時可能出錯、該停下來的決策層。
+> 中文名「羲和」：中國神話中駕日車的太陽神，對應希臘的 Helios。標語「知止」（《大學》「知止而后有定」）：可驗證的機制，加上知道自己何時可能出錯、該停下來的決策層。
 
 **Every mechanism ships with an oracle test.** HeliosLM is a hackable, CPU-runnable reference for frontier LLM designs — MLA, sigmoid-gated MoE, hybrid linear attention, compressed sparse attention — plus a calibrated decision layer that measures whether a model knows when it is wrong.
 
@@ -472,7 +472,7 @@ in `__post_init__` (no silent truncation).
 
 ```bash
 pip install -r requirements-ci.txt        # the exact CPU torch / numpy / pytest versions CI uses
-python -m helioslm_v5.tests.test_v5     # 118 unit tests (3 checkpoint-dependent tests self-skip without checkpoints/toy_v5.13.pt)
+python -m helioslm_v5.tests.test_v5     # 117 unit tests (3 checkpoint-dependent tests self-skip without checkpoints/toy_v5.13.pt)
 python integration_test_v51.py          # 9 end-to-end integration tests
 python -m helioslm_v5.tests.test_agent  # 9 agent-layer oracles (v5.23)
 python -m helioslm_v5.tests.test_v5_stage_a   # T15 real-model oracles (v5.26)
@@ -683,6 +683,7 @@ As of 2026-10-26:
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.199** — v5.134-era compatibility aliases removed: `helioslm_v5`, `HeliosLMv5*` and `HELIOS_*` are the only names
 - **v5.198** — H5 mixture: single Verilog_GitHub files get a 60 s synth-gate timeout (was 600 s), so slow files no longer stall the gate — T162
 - **v5.197** — the `--list` probe also reports `MODEL=<config model_name>` and `CHANGELOG=v<head>` so version drift surfaces in one command; README quick-start test count repaired (92 → actual registry) and locked to `len(TESTS)` — T151, T152
 - **v5.196** — Tier packages from a Hugging Face checkpoint (`examples/package_hf.py`): llama.cpp converts and quantizes, `package_gguf` writes the same tier layout, so a route-B pilot goes to the Cloudflare download page unchanged — T166
@@ -709,7 +710,6 @@ Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/hel
 - **v5.174** — KDA layer skips `as_subclass` on plain tensors, so `--compile` no longer breaks the graph there (k3 pilot: 14 -> 11 breaks) — T155
 - **v5.173** — `tw_bench` Phase A gate: the loglik oracle follows task order, so a set with two identical questions that have different answers (C-Eval val) no longer fails the gate
 - **v5.165** — no host-sync graph breaks under `--compile` in RoPE or the MoE load count (L4: MoE pilot compiled 20.4k vs 18.2k tokens/s eager, hit dynamo's recompile limit at RoPE) — T155
-- **v5.164** — Name back to HeliosLM（羲和）: `helioslm_v5` is the real package again, `HeliosLMv5*` classes and `HELIOS_*` env vars are primary; `import evastar`, `EvastarV5*` and `EVASTAR_*` keep working as aliases
 - **v5.163** — `pilot_100m.py --kda-kernel` defaults to `fla` (torch kernel off CUDA / without fla)
 - **v5.162** — MoE shared-expert outputs cast to the routed dtype before the add (torch 2.8 inductor fused a mixed-dtype addmm under `--compile`); L4: k3 pilot `--kda-kernel fla --compile` 20.3k tokens/s (2.45x recompute + compile)
 - **v5.161** — `get_adaptive_batch_size` / `fit_micro_batch` (pilot `--auto-batch`, halves the micro-batch on CUDA OOM at equal tokens per step); `safe_grouped_matmul` with an order-keeping fallback without `F.grouped_mm` — T154

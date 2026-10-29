@@ -38,7 +38,7 @@ MAX_NEW = 128
 def main():
     torch.manual_seed(0)
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    ck = Path(os.environ.get("HELIOS_CKPT_DIR") or os.environ.get("EVASTAR_CKPT_DIR", "checkpoints"))
+    ck = Path(os.environ.get("HELIOS_CKPT_DIR", "checkpoints"))
     # PAIRED tokenizer first: never retrain at eval time (train/serve
     # tokenizer skew, 2026-09-28). Retrain only as a warned fallback.
     tok_path = ck / "mid_sft_v5.33.tok.json"

@@ -1,5 +1,18 @@
 # HeliosLM v5 Changelog
 
+## v5.199 (2026-10-29) - drop the v5.134 compatibility aliases
+
+- The alias package added in v5.134 (and swapped in v5.164) is removed;
+  `helioslm_v5` is the only package name. The old model / config class
+  aliases and the old env-var fallbacks are gone too: use `HeliosLMv5`,
+  `HeliosLMv5Config` and `HELIOS_CKPT_DIR` / `HELIOS_HF_SYNC` /
+  `HELIOS_NOTEBOOK_OUT`.
+- `tests/test_legacy_alias.py` and the alias-loader test are deleted; the
+  `python -m helioslm_v5.tests.test_v5 --list` smoke stays
+  (`test_dash_m_smoke`). The CI release-archive check and
+  `test_release_selection_imports` now import `helioslm_v5` only.
+- README quick-start test count 118 -> 117 (one alias test removed).
+
 ## v5.198 (2026-10-29) - 60 s gate timeout for single Verilog files
 
 The H5 mixture's `verilog-github` rows (one file each) are gated with a

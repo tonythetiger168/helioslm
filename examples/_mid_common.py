@@ -19,7 +19,7 @@ def load_model_tok(device=None, ckpt_dir=None):
     from helioslm_v5.src.model_v5 import HeliosLMv5
     from helioslm_v5.src.tokenizer.bpe import BOS, HeliosBPE
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-    ck = Path(ckpt_dir or os.environ.get("HELIOS_CKPT_DIR") or os.environ.get("EVASTAR_CKPT_DIR", "checkpoints"))
+    ck = Path(ckpt_dir or os.environ.get("HELIOS_CKPT_DIR", "checkpoints"))
     tok_path = ck / "mid_sft_v5.33.tok.json"
     # v5.37f structural guard: the training run stores a sha256
     # fingerprint of ITS tokenizer (.tokfp). If the pairing file was

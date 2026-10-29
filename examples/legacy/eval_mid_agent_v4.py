@@ -35,7 +35,7 @@ MAX_NEW = 128
 def main():
     torch.manual_seed(0)
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    ck = Path(os.environ.get("HELIOS_CKPT_DIR") or os.environ.get("EVASTAR_CKPT_DIR", "checkpoints"))
+    ck = Path(os.environ.get("HELIOS_CKPT_DIR", "checkpoints"))
     tok = HeliosBPE.load(str(ck / "mid_sft_v5.33.tok.json"))
     print("loaded paired tokenizer from checkpoint", flush=True)
     bos = tok.vocab[BOS]
