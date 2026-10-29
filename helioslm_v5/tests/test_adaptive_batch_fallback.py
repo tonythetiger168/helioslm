@@ -14,7 +14,50 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    # This file is also executed directly by the daily TESTS suite
+    # (case_upstream_suites), where pytest is not installed. The shim
+    # covers exactly the pytest features used below: mark.parametrize
+    # (collection-time no-op; the wrapper calls with explicit arguments),
+    # raises(match=...) (pytest semantics: re.search on str(exception))
+    # and skip (raises a Skipped the wrapper catches and reports).
+    # Same pattern as test_api_accounting.py (v5.155).
+    import contextlib as _contextlib
+    import re as _re
+
+    class _Skipped(Exception):
+        pass
+
+    class _Mark:
+        @staticmethod
+        def parametrize(*_args, **_kwargs):
+            return lambda f: f
+
+    class _PytestShim:
+        mark = _Mark()
+        Skipped = _Skipped
+
+        @staticmethod
+        def skip(reason=""):
+            raise _Skipped(reason)
+
+        @staticmethod
+        @_contextlib.contextmanager
+        def raises(exc, match=None):
+            try:
+                yield
+            except exc as e:
+                if match is not None and not _re.search(match, str(e)):
+                    raise AssertionError(
+                        f"raised {e!r}, which does not match /{match}/"
+                    ) from None
+                return
+            raise AssertionError(f"{exc.__name__} was not raised")
+
+    pytest = _PytestShim()
+
 import torch
 
 ROOT = Path(__file__).resolve().parents[2]

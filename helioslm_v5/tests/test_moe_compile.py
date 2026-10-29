@@ -21,7 +21,25 @@ import copy
 import sys
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    # This file is also executed directly by the daily TESTS suite
+    # (case_upstream_suites), where pytest is not installed. The shim
+    # covers the only pytest feature used below: mark.parametrize
+    # (collection-time only; a no-op when the functions are called
+    # directly with explicit arguments). Same pattern as
+    # test_api_accounting.py (v5.155).
+    class _Mark:
+        @staticmethod
+        def parametrize(*_args, **_kwargs):
+            return lambda f: f
+
+    class _PytestShim:
+        mark = _Mark()
+
+    pytest = _PytestShim()
+
 import torch
 
 ROOT = Path(__file__).resolve().parents[2]

@@ -216,6 +216,18 @@ TESTS = [
     # registry (was stale: 92 claimed vs 111 registered).
     case_harness_repair.test_list_probe_reports_versions,
     case_harness_repair.test_readme_test_count_current,
+    # limitations round (2026-10-29): the v5.156-v5.165 compile-era
+    # acceptance pins (KDA recompute T151, MoE compile T152, KDA FLA
+    # kernel T153, adaptive batch + grouped fallback T154, graph breaks
+    # T155) lived only in pytest sidecars the mandated daily gate never
+    # ran. Drift-guarded wrappers execute every sidecar test function
+    # (parametrized cases with full lists, monkeypatch via the
+    # _MonkeyPatch stand-in, grouped_mm skip pre-checked).
+    case_upstream_suites.test_kda_recompute_suite,
+    case_upstream_suites.test_moe_compile_suite,
+    case_upstream_suites.test_kda_fla_suite,
+    case_upstream_suites.test_adaptive_batch_suite,
+    case_upstream_suites.test_compile_graph_breaks_suite,
 ]
 
 # CI thread guard (2026-10-13): PR #16's full-suite probe passes with

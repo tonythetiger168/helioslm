@@ -21,7 +21,59 @@ import sys
 import types
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    # This file is also executed directly by the daily TESTS suite
+    # (case_upstream_suites), where pytest is not installed. The shim
+    # covers exactly the pytest features used below: fixture (a no-op
+    # marker — the wrapper calls the fixture function directly with its
+    # own monkeypatch stand-in), raises(match=...) and warns(match=...)
+    # (pytest semantics: re.search on str(exception) / str(message)).
+    # Same pattern as test_api_accounting.py (v5.155).
+    import contextlib as _contextlib
+    import re as _re
+    import warnings as _warnings
+
+    class _PytestShim:
+        @staticmethod
+        def fixture(*args, **kwargs):
+            # Both spellings occur: bare @pytest.fixture (the function
+            # arrives as the first positional argument) and
+            # @pytest.fixture(...) (a decorator factory).
+            if len(args) == 1 and callable(args[0]) and not kwargs:
+                return args[0]
+            return lambda f: f
+
+        @staticmethod
+        @_contextlib.contextmanager
+        def raises(exc, match=None):
+            try:
+                yield
+            except exc as e:
+                if match is not None and not _re.search(match, str(e)):
+                    raise AssertionError(
+                        f"raised {e!r}, which does not match /{match}/"
+                    ) from None
+                return
+            raise AssertionError(f"{exc.__name__} was not raised")
+
+        @staticmethod
+        @_contextlib.contextmanager
+        def warns(exc, match=None):
+            with _warnings.catch_warnings(record=True) as rec:
+                _warnings.simplefilter("always")
+                yield
+            if not any(issubclass(w.category, exc) for w in rec):
+                raise AssertionError(f"{exc.__name__} warning was not emitted")
+            if match is not None and not any(
+                    _re.search(match, str(w.message)) for w in rec):
+                raise AssertionError(
+                    f"warnings {[str(w.message) for w in rec]!r} do not "
+                    f"match /{match}/")
+
+    pytest = _PytestShim()
+
 import torch
 
 ROOT = Path(__file__).resolve().parents[2]
