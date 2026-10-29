@@ -451,3 +451,54 @@ def test_alias_dash_m_smoke():
     _pass("test_alias_dash_m_smoke",
           f"python -m evastar.tests.test_v5 --list exits 0, "
           f"TESTS={m.group(1)} matches registry")
+
+
+# ---------------------------------------------------------------------------
+# v5.197 (2026-10-29): the --list probe now also reports the version pair
+# (MODEL=<config model_name>, CHANGELOG=v<head>) so drift surfaces in one
+# command, and the README quick-start test count is locked to the registry
+# (it claimed "92 unit tests" while TESTS held 111 — stale by 19).
+# See CHANGELOG v5.197.
+# ---------------------------------------------------------------------------
+
+def test_list_probe_reports_versions():
+    """`python -m helioslm_v5.tests.test_v5 --list` prints TESTS=, MODEL=
+    and CHANGELOG=; locked against the actual config and changelog so a
+    probe/output drift fails loudly."""
+    import re as _re
+    import subprocess as _sp
+    r = _sp.run([sys.executable, "-m", "helioslm_v5.tests.test_v5",
+                 "--list"], capture_output=True, text=True, timeout=180,
+                cwd=str(_REPO_ROOT))
+    assert r.returncode == 0,         f"--list probe failed rc={r.returncode}: {r.stderr[-500:]}"
+    model = _re.search(r"^MODEL=(\S+)$", r.stdout, _re.M)
+    head = _re.search(r"^CHANGELOG=v(\d+\.\d+)$", r.stdout, _re.M)
+    assert model and head, f"probe missing MODEL/CHANGELOG: {r.stdout!r}"
+    cfg = (_REPO_ROOT / "helioslm_v5" / "configs" / "config_v5.py")         .read_text(encoding="utf-8")
+    m2 = _re.search(
+        r'model_name:\s*str\s*=\s*"((?:HeliosLM|Evastar)-v[\d.]+)"', cfg)
+    ch = (_REPO_ROOT / "helioslm_v5" / "CHANGELOG.md")         .read_text(encoding="utf-8")
+    h2 = _re.search(r"^## v(\d+\.\d+)", ch, _re.M)
+    assert m2 and h2, "config model_name or changelog head unparseable"
+    assert model.group(1) == m2.group(1),         f"probe MODEL={model.group(1)} != config {m2.group(1)}"
+    assert head.group(1) == h2.group(1),         f"probe CHANGELOG=v{head.group(1)} != head v{h2.group(1)}"
+    _pass("test_list_probe_reports_versions",
+          f"--list reports MODEL={model.group(1)} "
+          f"CHANGELOG=v{head.group(1)}, both matching the files")
+
+
+def test_readme_test_count_current():
+    """The root README quick start advertises "N unit tests" for the
+    mandated suite; it said 92 while TESTS held 111 (stale by 19, found
+    2026-10-29). Locked: the advertised count equals len(TESTS). When this
+    fails after adding a test, update the README count in the same
+    change."""
+    import re as _re
+    body = (_REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    m = _re.search(r"python -m helioslm_v5\.tests\.test_v5\s+# (\d+) "
+                   r"unit tests", body)
+    assert m, "README quick-start test-count line not found or reworded"
+    from helioslm_v5.tests.test_v5 import TESTS as _TESTS
+    assert int(m.group(1)) == len(_TESTS),         f"README says {m.group(1)} unit tests, registry has {len(_TESTS)}"
+    _pass("test_readme_test_count_current",
+          f"README quick-start count {m.group(1)} == len(TESTS)")

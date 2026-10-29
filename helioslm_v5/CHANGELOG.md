@@ -1,5 +1,29 @@
 # HeliosLM v5 Changelog
 
+## v5.197 (2026-10-29) - --list version pair + README test-count lock
+
+Two small daily-gate hardening fixes, both about stale or
+multi-step version information:
+
+- `test_v5.py main() --list` now prints `MODEL=<config model_name>` and
+  `CHANGELOG=v<head>` alongside `TESTS=<n>`. The model_name vs
+  changelog-head drift has recurred twice (v5.49->v5.109 found by hand,
+  v5.134->v5.152 found by hand); surfacing the pair in the fast probe
+  makes the next drift visible in the same command the daily gate
+  already runs.
+- Root README quick start claimed "92 unit tests" while the TESTS
+  registry held 111 (stale by 19; the count was written before the
+  case_* split and never moved). Repaired to the real count and locked:
+  `test_readme_test_count_current` parses the quick-start line and
+  asserts it equals len(TESTS) — a future count change without a README
+  update fails loudly.
+
+Tests (T151/T152, in `case_harness_repair.py`, registered in TESTS,
+111 -> 113): `test_list_probe_reports_versions` runs the probe in a
+subprocess and cross-checks both version strings against the files;
+`test_readme_test_count_current` locks the advertised count. Suite:
+113/113 PASS (lite config, CPU).
+
 ## v5.196 (2026-10-29) - tier packages from a Hugging Face checkpoint
 
 Route B checkpoints (continued pretraining of an open base, e.g. pilot

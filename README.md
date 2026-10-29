@@ -472,7 +472,7 @@ in `__post_init__` (no silent truncation).
 
 ```bash
 pip install -r requirements-ci.txt        # the exact CPU torch / numpy / pytest versions CI uses
-python -m helioslm_v5.tests.test_v5     # 92 unit tests (3 checkpoint-dependent tests self-skip without checkpoints/toy_v5.13.pt)
+python -m helioslm_v5.tests.test_v5     # 113 unit tests (3 checkpoint-dependent tests self-skip without checkpoints/toy_v5.13.pt)
 python integration_test_v51.py          # 9 end-to-end integration tests
 python -m helioslm_v5.tests.test_agent  # 9 agent-layer oracles (v5.23)
 python -m helioslm_v5.tests.test_v5_stage_a   # T15 real-model oracles (v5.26)
@@ -683,6 +683,7 @@ As of 2026-10-26:
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.197** — the `--list` probe also reports `MODEL=<config model_name>` and `CHANGELOG=v<head>` so version drift surfaces in one command; README quick-start test count repaired (92 → actual registry) and locked to `len(TESTS)` — T151, T152
 - **v5.196** — Tier packages from a Hugging Face checkpoint (`examples/package_hf.py`): llama.cpp converts and quantizes, `package_gguf` writes the same tier layout, so a route-B pilot goes to the Cloudflare download page unchanged — T166
 - **v5.195** — `cpt_hf.py --max-repeat R`: no data source is read more than R times in continued pretraining (short sources no longer get memorised) — T134
 - **v5.194** — CVDP scoring: a test-command timeout now kills its simulators too, not only the shell; `hdl_eval_all.py --samples` rescores saved generations without a GPU — T144

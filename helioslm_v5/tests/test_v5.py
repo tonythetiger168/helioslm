@@ -211,6 +211,11 @@ TESTS = [
     # grouped dispatch (plus cross-dispatch bitwise state equality).
     case_upstream_suites.test_moe_dispatch_suite,
     case_moe.test_balance_state_resume_grouped,
+    # v5.197 (2026-10-29): --list reports MODEL/CHANGELOG versions (drift
+    # surfaces in one probe); README quick-start test count locked to the
+    # registry (was stale: 92 claimed vs 111 registered).
+    case_harness_repair.test_list_probe_reports_versions,
+    case_harness_repair.test_readme_test_count_current,
 ]
 
 # CI thread guard (2026-10-13): PR #16's full-suite probe passes with
@@ -230,8 +235,23 @@ def main():
         # gate) a fast smoke check of the mandated `python -m ...` entry
         # point without paying for the full suite.
         print(f"TESTS={len(TESTS)}")
+        # v5.197: also surface the version pair, so the same probe shows
+        # model_name vs changelog-head drift in one shot instead of
+        # needing a second command (the drift has recurred: v5.49->v5.109,
+        # v5.134->v5.152, both caught by hand).
+        import re as _re
+        _cfg = (_REPO_ROOT / "helioslm_v5" / "configs" / "config_v5.py") \
+            .read_text(encoding="utf-8")
+        _m = _re.search(
+            r'model_name:\s*str\s*=\s*"((?:HeliosLM|Evastar)-v[\d.]+)"',
+            _cfg)
+        _ch = (_REPO_ROOT / "helioslm_v5" / "CHANGELOG.md") \
+            .read_text(encoding="utf-8")
+        _h = _re.search(r"^## v(\d+\.\d+)", _ch, _re.M)
+        print(f"MODEL={_m.group(1) if _m else 'UNKNOWN'}")
+        print(f"CHANGELOG=v{_h.group(1) if _h else 'UNKNOWN'}")
         sys.exit(0)
-    print("HeliosLM v5.196 Test Suite (lite config, CPU)")
+    print("HeliosLM v5.197 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:
