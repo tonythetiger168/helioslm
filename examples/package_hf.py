@@ -54,15 +54,21 @@ def main():
     ap.add_argument("--arch", required=True, help="llama.cpp architecture, e.g. gemma4")
     ap.add_argument("--base", help="base model id for the manifest")
     ap.add_argument("--ctx", type=int)
+    ap.add_argument("--chat", action="store_true",
+                    help="instruction-tuned model: Modelfile keeps the GGUF chat template")
+    ap.add_argument("--quants", nargs="+", metavar="TIER=Q[,Q]", default=[],
+                    help="per-tier quant override, e.g. L16=q8_0 L24=f16")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
     out = Path(args.out)
+    override = {k: v.split(",") for k, v in (o.split("=", 1) for o in args.quants)}
     if args.gguf:
         ggufs = dict(g.split("=", 1) for g in args.gguf)
     else:
         if not (args.hf and args.llama_cpp):
             ap.error("--hf and --llama-cpp are needed unless --gguf is given")
-        quants = sorted({q for t in args.tiers for q in TIERS[t].quants} - {"f16"})
+        quants = sorted({q for t in args.tiers for q in override.get(t, TIERS[t].quants)}
+                        - {"f16"})
         cmds, ggufs = convert_commands(args.hf, args.llama_cpp, out / "_gguf", quants)
         for c in cmds:
             print("+", shlex.join(c), flush=True)
@@ -73,7 +79,8 @@ def main():
             return
     for tier in args.tiers:
         m = package_gguf(ggufs, tier, out / tier, name=args.name, arch=args.arch,
-                         ctx=args.ctx, base=args.base)
+                         ctx=args.ctx, base=args.base, quants=override.get(tier),
+                         chat=args.chat)
         print(tier, [(f["file"], f["bytes"], f["fits"]) for f in m["files"]])
 
 

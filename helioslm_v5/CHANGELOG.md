@@ -1,5 +1,16 @@
 # HeliosLM v5 Changelog
 
+## v5.201 (2026-10-29) - package_hf: per-tier quants, chat models
+
+- `package_gguf(..., quants=[...])` and `package_hf.py --quants L16=q8_0
+  L24=f16` override a tier's quant list, so a larger model (e.g. the
+  E4B-based HDL model) ships Q8_0 on L16 and F16 on L24.
+- `package_gguf(..., chat=True)` / `package_hf.py --chat`: for an
+  instruction-tuned model the Ollama Modelfile has no raw-prompt TEMPLATE
+  line, so Ollama uses the chat template embedded in the GGUF; the
+  manifest records `chat`.
+- T166.
+
 ## v5.200 (2026-10-29) - B0 rerun: LR / MIXTURE knobs, public Taiwanese mixture
 
 The first B0 pilot (2.5e8 tokens, lr 5e-5, the B1 draft mixture with
