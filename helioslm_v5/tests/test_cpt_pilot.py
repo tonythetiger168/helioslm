@@ -233,3 +233,14 @@ def test_gap_from_checkpoint():
               "google/gemma-4-E2B": {"tmmluplus": {i: False for i in ids}}}
     g = bg.gap_table(scores, "runs/b0/final", ["google/gemma-4-E2B"])
     assert g["tmmluplus"]["google/gemma-4-E2B"]["diff"] == 1.0
+
+
+def test_cap_weights():
+    # v5.195: H5 planned 0.08 of 61M tokens for a 0.1M-token core (46 epochs)
+    w = cpt_hf.cap_weights([0.6, 0.3, 0.1], [1e9, 1e9, 1e3], 1e6, 2)
+    assert abs(sum(w) - 1) < 1e-9
+    assert abs(w[2] * 1e6 - 2e3) < 1e-6            # read at most twice
+    assert abs(w[0] / w[1] - 2) < 1e-9             # the rest keep their ratio
+    assert cpt_hf.cap_weights([1, 1], [1e9, 1e9], 1e6, 2) == [0.5, 0.5]
+    w = cpt_hf.cap_weights([1, 1], [10, 30], 1e6, 2)   # all capped
+    assert abs(w[0] - 0.25) < 1e-9
