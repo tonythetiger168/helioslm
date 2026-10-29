@@ -123,5 +123,9 @@ def test_h5_mixture():
     assert stack["license"] == "per-repository"
     # an empty projects dict still means "gate every project" (v5.193)
     assert stack["projects"] == {} and fm.project_source(stack)
+    # one Verilog file synthesises in seconds; 600 s stragglers stalled the
+    # 256-row gate batches (v5.198)
+    vg = next(s for s in mix["sources"] if s["name"] == "verilog-github")
+    assert vg["projects"] == {"per_row": True, "timeout": 60}
     assert all(fm.project_source(s) for s in mix["sources"]
                if s["name"] not in ("fineweb-edu", "finemath", "core-v-verif-sv"))

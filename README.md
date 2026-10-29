@@ -683,6 +683,7 @@ As of 2026-10-26:
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.198** — H5 mixture: single Verilog_GitHub files get a 60 s synth-gate timeout (was 600 s), so slow files no longer stall the gate — T162
 - **v5.197** — the `--list` probe also reports `MODEL=<config model_name>` and `CHANGELOG=v<head>` so version drift surfaces in one command; README quick-start test count repaired (92 → actual registry) and locked to `len(TESTS)` — T151, T152
 - **v5.196** — Tier packages from a Hugging Face checkpoint (`examples/package_hf.py`): llama.cpp converts and quantizes, `package_gguf` writes the same tier layout, so a route-B pilot goes to the Cloudflare download page unchanged — T166
 - **v5.195** — `cpt_hf.py --max-repeat R`: no data source is read more than R times in continued pretraining (short sources no longer get memorised) — T134
