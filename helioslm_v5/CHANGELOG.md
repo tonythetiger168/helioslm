@@ -1,5 +1,12 @@
 # HeliosLM v5 Changelog
 
+## v5.203 (2026-10-30) - 5 GB checkpoint shards in sft_hf / cpt_hf
+
+`sft_hf.py train` and `cpt_hf.py` save `final/` with
+`max_shard_size="5GB"`. The Hub rejects single files over 50 GB, so the
+Gemma 4 26B-A4B SFT checkpoint (one ~52 GB file) failed to upload with
+400 Bad Request and was lost with its pod.
+
 ## v5.202 (2026-10-29) - load_hf: image-text checkpoints without a causal-LM mapping
 
 `examples/tw_bench_run.py load_hf` falls back to

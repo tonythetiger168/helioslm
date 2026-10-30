@@ -267,7 +267,9 @@ def cmd_train(a):
                 max_hours=a.max_hours, log=log, ce_chunk=a.ce_chunk,
                 eval_every=a.eval_every)
     logf.close()
-    model.to(torch.bfloat16).save_pretrained(out / "final", safe_serialization=True)
+    # 5 GB shards: the Hub rejects single files over 50 GB (a 26B model in bf16)
+    model.to(torch.bfloat16).save_pretrained(out / "final", safe_serialization=True,
+                                             max_shard_size="5GB")
     AutoTokenizer.from_pretrained(a.tokenizer or a.model).save_pretrained(out / "final")
     (out / "result.json").write_text(json.dumps(res, indent=2))
     print(json.dumps(res))
