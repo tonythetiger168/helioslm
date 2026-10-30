@@ -1,5 +1,19 @@
 # HeliosLM v5 Changelog
 
+## v5.207 (2026-10-30) - verifiable MCQ reward for GRPO
+
+`eval/mcq_reward.py`: the DeepSeek-R1 recipe on exam-style questions.
+`make_task` writes a zh-TW prompt (question, A-D, reason step by step,
+last line 「答案：X」); tasks come from a public set's train / dev split
+(`tasks_from_mcq`) or from teacher answers (`tasks_from_distill`: the
+teacher's majority letter is the key, kept only when its samples agree).
+`drop_contaminated` removes tasks with a 13-gram overlap with any
+evaluation set. `reward` is 1 for the key's letter (the last 「答案：X」
+after `</think>`, so letters in the reasoning do not count), else 0; a
+zh-TW task answered in Simplified Chinese loses 0.2.
+`examples/hdl_rl_hf.py` gains `prepare-mcq` and `train --reward mcq`
+(same GRPO loop, `--lang-penalty`); the HDL reward stays the default.
+
 ## v5.206 (2026-10-30) - knowledge rephrasing for CPT data
 
 `src/training/rephrase.py` + `examples/rephrase_corpus.py`: the

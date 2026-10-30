@@ -20,6 +20,16 @@ KL term and no reference model. The policy reuses ``cpt_hf.py``'s
 loading (``--freeze``, ``--frozen-bf16``) and fp32 master weights.
 Writes ``<out>/log.jsonl`` (per round: mean reward, pass rate, kept
 groups, gate bonus), ``<out>/final`` and ``<out>/result.json``.
+
+v5.207: ``--reward mcq`` trains on multiple-choice tasks instead
+(``helioslm_v5/eval/mcq_reward.py``: reasoning, then 「答案：X」 checked
+against the key), the DeepSeek-R1 recipe for exam-style questions:
+
+  python examples/hdl_rl_hf.py prepare-mcq --mcq /data/tmmluplus --bench tmmluplus \
+      --split train --eval /data/tmmluplus --eval-split test --out /workspace/rl/mcq.jsonl
+  python examples/hdl_rl_hf.py prepare-mcq --distill answers.jsonl --out /workspace/rl/mcq.jsonl
+  python examples/hdl_rl_hf.py train --reward mcq --model /workspace/sft \
+      --tasks /workspace/rl/mcq.jsonl --max-new 1536 --out /workspace/runs/rl_mcq
 """
 import argparse
 import json
@@ -38,6 +48,7 @@ sys.path.insert(0, str(_REPO))
 sys.path.insert(0, str(_REPO / "examples"))
 
 from helioslm_v5.eval import hdl_reward as hr  # noqa: E402
+from helioslm_v5.eval import mcq_reward as mr  # noqa: E402
 from helioslm_v5.eval.uvm_bench import cpu_limit  # noqa: E402
 
 PROCESSOR_FILES = ("processor_config.json", "preprocessor_config.json", "chat_template.jinja",
@@ -140,6 +151,38 @@ def cmd_prepare(a):
             print("example", json.dumps(w), flush=True)
     print(json.dumps(st), flush=True)
     return st
+
+
+def cmd_prepare_mcq(a):
+    """MCQ tasks from a public set's train / dev split (``--mcq``) or from
+    teacher answers (``--distill``), minus anything overlapping ``--eval``."""
+    from helioslm_v5.eval import tw_bench as tb
+    if bool(a.mcq) == bool(a.distill):
+        raise SystemExit("give exactly one of --mcq / --distill")
+    if a.mcq:
+        tasks, st = mr.tasks_from_mcq(tb.load_mcq(a.mcq, a.bench, split=a.split), lang=a.lang), {}
+    else:
+        recs = [json.loads(x) for x in open(a.distill, encoding="utf-8") if x.strip()]
+        tasks, st = mr.tasks_from_distill(recs, min_agree=a.min_agree, lang=a.lang)
+    if a.eval:
+        items = {}
+        for path in a.eval:
+            items.update(tb.eval_texts(tb.load_mcq(path, a.eval_bench or a.bench,
+                                                   split=a.eval_split)))
+        tasks, st["contaminated"] = mr.drop_contaminated(tasks, items)
+    Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+    with open(a.out, "w", encoding="utf-8") as fh:
+        for t in tasks:
+            fh.write(json.dumps(t, ensure_ascii=False) + "\n")
+    st["tasks"] = len(tasks)
+    print(json.dumps(st), flush=True)
+    return st
+
+
+def score(text, task, a):
+    if a.reward == "mcq":
+        return mr.reward(text, task, lang_penalty=a.lang_penalty)
+    return hr.reward(text, task, gate_weight=a.gate_weight)
 
 
 # ------------------------------------------------------------------ rollouts
@@ -262,8 +305,7 @@ def cmd_train(a):
         gens = [json.loads(x) for x in open(gfile, encoding="utf-8") if x.strip()]
         t_gen = time.time() - tg
         with ThreadPoolExecutor(max_workers=workers) as ex:
-            scored = list(ex.map(lambda g: hr.reward(g["text"], batch[g["task"]],
-                                                     gate_weight=a.gate_weight), gens))
+            scored = list(ex.map(lambda g: score(g["text"], batch[g["task"]], a), gens))
         rewards = [s[0] for s in scored]
         advs = group_advantages(rewards, a.group)
         keep = [(g, ad) for g, ad in zip(gens, advs) if ad is not None and g["ids"]]
@@ -297,7 +339,8 @@ def cmd_train(a):
                "pass": round(len(correct) / max(len(scored), 1), 4),
                "kept_samples": len(keep), "resp_tokens": n_tok,
                "truncated": sum(1 for g in gens if g["finish"] == "length"),
-               "gate_bonus": round(float(np.mean([s[0] - 1 for s in correct])), 4) if correct else None,
+               "gate_bonus": round(float(np.mean([s[0] - 1 for s in correct])), 4)
+               if correct and a.reward == "hdl" else None,
                "gen_s": round(t_gen, 1), "update_s": round(time.time() - tu, 1),
                "elapsed_s": round(time.time() - t0, 1)}
         logf.write(json.dumps(row) + "\n")
@@ -320,6 +363,17 @@ def main(argv=None):
     p.add_argument("--out", required=True)
     p.add_argument("--limit", type=int)
     p.add_argument("--workers", type=int)
+    m = sub.add_parser("prepare-mcq")
+    m.add_argument("--mcq", help="tw_bench.load_mcq file or directory")
+    m.add_argument("--bench", default="tmmluplus")
+    m.add_argument("--split", default="train")
+    m.add_argument("--distill", help="distill_gen answers.jsonl of MCQ prompts")
+    m.add_argument("--min-agree", type=float, default=1.0)
+    m.add_argument("--eval", nargs="*", help="evaluation sets to decontaminate against")
+    m.add_argument("--eval-bench")
+    m.add_argument("--eval-split", default="test")
+    m.add_argument("--lang", default="tw")
+    m.add_argument("--out", required=True)
     g = sub.add_parser("generate")
     g.add_argument("--model", required=True)
     g.add_argument("--tasks", required=True)
@@ -339,7 +393,9 @@ def main(argv=None):
     t.add_argument("--max-new", type=int, default=2048)
     t.add_argument("--lr", type=float, default=1e-6)
     t.add_argument("--minibatches", type=int, default=2)
+    t.add_argument("--reward", choices=("hdl", "mcq"), default="hdl")
     t.add_argument("--gate-weight", type=float, default=hr.GATE_WEIGHT)
+    t.add_argument("--lang-penalty", type=float, default=mr.LANG_PENALTY)
     t.add_argument("--gpu-mem", type=float, default=0.45)
     t.add_argument("--rounds", type=int, default=0, help="0: until --max-hours")
     t.add_argument("--max-hours", type=float, default=5.0)
@@ -348,7 +404,8 @@ def main(argv=None):
     t.add_argument("--frozen-bf16", action="store_true")
     t.add_argument("--seed", type=int, default=0)
     a = ap.parse_args(argv)
-    return {"prepare": cmd_prepare, "generate": cmd_generate, "train": cmd_train}[a.cmd](a)
+    return {"prepare": cmd_prepare, "prepare-mcq": cmd_prepare_mcq, "generate": cmd_generate,
+            "train": cmd_train}[a.cmd](a)
 
 
 if __name__ == "__main__":

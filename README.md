@@ -684,6 +684,7 @@ As of 2026-10-26:
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.207** — GRPO on multiple-choice questions: `eval/mcq_reward.py` (reasoning, then 「答案：X」 checked against the key; Simplified-Chinese penalty for zh-TW tasks) and `hdl_rl_hf.py prepare-mcq` / `train --reward mcq`, with eval-set decontamination
 - **v5.206** — knowledge rephrasing for CPT data (`training/rephrase.py`, `examples/rephrase_corpus.py`): a teacher rewrites zh-TW documents in several styles, each chunk fidelity-checked, so CPT sees the same knowledge several times without repeating text
 - **v5.205** — Kimi K2.6 joins the distillation teacher whitelist (licence hash pinned); `distill_gen` teacher aliases `kimi-k2.6` and `kimi-k3`
 - **v5.204** — `load_hf` falls back to the slow tokenizer when the fast one fails to load (older Mixtral-based checkpoints on transformers 5.x)
