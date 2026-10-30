@@ -53,6 +53,11 @@ TEACHERS = {
     "deepseek-v4.1-flash-1017": {
         "repo": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
         "served_model": "deepseek-ai/DeepSeek-V4.1-Flash-1017"},
+    # 2026-10-30: Kimi teachers (Moonshot licences, display clause only)
+    "kimi-k2.6": {"repo": "moonshotai/Kimi-K2.6",
+                  "served_model": "moonshotai/Kimi-K2.6"},
+    "kimi-k3": {"repo": "moonshotai/Kimi-K3",
+                "served_model": "moonshotai/Kimi-K3"},
 }
 
 KEEP_THINKING = ("none", "turn", "all")
