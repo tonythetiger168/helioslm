@@ -130,6 +130,12 @@ class GenConfig:
             cfg["chat_template_kwargs"] = {"thinking": self.thinking}
         elif self.endpoint != "openai":
             raise ValueError("endpoint must be 'vllm' or 'openai'")
+        elif not self.thinking:
+            # v5.208: the hosted DeepSeek API ignores chat_template_kwargs and
+            # thinks by default; this field turns it off (checked on
+            # api.deepseek.com 2026-10-30: 0 reasoning tokens with it, 70-90%
+            # of the output without). ``extra`` can override it.
+            cfg["thinking"] = {"type": "disabled"}
         cfg.update(self.extra)
         return cfg
 

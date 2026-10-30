@@ -326,3 +326,13 @@ def test_cli_against_a_local_openai_server(tmp_path, capsys):
         assert bodies[-1]["model"] == "deepseek-ai/DeepSeek-V4.1-Flash"
     finally:
         srv.shutdown()
+
+
+def test_openai_endpoint_thinking_off():
+    """v5.208: --no-thinking reaches a hosted API as thinking disabled."""
+    off = dg.GenConfig(endpoint="openai", thinking=False).body_config(dg.TEACHERS["deepseek-v4.1-flash"])
+    assert off["thinking"] == {"type": "disabled"} and "chat_template_kwargs" not in off
+    on = dg.GenConfig(endpoint="openai", thinking=True).body_config(dg.TEACHERS["deepseek-v4.1-flash"])
+    assert "thinking" not in on
+    over = dg.GenConfig(endpoint="openai", thinking=False, extra={"thinking": {"type": "enabled"}})
+    assert over.body_config(dg.TEACHERS["deepseek-v4.1-flash"])["thinking"] == {"type": "enabled"}
