@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .llamacpp import KIMI_K3, export_llamacpp_gguf, llamacpp_arch
+from .speculative import draft_mismatch, server_command
 
 
 @dataclass(frozen=True)
@@ -142,6 +143,15 @@ def _write_package(out, name, t, arch, files, has_tokenizer, extra=None, chat=Fa
     if has_tokenizer:
         (out / "Modelfile").write_text(modelfile(files[0]["file"], t, chat))
     readme = _readme(name, t, arch, files, has_tokenizer)
+    dr = (extra or {}).get("draft")
+    if dr:
+        readme += ("\nFaster generation (speculative decoding): the drafter "
+                   f"`{dr['file']}` ({dr['spec_type']}) proposes tokens that the main "
+                   "model checks, so the output is the main model's own. llama.cpp "
+                   "only (Ollama has no draft models):\n\n```\n"
+                   + server_command(files[0]["file"], dr["file"], t.ctx, t.gpu_layers,
+                                    spec_type=dr["spec_type"])
+                   + "\n```\n")
     im = (extra or {}).get("imatrix")
     if im:
         readme += ("\nThe " + ", ".join(QUANT_LABEL[q] for q in im["quants"])
@@ -157,7 +167,8 @@ def _write_package(out, name, t, arch, files, has_tokenizer, extra=None, chat=Fa
 
 
 def package_gguf(ggufs, tier, out_dir, *, name, arch, ctx=None, base=None, quants=None,
-                 chat=False, imatrix=None):
+                 chat=False, imatrix=None, draft=None, draft_base=None,
+                 spec_type="draft-mtp"):
     """Package GGUF files made outside this repo (v5.196).
 
     For a continued-pretraining checkpoint of an open Hugging Face base
@@ -174,7 +185,13 @@ def package_gguf(ggufs, tier, out_dir, *, name, arch, ctx=None, base=None, quant
     ``chat`` marks an instruction-tuned model: its Modelfile keeps the
     GGUF's own chat template. ``imatrix`` (v5.208) is the llama-imatrix
     file the k-quants were made with; its sha256 and the files it applies
-    to go into the manifest.
+    to go into the manifest. ``draft`` (v5.209) is a drafter GGUF for
+    speculative decoding of kind ``spec_type`` (``draft-mtp``: the main
+    model's MTP head; ``draft-simple``: a smaller model with the same
+    vocabulary). It is checked with :func:`speculative.draft_mismatch`
+    (``ValueError`` if it does not fit), copied in, and the README gets the
+    ``llama-server --spec-type`` command; ``draft_base`` names its model
+    in the manifest.
     """
     if tier not in TIERS:
         raise ValueError(f"tier must be one of {list(TIERS)}, got {tier!r}")
@@ -198,6 +215,16 @@ def package_gguf(ggufs, tier, out_dir, *, name, arch, ctx=None, base=None, quant
                       "sha256": _sha256(out / fname),
                       "fits": size <= FIT_SHARE * t.memory_gb * 2**30})
     extra = {"chat": chat, **({"base": base} if base else {})}
+    if draft:
+        why = draft_mismatch(out / files[0]["file"], draft, spec_type)
+        if why:
+            raise ValueError(f"draft model does not fit {files[0]['file']}: {why}")
+        dname = f"{_slug(name)}-{_slug(t.name)}-draft.gguf"
+        shutil.copyfile(draft, out / dname)
+        extra["draft"] = {"file": dname, "spec_type": spec_type,
+                          "bytes": (out / dname).stat().st_size,
+                          "sha256": _sha256(out / dname),
+                          **({"base": draft_base} if draft_base else {})}
     im_quants = [f["quant"] for f in files if f["quant"] in IMATRIX_QUANTS]
     if imatrix and im_quants:
         extra["imatrix"] = {"sha256": _sha256(imatrix), "quants": im_quants}

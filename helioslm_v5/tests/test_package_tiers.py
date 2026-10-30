@@ -275,3 +275,73 @@ def test_package_hf_imatrix(tmp_path):
     docs = imatrix_calib.build([a, b], max_chars=10_000).split("\n\n")
     assert [d[0] for d in docs] == ["甲", "x", "乙", "問"]
     assert len(imatrix_calib.build([a, b], max_chars=700)) < 700
+
+
+def _vocab_gguf(path, tokens, **kv):
+    from helioslm_v5.src.export.gguf import write_gguf
+    meta = {"general.architecture": "gemma4", "tokenizer.ggml.model": "llama",
+            "tokenizer.ggml.bos_token_id": 2, "tokenizer.ggml.eos_token_id": 1,
+            "tokenizer.ggml.tokens": tokens, **kv}
+    from helioslm_v5.src.export.gguf import _python_to_typed
+    write_gguf(path, [(k, *_python_to_typed(v)) for k, v in meta.items()],
+               [("w", torch.zeros(4))], "f32")
+    return path
+
+
+def test_speculative_draft(tmp_path):
+    """T166 (v5.209): a draft GGUF is checked against the target's
+    vocabulary the way llama.cpp does, copied into the tier package with
+    its hash, its llama-server -md command goes into the README and the
+    Cloudflare zip carries it; a mismatched vocabulary is refused."""
+    from helioslm_v5.src.export.cloudflare import bundle_package
+    from helioslm_v5.src.export.gguf import read_gguf_metadata
+    from helioslm_v5.src.export.speculative import vocab_mismatch
+    toks = [f"t{i}" for i in range(300)]
+    target = _vocab_gguf(tmp_path / "t.gguf", toks)
+    good = _vocab_gguf(tmp_path / "d.gguf", toks[:260])
+    assert read_gguf_metadata(target)["tokenizer.ggml.tokens"] == toks
+    assert vocab_mismatch(target, good) is None
+    assert "differ by more than" in vocab_mismatch(target, _vocab_gguf(
+        tmp_path / "s.gguf", toks[:100]))
+    assert "token 7" in vocab_mismatch(target, _vocab_gguf(
+        tmp_path / "x.gguf", toks[:7] + ["zz"] + toks[8:]))
+    assert vocab_mismatch(target, _vocab_gguf(tmp_path / "y.gguf", ["a"] * 3 + toks[3:])) is None
+    assert "eos" in vocab_mismatch(target, _vocab_gguf(
+        tmp_path / "e.gguf", toks, **{"tokenizer.ggml.eos_token_id": 9}))
+
+    m = package.package_gguf({"q4_k": target}, "L24", tmp_path / "L24", name="g26",
+                             arch="gemma4", chat=True, draft=good,
+                             draft_base="google/gemma-4-E2B-it", spec_type="draft-simple")
+    d = m["draft"]
+    assert d["file"] == "g26-l24-draft.gguf" and d["base"] == "google/gemma-4-E2B-it"
+    assert d["spec_type"] == "draft-simple"
+    data = (tmp_path / "L24" / d["file"]).read_bytes()
+    assert d["bytes"] == len(data) and d["sha256"] == hashlib.sha256(data).hexdigest()
+    readme = (tmp_path / "L24" / "README.md").read_text()
+    assert "--spec-type draft-simple -md g26-l24-draft.gguf --spec-draft-n-max 16" in readme
+    with pytest.raises(ValueError, match="draft model does not fit"):
+        package.package_gguf({"q4_k": target}, "L24", tmp_path / "bad", name="g26",
+                             arch="gemma4", draft=tmp_path / "s.gguf", spec_type="draft-simple")
+    # MTP head (default kind): checked by architecture, not vocabulary
+    mtp = _vocab_gguf(tmp_path / "mtp.gguf", ["m"] * 5,
+                      **{"general.architecture": "gemma4-assistant"})
+    m = package.package_gguf({"q4_k": target}, "L48+", tmp_path / "L48", name="g26",
+                             arch="gemma4", draft=mtp)
+    assert m["draft"]["spec_type"] == "draft-mtp"
+    assert "--spec-type draft-mtp -md g26-l48plus-draft.gguf --spec-draft-n-max 4" in (
+        tmp_path / "L48" / "README.md").read_text()
+    with pytest.raises(ValueError, match="not a 'gemma4' head"):
+        package.package_gguf({"q4_k": target}, "L24", tmp_path / "bad2", name="g26",
+                             arch="gemma4", draft=good)
+    import zipfile
+    entry = bundle_package(tmp_path / "L24", tmp_path / "cf", version="v")
+    with zipfile.ZipFile(tmp_path / "cf" / entry["bundles"][0]["zip"]) as z:
+        assert "g26-l24-draft.gguf" in z.namelist()
+        assert "TEMPLATE" not in z.read("Modelfile").decode()  # chat model keeps its template
+
+    sys.path.insert(0, str(_REPO / "examples"))
+    import spec_bench
+    s = spec_bench.summarize([{"predicted_n": 100, "predicted_ms": 2000, "draft_n": 80,
+                               "draft_n_accepted": 60},
+                              {"predicted_n": 100, "predicted_ms": 2000}])
+    assert s == {"tokens": 200, "tok_per_s": 50.0, "draft_tokens": 80, "acceptance": 0.75}

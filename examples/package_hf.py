@@ -16,6 +16,11 @@ skips conversion and packages existing files.
 first and quantizes the k-quants (Q4_K_M) with that importance matrix:
 same file size, lower quantization error. --imatrix imatrix.dat reuses
 one made earlier. examples/imatrix_calib.py builds the calibration text.
+
+--draft L24=mtp-gemma-4-26B-A4B-it-Q8_0.gguf (v5.209) adds a drafter for
+speculative decoding to that tier: --spec-type draft-mtp (default) for the
+model's MTP head, draft-simple for a smaller same-vocabulary model such
+as Gemma 4 E2B. examples/spec_bench.py measures the speed-up.
 """
 import argparse
 import shlex
@@ -27,6 +32,7 @@ _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
 from helioslm_v5.src.export.package import IMATRIX_QUANTS, TIERS, package_gguf  # noqa: E402
+from helioslm_v5.src.export.speculative import SPEC_TYPES  # noqa: E402
 
 # quant key -> llama-quantize type (f16 is convert_hf_to_gguf's output)
 _QTYPE = {"q8_0": "Q8_0", "q4_k": "Q4_K_M"}
@@ -85,10 +91,16 @@ def main():
     ap.add_argument("--imatrix", metavar="DAT", help="existing llama-imatrix output to reuse")
     ap.add_argument("--imatrix-chunks", type=int, default=200,
                     help="calibration chunks for llama-imatrix (default 200)")
+    ap.add_argument("--draft", nargs="+", default=[], metavar="TIER=GGUF",
+                    help="draft model for speculative decoding, e.g. L24=e2b-q4.gguf")
+    ap.add_argument("--draft-base", help="draft model id for the manifest")
+    ap.add_argument("--spec-type", default="draft-mtp", choices=list(SPEC_TYPES),
+                    help="drafter kind (default draft-mtp)")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
     out = Path(args.out)
     override = {k: v.split(",") for k, v in (o.split("=", 1) for o in args.quants)}
+    drafts = dict(d.split("=", 1) for d in args.draft)
     if args.gguf:
         ggufs = dict(g.split("=", 1) for g in args.gguf)
     else:
@@ -111,7 +123,8 @@ def main():
     for tier in args.tiers:
         m = package_gguf(ggufs, tier, out / tier, name=args.name, arch=args.arch,
                          ctx=args.ctx, base=args.base, quants=override.get(tier),
-                         chat=args.chat, imatrix=imatrix)
+                         chat=args.chat, imatrix=imatrix, draft=drafts.get(tier),
+                         draft_base=args.draft_base, spec_type=args.spec_type)
         print(tier, [(f["file"], f["bytes"], f["fits"]) for f in m["files"]])
 
 
