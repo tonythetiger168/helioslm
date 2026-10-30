@@ -345,3 +345,29 @@ def test_speculative_draft(tmp_path):
                                "draft_n_accepted": 60},
                               {"predicted_n": 100, "predicted_ms": 2000}])
     assert s == {"tokens": 200, "tok_per_s": 50.0, "draft_tokens": 80, "acceptance": 0.75}
+
+
+def test_kv_cache_options(tmp_path):
+    """T166 (v5.210): packages tell how to quantize the KV cache for long
+    context (llama.cpp flags with flash attention, Ollama variables) and
+    list the options in the manifest; quant_bench.py reads perplexity and
+    KV size from llama-perplexity logs."""
+    assert package.kv_flags("f16") == ""
+    assert package.kv_flags("q8_0") == "-fa on -ctk q8_0 -ctv q8_0"
+    with pytest.raises(ValueError):
+        package.kv_flags("q2_k")
+    src = tmp_path / "q4.gguf"
+    src.write_bytes(b"x" * 10)
+    m = package.package_gguf({"q4_k": src}, "L24", tmp_path / "L24", name="n", arch="gemma4")
+    assert m["kv_cache"] == {"recommended": "q8_0", "options": ["f16", "q8_0", "q4_0"]}
+    readme = (tmp_path / "L24" / "README.md").read_text()
+    assert "-c 32768 -ngl 99 -fa on -ctk q8_0 -ctv q8_0" in readme
+    assert "OLLAMA_KV_CACHE_TYPE=q8_0" in readme
+    sys.path.insert(0, str(_REPO / "examples"))
+    import quant_bench
+    # an iSWA model (Gemma) logs its full and sliding-window caches separately
+    log = ("llama_kv_cache: size =  512.00 MiB ( 8192 cells, 5 layers), K (q8_0): 256.00 MiB\n"
+           "llama_kv_cache: size =  128.00 MiB ( 1024 cells, 25 layers)\n"
+           "[1]4.1,[2]4.3,\nFinal estimate: PPL = 7.1234 +/- 0.05678\n")
+    assert quant_bench.parse(log) == (7.1234, 0.05678, 640.0)
+    assert quant_bench.parse("nothing") == (None, None, None)

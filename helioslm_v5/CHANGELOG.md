@@ -1,5 +1,18 @@
 # HeliosLM v5 Changelog
 
+## v5.210 (2026-10-30) - KV-cache quantization options, quant_bench
+
+- `package.KV_CACHE` / `kv_flags`: llama.cpp KV-cache types (F16, Q8_0,
+  Q4_0) and their flags (`-fa on -ctk <t> -ctv <t>`; a quantized V cache
+  needs flash attention). Package READMEs get a long-context section with
+  the Q8_0 (recommended, about half the memory, near-lossless) and Q4_0
+  commands and Ollama's `OLLAMA_FLASH_ATTENTION` / `OLLAMA_KV_CACHE_TYPE`;
+  manifests list `kv_cache` (recommended + options).
+- `examples/quant_bench.py` runs `llama-perplexity` per GGUF and KV type
+  and records perplexity (with its error) and the KV cache size llama.cpp
+  allocates (full and sliding-window caches summed), to compare Q4_K_M with
+  and without imatrix and the KV types at long context.
+
 ## v5.209 (2026-10-30) - speculative decoding drafters in tier packages
 
 - `src/export/speculative.py`: two drafter kinds for llama.cpp's
