@@ -13,6 +13,16 @@ from .txt / .jsonl sources (chat rows use their message contents),
 interleaved so each source is spread across the file, deduplicated, capped
 by characters.
 
+## v5.208 (2026-10-30) - --no-thinking works on hosted APIs
+
+`distill_gen.GenConfig.body_config` sends `"thinking": {"type": "disabled"}`
+when thinking is off on the `openai` endpoint. Until now `--no-thinking`
+only set vLLM's `chat_template_kwargs`, which the hosted DeepSeek API
+ignores: a meta-prompt run with `--no-thinking` had 2.75M of its 3.06M
+output tokens as reasoning, and a rephrasing run 70-90%. With the field the
+API returned 0 reasoning tokens (probed 2026-10-30). `distill_generate.py
+generate --extra-json '{...}'` merges any other request field.
+
 ## v5.207 (2026-10-30) - verifiable MCQ reward for GRPO
 
 `eval/mcq_reward.py`: the DeepSeek-R1 recipe on exam-style questions.

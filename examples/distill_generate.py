@@ -78,6 +78,8 @@ def main(argv=None):
     g.add_argument("--no-thinking", action="store_true")
     g.add_argument("--reasoning-effort", default=None,
                    help="passed through, e.g. low / high (DeepSeek V4.1)")
+    g.add_argument("--extra-json", default=None,
+                   help="JSON object merged into every request body")
     g.add_argument("--keep-thinking", choices=dg.KEEP_THINKING, default="none")
     g.add_argument("--samples", type=int, default=1)
     g.add_argument("--workers", type=int, default=64)
@@ -119,6 +121,8 @@ def main(argv=None):
         if a.limit:
             prompts = prompts[:a.limit]
         extra = {"reasoning_effort": a.reasoning_effort} if a.reasoning_effort else {}
+        if a.extra_json:
+            extra.update(json.loads(a.extra_json))
         cfg = dg.GenConfig(
             teacher=a.teacher, endpoint=a.endpoint, base_url=a.base_url,
             api_key_env=a.api_key_env, model=a.model, temperature=a.temperature,
