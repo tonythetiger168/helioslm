@@ -54,6 +54,8 @@ TIERS = {t.name: t for t in (
 # activations and the desktop
 FIT_SHARE = 0.75
 QUANT_LABEL = {"f16": "F16", "q8_0": "Q8_0", "q4_k": "Q4_K"}
+# quants an importance matrix changes (v5.208)
+IMATRIX_QUANTS = ("q4_k",)
 
 
 def _sha256(path):
@@ -139,7 +141,13 @@ def package_tier(model, config, tier, out_dir, *, name="helioslm", tokenizer=Non
 def _write_package(out, name, t, arch, files, has_tokenizer, extra=None, chat=False):
     if has_tokenizer:
         (out / "Modelfile").write_text(modelfile(files[0]["file"], t, chat))
-    (out / "README.md").write_text(_readme(name, t, arch, files, has_tokenizer))
+    readme = _readme(name, t, arch, files, has_tokenizer)
+    im = (extra or {}).get("imatrix")
+    if im:
+        readme += ("\nThe " + ", ".join(QUANT_LABEL[q] for q in im["quants"])
+                   + " files were quantized with an importance matrix (llama.cpp "
+                   "imatrix): same size, lower quantization error.\n")
+    (out / "README.md").write_text(readme)
     manifest = {"name": name, "tier": t.name, "arch": arch, "memory_gb": t.memory_gb,
                 "ctx": t.ctx, "gpu_layers": t.gpu_layers, "hardware": t.hardware,
                 "tokenizer": has_tokenizer, "files": files,
@@ -149,7 +157,7 @@ def _write_package(out, name, t, arch, files, has_tokenizer, extra=None, chat=Fa
 
 
 def package_gguf(ggufs, tier, out_dir, *, name, arch, ctx=None, base=None, quants=None,
-                 chat=False):
+                 chat=False, imatrix=None):
     """Package GGUF files made outside this repo (v5.196).
 
     For a continued-pretraining checkpoint of an open Hugging Face base
@@ -164,7 +172,9 @@ def package_gguf(ggufs, tier, out_dir, *, name, arch, ctx=None, base=None, quant
     always written. ``quants`` overrides the tier's quant list (order =
     file order, first = default), e.g. Q8_0 on L16 for a larger model.
     ``chat`` marks an instruction-tuned model: its Modelfile keeps the
-    GGUF's own chat template.
+    GGUF's own chat template. ``imatrix`` (v5.208) is the llama-imatrix
+    file the k-quants were made with; its sha256 and the files it applies
+    to go into the manifest.
     """
     if tier not in TIERS:
         raise ValueError(f"tier must be one of {list(TIERS)}, got {tier!r}")
@@ -188,4 +198,7 @@ def package_gguf(ggufs, tier, out_dir, *, name, arch, ctx=None, base=None, quant
                       "sha256": _sha256(out / fname),
                       "fits": size <= FIT_SHARE * t.memory_gb * 2**30})
     extra = {"chat": chat, **({"base": base} if base else {})}
+    im_quants = [f["quant"] for f in files if f["quant"] in IMATRIX_QUANTS]
+    if imatrix and im_quants:
+        extra["imatrix"] = {"sha256": _sha256(imatrix), "quants": im_quants}
     return _write_package(out, name, t, arch, files, True, extra, chat)

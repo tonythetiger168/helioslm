@@ -1,5 +1,18 @@
 # HeliosLM v5 Changelog
 
+## v5.208 (2026-10-30) - imatrix quantization in package_hf
+
+`examples/package_hf.py --imatrix-data calib.txt` runs `llama-imatrix`
+on the F16 GGUF (`--imatrix-chunks`, default 200) and makes the k-quants
+(Q4_K_M) with `llama-quantize --imatrix`, which lowers quantization error
+at the same file size; `--imatrix` reuses an existing matrix. Q8_0 and
+F16 are made as before. `package_gguf(..., imatrix=)` writes the matrix's
+sha256 and the files it applies to into the manifest and notes it in the
+package README. `examples/imatrix_calib.py` builds the calibration text
+from .txt / .jsonl sources (chat rows use their message contents),
+interleaved so each source is spread across the file, deduplicated, capped
+by characters.
+
 ## v5.207 (2026-10-30) - verifiable MCQ reward for GRPO
 
 `eval/mcq_reward.py`: the DeepSeek-R1 recipe on exam-style questions.
