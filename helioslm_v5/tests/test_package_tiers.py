@@ -230,3 +230,48 @@ def test_package_gguf_quant_override(tmp_path):
     got = {t: [f["quant"] for f in json.loads((tmp_path / "d" / t / "manifest.json").read_text())["files"]]
            for t in ("L16", "L24")}
     assert got == {"L16": ["q8_0"], "L24": ["f16"]}
+
+
+def test_package_hf_imatrix(tmp_path):
+    """T166 (v5.208): with calibration text, the conversion plan runs
+    llama-imatrix on the F16 file once and quantizes only the k-quants
+    with it; the manifest records the matrix's hash and which files used
+    it; imatrix_calib.py interleaves and deduplicates its sources."""
+    sys.path.insert(0, str(_REPO / "examples"))
+    import imatrix_calib
+    import package_hf
+    cmds, paths = package_hf.convert_commands("ckpt", "/llama", tmp_path, ["q4_k", "q8_0"],
+                                              imatrix_data="calib.txt", chunks=50)
+    assert cmds[1][0].endswith("llama-imatrix") and cmds[1][cmds[1].index("-m") + 1] == str(paths["f16"])
+    assert cmds[1][-2:] == ["--chunks", "50"]
+    dat = cmds[1][cmds[1].index("-o") + 1]
+    q4, q8 = cmds[2], cmds[3]
+    assert q4[1:3] == ["--imatrix", dat] and q4[-1] == "Q4_K_M"
+    assert "--imatrix" not in q8 and q8[-1] == "Q8_0"
+    # a reused matrix skips llama-imatrix; Q8_0 alone needs none
+    cmds, _ = package_hf.convert_commands("c", "/l", tmp_path, ["q4_k"], imatrix="old.dat")
+    assert len(cmds) == 2 and cmds[1][1:3] == ["--imatrix", "old.dat"]
+    cmds, _ = package_hf.convert_commands("c", "/l", tmp_path, ["q8_0"], imatrix_data="c.txt")
+    assert not any("llama-imatrix" in c[0] for c in cmds)
+
+    src = {q: tmp_path / f"{q}.gguf" for q in ("f16", "q4_k", "q8_0")}
+    for p in src.values():
+        p.write_bytes(b"x" * 10)
+    im = tmp_path / "imatrix.dat"
+    im.write_bytes(b"imatrix")
+    m = package.package_gguf(src, "L8", tmp_path / "L8", name="n", arch="gemma4", imatrix=im)
+    assert m["imatrix"] == {"sha256": hashlib.sha256(b"imatrix").hexdigest(), "quants": ["q4_k"]}
+    assert "importance matrix" in (tmp_path / "L8" / "README.md").read_text()
+    m = package.package_gguf(src, "L16", tmp_path / "L16", name="n", arch="gemma4",
+                             quants=["f16"], imatrix=im)
+    assert "imatrix" not in m
+
+    a = tmp_path / "a.txt"
+    a.write_text("\n\n".join(["甲" * 300, "乙" * 300, "甲" * 300]), encoding="utf-8")
+    b = tmp_path / "b.jsonl"
+    b.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in (
+        {"text": "x" * 300}, {"messages": [{"content": "問" * 150}, {"content": "答" * 150}]},
+        {"text": "short"})) + "\n", encoding="utf-8")
+    docs = imatrix_calib.build([a, b], max_chars=10_000).split("\n\n")
+    assert [d[0] for d in docs] == ["甲", "x", "乙", "問"]
+    assert len(imatrix_calib.build([a, b], max_chars=700)) < 700
