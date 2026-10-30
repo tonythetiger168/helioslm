@@ -371,3 +371,22 @@ def test_kv_cache_options(tmp_path):
            "[1]4.1,[2]4.3,\nFinal estimate: PPL = 7.1234 +/- 0.05678\n")
     assert quant_bench.parse(log) == (7.1234, 0.05678, 640.0)
     assert quant_bench.parse("nothing") == (None, None, None)
+
+
+def test_moe_expert_offload_note(tmp_path):
+    """T166 (v5.211): a mixture-of-experts GGUF (``<arch>.expert_count``)
+    gets the llama.cpp --cpu-moe / --n-cpu-moe advice and its expert count
+    in the manifest; a dense or unreadable file gets neither."""
+    moe = _vocab_gguf(tmp_path / "moe.gguf", ["a"] * 10, **{"gemma4.expert_count": 128})
+    dense = _vocab_gguf(tmp_path / "dense.gguf", ["a"] * 10)
+    assert package.gguf_expert_count(moe) == 128 and package.gguf_expert_count(dense) == 0
+    m = package.package_gguf({"q4_k": moe}, "L16", tmp_path / "L16", name="g26", arch="gemma4",
+                             quants=["q4_k"])
+    assert m["experts"] == 128
+    readme = (tmp_path / "L16" / "README.md").read_text()
+    assert "--cpu-moe" in readme and "--n-cpu-moe N" in readme
+    m = package.package_gguf({"q4_k": dense}, "L8", tmp_path / "L8", name="d", arch="gemma4")
+    assert "experts" not in m and "--cpu-moe" not in (tmp_path / "L8" / "README.md").read_text()
+    raw = tmp_path / "raw.gguf"
+    raw.write_bytes(b"x" * 10)
+    assert package.gguf_expert_count(raw) == 0

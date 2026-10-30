@@ -16,6 +16,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from .gguf import read_gguf_metadata
 from .llamacpp import KIMI_K3, export_llamacpp_gguf, llamacpp_arch
 from .speculative import draft_mismatch, server_command
 
@@ -80,6 +81,28 @@ def _long_context(first, t):
             f"llama-server -m {first} -c {ctx}{ngl} {kv_flags('q4_0')} --port 8080", "```", "",
             "Ollama: set `OLLAMA_FLASH_ATTENTION=1` and "
             f"`OLLAMA_KV_CACHE_TYPE={KV_RECOMMENDED}` before `ollama serve`.", ""]
+
+
+def _expert_offload(first, t):
+    """README lines for a mixture-of-experts model whose file may not fit the
+    GPU (v5.211): llama.cpp keeps expert weights in system RAM."""
+    return ["", "Mixture-of-experts: when the file does not fit the GPU, keep the expert "
+            "weights in system RAM and the rest on the GPU. Start with `--cpu-moe` (all "
+            "experts in RAM), then try `--n-cpu-moe N` (experts of the first N layers "
+            "only) and lower N while it still fits. Unified-memory machines (DGX "
+            "Spark, RTX Spark, Ryzen AI Max, Mac) need neither.", "", "```",
+            f"llama-server -m {first} -c {t.ctx} -ngl 99 --cpu-moe --port 8080", "```", ""]
+
+
+def gguf_expert_count(path):
+    """Experts per MoE layer from a llama.cpp GGUF's metadata (0 for a
+    dense model or a file without that metadata)."""
+    try:
+        meta = read_gguf_metadata(path)
+    except (OSError, ValueError):
+        return 0
+    arch = meta.get("general.architecture", "")
+    return int(meta.get(f"{arch}.expert_count", 0) or 0)
 
 
 # quants an importance matrix changes (v5.208)
@@ -181,6 +204,8 @@ def _write_package(out, name, t, arch, files, has_tokenizer, extra=None, chat=Fa
                    + server_command(files[0]["file"], dr["file"], t.ctx, t.gpu_layers,
                                     spec_type=dr["spec_type"])
                    + "\n```\n")
+    if (extra or {}).get("experts"):
+        readme += "\n".join(_expert_offload(files[0]["file"], t))
     im = (extra or {}).get("imatrix")
     if im:
         readme += ("\nThe " + ", ".join(QUANT_LABEL[q] for q in im["quants"])
@@ -255,6 +280,9 @@ def package_gguf(ggufs, tier, out_dir, *, name, arch, ctx=None, base=None, quant
                           "bytes": (out / dname).stat().st_size,
                           "sha256": _sha256(out / dname),
                           **({"base": draft_base} if draft_base else {})}
+    experts = gguf_expert_count(out / files[0]["file"])
+    if experts:
+        extra["experts"] = experts
     im_quants = [f["quant"] for f in files if f["quant"] in IMATRIX_QUANTS]
     if imatrix and im_quants:
         extra["imatrix"] = {"sha256": _sha256(imatrix), "quants": im_quants}

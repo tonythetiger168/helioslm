@@ -1,5 +1,14 @@
 # HeliosLM v5 Changelog
 
+## v5.211 (2026-10-30) - expert offload advice in MoE packages
+
+`package.gguf_expert_count` reads `<arch>.expert_count` from a llama.cpp
+GGUF (0 for dense or unreadable files). `package_gguf` writes it into the
+manifest as `experts` and adds a README section on keeping expert weights
+in system RAM with llama.cpp `--cpu-moe` / `--n-cpu-moe N` when the file
+does not fit the GPU (Gemma 4 26B-A4B on L16); unified-memory machines
+need neither.
+
 ## v5.210 (2026-10-30) - KV-cache quantization options, quant_bench
 
 - `package.KV_CACHE` / `kv_flags`: llama.cpp KV-cache types (F16, Q8_0,
