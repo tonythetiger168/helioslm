@@ -1,5 +1,13 @@
 # HeliosLM v5 Changelog
 
+## v5.204 (2026-10-30) - slow-tokenizer fallback in load_hf
+
+`examples/tw_bench_run.py load_hf` retries `AutoTokenizer` with
+`use_fast=False` when the fast tokenizer fails to load. Some older
+Mixtral-based checkpoints fail the fast-tokenizer conversion on
+transformers 5.x but load with the SentencePiece tokenizer, so the
+base-gap eval can score them again.
+
 ## v5.203 (2026-10-30) - 5 GB checkpoint shards in sft_hf / cpt_hf
 
 `sft_hf.py train` and `cpt_hf.py` save `final/` with
