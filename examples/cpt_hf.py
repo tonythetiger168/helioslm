@@ -407,7 +407,8 @@ def main(argv=None):
         logf.close()
         final = out / "final"
         model.to(torch.bfloat16).save_pretrained(final,
-                                                 safe_serialization=True)
+                                                 safe_serialization=True,
+                                                 max_shard_size="5GB")
         AutoTokenizer.from_pretrained(a.model, trust_remote_code=True) \
             .save_pretrained(final)
         (out / "result.json").write_text(json.dumps(res, indent=2))
