@@ -94,7 +94,9 @@ def bundle_package(pkg_dir, out_dir, *, version, status="preview"):
 
     Returns the tier entry for ``packages.json``: the manifest fields plus
     one ``bundles`` item (zip name, R2 key, bytes, sha256, quant, fits) per
-    GGUF, in the manifest's order (the first is the tier's default).
+    GGUF, in the manifest's order (the first is the tier's default). A
+    speculative-decoding draft model (v5.209) goes into every zip of the
+    tier, and a chat model's Modelfile keeps the GGUF's chat template.
     """
     pkg = Path(pkg_dir)
     m = json.loads((pkg / "manifest.json").read_text())
@@ -109,8 +111,10 @@ def bundle_package(pkg_dir, out_dir, *, version, status="preview"):
         zpath = out / zname
         with zipfile.ZipFile(zpath, "w", compression=zipfile.ZIP_STORED) as z:
             z.write(pkg / f["file"], f["file"])
+            if m.get("draft"):
+                z.write(pkg / m["draft"]["file"], m["draft"]["file"])
             if m.get("tokenizer"):
-                z.writestr("Modelfile", modelfile(f["file"], tier))
+                z.writestr("Modelfile", modelfile(f["file"], tier, m.get("chat", False)))
             if readme:
                 z.writestr("README.md", readme)
             z.writestr("manifest.json", json.dumps(m, indent=2) + "\n")

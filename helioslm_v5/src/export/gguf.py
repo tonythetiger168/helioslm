@@ -44,6 +44,7 @@ independent format-conformance check.
 
 Spec: https://github.com/ggml-org/ggml/blob/master/docs/gguf.md
 """
+import mmap
 import re
 import struct
 from collections.abc import Mapping
@@ -529,6 +530,29 @@ def _read_value(cur, vtype):
         n = cur.read("<Q")
         return [_read_value(cur, sub_type) for _ in range(n)]
     raise ValueError(f"unknown metadata value type {vtype} in file")
+
+
+def read_gguf_metadata(path):
+    """Metadata dict of a GGUF v3 file without reading its tensors (v5.209).
+
+    Memory-maps the file, so it suits multi-GB llama.cpp GGUFs that
+    :func:`read_gguf` would load whole.
+    """
+    with open(path, "rb") as f, mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+        cur = _Cursor(mm)
+        magic = cur.read("<4s")
+        if magic != GGUF_MAGIC:
+            raise ValueError(f"not a GGUF file: magic {magic!r} != b'GGUF'")
+        version = cur.read("<I")
+        if version != GGUF_VERSION:
+            raise ValueError(f"unsupported GGUF version {version} (this reader: v3)")
+        cur.read("<Q")
+        kv_count = cur.read("<Q")
+        metadata = {}
+        for _ in range(kv_count):
+            key = cur.read_str()
+            metadata[key] = _read_value(cur, cur.read("<I"))
+        return metadata
 
 
 def read_gguf(path):

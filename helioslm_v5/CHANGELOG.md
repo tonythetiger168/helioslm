@@ -1,5 +1,34 @@
 # HeliosLM v5 Changelog
 
+## v5.209 (2026-10-30) - speculative decoding drafters in tier packages
+
+- `src/export/speculative.py`: two drafter kinds for llama.cpp's
+  `llama-server --spec-type`: `draft-mtp` (the main model's MTP head, e.g.
+  Gemma 4's `*-it-assistant`, GGUF arch `gemma4-assistant`; checked by
+  architecture, 4 drafted tokens per step) and `draft-simple` (a smaller
+  same-vocabulary model, 16 per step). `vocab_mismatch` mirrors llama.cpp's
+  `common_speculative_are_compatible` (tokenizer model, BOS/EOS, add-BOS,
+  vocab sizes within 128, token texts equal from id 5); `server_args` /
+  `server_command` use the current `--spec-draft-*` flags.
+- `gguf.read_gguf_metadata` reads a GGUF's metadata through mmap, without
+  loading multi-GB tensor data.
+- `package_gguf(..., draft=, draft_base=, spec_type=)` / `package_hf.py
+  --draft TIER=GGUF --draft-base ID --spec-type` refuse a drafter that
+  does not fit, copy a fitting one into the tier package (kind, hash and
+  size in the manifest) and add the llama-server command to the README.
+- `cloudflare.bundle_package` puts the drafter into each zip of its tier,
+  and now writes a chat model's Modelfile without the raw-prompt TEMPLATE
+  (it had always used the base-model Modelfile in the zips).
+- `examples/spec_bench.py` starts llama-server without and with
+  speculation (a drafter, or drafter-free `ngram-mod`), runs the same
+  greedy prompts (zh-TW, English, code, Verilog) and reports tokens/s,
+  draft acceptance, speed-up and matching outputs.
+- Measured (A40, Gemma 4 26B-A4B-it Q4_K_M, 6 prompts x 256 greedy
+  tokens): 95.9 tok/s alone, 152.9 with the MTP drafter (1.60x,
+  acceptance 0.59), 147.8 with ngram-mod (1.54x), 68.1 with E2B Q4_K_M as
+  a simple drafter (0.71x). Greedy texts differ from the plain run after a
+  few dozen tokens (batched vs single-token numerics on a quantized model).
+
 ## v5.208 (2026-10-30) - imatrix quantization in package_hf
 
 `examples/package_hf.py --imatrix-data calib.txt` runs `llama-imatrix`
