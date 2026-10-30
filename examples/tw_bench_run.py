@@ -39,7 +39,13 @@ def load_hf(model_id, revision=None, device="cuda"):
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
     kw = dict(revision=revision, trust_remote_code=True)
-    tok = AutoTokenizer.from_pretrained(model_id, **kw)
+    try:
+        tok = AutoTokenizer.from_pretrained(model_id, **kw)
+    except Exception as e:
+        # v5.204: some older repos (e.g. Breexe-8x7B) fail the fast-tokenizer
+        # conversion on transformers 5.x; the slow SentencePiece one loads
+        print(f"fast tokenizer failed for {model_id} ({e!r}); retrying use_fast=False", flush=True)
+        tok = AutoTokenizer.from_pretrained(model_id, use_fast=False, **kw)
     dtype = torch.float32 if device == "cpu" else torch.bfloat16
     load = dict(torch_dtype=dtype,
                 device_map=None if device == "cpu" else "auto", **kw)
