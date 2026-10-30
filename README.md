@@ -684,6 +684,7 @@ As of 2026-10-26:
 
 Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
 
+- **v5.205** — Kimi K2.6 joins the distillation teacher whitelist (licence hash pinned); `distill_gen` teacher aliases `kimi-k2.6` and `kimi-k3`
 - **v5.204** — `load_hf` falls back to the slow tokenizer when the fast one fails to load (older Mixtral-based checkpoints on transformers 5.x)
 - **v5.203** — `sft_hf.py` / `cpt_hf.py` save checkpoints in 5 GB shards so models over 50 GB upload to the Hub
 - **v5.202** — `load_hf` falls back to image-text-to-text for checkpoints with no causal-LM mapping (Mistral 3 family), so the base-gap eval can score them

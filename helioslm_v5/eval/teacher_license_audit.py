@@ -205,6 +205,22 @@ REVIEWS.update({
                        "release is plain MIT"],
     },
 })
+# 2026-10-30: Kimi K2.6 (1T total / 32B active, native int4) added next to
+# K3 as a cheaper Kimi teacher: it fits one 8-GPU node, K3 (2.8T) needs two.
+# LICENSE read and hashed from a live fetch of the Hub: MIT plus one display
+# clause; nothing on outputs or on training other models.
+REVIEWS.update({
+    "moonshotai/Kimi-K2.6": {
+        "reviewed_sha256": "1d4ab2d8404287de44429024a78b58d3aabc4df9d0c490e73fec9ff1fd842529",
+        "license": "Modified MIT License",
+        "verdict": "allowed_with_conditions",
+        "conditions": [
+            "keep the copyright and permission notice",
+            "commercial products over 100M MAU or US$20M monthly revenue "
+            "must display 'Kimi K2.6' (the only modification)",
+        ],
+    },
+})
 TEACHERS = tuple(r for r, v in REVIEWS.items()
                  if v["reviewed_sha256"] != PENDING)
 PENDING_TEACHERS = tuple(r for r, v in REVIEWS.items()

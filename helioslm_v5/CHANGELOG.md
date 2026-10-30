@@ -1,5 +1,16 @@
 # HeliosLM v5 Changelog
 
+## v5.205 (2026-10-30) - Kimi K2.6 teacher, Kimi aliases in distill_gen
+
+`eval/teacher_license_audit.py` adds `moonshotai/Kimi-K2.6` (Modified MIT:
+MIT plus one clause, products over 100M MAU or US$20M monthly revenue
+display "Kimi K2.6"; nothing on outputs or training other models), hash
+pinned from a live fetch of the Hub. Kimi K3's pinned hash was re-checked
+and is unchanged. `distill_gen.TEACHERS` gains the aliases `kimi-k2.6` and
+`kimi-k3`, so either can serve as the teacher of a distillation run. K2.6
+(1T total / 32B active, native int4) fits one 8-GPU node; K3 (2.8T) needs
+two.
+
 ## v5.204 (2026-10-30) - slow-tokenizer fallback in load_hf
 
 `examples/tw_bench_run.py load_hf` retries `AutoTokenizer` with
