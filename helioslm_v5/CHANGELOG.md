@@ -1,5 +1,23 @@
 # HeliosLM v5 Changelog
 
+## v5.206 (2026-10-30) - knowledge rephrasing for CPT data
+
+`src/training/rephrase.py` + `examples/rephrase_corpus.py`: the
+rephrasing recipe of the Kimi K2 report for a small zh-TW corpus. A
+document is split into chunks of at most 1,500 characters; a teacher
+(`distill_gen`, licence-gated, thinking off) rewrites each chunk in
+several styles (textbook, Q&A, study notes, encyclopaedia, spoken,
+maths learning notes), with the preceding source chunk as context. A
+chunk is kept only when the answer finished normally, is not Simplified
+Chinese, keeps the length within the style's band and at least 80% of
+the source's numbers, and shares 15-85% of the source's character
+bigrams (on topic, not a copy). A (document, style) whose chunks all
+pass is joined into one document in the TW2 record layout, with the
+source licence and attribution plus the teacher's name, ready for
+decontamination and `pilot_prepare_data.py --text`. Motivation: the
+public-data B0 pilots did not raise TMMLU+; K2 found 10 rewrites x 1
+epoch better than 10 epochs of the raw text.
+
 ## v5.205 (2026-10-30) - Kimi K2.6 teacher, Kimi aliases in distill_gen
 
 `eval/teacher_license_audit.py` adds `moonshotai/Kimi-K2.6` (Modified MIT:
