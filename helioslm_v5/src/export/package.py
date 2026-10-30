@@ -55,6 +55,33 @@ TIERS = {t.name: t for t in (
 # activations and the desktop
 FIT_SHARE = 0.75
 QUANT_LABEL = {"f16": "F16", "q8_0": "Q8_0", "q4_k": "Q4_K"}
+# llama.cpp KV-cache types for long context (v5.210): bytes per element
+# relative to F16, and the -ctk / -ctv flags. A quantized V cache needs
+# flash attention. q8_0 is near-lossless; q4_0 costs some quality.
+KV_CACHE = {"f16": 1.0, "q8_0": 34 / 64, "q4_0": 18 / 64}
+KV_RECOMMENDED = "q8_0"
+
+
+def kv_flags(kv):
+    """llama.cpp flags for a ``kv`` cache type of :data:`KV_CACHE`."""
+    if kv not in KV_CACHE:
+        raise ValueError(f"kv cache type must be one of {list(KV_CACHE)}, got {kv!r}")
+    return "" if kv == "f16" else f"-fa on -ctk {kv} -ctv {kv}"
+
+
+def _long_context(first, t):
+    ngl = f" -ngl {t.gpu_layers}" if t.gpu_layers else ""
+    ctx = t.ctx
+    return ["", "Long context (KV cache quantization): the KV cache grows with the "
+            "context and can outgrow the weights. Q8_0 halves it at almost no quality "
+            "cost; Q4_0 quarters it with some loss. The memory saved can go to a "
+            "larger `-c`, up to the model's trained context.", "", "```",
+            f"llama-server -m {first} -c {ctx}{ngl} {kv_flags(KV_RECOMMENDED)} --port 8080",
+            f"llama-server -m {first} -c {ctx}{ngl} {kv_flags('q4_0')} --port 8080", "```", "",
+            "Ollama: set `OLLAMA_FLASH_ATTENTION=1` and "
+            f"`OLLAMA_KV_CACHE_TYPE={KV_RECOMMENDED}` before `ollama serve`.", ""]
+
+
 # quants an importance matrix changes (v5.208)
 IMATRIX_QUANTS = ("q4_k",)
 
@@ -90,6 +117,8 @@ def _readme(name, tier, arch, files, has_tokenizer):
     lines += ["", "llama.cpp:", "", "```",
               f"llama-cli -m {first} -c {tier.ctx}{ngl}",
               f"llama-server -m {first} -c {tier.ctx}{ngl} --port 8080", "```", ""]
+    if has_tokenizer:
+        lines += _long_context(first, tier)
     if not has_tokenizer:
         lines += ["No tokenizer is embedded: the files take token ids, not "
                   "text, and no Ollama Modelfile is written.", ""]
@@ -161,6 +190,7 @@ def _write_package(out, name, t, arch, files, has_tokenizer, extra=None, chat=Fa
     manifest = {"name": name, "tier": t.name, "arch": arch, "memory_gb": t.memory_gb,
                 "ctx": t.ctx, "gpu_layers": t.gpu_layers, "hardware": t.hardware,
                 "tokenizer": has_tokenizer, "files": files,
+                "kv_cache": {"recommended": KV_RECOMMENDED, "options": list(KV_CACHE)},
                 "fits": files[0]["fits"], **(extra or {})}
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     return manifest
