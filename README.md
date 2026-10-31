@@ -11,30 +11,35 @@ tags:
 pipeline_tag: text-generation
 ---
 
-# HeliosLM（羲和）— Verifiable DeepSeek-V3/V4 and Kimi-K3-Style LLM Architectures in Pure PyTorch
+# HeliosLM（羲和）
+
+DeepSeek-V3/V4 and Kimi-K3-style LLM architectures in pure PyTorch, where every mechanism ships with an oracle test and everything runs on CPU.
 
 > 中文名「羲和」：中國神話中駕日車的太陽神，對應希臘的 Helios。標語「知止」（《大學》「知止而后有定」）：可驗證的機制，加上知道自己何時可能出錯、該停下來的決策層。
 
-**Every mechanism ships with an oracle test.** HeliosLM is a hackable, CPU-runnable reference for frontier LLM designs — MLA, sigmoid-gated MoE, hybrid linear attention, compressed sparse attention — plus a calibrated decision layer that measures whether a model knows when it is wrong.
-
-A from-scratch PyTorch reference implementation of a modern LLM stack: MLA attention with weight absorption, sigmoid-gated MoE with auxiliary-loss-free load balancing, hybrid linear attention, speculative decoding, FP8 training, a DualPipe schedule simulation, a vLLM-style serving engine, a **verifiable agent layer** (strict tool schema, bitwise-replay oracle), DSA sparse attention, Mooncake-style prefill/decode disaggregation, and tool-tuned checkpoints. Built to be **read, modified, and verified** — every core path is unit-tested and many are checked with bitwise-equivalence tests. Everything runs on CPU.
-
-> **One-liner:** If you want to understand (or hack on) how DeepSeek-V3/K3-class models actually work — without needing a GPU cluster first — this repo is for you.
->
-> **Also:** the open-source reference for the **RLCD "decision layer"** paradigm — calibrated confidence on acting models, verified across three scales and on the 7,193-instance RLCDAlignBench. Working paper: `docs/paper_draft_2026-10-03.tex` ([repo](https://github.com/tonythetiger168/helioslm/blob/main/docs/paper_draft_2026-10-03.tex) | [HF](https://huggingface.co/chienhsinlin/helioslm/tree/main/docs)).
-
 [![CI](https://github.com/tonythetiger168/helioslm/actions/workflows/ci.yml/badge.svg)](https://github.com/tonythetiger168/helioslm/actions)
-![Tests](https://img.shields.io/badge/tests-300%2B%20unit%20%2B%20integration%20%2B%20oracle-brightgreen)
+![Tests](https://img.shields.io/badge/tests-unit%20%2B%20integration%20%2B%20oracle-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![PyTorch](https://img.shields.io/badge/framework-PyTorch%20(pure)-ee4c2c)
 
-![Demo](https://raw.githubusercontent.com/tonythetiger168/helioslm/main/docs/demo.gif)
+## What's here
+
+| Part | What it is | Entry point |
+|---|---|---|
+| **Model stack** | MLA with weight absorption, sigmoid-gated MoE with auxiliary-loss-free balancing, hybrid Gated-Delta / KDA linear attention, CSA / DSA sparse attention, MTP; `lite` / `mid` / `full` presets | `helioslm_v5/src/model_v5.py`, `helioslm_v5/configs/config_v5.py` |
+| **Training** | Pretraining, FP8, DualPipe simulation, GRPO, Muon, distillation; continued pretraining and SFT of open Hugging Face bases | `helioslm_v5/src/training/`, `examples/cpt_hf.py`, `examples/sft_hf.py` |
+| **Serving + export** | vLLM-style paged engine, speculative decoding, quantization; GGUF export and per-VRAM-tier packages for llama.cpp / Ollama | `helioslm_v5/src/inference/`, `helioslm_v5/src/export/`, `examples/package_hf.py` |
+| **Agent harness (hsh)** | Runs a model in a loop with tools: append-only session log, presets, skills, MCP, web UI | `helioslm_v5/hsh/`, `python -m helioslm_v5.hsh.web --open` |
+| **Decision layer** | Calibrated confidence for acting models (RLCD): DecisionHead, TrustGate, deterministic grounding | `helioslm_v5/agent/`, `helioslm_v5/src/decision_head.py` |
+| **HDL track** | Verilog / SystemVerilog benchmark, data and RL for chip-design models | `helioslm_v5/eval/hdl_bench.py`, `examples/hdl_bench_run.py`, [docs/HDL_BENCH.md](https://github.com/tonythetiger168/helioslm/blob/main/docs/HDL_BENCH.md) |
+
+**Status:** a correctness-focused reference implementation with no trained product weights yet (only toy and pilot checkpoints); see [Known Limitations](#known-limitations).
 
 ## Who is this for?
 
 | You are... | What HeliosLM gives you |
 |---|---|
-| **A learner** who wants to understand MLA, MoE routing, DualPipe, speculative decoding | Annotated, review-hardened PyTorch with 120+ tests (T11-T75) that act as executable documentation |
+| **A learner** who wants to understand MLA, MoE routing, DualPipe, speculative decoding | Annotated, review-hardened PyTorch whose oracle tests act as executable documentation (`python -m helioslm_v5.tests.test_v5 --list` shows the current set) |
 | **A researcher** who wants a stack to modify, ablate, and extend quickly | Single-process, CPU-iterable training + serving code — change one file, run one test |
 | **A practitioner** evaluating serving/quantization techniques | vLLM-style paged engine, GPTQ/AWQ/FP8/MXFP4 quantization, MTP speculative decoding — all inspectable |
 
@@ -233,114 +238,7 @@ environment are not passed to the server process.
 - Transient model errors (429, 5xx, dropped connections) are retried
   with backoff; each attempt is in the session log.
 
-## Legacy plugin harness (v1.0-v1.22, 23 releases)
-
-The `harness/` plugin context below predates hsh and is kept for its
-existing callers; new agent work uses hsh (above).
-
-All plugins register as `ctx.<name>.<op>` with per-call audit effects.
-Install extras as needed: `pip install openpyxl python-docx python-pptx
-pytesseract pyserial cryptography psycopg2 boto3 google-cloud-storage
-azure-storage-blob pyttsx3 speech_recognition ultralytics transformers`
-
-### Core (always available)
-| Plugin | Namespace | Key ops |
-|---|---|---|
-| ModelPlugin | `ctx.model.*` | mid (360M HeliosLM), qwen (Qwen3-0.6B) |
-| ToolPlugin | `ctx.tools.*` | registry, impls (calc/str/file_read/file_write/finish) |
-| SessionPlugin | `ctx.session.*` | new (append-only, replay-verified) |
-| DecisionPlugin | `ctx.decision.*` | grounding, trust, prefetcher |
-| LoopPlugin | `ctx.loop.*` | make (AgentLoop factory) |
-| StatePlugin | `ctx.state` | dict-backed, cross-plugin persistence |
-| PresetPlugin | `ctx.preset` | minimal / full wiring |
-
-### Agent (v1.8)
-| Plugin | Namespace | Key ops |
-|---|---|---|
-| MemoryPlugin | `ctx.memory.*` | remember, recall (ExperienceStore) |
-| TerminalPlugin | `ctx.terminal.*` | run (TrustGate-gated) |
-| FetchPlugin | `ctx.fetch.*` | get (HTTP) |
-| FilesystemPlugin | `ctx.fs.*` | read, write (path-escape blocked) |
-| TimePlugin | `ctx.time.*` | now, utc |
-
-### Common (v1.9)
-| Plugin | Namespace | Key ops |
-|---|---|---|
-| SearchPlugin | `ctx.search.*` | query (local corpus) |
-| WebSearchPlugin | `ctx.web.*` | search (Tavily/Exa stub) |
-| PDFPlugin | `ctx.pdf.*` | extract (pypdf) |
-| SQLitePlugin | `ctx.sqlite.*` | query (constrained db) |
-| TemplatePlugin | `ctx.plugin.*` | scaffold (new-plugin template) |
-
-### Services (v1.10)
-| Plugin | Namespace | Key ops |
-|---|---|---|
-| GitHubPlugin | `ctx.github.*` | get_repo, list_issues, create_issue (TrustGate-gated) |
-| PostgresPlugin | `ctx.postgres.*` | query (psycopg2/pg8000) |
-
-### Office (v1.11)
-| Plugin | Namespace | Key ops |
-|---|---|---|
-| ExcelPlugin | `ctx.excel.*` | read, write (openpyxl) |
-| DocxPlugin | `ctx.docx.*` | read, write (python-docx) |
-| PptxPlugin | `ctx.pptx.*` | write (python-pptx) |
-| YouTubePlugin | `ctx.youtube.*` | transcript (youtube-transcript-api) |
-
-### Niche (v1.12)
-| Plugin | Namespace | Key ops |
-|---|---|---|
-| MCPWizardPlugin | `ctx.mcp.*` | wrap (MCP server) |
-| TmuxPlugin | `ctx.tmux.*` | new, list, send |
-| EverythingPlugin | `ctx.everything.*` | search (local file content) |
-
-### Media (v1.13)
-| Plugin | Namespace | Key ops |
-|---|---|---|
-| VideoPlugin | `ctx.video.*` | generate (Runway/Pika stub) |
-| AudioPlugin | `ctx.audio.*` | tts (pyttsx3/external), stt |
-| NanoVideoPlugin | `ctx.nanovideo.*` | from_images (ffmpeg slideshow) |
-
-### Hardware (v1.14, v1.16, v1.18, v1.21)
-| Plugin | Namespace | Key ops |
-|---|---|---|
-| BlenderPlugin | `ctx.blender.*` | gen, run (headless blender) |
-| OmiPlugin | `ctx.omi.*` | connect, transcribe (BLE wearable) |
-| RobotControlPlugin | `ctx.robot.*` | move_base, move_arm, gripper (mock/ROS2, TrustGate-gated) |
-| MultiRobotPlugin | `ctx.fleet.*` | register, allocate, formation |
-| HardwarePlugin | `ctx.hw.*` | arduino_write, gpio_write, i2c_write |
-
-### Science (v1.15, v1.20-v1.22)
-| Plugin | Namespace | Key ops |
-|---|---|---|
-| BenchmarkPlugin | `ctx.benchmark.*` | alignbench, api_probe |
-| ReportPlugin | `ctx.report.*` | gen (markdown from benchmarks) |
-| BenchmarkV2Plugin | `ctx.bench.*` | run_suite, trend |
-| DNAPlugin | `ctx.dna.*` | validate, reverse_complement, gc, transcribe, translate, align, pcr_primers, restriction_sites |
-| ProteinPlugin | `ctx.protein.*` | validate, mol_weight, hydrophobicity, fold_toy |
-| ChemPlugin | `ctx.chem.*` | formula_weight, ph, bond_energy |
-| MathV2Plugin | `ctx.linalg.*`, `ctx.stats.*`, `ctx.signal.*` | matmul, summary, fft_magnitudes |
-
-### Collaboration (v1.17, v1.19)
-| Plugin | Namespace | Key ops |
-|---|---|---|
-| AgentSwarmPlugin | `ctx.swarm.*` | spawn, delegate, aggregate, blackboard |
-| VoiceDialogPlugin | `ctx.voice.*` | turn (STT->LLM->TTS with barge-in) |
-| TerminalUIPlugin | `ctx.ui.*` | progress, menu |
-
-### Autonomy (v1.18, v1.19)
-| Plugin | Namespace | Key ops |
-|---|---|---|
-| SLAMPlugin | `ctx.slam.*` | create_map, scan, integrate, frontier |
-| VisionPlugin | `ctx.vision.*` | detect, ocr, caption |
-| AutoDrivePlugin | `ctx.autodrive.*` | simulate (lane keep + obstacle avoid) |
-| SpatialPlugin (v1.23) | `ctx.spatial.*` | generate, scene, query, describe (3D worlds and spatial questions via [pano2world](https://github.com/tonythetiger168/pano2world); `PANO2WORLD_URL`) |
-
-### Security / Cloud / RL (v1.21-v1.22)
-| Plugin | Namespace | Key ops |
-|---|---|---|
-| CryptoPlugin | `ctx.crypto.*` | hash, gen_key, xor_encrypt/decrypt, hmac_sign/verify, fernet |
-| RLPlugin | `ctx.rl.*` | train_grpo, rlcd_reward |
-| CloudPlugin | `ctx.cloud.*` | aws_s3_list, gcp_storage_list, azure_blob_list |
+The pre-hsh plugin harness (`harness/`, v1.0–v1.22) is documented in [docs/LEGACY_HARNESS.md](https://github.com/tonythetiger168/helioslm/blob/main/docs/LEGACY_HARNESS.md).
 
 ## Paper Highlights (for HF Papers)
 
@@ -368,8 +266,6 @@ calibrated confidence on acting models, measured across three scales
 **Artifacts:** paper PDF + LaTeX in `docs/`; all benchmark JSONs in
 `benchmarks/`; three-tier deployment (lite 8.5M / mid 360M / full V3-class)
 with per-task replay verification and tokenizer-fingerprint pairing.
-
-cc @osanseviero @philschmid for HF Papers consideration
 
 ## Paper
 
@@ -409,52 +305,6 @@ fingerprints and benchmark data in
 [huggingface.co/chienhsinlin/helioslm](https://huggingface.co/chienhsinlin/helioslm),
 and the paper source + PDF in `docs/`.
 
-## Plugins (legacy helios-harness)
-
-The harness ships with 35+ plugins covering DeepSeek-Harness scenarios and beyond.
-All plugins register as `ctx.<name>.<op>` with per-call audit effects.
-
-| Category | Plugins | Version |
-|---|---|---|
-| Core | Model, Tool, Session, Decision (grounding/trust/prefetcher), Loop, State, Preset | v1.1–v1.3 |
-| Agent | Memory, Terminal (TrustGate-gated), Fetch, Filesystem, Time | v1.8 |
-| Common | Search (local), WebSearch (stub), PDF, SQLite, Template | v1.9 |
-| Services | GitHub (gated), PostgreSQL | v1.10 |
-| Office | Excel, Docx, Pptx, YouTube | v1.11 |
-| Niche | MCP-wizard, Tmux, Everything | v1.12 |
-| Media | Video, Audio (TTS/STT), NanoVideo | v1.13 |
-| Hardware | Blender, Omi (BLE) | v1.14 |
-| Robot | RobotControl (mock/ROS2), MultiRobot, SLAM, Vision | v1.16–v1.18 |
-| Agentic | AgentWorkflow (ReAct), AgentSwarm | v1.2, v1.17 |
-| Science | DNA, Protein, Chem, Math-v2 | v1.20–v1.22 |
-| RL | GRPO training, RLCD reward shaping | v1.21 |
-| Crypto | Hash/XOR/HMAC/Fernet | v1.22 |
-| Cloud | AWS S3, GCP Storage, Azure Blob | v1.22 |
-| Benchmark | AlignBench summary, Report gen, Trend | v1.15, v1.22 |
-| Voice/UI | VoiceDialog, TerminalUI, AutoDrive, WebUI (v2: stdlib-only rewrite) | v1.19, v1.36/v2 |
-| IC | RTL gen, UVM scaffold, Coverage | v1.7 |
-
-**Usage:**
-```python
-from harness.harness_core import Context
-from harness.harness_plugins import *
-ctx = Context()
-ctx.use(PresetPlugin("full", model_fn=my_fn))
-ctx.use(RobotControlPlugin(mode="mock"))
-ctx.robot.move_base(1.0, 0.0, 0.0)   # TrustGate-gated, effect-audited
-```
-
-**Gating policy.** Side-effecting ops (`terminal.run`, `github.create_issue`,
-`robot.*`) fail **closed**: with no `decision.trust` registered they return a
-`refused` error instead of running, and they execute only when the gate
-returns `Route.DIRECT` — `CLARIFY` and `ESCALATE` both block. The `full`
-preset wires a TrustGate; with a bare `Context`, register one yourself
-(`ctx.register("decision.trust", gate)`), or pass `terminal.run(cmd,
-gated=False)` to opt out explicitly. The legacy web UI (`helioslm_v5/harness/web_ui_v2.py`,
-superseded by `python -m helioslm_v5.hsh.web`)
-binds to 127.0.0.1 and rejects requests with a non-loopback `Host`
-(DNS rebinding) or, on POST/PATCH/DELETE, a non-loopback `Origin`.
-
 ## Deployment tiers
 
 Three rungs, each with one recorded reason to exist (no spectrum theater):
@@ -473,9 +323,10 @@ in `__post_init__` (no silent truncation).
 
 ```bash
 pip install -r requirements-ci.txt        # the exact CPU torch / numpy / pytest versions CI uses
-python -m helioslm_v5.tests.test_v5     # 117 unit tests (3 checkpoint-dependent tests self-skip without checkpoints/toy_v5.13.pt)
-python integration_test_v51.py          # 9 end-to-end integration tests
-python -m helioslm_v5.tests.test_agent  # 9 agent-layer oracles (v5.23)
+python -m helioslm_v5.tests.test_v5 --list   # prints TESTS=<count>, the registered unit tests, and the version pair
+python -m helioslm_v5.tests.test_v5     # the mandated unit suite (checkpoint-dependent tests self-skip without checkpoints/toy_v5.13.pt)
+python integration_test_v51.py          # end-to-end integration tests
+python -m helioslm_v5.tests.test_agent  # agent-layer oracles (v5.23)
 python -m helioslm_v5.tests.test_v5_stage_a   # T15 real-model oracles (v5.26)
 python -m helioslm_v5.tests.test_v5_stage_b   # T17 tool-tuned end-to-end (v5.27)
 python -m helioslm_v5.tests.test_disagg_pareto  # T18 Pareto sweep oracles (v5.28)
@@ -523,8 +374,8 @@ python helioslm_v5/tests/test_mopd.py               # T115 B2-6 MOPD: expected g
 python helioslm_v5/tests/test_quantile_balancing.py  # T116 Stable LatentMoE: K3 Quantile Balancing — histogram quantile, fixed-batch convergence, centring, summed-rank histograms, A/B artifact
 python helioslm_v5/tests/test_csa_learned_16x.py   # T117 16x CSA compressor by 4x->16x curriculum: state transfer, fine-tuned and zero-shot slices, ordering up to the oracle ceiling
 python helioslm_v5/tests/test_zh_train_speed.py    # T118 Chinese training speed: Big5/GB2312 seed lists, seeded BPE single tokens, bits-per-char metric, speed artifact
-python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite (396 tests)
-python -m pytest helioslm_v5/tests/ -q -n 4 --ignore=helioslm_v5/tests/test_v5.py  # what CI runs: pytest + test_v5.py's 93 cases (test_v5_cases.py) on 4 workers, about 4 min
+python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite
+python -m pytest helioslm_v5/tests/ -q -n 4 --ignore=helioslm_v5/tests/test_v5.py  # what CI runs: pytest + test_v5.py's cases (test_v5_cases.py) on 4 workers, about 4 min
 ```
 
 ```python
@@ -602,18 +453,6 @@ bit-exact).
 workloads — the cost-axis alignment artifact, see
 [docs/benchmark_alignment.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/docs/benchmark_alignment.md).
 
-## Repository layout
-
-```
-helioslm_v5/          # source (configs, src/{attention,moe,inference,training,vision,audio,quantization}, agent/, tests)
-examples/             # train_toy_checkpoint.py, train_tool_tuned.py (v5.27), disagg_pareto.py (v5.28)
-benchmarks/           # CPU bench results + disagg_pareto_2026-09-25.json (v5.28 artifact)
-docs/                 # code review reports, benchmark_alignment.md, k3_alignment_targets(.md/.csv),
-                      # competitive_intel_2026-09-25.md (+ raw claims CSV), helioslm_handoff.md
-integration_test_v51.py
-helioslm_v5/CHANGELOG.md  # full version history (v5.0 → latest)
-```
-
 ## Roadmap
 
 See the [GitHub Project board](https://github.com/tonythetiger168/helioslm/projects) for the live plan. Highlights:
@@ -631,8 +470,11 @@ Contributions are very welcome — see [CONTRIBUTING.md](https://github.com/tony
 
 ## Known Limitations
 
-As of 2026-10-26:
+As of 2026-10-31:
 
+- **`helioslm_v5` is the only package name.** v5.199 removed the last
+  compatibility aliases of the v5.134 Evastar rename (the package itself
+  was renamed back in v5.164), so `evastar` imports no longer work.
 - **No trained product weights yet.** The checkpoints in this repo are toy
   and pilot models; the deployment series below are a plan until each
   generation is trained and passes its pre-registered evaluation.
@@ -682,160 +524,13 @@ As of 2026-10-26:
 
 ## Version history
 
-Headlines (full details in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md)):
+The last five releases; every earlier release is in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md).
 
+- **v5.212** — README restructured: short opening with a "What's here" table, no hard-coded test counts (use `python -m helioslm_v5.tests.test_v5 --list`), legacy plugin harness moved to [docs/LEGACY_HARNESS.md](https://github.com/tonythetiger168/helioslm/blob/main/docs/LEGACY_HARNESS.md)
 - **v5.211** — MoE packages (GGUF `expert_count`) tell how to keep experts in system RAM with llama.cpp `--cpu-moe` / `--n-cpu-moe` when the file does not fit the GPU
 - **v5.210** — tier packages document KV-cache quantization for long context (`-fa on -ctk q8_0 -ctv q8_0`, Ollama `OLLAMA_KV_CACHE_TYPE`); `quant_bench.py` measures perplexity and KV size per GGUF and KV type
 - **v5.209** — speculative decoding: `package_hf.py --draft L24=<drafter GGUF>` ships Gemma 4's MTP drafter (or a same-vocabulary small model) with the `llama-server --spec-type` command; `spec_bench.py` measures the speed-up
 - **v5.208** — `package_hf.py --imatrix-data` quantizes Q4_K_M with a llama.cpp importance matrix (same size, lower error); `imatrix_calib.py` builds the calibration text
-- **v5.208** — `--no-thinking` now turns thinking off on hosted APIs (DeepSeek `thinking: disabled`); `distill_generate.py --extra-json`
-- **v5.207** — GRPO on multiple-choice questions: `eval/mcq_reward.py` (reasoning, then 「答案：X」 checked against the key; Simplified-Chinese penalty for zh-TW tasks) and `hdl_rl_hf.py prepare-mcq` / `train --reward mcq`, with eval-set decontamination
-- **v5.206** — knowledge rephrasing for CPT data (`training/rephrase.py`, `examples/rephrase_corpus.py`): a teacher rewrites zh-TW documents in several styles, each chunk fidelity-checked, so CPT sees the same knowledge several times without repeating text
-- **v5.205** — Kimi K2.6 joins the distillation teacher whitelist (licence hash pinned); `distill_gen` teacher aliases `kimi-k2.6` and `kimi-k3`
-- **v5.204** — `load_hf` falls back to the slow tokenizer when the fast one fails to load (older Mixtral-based checkpoints on transformers 5.x)
-- **v5.203** — `sft_hf.py` / `cpt_hf.py` save checkpoints in 5 GB shards so models over 50 GB upload to the Hub
-- **v5.202** — `load_hf` falls back to image-text-to-text for checkpoints with no causal-LM mapping (Mistral 3 family), so the base-gap eval can score them
-- **v5.201** — `package_hf.py --quants` (per-tier quantization override) and `--chat` (Modelfile keeps the GGUF chat template) for packaging instruction-tuned models such as the HDL model — T166
-- **v5.200** — B0 rerun knobs: `LR` and `MIXTURE` in `pilot_b0_pod.sh`, plus a public mixture that is about 60% Taiwanese Traditional Chinese (`b0_e2b_public_tw_v2.json`)
-- **v5.199** — v5.134-era compatibility aliases removed: `helioslm_v5`, `HeliosLMv5*` and `HELIOS_*` are the only names
-- **v5.198** — H5 mixture: single Verilog_GitHub files get a 60 s synth-gate timeout (was 600 s), so slow files no longer stall the gate — T162
-- **v5.197** — the `--list` probe also reports `MODEL=<config model_name>` and `CHANGELOG=v<head>` so version drift surfaces in one command; README quick-start test count repaired (92 → actual registry) and locked to `len(TESTS)` — T151, T152
-- **v5.196** — Tier packages from a Hugging Face checkpoint (`examples/package_hf.py`): llama.cpp converts and quantizes, `package_gguf` writes the same tier layout, so a route-B pilot goes to the Cloudflare download page unchanged — T166
-- **v5.195** — `cpt_hf.py --max-repeat R`: no data source is read more than R times in continued pretraining (short sources no longer get memorised) — T134
-- **v5.194** — CVDP scoring: a test-command timeout now kills its simulators too, not only the shell; `hdl_eval_all.py --samples` rescores saved generations without a GPU — T144
-- **v5.193** — The Stack SystemVerilog repositories go through the lint + synth gate too (an empty `projects` setting no longer skips it) — T162
-- **v5.192** — `fetch_mixture.py` prints each HDL project's gate result as it comes — T162
-- **v5.190** — Unified-memory tiers: new **L128** (NVIDIA DGX Spark, AMD Ryzen AI Max+ 395, Mac 128 GB) for v4.0 100B-A10B Q4_K or v3.0 30B-A3B Q8_0 / BF16; new **L256** / **L512** (Mac M4 / M5 series incl. Ultra, 256 / 512 GB unified memory) for v4.0 100B-A10B Q8_0 or v5.0 300B-A20B Q4_K, and 300B-A20B Q8_0; GGUF runs on CUDA, Vulkan/ROCm and Metal — T164
-- **v5.189** — Pilot B0 on one GPU: the step-3 eval uses GPU 0 alone on a 1-GPU pod, `SKIP_STD=1` skips the step-4 lm-eval benchmarks
-- **v5.188** — Cloudflare downloads per GPU-memory tier (`examples/publish_cloudflare.py`, `scripts/cloudflare_publish.sh`): one zip per tier and quantization on R2, a static download page on Cloudflare Pages whose links point at the R2 domain (GitHub hosts refused), page deployed by direct upload — T163
-- **v5.187** — HDL track H5: synth gate measured with sv2v (24 of 38 OpenTitan IPs, Ibex, CV32E40P pass); include-path and `translate_off` fixes, `projects.tops`; CV32E40P replaces CVA6 — T162
-- **v5.186** — HDL track H5: projects that synthesise. Each OpenTitan IP, core and GitHub repository must pass Verilator lint and a Yosys synth of its top before training; one document per project in dependency order, MinHash near-dedup, 13-gram benchmark decontamination, permissive-licence filter for GitHub rows, CVA6 added — T162
-- **v5.185** — HDL track H4: simulation-equivalence reward with a gate-count bonus (`hdl_reward.py`) and a one-GPU RL loop (`examples/hdl_rl_hf.py`) — T161
-- **v5.184** — HDL eval fixes: UVM answer extraction (`[END]` / cut-off answers), UVM 1.2 sequence-macro compatibility, yosys cell counts for `area_ratio` — T159
-- **v5.183** — HDL track H5: `git:` mixture sources (pinned commit, LICENSE check, include/exclude globs) and the SystemVerilog / UVM mixture `hdl_h5_sv_uvm_v1.json` (OpenTitan, Ibex, core-v-verif) — T160
-- **v5.182** — HDL track: UVM testbench benchmark (`uvm_bench.py`, Verilator + UVM 2017, golden design plus mutants), CVDP `pass@k_by_language`, yosys gate-count `area_ratio` — T159
-- **v5.181** — hsh network egress audit: tool subprocesses go through a local proxy and a Python audit hook; hosts off the allow list are blocked (`deny`) or recorded (`audit`); `web --egress` / `--egress-allow`; optional `unshare -rn` isolation — T158
-- **v5.180** — `cpt_hf.py --ce-chunk --frozen-bf16` runs its chunked-head check under bf16 autocast (it failed on the first H3 pod) — T145
-- **v5.179** — HDL pod fixes: CVDP `env_file` lists, `hdl_eval_all.py` keeps generations before scoring, `cpt_hf.py` / `sft_hf.py --frozen-bf16` (frozen parameters in bf16, E4B fits 96 GB) — T144, T157
-- **v5.178** — HDL track H1: `data/mixtures/hdl_h1_cpt_v1.json` (Verilog / SystemVerilog / VHDL code + English and maths replay, licences and columns in `docs/HDL_DATA.md`); mixture sources take `field`, `data_dir` / `data_files` and `"heuristics": false`; `hdl_eval_all.py` (all three HDL benchmarks in one vLLM batch) and `sft_hf.py` (response-only SFT of a Hugging Face model) — T156, T157
-- **v5.177** — HDL track H0: CVDP v1.1 non-agentic code-generation harness without docker (`helioslm_v5/eval/cvdp_bench.py`): upstream cocotb + Icarus test commands run in a temp root, pass when every command exits 0, `pass@k` overall and per category — T144
-- **v5.176** — HDL track H0: RTLLM v2.1 harness on Icarus (`helioslm_v5/eval/rtllm_bench.py`, `hdl_bench_run.py --bench rtllm`): pinned 50-design cache, `syntax@k` / `pass@k`, `self-check` lists designs Icarus cannot run — T143
-- **v5.175** — pilot B0 script: `ALLOW_BLOCKED=1` trains without still-gated mixture sources, `SKIP_GAP=1` skips the already-run base-gap eval so smaller GPUs fit
-- **v5.174** — KDA layer skips `as_subclass` on plain tensors, so `--compile` no longer breaks the graph there (k3 pilot: 14 -> 11 breaks) — T155
-- **v5.173** — `tw_bench` Phase A gate: the loglik oracle follows task order, so a set with two identical questions that have different answers (C-Eval val) no longer fails the gate
-- **v5.165** — no host-sync graph breaks under `--compile` in RoPE or the MoE load count (L4: MoE pilot compiled 20.4k vs 18.2k tokens/s eager, hit dynamo's recompile limit at RoPE) — T155
-- **v5.163** — `pilot_100m.py --kda-kernel` defaults to `fla` (torch kernel off CUDA / without fla)
-- **v5.162** — MoE shared-expert outputs cast to the routed dtype before the add (torch 2.8 inductor fused a mixed-dtype addmm under `--compile`); L4: k3 pilot `--kda-kernel fla --compile` 20.3k tokens/s (2.45x recompute + compile)
-- **v5.161** — `get_adaptive_batch_size` / `fit_micro_batch` (pilot `--auto-batch`, halves the micro-batch on CUDA OOM at equal tokens per step); `safe_grouped_matmul` with an order-keeping fallback without `F.grouped_mm` — T154
-- **v5.160** — `hybrid_attention.kernel="fla"` / pilot `--kda-kernel fla`: k3 KDA chunked forward via flash-linear-attention `chunk_kda` on CUDA (A5000: 20x forward, 28-48x forward + backward vs `chunked_delta_rule`); torch kernel off CUDA / with packed documents — T153
-- **v5.159** — MoE layer re-enters the caller's autocast after the eager dispatch, so bf16 `--compile` works on CUDA; k3 pilot `--kda-recompute --compile` 13.3k tokens/s on an A5000 — T152
-- **v5.158** — MoE dispatch excluded from torch.compile (`torch.compiler.disable`), so `--compile` works on the MoE pilot; L4: dense `--compile` +23% tokens/s — T152
-- **v5.157** — `hybrid_attention.recompute` / pilot `--kda-recompute`: the chunked KDA recurrence is recomputed in backward instead of saving its fp32 intermediates (k3 pilot: 41% less saved, same gradients) — T151
-- **v5.156** — `moe.dispatch="grouped"` runs the batched GEMMs on a torch without `F.grouped_mm` (< 2.10) instead of failing; first L4 MFU numbers in the CHANGELOG
-- **v5.155** — upstream's v5.154 pytest-only sidecar suites (TW2 zh-TW corpus T148, offline API accounting) folded into the daily TESTS registry via wrappers that pin the exact test-function set (upstream additions fail loudly until registered); `test_api_accounting.py` runs without pytest via a two-feature shim (parametrize no-op + raises match); `test_zhtw_corpus.py` UTF-8 read repairs for non-UTF-8 Windows locales — T149, T150
-- **v5.154** — Roadmap TW2: zh-TW pretraining corpus pipeline (`src/training/zhtw_corpus.py`, `examples/tw2_prepare_corpus.py`): zhwiki through OpenCC `s2twp`, FineWeb-2 `cmn_Hani` kept only when already Traditional, local data.gov.tw JSONL; exact + MinHash near-dup filter, per-source drop counts and Traditional share; attributed JSONL shards, sha256 manifest and `ATTRIBUTION.md` — T148
-- **v5.153** — `python -m helioslm_v5.tests.test_v5` (the daily-mandated gate) repaired after the v5.134 rename broke it (`_AliasLoader` lacked `get_code`, required by runpy); alias loader now serves code/source from the real helioslm_v5 files, and the suite `main()` gains a `--list` probe (prints `TESTS=<count>`, exits 0) — T146, T147
-- **v5.152** — `cpt_hf.py --ce-chunk N`: route-B continued pretraining without the full [tokens, vocab] logits (4.3 GB fp32 per 4096-token micro-batch at Gemma's 262k vocab): `logits_to_keep=1` + last hidden state through the DDP wrapper, chunked head + CE with the final soft cap; checked against the full loss on one window before training — T145
-- **v5.149** — `moe.dispatch="grouped"` (`--moe-dispatch grouped`): routed experts as two `F.grouped_mm` calls over the expert-sorted rows, no capacity padding; same outputs and gradients as blocked / batched; CPU fp32 fwd+bwd 1.43x faster than batched (4096 tokens, 16 experts); default stays batched until a GPU measurement
-- **v5.148** — Local deployment packages per tier (`package_tier`, `examples/package_tiers.py`): each of L-Edge / L8 / L16 / L24 / L48+ gets its GGUF files, an Ollama Modelfile, llama.cpp commands and a manifest (sizes, sha256, fits the tier's memory); pilot packages load and run in llama.cpp f5027fb — T142
-- **v5.147** — HDL track H0: VerilogEval v2 spec-to-rtl harness (`eval/hdl_bench.py`, `examples/hdl_bench_run.py`): upstream prompt and extraction, Icarus Verilog simulation, upstream failure codes, unbiased pass@k, optional pyslang lint / yosys synthesis reported beside the pass rate; pinned, hash-checked problem cache and a 156/156 reference self-check — T141
-- **v5.146** — Pilot B0 step 5: the final checkpoint uploads to a private Hugging Face model repo while the benchmarks run, so the pilot no longer lives only on a billed pod volume
-- **v5.144** — Pilot B0 access preflight: `fetch_mixture.py` and `base_gap_eval.py --check-access` check Hub access for every dataset and model before any GPU work and stop the pod if one is missing; pod packages pinned to the dry run's versions
-- **v5.143** — Pilot B0 step 4: common benchmarks via `lm-eval[hf,math]==0.4.13` (MMLU, ARC, HellaSwag, GSM8K, BBH, MATH-500, HumanEval, MBPP, medicine and science sets) for the base and the pilot checkpoint; recorded only, the pass rule is unchanged
-- **v5.142** — Hybrid KDA + MLA and full K3-block models run in llama.cpp: `hybrid_attention.style="k3"`, block attention residuals, full-width LatentMoE router and `situ_k3` match llama.cpp's `kimi-k3` graph; `export_llamacpp_gguf` writes `kimi-k3` GGUF; `k3_block_config(llamacpp=True)` / pilot arch `k3_llamacpp`; llama.cpp f5027fb logits match to ~1e-4 (f32), prefill and token by token — T137, T138, T139
-- **v5.141** — Fused chunked output head + cross-entropy (`pretrain(ce_chunk=...)`, `pilot_100m.py --ce-chunk`): loss and gradients computed a chunk of tokens at a time in one pass, so the [tokens, vocab] logits never exist at once; same loss and gradients as full logits — T140
-- **v5.140** — KDA chunk form without the per-chunk fp32 [n, n, Dk] pair-decay tensor: state-free parts of all chunks computed at once, cross-sub-chunk pairs as plain matmuls (both decay factors <= 1); same results as the per-token loop (fp64 1e-10), CPU fwd+bwd 5.7x faster at T=1024 — T136
-- **v5.139** — Training speed from an RTX 4060 MFU sweep: MLA trains on the expanded SDPA path (`attention.expanded_training`, same weights; 2.1x tok/s, -40% memory at seq 1024; best dense 14.8k -> 20.3k tok/s), pilot defaults `--moe-dispatch batched` (2.95x) and `--kda-chunk 64`, per-step tok/s and peak memory in `pretrain` logs — T135
-- **v5.138** — `cpt_hf.py` fixes from an RTX 4060 smoke run (tiny Gemma 4, 20 steps, passed): short runs keep the WSD decay / source switch (`fit_warmup`), `dtype=` for transformers 5, `--dry-run` freeze check that `pilot_b0_pod.sh` runs before training — T134
-- **v5.137** — Route B pilot B0: `examples/fetch_mixture.py` (licence-checked, filtered uint32 shards per mixture source), `examples/cpt_hf.py` (WSD continued pretraining of a Hugging Face base with DDP and a `--max-hours` stop), `examples/pilot_b0_pod.sh` (one pod: base-gap eval, Gemma 4 E2B pilot on 3B tokens, pilot eval; runbook `docs/PILOT_B0.md`) — T134
-- **v5.135** — Text in for llama.cpp / Ollama: `export_llamacpp_gguf(..., tokenizer="tokenizer.json")` embeds the pretraining byte-level BPE as llama.cpp's `gpt2` vocabulary (`gpt-2` pre-tokenizer); llama.cpp f5027fb gives the same ids on 320 mixed zh-TW / code / emoji / whitespace samples and the same greedy continuations; tokenizers it would split differently are refused — T133
-- **v5.132** — Windows `test_sandbox_limits` repair (Git Bash /c/... path form), CI "LF guard" step (no CRLF blobs in tracked text files), `model_name` never-ahead-of-changelog lock; 3 new locks in `tests/case_harness_repair.py`
-- **v5.130** — llama.cpp-runnable GGUF: `export_llamacpp_gguf` writes llama.cpp's `deepseek2` architecture (MLA as MQA, sigmoid MoE with shared experts, RoPE rows reordered) and `llamacpp_incompatibilities` lists the features it cannot express (KDA, NoPE, cross-layer KV, LatentMoE, LB8 PLE, LB9 conv, ...); f32/f16 logits match HeliosLM in llama.cpp f5027fb; token-id input only, tokenizer is a follow-up — T131
-- **v5.129** — Route B base-gap eval: `examples/base_gap_eval.py` scores `google/gemma-4-E4B` and four Taiwanese reference models on TMMLU+ / TW-JusticeBench / C-Eval / CMMLU with one scorer and reports paired-bootstrap gaps (`tw_bench.hf_score_fn`, `tw_bench_run.py --hf`; runbook `docs/BASE_GAP_EVAL.md`) — T132
-- **v5.127** — Route B: continued-pretraining plan on `google/gemma-4-E4B` (Apache-2.0) on Taiwanese data (`docs/CPT_PLAN_B.md`; `cpt_plan.py` cost model, B1 ≈ US$3.8k / 1,360 H100-h, E2B pilot ≈ US$200; `prereg/b1.0.json`; CPT mixture; uint32 token shards) — T130
-- **v5.126** — LB9: LFM2-style gated short-convolution layers (`attention/gated_conv.py` `GatedShortConv`, `gated_conv_layers` / `gated_conv_kernel`, fixed-size StateTensor cache; pilot arch `lfm_conv`) — T129
-- **v5.125** — LB8: Gemma 3n-style per-layer embeddings (`per_layer_embed_dim`, `model_v5.PerLayerEmbedding`, zero-init so identical at init; `pilot_100m.py --ple-dim`) — T128
-- **v5.124** — LB7: checkpoint merging (`src/training/merge.py`: linear soups, task arithmetic, TIES; `examples/merge_checkpoints.py`) and MiniCPM5-style top-k-union reverse KL for on-policy distillation (`MOPDTrainer(full_vocab=True, topk_union=k)`) — T127
-- **v5.123** — Deployment series (proposed): local L-Edge / L8 / L16 / L24 / L48+ by GPU memory and cloud C1-Lite / C1 / C8 / CX by GPUs per replica, all cut from the six generations by quantization (README *Product roadmap*); docs only
-- **v5.122** — GGUF block quantization: `export_gguf(dtype="q8_0" | "q4_k")` writes ggml Q8_0 / Q4_K blocks (`src/export/ggml_quants.py`, numpy), 1-D tensors and MoE routers stay F32, `read_gguf` dequantizes; Q4_K decoding checked against a scalar port of ggml's `dequantize_row_q4_K`. The `helioslm` architecture name still keeps llama.cpp from running the file
-- **v5.121** — LB5: mid-training data for the WSD decay phase (`src/training/mid_train.py`: `render_trace` turns D1 records into chat-format documents with reasoning, `mix_docs` interleaves sources to token budgets; manifest `format: trace`; `examples/build_midtrain.py` -> `pilot_100m.py --decay-data`) — T126
-- **v5.120** — LB4: cross-tokenizer logit KD for pretraining (`src/training/logit_kd.py` aligns teacher top-k to the BPE student on shared character boundaries; `pretrain.KDShard`, `sparse_kd_loss`, `kd_alpha`; `examples/teacher_topk.py` + `build_kd_targets.py`; `pilot_100m.py --kd-train`) — T125
-- **v5.119** — E5: split pre-registration: v1.0 0.5B gated against Qwen3.5-0.8B, #41 3B against a 3B Taiwanese reference model (`docs/prereg/`), each beyond sampling noise (95% paired-bootstrap lower bound > 0); `prereg.py` gains relative gates, `paired_bootstrap` and PENDING revisions
-- **v5.118** — LB6: hybrid-thinking soft switch for distillation SFT (`distill_sft` `mode_switch`: the last user turn ends in ` /think` or ` /no_think` to match the target; `distill_sft.py prepare --mode-switch`)
-- **v5.117** — LB6: GRPO rollout length schedule (`grpo.length_stages`, `two_stage_lengths`) and DAPO overlong handling (`overlong_buffer` soft punishment, `overlong_filter`); `truncated_frac` / `mean_response_tokens` in the update stats — T124
-- **v5.116** — LB3: pretraining data quality (`src/training/data_quality.py`: Gopher-style heuristics, Big5/GB2312 Traditional-vs-Simplified labels, hashed n-gram quality classifier) and mixture manifests with licence gates and main/decay phases (`src/training/data_mixture.py`, `data/mixtures/lb3_0p5b_v1.json`); `examples/data_quality.py`; `pilot_prepare_data.py --heuristics --zh-variants --quality-model` — T123
-- **v5.115** — LB2: warmup-stable-decay LR schedule (`pretrain.lr_at(schedule="wsd")`, 1-sqrt / linear / cosine decay), decay-phase data switch (`decay_train`) and `schedule_total` for stop-and-resume on one plan; `pilot_100m.py --schedule wsd` — T122
-- **v5.110** — Windows checkout repairs: root `.gitattributes` LF policy (pinned digest artifacts), sandbox `python3` PATH resolution, timeout process-tree kill (orphan grandchild fix), base64 patch transport for regex-bearing edits; `model_name` calibrated to the changelog (v5.49 -> v5.110); 4 new locks in `tests/case_harness_repair.py`
-- **v5.108** — Plan E3 / TW3: Traditional-Chinese MCQ pack (`eval/tw_bench.py`): TMMLU+, TW-JusticeBench, C-Eval / CMMLU loaders, loglikelihood and generation scoring, Phase A gates (reference 100%, empty 0%), results without question text; `examples/tw_bench_run.py`
-- **v5.107** — #42 prep: chunked-parallel KDA / gated delta rule (`hybrid_attention.chunk_size`): one triangular solve per chunk instead of a Python step per token, equal to the loop to 1e-10 in float64 (padding, packed documents, carried state, per-channel decay); 1.68x faster forward + backward per layer on CPU
-- **v5.106** — #42 prep: `moe.dispatch="batched"` runs all routed experts in two `bmm` calls instead of one call per expert and 64-row block; equal to the default blocked path to float tolerance (outputs and gradients), 1.7–1.8x faster forward + backward on CPU; GPU speed via `cuda_smoke.py` / `examples/moe_dispatch_bench.py`
-- **v5.105** — `cuda_smoke.py` `train_parity_fp32` gates on the 99.9th-percentile weight difference: AdamW moves near-zero-gradient weights by up to lr in the direction of their rounding noise, so the max alone failed (3.0e-3) on torch 2.8 with the loss in parity
-- **v5.92** — Plan E1: lm-evaluation-harness adapter (`--model helioslm`); `examples/eval_harness.py` scores a pilot checkpoint on any harness task (ARC, HellaSwag, TMMLU+, ...); checked offline against lm-eval's own `simple_evaluate`
-- **v5.91** — Issue #1 closed: `cuda_smoke.py` 23/23 on an RTX 6000 Ada (incl. CUDA-vs-CPU training parity, compile, MTP, GRPO, real-size memory); compiled 100M pilot 1.35 bits/byte at 67k tokens/s, 20.6% MFU
-- **v5.90** — Issue #1, first CUDA run (RTX 6000 Ada): `examples/cuda_smoke.py` 11/13 → two real CUDA bugs fixed (FP8Trainer built its layers on the CPU; GPUMonitor crashed without NVML); first GPU pilot 2.77 → 1.79 bits/byte at 29.8k tokens/s — `docs/CUDA_VERIFICATION_2026-10-21.md`
-- **v5.89** — Issue #5 measured: byte-level BPE toy model beats the char baseline on held-out NLL per byte in all 3 seeds (mean −0.48 nats/byte, same text, same token budget) — `docs/TOY_BPE.md`
-- **v5.88** — Evaluation plan ([`docs/GPU_AND_EVAL_PLAN_2026-10.md`](docs/GPU_AND_EVAL_PLAN_2026-10.md): GPU sizing for #40–#45, leaderboard review, E1–E8); E2 train/eval 13-gram overlap check (`pilot_prepare_data.py --decontaminate`); E5 pre-registered evaluation plans locked by hash
-- **v5.86** — Issue #55: `--seeds S1 S2 ...` on all eight A/B scripts (`eval/multiseed.py`): paired per-seed runs plus mean / std / min / max aggregates; without `--seeds` every script writes exactly the old payload
-- **v5.85** — Issue #54: legacy `eval_mid_agent` v1–v4 moved to `examples/legacy/`, web UI v1 to `harness/legacy/` behind a shim; **security fix:** v1's `/video/` and `/audio/` routes served any readable file via `../` (now confined to the media dir, regression-tested)
-- **v5.84** — Issue #2 measured: fused group-wise dequant x matmul vs unfused on a 4096 x 14336 layer (CPU) — AWQ 7.4x, GPTQ 11.9x, MXFP4 2.3x faster at batch 1, outputs equal to 1e-6 (`docs/BENCHMARKS.md`)
-- **v5.83** — ~100M single-GPU pilot (Phase C gate): `examples/pilot_prepare_data.py` + `examples/pilot_100m.py` over `src/training/pretrain.py` — dense / MoE / K3-block / MiMo-hybrid at one width, held-out bits per byte, MFU, exact kill-and-resume — T122
-- **v5.82** — Distillation from API teachers: sequence KD with a verifier, sparse top-k KD across tokenizers (`src/training/api_distill.py`), and a licence audit of ten open-weight teacher models; on a toy task verified sequence KD reaches 1.00 in every seed vs 0.54 unfiltered — T120, T121
-- **v5.81** — Dataset licence audit (TW1): 45 Hugging Face dataset cards (Traditional / Simplified Chinese, Spanish, Japanese, Korean, eval sets) read live and classified commercial / non-commercial / no-derivatives / unknown — T119; plus [`docs/K3_V4_COMPARISON.md`](docs/K3_V4_COMPARISON.md), the Phase B K3 vs V4 comparison
-- **v5.80** — Chinese training speed: Big5 + GB2312 common characters as BPE seeds (`train_toy_bpe.py --zh-seed both`); a tokenizer that never saw Chinese goes from 3.00 to 1.00 tokens per character, 1.82x the Chinese text per training step — T118
-- **v5.78** — Phase B: 16x CSA compressor by curriculum (4x weights, fine-tuned at 16x): passkey recall 0.375/0.390 -> 0.790/0.740, 92%/88% of the oracle ceiling — T117
-- **v5.77** — Stable LatentMoE: Kimi K3 Quantile Balancing router bias; fastest from a skewed start and after a drift, no bias drift; SMEBU stays lower in steady state — T116
-- **v5.76** — B2-6: multi-teacher on-policy distillation (MOPD); routed teachers keep the student's inc skill (1.00) and halve its KL to the rev teacher, one teacher for everything erases inc — T115
-- **v5.75** — TW4: zh-TW tokenizer coverage report; the toy char tokenizer loses every CJK character, a BPE without Chinese pays 3 tokens per character, the repo BPE 0.86 with 78% single-token coverage — T114
-- **v5.74** — AC4: repo-scale long-context probe; the sliding/global hybrid finds definitions across files at 1.00 even at 4x the training size, dense needs 2x the steps and still drops to 0.38 at 4x — T113
-- **v5.73** — U2: thinking-budget control (forced close after b thinking tokens) + truncated-trace training; closed one step early, accuracy 0.12 → 0.88 with truncation training — T112
-- **v5.72** — U7 (Arcee Trinity): SMEBU soft-clamped momentum expert-bias updates (fewer bias reversals at every step size; MaxVio variance 0.0067 → 0.0041 at λ=1e-2) and depth-scaled sandwich norm (post-norm gain 1/√L), both off by default — T111
-- **v5.71** — U6: cross-layer KV sharing (Gemma 3n/4); with the last 4 of 8 MLA layers sharing KV, the cache halves exactly and val ppl stays 14.71 vs 14.94 (toy char LM, single seed) — T109
-- **v5.70** — U4: Gemma 4 p-RoPE (partial rotary) and K=V on global attention layers; `kv_b_proj` halves and the expanded cache shares one K/V tensor, defaults bit-identical — T108
-- **v5.69** — U3: Llama 4 NoPE attention temperature; on one set of weights it lifts recall at 4x the training length from 0.267 to 0.317 (scale 0.3) and leaves the training length unchanged — T107
-- **v5.68** — U5: gpt-oss clamped SwiGLU option for MoE experts (pre-w2 activation bounded to [-42, 56] with gpt-oss settings), defaults bit-identical — T106
-- **v5.67** — B2-5: MiMo-style light MTP head (sliding-window attention + narrow FFN): -20% head parameters, -39% head step latency, acceptance 0.813 vs 0.822 — T105
-- **v5.66** — B2-4: learnable doubly stochastic mHC read matrices (Sinkhorn), identity at init; fixes the v5.7 HC branch fold that scrambled sequence positions across branches (decode != full once B != 0) — T104
-- **v5.65** — B2-3: `moe.first_k_dense` dense first layers (GLM-5.3 / MiMo), default unchanged, routing statistics exclude dense layers — T103
-- **v5.64** — U1: DAPO / Olmo 3 options for GRPO (token-level loss, clip-higher, no-std advantages, zero-gradient group filtering, TIS), defaults bit-identical; on the agent task a KL anchor to the SFT model lets GRPO improve on SFT (0.367 → 0.733) — T102
-- **v5.63** — Qwen3-Next ingredients: GDA short conv, zero-centered RMSNorm with decay groups, global-batch load-balancing loss (equals the full-batch loss over micro-batches), `qwen_next_config`, MTP greedy-equivalence gate (toy acceptance 0.824); roadmap Phase B4 (US models) and TW (zh-TW data survey) — T101
-- **v5.62** — MiMo 5:1 sliding-window/global interleave (`mimo_hybrid_config`) keeps long-range recall at 39% of the attended keys (0.424 vs dense 0.428; all-SWA at chance); learnable attention sink (no effect at this scale); agentic coding: 20-task mini SWE set with hidden tests and trap gates, 知止 stop-decision metrics, fuzz-tested tool-call recovery; roadmap Phase B3 (Qwen) and AC — T96–T99
-- **v5.61** — learned compressor round 3: 4× passkey recall 0.825/0.800, about 92% of the oracle ceiling (squared ReLU and longer 16× training recorded as negative results); README retitle + Chinese name 羲和; roadmap Phase B2 (GLM-5.3 / MiMo) — T95
-- **v5.60** — learned compressor round 2 (hidden 64): 16× passkey recall off chance (0.13 → 0.39), 4× mixed (0.725 at L=512, 0.645 at L=1024); an oracle-pooling ceiling shows CSA can reach 0.86–0.90 (dense 0.91), so the gap is compressor detection — T94
-- **v5.59** — CSA learned compressor (`compressor="learned"`): compressor-only training lifts passkey recall at 4× from 0.13 to 0.67 (dense 0.91), generalizing to 4–8× the training length; selecting every chunk gives the same accuracy, so the remaining gap is the compressed entry, not selection; 16× does not learn — T93
-- **v5.58** — DeepSeek-V4-order CSA (`CompressedSparseAttention`: compress, then top-k select) and `v4_attention_stack` CSA/HCA preset with IndexShare; passkey A/B shows mean-pooled CSA at chance although its indexer finds the right chunk 86–100% of the time — the compressor is the bottleneck — T92
-- **v5.57** — Kimi-K3-style block preset `k3_block_config()`: KDA/KDA/KDA/MLA order (`hybrid_attention.first_layer_full=False`), Gated MLA (`attention.output_gate`), per-channel decay, attention residuals, LatentMoE; defaults bit-identical — T91
-- **v5.56** — 10 terminal-style sandbox tasks (`examples/std_bench_run.py --bench terminal`): one bash command per turn, final-state verifiers that reject the naive solutions, verbalized confidence for the calibration board — T90
-- **v5.55** — GSM8K / HumanEval harness (`examples/std_bench_run.py`) on pinned upstream subsets with a sandboxed HumanEval executor and oracle-tested reference gates; any model behind an OpenAI-compatible API can be run and its output goes straight onto the calibration board; fixes `probe_api` retrying every HTTP 400 with 30 s of sleeps — T89
-- **v5.54** — roadmap Phase A calibration leaderboard (`examples/calibration_board.py`): AUROC/Brier/ECE/overconfident-wrong over committed probe artifacts; finding: every wrong answer from the local mid model came at conf ≥ 0.9; milestone tracker `docs/MILESTONES.md`; 2026 Q4 roadmap `docs/ROADMAP_2026Q4.md` — T88
-- **2026-10-15 review fixes (post v5.53)** — `execute()` validates args, so `defer_validation=True` with a non-clarify gate yields `TOOL_ERROR` instead of crashing (and a malformed `finish` no longer ends the run); missing+malformed calls ESCALATE rather than CLARIFY; `calc` overflow / `0**-1` are tool errors; harness terminal/GitHub/robot ops fail closed without a TrustGate and run only on `DIRECT`; web UI Host/Origin checks; `torch.load(weights_only=True)` for runtime checkpoint loads — T87
-- **2026-10 review fix wave** — full-repo review follow-through: PrefixPool fingerprint hash-collision, agent bare imports, GitHubPlugin `import json` (caught by the new CI syntax gate), duplicate-plugin merges, metadata drift; new CI (`.github/workflows/ci.yml`): flake8 syntax gate (E9/F63/F7/F82) + py3.11/3.12 test matrix + release build; harness web UI v2 (stdlib-only rewrite, T75 contract tests)
-- **v5.22-L** (local line) — NVFP4-format QAT fake-quant target (E2M1×16 + E4M3 block scales) + NoPE option for MLA (Kimi-K3 direction; default off, bit-identical)
-- **v5.21** (local line) — KDA-style per-channel decay gate: linear-attention state rows forget at independent rates (Kimi Linear / GLM-5.3-Flash direction), bit-identical default, rollback-safe
-- **v5.29** — Three-mode benchmark on the real checkpoint (direct/routed/oracle): tau-routing curve strictly monotone (v5.22 gate PASS on real confidence); headline finding = systematic overconfidence on wrong answers (conf 0.944) — the exact failure class the v5.22 audit toolkit measures
-- **v5.28** — Cost-axis alignment: disagg three-axis Pareto sweep (latency-cost curves per workload; cache-aware anti-monotonicity recorded as structural finding)
-- **v5.27** — Tool-tuned checkpoint: agent-loop-replay training, T17 end-to-end (parse 0.15/finish 1/9 baseline, regression-guard floors), sparse_top_k=4 ~= dense in agent inference; agent hardened (TOOL_ERROR recovery, ASCII-safe docs)
-- **v5.26** — Stage A real-model oracles (T15): zero-gate attention residuals bitwise-verified on HeliosLMv5; sparse top-k decode oracle (k≥L bit-identical, selection validity + determinism); agent-loop smoke on the real toy checkpoint
-- **v5.25** — Disagg evolver module: Mooncake-style prefill/decode separation as a HarnessEvolver search module, monotonicity gate, three-axis Pareto (makespan / workers / worker-seconds)
-- **v5.24** — Attention variants with two-layer oracles: DSA sparse decode (fp32 certificate ⇒ fp64 gate), AttnRes mixing (zero-init ⇒ bitwise migration gate)
-- **v5.23** — Agent layer: strict tool-call schema + parser, deterministic sandboxed tools, trajectory bitwise-replay oracle, ground-truth-by-construction envs, routing gates in the agent loop
-- **v5.22** — Decision-layer audit toolkit: calibration metrics (ECE / Brier) against constructed ground truth — no reference LLM required
-- **v5.20** — Pareto-aware integration (memory axis) + cross-workload adaptation loop — ModularRSI gaps 2/3 closed at the inference layer
-- **v5.19** — Evolvable serving harness: ModularRSI-style module-wise search (draft/pool/tier) behind a deterministic bitwise oracle gate
-- **v5.18** — Content-addressed KV prefix pool: cross-session prefix reuse, fingerprint-guarded, bit-exact oracle (roadmap #6 complete)
-- **v5.17** — Standalone token-stream scorer: quality-gate any engine's output (A/B compare + bootstrap CI, colibri-container-style)
-- **v5.16** — Speculation break-even sweep: colibri-P3-compatible JSONL schema, first honest data point (draft pays only when warm)
-- **v5.15** — Disk-tier expert store: bit-exact streaming oracle, mmap + LRU, router/shared stay resident (roadmap #6)
-- **v5.14** — Multi-process DualPipe (one stage per process, phased queue protocol, gradient-exact vs single-process)
-- **v5.13** — CPU-trained toy char-level checkpoint (MTP aux loss, acceptance 1.00 on greedy) + train_toy_checkpoint.py
-- **v5.12** — Batched equal-length prefill in the engine (hybrid recurrent-state models included)
-- **v5.11** — Fused dequant×matmul kernels (AWQ/GPTQ/MXFP4), MXFP4 decode fix, eval loglikelihood harness
-- **v5.10** — CPU benchmark suite: analytic KV-cache accounting + wall-clock generation, BENCHMARKS.md
-- **v5.9** — Gemma-style attention + final logit soft-capping, per-head QK-norm, sliding-window attention with StreamingLLM sinks
-- **v5.8** — YaRN RoPE scaling, DSA-style sparse top-k decode, per-head Muon, GPTQ act-order
-- **v5.7** — RoPE scaling (linear/NTK), FP8 latent KV cache, Hyper-Connections, QAT training
-- **v5.6** — Hybrid packed-sequence training, MXFP4, Muon optimizer
-- **v5.5** — K3-aligned feature wave: hybrid Gated-Delta attention, LatentMoE, quantile balancing, attention residuals, SiTU-GLU
-- **v5.0–v5.4** — Review-hardened core: MLA weight absorption, true GPTQ, strict speculative sampling, NaViT + audio encoders
 
 ## License
 

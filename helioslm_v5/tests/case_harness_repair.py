@@ -456,17 +456,19 @@ def test_list_probe_reports_versions():
 
 
 def test_readme_test_count_current():
-    """The root README quick start advertises "N unit tests" for the
+    """The root README quick start once advertised "N unit tests" for the
     mandated suite; it said 92 while TESTS held 111 (stale by 19, found
-    2026-10-29). Locked: the advertised count equals len(TESTS). When this
-    fails after adding a test, update the README count in the same
-    change."""
+    2026-10-29). v5.212 drops hard-coded counts instead: the quick start
+    must point to the `--list` probe (which prints TESTS=<len(TESTS)>)
+    and no "N unit tests" / "(N tests)" claim or numeric tests badge may
+    come back."""
     import re as _re
     body = (_REPO_ROOT / "README.md").read_text(encoding="utf-8")
-    m = _re.search(r"python -m helioslm_v5\.tests\.test_v5\s+# (\d+) "
-                   r"unit tests", body)
-    assert m, "README quick-start test-count line not found or reworded"
-    from helioslm_v5.tests.test_v5 import TESTS as _TESTS
-    assert int(m.group(1)) == len(_TESTS),         f"README says {m.group(1)} unit tests, registry has {len(_TESTS)}"
+    assert _re.search(r"^python -m helioslm_v5\.tests\.test_v5 --list\b",
+                      body, _re.M), \
+        "README quick start no longer points to the --list probe"
+    stale = _re.findall(r"#\s*\d+ unit tests|\(\d+ tests\)|\d+\+ tests"
+                        r"|badge/tests-\d", body)
+    assert not stale, f"README hard-codes a test count again: {stale}"
     _pass("test_readme_test_count_current",
-          f"README quick-start count {m.group(1)} == len(TESTS)")
+          "README points to --list and hard-codes no test count")
