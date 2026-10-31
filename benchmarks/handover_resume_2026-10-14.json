@@ -1,0 +1,189 @@
+{
+  "experiment": "M4 handover-resume faithfulness and goal-drift oracle",
+  "schema": "handover-resume/1",
+  "verification_tier": "oracle-tested",
+  "created": "2026-10-14",
+  "scope": "constructive file-env interruption/resume: fresh sessions must complete the exact remaining oracle plan without rework or goal drift",
+  "assumptions": {
+    "session_boundary": "AgentLoop context resets; the sandbox filesystem persists",
+    "handoff_contract": "goal hash + exact completed calls/observations + remaining plan + state digest + trajectory hash",
+    "resume_policy": "scripted_file_policy consumes the rendered packet; this measures protocol faithfulness, not learned summary-writing ability",
+    "drift_metric": "plan mismatches + repeated prefix calls + route anomalies + wrong final"
+  },
+  "results": {
+    "summary": {
+      "handover_tasks": 3,
+      "faithful_resumes": 3,
+      "correct_finals": 3,
+      "prefix_repeated_steps": 0,
+      "goal_drift_events": 0,
+      "tamper_controls": 4,
+      "tamper_controls_caught": 4
+    },
+    "faithful_rows": [
+      {
+        "id": "write-read-interrupt-after-write",
+        "family": "write_read",
+        "prefix_steps": 2,
+        "resume_steps": 2,
+        "state_files": [
+          {
+            "path": "f.txt",
+            "bytes": 2,
+            "sha256": "7688b6ef52555962d008fff894223582c484517cea7da49ee67800adc7fc8866"
+          }
+        ],
+        "packet_sha256": "031b279d88ed19711954c2a27dfdb26737f0b607c1c30526ba05f670e18efb28",
+        "metrics": {
+          "expected_calls": [
+            "{\"args\":{\"path\":\"f.txt\"},\"name\":\"file_read\"}",
+            "{\"args\":{\"answer\":\"56\"},\"name\":\"finish\"}"
+          ],
+          "actual_calls": [
+            "{\"args\":{\"path\":\"f.txt\"},\"name\":\"file_read\"}",
+            "{\"args\":{\"answer\":\"56\"},\"name\":\"finish\"}"
+          ],
+          "steps_used": 2,
+          "final_answer": "56",
+          "correct_final": true,
+          "plan_mismatches": 0,
+          "prefix_repeats": 0,
+          "route_anomalies": 0,
+          "wrong_final": 0,
+          "goal_drift_events": 0,
+          "first_divergence": null,
+          "faithful": true
+        }
+      },
+      {
+        "id": "write-transform-interrupt-after-transform",
+        "family": "write_transform",
+        "prefix_steps": 2,
+        "resume_steps": 3,
+        "state_files": [
+          {
+            "path": "a.txt",
+            "bytes": 12,
+            "sha256": "4c515e589145a450484ef4411af9fdc7c823095045f3586e51cab98d9c5c49bc"
+          },
+          {
+            "path": "b.txt",
+            "bytes": 12,
+            "sha256": "d1d4193dfc8677387213e232d03c626a8831d105d2e1310d6c671f2ec26e0c62"
+          }
+        ],
+        "packet_sha256": "3b01c72be8b73a0d3244916739511f664470f9520ca7b0136fa885343d4955af",
+        "metrics": {
+          "expected_calls": [
+            "{\"args\":{\"content\":\"egdirb elppa\",\"path\":\"b.txt\"},\"name\":\"file_write\"}",
+            "{\"args\":{\"path\":\"b.txt\"},\"name\":\"file_read\"}",
+            "{\"args\":{\"answer\":\"egdirb elppa\"},\"name\":\"finish\"}"
+          ],
+          "actual_calls": [
+            "{\"args\":{\"content\":\"egdirb elppa\",\"path\":\"b.txt\"},\"name\":\"file_write\"}",
+            "{\"args\":{\"path\":\"b.txt\"},\"name\":\"file_read\"}",
+            "{\"args\":{\"answer\":\"egdirb elppa\"},\"name\":\"finish\"}"
+          ],
+          "steps_used": 3,
+          "final_answer": "egdirb elppa",
+          "correct_final": true,
+          "plan_mismatches": 0,
+          "prefix_repeats": 0,
+          "route_anomalies": 0,
+          "wrong_final": 0,
+          "goal_drift_events": 0,
+          "first_divergence": null,
+          "faithful": true
+        }
+      },
+      {
+        "id": "accumulate-interrupt-after-both-writes",
+        "family": "accumulate",
+        "prefix_steps": 4,
+        "resume_steps": 4,
+        "state_files": [
+          {
+            "path": "a.txt",
+            "bytes": 2,
+            "sha256": "7688b6ef52555962d008fff894223582c484517cea7da49ee67800adc7fc8866"
+          },
+          {
+            "path": "b.txt",
+            "bytes": 2,
+            "sha256": "8527a891e224136950ff32ca212b45bc93f69fbb801c3b1ebedac52775f99e61"
+          }
+        ],
+        "packet_sha256": "6956051ef56c146ebfdbcb8fa4dade743048b1dfe3f6af1b3d9c8e7bba9b71e5",
+        "metrics": {
+          "expected_calls": [
+            "{\"args\":{\"path\":\"a.txt\"},\"name\":\"file_read\"}",
+            "{\"args\":{\"path\":\"b.txt\"},\"name\":\"file_read\"}",
+            "{\"args\":{\"expr\":\"(56) + (14)\"},\"name\":\"calc\"}",
+            "{\"args\":{\"answer\":\"70\"},\"name\":\"finish\"}"
+          ],
+          "actual_calls": [
+            "{\"args\":{\"path\":\"a.txt\"},\"name\":\"file_read\"}",
+            "{\"args\":{\"path\":\"b.txt\"},\"name\":\"file_read\"}",
+            "{\"args\":{\"expr\":\"(56) + (14)\"},\"name\":\"calc\"}",
+            "{\"args\":{\"answer\":\"70\"},\"name\":\"finish\"}"
+          ],
+          "steps_used": 4,
+          "final_answer": "70",
+          "correct_final": true,
+          "plan_mismatches": 0,
+          "prefix_repeats": 0,
+          "route_anomalies": 0,
+          "wrong_final": 0,
+          "goal_drift_events": 0,
+          "first_divergence": null,
+          "faithful": true
+        }
+      }
+    ],
+    "control_rows": [
+      {
+        "id": "stale_state_digest",
+        "caught": true,
+        "error": "sandbox state differs from handoff digest"
+      },
+      {
+        "id": "goal_hash_mismatch",
+        "caught": true,
+        "error": "goal hash does not match packet task"
+      },
+      {
+        "id": "empty_remaining_plan",
+        "caught": true,
+        "error": "handoff has no remaining plan"
+      },
+      {
+        "id": "restarting_policy_goal_drift",
+        "caught": true,
+        "metrics": {
+          "expected_calls": [
+            "{\"args\":{\"path\":\"f.txt\"},\"name\":\"file_read\"}",
+            "{\"args\":{\"answer\":\"56\"},\"name\":\"finish\"}"
+          ],
+          "actual_calls": [
+            "{\"args\":{\"expr\":\"18 * 3 + 2\"},\"name\":\"calc\"}"
+          ],
+          "steps_used": 1,
+          "final_answer": null,
+          "correct_final": false,
+          "plan_mismatches": 2,
+          "prefix_repeats": 1,
+          "route_anomalies": 0,
+          "wrong_final": 1,
+          "goal_drift_events": 4,
+          "first_divergence": {
+            "index": 0,
+            "expected": "{\"args\":{\"path\":\"f.txt\"},\"name\":\"file_read\"}",
+            "actual": "{\"args\":{\"expr\":\"18 * 3 + 2\"},\"name\":\"calc\"}"
+          },
+          "faithful": false
+        }
+      }
+    ]
+  },
+  "results_sha256": "51c58fe486b0bda1505081df51d03d55f69687d44fb080ded2c3ac2ed4459861"
+}

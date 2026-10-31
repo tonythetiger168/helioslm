@@ -94,7 +94,10 @@ def scripted_file_policy(prompt: str, seed: int, step: int) -> str:
     Parses the task from the "Task: ..." head, then phases by counting
     observations ("step i: <obs>").
     """
-    from schema import ToolCall, render_tool_call
+    try:
+        from ..schema import ToolCall, render_tool_call
+    except ImportError:
+        from schema import ToolCall, render_tool_call
 
     obs = re.findall(r"step \d+: (.*)", prompt)
     task_m = re.search(r"Task: (.*?)(?:\n|$)", prompt)
