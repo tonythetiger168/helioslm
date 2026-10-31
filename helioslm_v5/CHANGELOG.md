@@ -1,5 +1,19 @@
 # HeliosLM v5 Changelog
 
+## v5.212 (2026-10-31) - README restructure
+
+Content only, no code changes. The README opens with a short pitch, the
+知止 quote, a "What's here" table (model stack, training, serving + export,
+hsh, decision layer, HDL track, each with its entry point) and a status
+line. Hard-coded test counts are gone from the README and the tests badge;
+`python -m helioslm_v5.tests.test_v5 --list` prints the current count.
+The two legacy plugin harness sections moved to `docs/LEGACY_HARNESS.md`,
+the version history keeps the last five releases (all earlier headlines
+are in this changelog; v5.0 now has its own entry below), the stale
+repository layout block is gone, and Known Limitations is dated
+2026-10-31. `case_harness_repair.test_readme_test_count_current` now
+checks that the README points to `--list` and advertises no count.
+
 ## v5.211 (2026-10-30) - expert offload advice in MoE packages
 
 `package.gguf_expert_count` reads `<arch>.expert_count` from a llama.cpp
@@ -6653,3 +6667,10 @@ refer to the review report.
 - NaViT `forward_packed` is padding-based batching, not nested-tensor
   packing; no position-embedding interpolation beyond `vision_max_grid`.
 - MTP speculative decoding supports batch size 1 only.
+
+## v5.0 - initial v5 release
+
+Review-hardened core: MLA weight absorption, true GPTQ, strict
+speculative sampling, NaViT + audio encoders (README headline for
+v5.0–v5.4, moved here in v5.212). The v5.1 entry above lists the review
+findings fixed on top of v5.0.
