@@ -37,9 +37,12 @@ TIERS = {t.name: t for t in (
     Tier("L8", 8, ("q4_k", "q8_0"), 32768, 99, "RTX 4060, 3060 Ti"),
     Tier("L16", 16, ("f16", "q4_k"), 32768, 99,
          "RTX 3060 12GB, 4070, 4060 Ti / 5060 Ti 16GB"),
-    Tier("L24", 24, ("q4_k",), 32768, 99, "RTX 3090, 4090, 5090"),
+    Tier("L24", 24, ("q4_k",), 32768, 99,
+         "RTX 3090, 4090, 5090; 32 GB unified memory (RTX Spark, "
+         "Ryzen AI Max+ 395, Mac)"),
     Tier("L48+", 48, ("q8_0", "f16", "q4_k"), 131072, 99,
-         "RTX PRO 6000 96GB, 2x24 GB, 64-96 GB unified memory"),
+         "RTX PRO 6000 96GB, 2x24 GB, 64-96 GB unified memory (RTX Spark, "
+         "Ryzen AI Max+ 395, Mac)"),
     # v5.190: unified-memory tiers. 128 GB runs v4.0 100B-A10B at Q4_K or
     # v3.0 30B-A3B at Q8_0 / BF16; 256 GB runs 100B-A10B at Q8_0 or v5.0
     # 300B-A20B at Q4_K; 512 GB runs 300B-A20B at Q8_0

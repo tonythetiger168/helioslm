@@ -30,7 +30,8 @@ from .package import QUANT_LABEL, TIERS, _slug, modelfile
 
 # memory ranges of the README Product roadmap table (TIERS keeps the floor)
 _MEMORY = {"L-Edge": "CPU, ≤ 8 GB RAM", "L8": "8 GB VRAM", "L16": "12–16 GB VRAM",
-           "L24": "24–32 GB VRAM", "L48+": "48–96 GB", "L128": "128 GB 統一記憶體",
+           "L24": "24–32 GB VRAM 或 32 GB 統一記憶體",
+           "L48+": "48–96 GB VRAM 或 64–96 GB 統一記憶體", "L128": "128 GB 統一記憶體",
            "L256": "256 GB 統一記憶體",
            "L512": "512 GB 統一記憶體"}
 

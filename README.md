@@ -526,6 +526,7 @@ As of 2026-10-31:
 
 The last five releases; every earlier release is in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md).
 
+- **v5.213** — download page and tier table list 32 GB unified memory under L24 and 64–96 GB under L48+ (RTX Spark laptops, Ryzen AI Max+ 395, Mac)
 - **v5.212** — README restructured: short opening with a "What's here" table, no hard-coded test counts (use `python -m helioslm_v5.tests.test_v5 --list`), legacy plugin harness moved to [docs/LEGACY_HARNESS.md](https://github.com/tonythetiger168/helioslm/blob/main/docs/LEGACY_HARNESS.md)
 - **v5.211** — MoE packages (GGUF `expert_count`) tell how to keep experts in system RAM with llama.cpp `--cpu-moe` / `--n-cpu-moe` when the file does not fit the GPU
 - **v5.210** — tier packages document KV-cache quantization for long context (`-fa on -ctk q8_0 -ctv q8_0`, Ollama `OLLAMA_KV_CACHE_TYPE`); `quant_bench.py` measures perplexity and KV size per GGUF and KV type
@@ -579,8 +580,8 @@ Each generation above is trained once; the deployment series below are cut from 
 | **L-Edge** | none, ≤ 8 GB RAM | laptop CPU, Raspberry Pi 5, phone NPU | 0.5B dense | Q4_K_M / Q8_0 | 0.3 / 0.5 GB | 8K | v1.0 |
 | **L8** | 8 GB | RTX 4060, 3060 Ti | 3B dense | Q4_K_M (Q8_0 optional) | 1.8 / 3.2 GB | 32K | v2.0 |
 | **L16** | 12–16 GB | RTX 3060 12GB, 4070, 4060 Ti / 5060 Ti 16GB | 3B dense, or 30B-A3B with routed experts in system RAM | BF16; Q4_K_M | 6.0 GB; 18 GB | 128K; 16K | v2.0, v3.0 |
-| **L24** | 24–32 GB | RTX 3090, 4090, 5090 | 30B-A3B MoE | Q4_K_M (Q6_K on 32 GB) | 18 GB | 32K (128K on 32 GB) | v3.0 |
-| **L48+** | 48–96 GB | RTX PRO 6000 96GB, 2×24 GB, 64–96 GB unified memory | 30B-A3B, or 100B-A10B | Q8_0 / BF16; Q4_K_M | 32 / 60 GB; 61 GB | 128K | v3.0, v4.0 |
+| **L24** | 24–32 GB | RTX 3090, 4090, 5090; 32 GB unified memory (RTX Spark laptops, Ryzen AI Max+ 395, Mac) | 30B-A3B MoE | Q4_K_M (Q6_K on 32 GB) | 18 GB | 32K (128K on 32 GB) | v3.0 |
+| **L48+** | 48–96 GB | RTX PRO 6000 96GB, 2×24 GB, 64–96 GB unified memory (RTX Spark laptops, Ryzen AI Max+ 395, Mac) | 30B-A3B, or 100B-A10B | Q8_0 / BF16; Q4_K_M | 32 / 60 GB; 61 GB | 128K | v3.0, v4.0 |
 | **L128** | 128 GB unified memory | NVIDIA DGX Spark, AMD Ryzen AI Max+ 395, Mac (M4 / M5 series incl. Max / Ultra) 128 GB | 100B-A10B, or 30B-A3B | Q4_K_M; Q8_0 / BF16 | 61 GB; 32 / 60 GB | 128K | v4.0, v3.0 |
 | **L256** | 256 GB unified memory | Mac (M4 / M5 series incl. Ultra; Mac Studio M3 Ultra) 256 GB | 100B-A10B, or 300B-A20B | Q8_0; Q4_K_M | 106 GB; 183 GB | 128K; 32K | v4.0, v5.0 |
 | **L512** | 512 GB unified memory | Mac (M4 / M5 series incl. Ultra; Mac Studio M3 Ultra) 512 GB | 300B-A20B MoE | Q8_0; Q4_K_M | 318 GB; 183 GB | 128K | v5.0 |

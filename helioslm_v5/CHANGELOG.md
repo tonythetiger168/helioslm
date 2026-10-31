@@ -1,5 +1,14 @@
 # HeliosLM v5 Changelog
 
+## v5.213 (2026-10-31) - unified-memory laptops on the download page
+
+The L24 tier also names 32 GB unified-memory machines and L48+ names
+64–96 GB ones (RTX Spark laptops, Ryzen AI Max+ 395, Mac), in
+`package.TIERS` hardware text, the Cloudflare download page's memory
+column and the README tier table. Same packages, no new tiers: on unified
+memory the GPU and CPU share the RAM, so a 32 GB machine runs the L24
+Q4_K_M file and a 64 GB one the L48+ Q8_0 file.
+
 ## v5.212 (2026-10-31) - README restructure
 
 Content only, no code changes. The README opens with a short pitch, the
