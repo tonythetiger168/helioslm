@@ -8,8 +8,7 @@ sandbox filesystem — the cheapest credible long-horizon substrate we have.
 Three families (budgets 8/10/14 vs 2-4 for toy envs):
 1. write_read:    compute -> write file -> read back -> finish
 2. write_transform: write raw -> transform -> write result -> read -> finish
-3. accumulate:    two computations -> two files -> read both ->
-   combine -> finish
+3. accumulate:    two computations -> two files -> read both -> combine -> finish
 
 verify() recomputes the expected final answer from the task spec — no
 state peeking, same discipline as toy_envs. The env is deliberately NOT
@@ -28,7 +27,6 @@ try:
     from .. import task_grammar as _G
 except ImportError:
     import task_grammar as _G
-
 
 @dataclass(frozen=True)
 class FileTask:
@@ -132,8 +130,7 @@ def scripted_file_policy(prompt: str, seed: int, step: int) -> str:
                 "str_op", {"s": s, "op": op, "n": n})]),
             lambda: render_tool_call([ToolCall(
                 "file_write", {"path": b_path, "content": obs[1]})]),
-            lambda: render_tool_call([ToolCall(
-                "file_read", {"path": b_path})]),
+            lambda: render_tool_call([ToolCall("file_read", {"path": b_path})]),
             lambda: render_tool_call([ToolCall(
                 "finish", {"answer": obs[3]})]),
         ])
