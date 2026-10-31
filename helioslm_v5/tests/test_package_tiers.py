@@ -390,3 +390,13 @@ def test_moe_expert_offload_note(tmp_path):
     raw = tmp_path / "raw.gguf"
     raw.write_bytes(b"x" * 10)
     assert package.gguf_expert_count(raw) == 0
+
+
+def test_unified_memory_laptops_on_tiers():
+    """T166 (v5.213): 32 GB unified-memory machines are listed under L24 and
+    64-96 GB ones under L48+, in the tier hardware text and the download
+    page's memory column."""
+    from helioslm_v5.src.export.cloudflare import _MEMORY
+    assert "32 GB unified memory" in TIERS["L24"].hardware
+    assert "64-96 GB unified memory" in TIERS["L48+"].hardware
+    assert "32 GB 統一記憶體" in _MEMORY["L24"] and "64–96 GB 統一記憶體" in _MEMORY["L48+"]
