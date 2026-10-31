@@ -21,6 +21,7 @@
     "cost_comparison_agentark.json": {"tier": "measured", "basis": "cost-arithmetic comparison vs AgentArk claim; component numbers from measured artifacts"},
     "cost_per_completed_task_2026-10-13.json": {"tier": "measured", "basis": "M6 composition of measured mid_agent_eval_v5 completion evidence with the oracle-tested disagg cost model and score_stream audit; USD is a $1/worker-hour normalization"},
     "clarify_missing_param_2026-10-13.json": {"tier": "oracle-tested", "basis": "M3 constructive missing-parameter suite; T86 asserts 6/6 CLARIFY without execution, 6/6 completed controls DIRECT, and low-trust/schema-invalid ESCALATE"},
+    "handover_resume_2026-10-14.json": {"tier": "oracle-tested", "basis": "M4 constructive handoff/resume suite; T87 asserts 3/3 exact suffix resumes with zero rework/drift and 4/4 stale-state/goal/truncation/restart controls caught"},
     "direction12_analysis.json": {"tier": "measured", "basis": "sycophancy decomposition + ceiling-effect audit on recorded probe data"},
     "disagg_pareto_2026-09-25.json": {"tier": "oracle-tested", "basis": "three-axis Pareto sweep under the monotonicity gate; T18 asserts the gate and the cache_aware anti-monotonicity finding"},
     "gated_hybrid_results.json": {"tier": "measured", "basis": "gated hybrid readout sweep; cross-validated weights"},
