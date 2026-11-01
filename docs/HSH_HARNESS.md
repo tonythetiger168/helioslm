@@ -132,6 +132,7 @@ Tests: `helioslm_v5/tests/test_hsh_loop.py` (12).
 | `standard` | `bash`, `read`, `write`, `edit`, `glob`, `grep`, `todo_write` | |
 | `code` | `run_code` only | PTC: the program calls the standard tools |
 | `creator` | standard + `inspect` | plugins, services, events, tools, log, preset |
+| `clinical` | only the host's allow-listed tools | v5.223: approval on every call, audit log, egress deny, locked |
 
 ```python
 ctx.plugin(Workspace, {"root": "/path/to/repo"})
@@ -145,6 +146,40 @@ Landlock/Seatbelt for that. Keep HeliosLM's TrustGate as a guard when the
 model is untrusted.
 
 Tests: `helioslm_v5/tests/test_hsh_presets.py` (10).
+
+### Clinical preset (v5.223, `hsh/clinical.py`)
+
+For agents in a clinical workflow (e.g. scheduling follow-ups from a rules
+engine's result). No `bash`, file, search, sub-agent, skill, MCP or
+web-fetch tool is mounted; the host registers its own tools in `setup` and
+names them in `allow_tools`:
+
+```python
+def setup(agent):
+    agent.ctx.tools.register(schedule_followup_tool, ctx=agent.ctx)
+
+ctx.provide("approval", lambda exe, question: {"approved": ask_clinician(question),
+                                               "by": clinician_id})
+agent = create_agent(ctx, "followup-1", config, "clinical", setup=setup,
+                     allow_tools=["schedule_followup"])
+```
+
+- Every call is "Ask first" through `ctx.approval`; a guard denies any call
+  that was not approved, so a host listener answering `allow` (an auto
+  permission mode) cannot skip the clinician. The approval callback may
+  return `True` or `{"approved": True, "by": "<who>"}`.
+- Global tools outside the allow list are hidden; any other name is
+  denied by the guard.
+- Egress `deny` with an empty allow list.
+- Locked: `compose` / `create_agent` refuse patches; `patch_agent` refuses
+  them during the session and logs a `policy/refused` event.
+- Every call (refused ones too) is logged as an `audit/tool-call` event
+  (call id, tool, arguments, question, approved, by, ran, outcome, time).
+  `audit_export(events)` rebuilds the audit table from the session log
+  alone and checks it against the `tool/call` events. Both events are
+  log-only, so `rebuild_requests` is unchanged.
+
+Tests: `helioslm_v5/tests/test_hsh_clinical.py`.
 
 ## H6: compaction, subagents, instructions, hooks
 
