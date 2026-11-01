@@ -23,7 +23,11 @@ are held out for the masked validation loss.
 
 ``train`` reuses ``cpt_hf.py``: fp32 master weights under bf16 autocast,
 AdamW, gradient checkpointing, ``--freeze`` patterns, ``--ce-chunk`` and
-``--max-hours``; the schedule is cosine. It writes ``<out>/log.jsonl``,
+``--max-hours``; the schedule is cosine. ``--lora`` (v5.217) trains LoRA
+adapters instead of the full model (``--lora-r / --lora-alpha /
+--lora-dropout / --lora-targets``; vision / audio excluded) and writes the
+peft-format adapter to ``<out>/adapter`` and the merged bf16 model to
+``<out>/final``, ready for ``package_hf.py``. It writes ``<out>/log.jsonl``,
 ``<out>/final`` (bf16) and ``<out>/result.json``.
 """
 import argparse
@@ -260,7 +264,17 @@ def cmd_train(a):
     if device == "cuda":
         torch.backends.cuda.matmul.allow_tf32 = True
     model = AutoModelForCausalLM.from_pretrained(a.model, dtype=torch.float32)
-    trainable, frozen = freeze(model, a.freeze)
+    if a.lora:
+        # v5.217: LoRA adapters only; the whole base model is frozen
+        from helioslm_v5.src.training.lora import apply_lora
+        info = apply_lora(model, r=a.lora_r, alpha=a.lora_alpha,
+                          dropout=a.lora_dropout, targets=a.lora_targets,
+                          exclude=a.lora_exclude)
+        trainable, frozen = info["trainable"], info["frozen"]
+        print(json.dumps({"lora_modules": len(info["modules"]),
+                          "trainable_params": trainable}), flush=True)
+    else:
+        trainable, frozen = freeze(model, a.freeze)
     if a.frozen_bf16:
         cast_frozen(model, torch.bfloat16)
     model.gradient_checkpointing_enable(
@@ -286,6 +300,14 @@ def cmd_train(a):
                 max_hours=a.max_hours, log=log, ce_chunk=a.ce_chunk,
                 eval_every=a.eval_every)
     logf.close()
+    if a.lora:
+        from helioslm_v5.src.training.lora import merge_lora, save_adapter
+        res["adapter"] = str(save_adapter(model, out / "adapter", a.model))
+        if a.lora_no_merge:
+            (out / "result.json").write_text(json.dumps(res, indent=2))
+            print(json.dumps(res))
+            return res
+        res["merged_modules"] = merge_lora(model)
     # 5 GB shards: the Hub rejects single files over 50 GB (a 26B model in bf16)
     model.to(torch.bfloat16).save_pretrained(out / "final", safe_serialization=True,
                                              max_shard_size="5GB")
@@ -329,6 +351,18 @@ def main(argv=None):
     t.add_argument("--val-fraction", type=float, default=0.01)
     t.add_argument("--eval-every", type=int, default=200)
     t.add_argument("--seed", type=int, default=0)
+    t.add_argument("--lora", action="store_true",
+                   help="train LoRA adapters only (v5.217); writes <out>/adapter "
+                        "and the merged model to <out>/final")
+    t.add_argument("--lora-r", type=int, default=16)
+    t.add_argument("--lora-alpha", type=float, default=32.0)
+    t.add_argument("--lora-dropout", type=float, default=0.05)
+    t.add_argument("--lora-targets", nargs="+",
+                   default=["q_proj", "k_proj", "v_proj", "o_proj",
+                            "gate_proj", "up_proj", "down_proj"])
+    t.add_argument("--lora-exclude", nargs="*", default=["vision", "audio"])
+    t.add_argument("--lora-no-merge", action="store_true",
+                   help="save the adapter only, no merged <out>/final")
     from helioslm_v5.src.training.data_guard import add_guard_args
     add_guard_args(p)
     add_guard_args(t)

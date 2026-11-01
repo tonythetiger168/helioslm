@@ -526,11 +526,11 @@ As of 2026-10-31:
 
 The last five releases; every earlier release is in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md).
 
+- **v5.217** — `sft_hf.py train --lora`: plain-torch LoRA adapters (no `peft` needed), peft-format adapter plus a merged model that `package_hf.py` packages as is; usage and memory estimate in [docs/LORA_SFT.md](https://github.com/tonythetiger168/helioslm/blob/main/docs/LORA_SFT.md)
 - **v5.216** — field-level abstention for JSON → report writing (`src/training/report_abstain.py`): a removed measurement must read 未測量 / not measured, a filled-in number is penalised; `ReportAbstainEnv` for GRPO and `examples/abstain_report_sft.py` for synthetic SFT records
 - **v5.215** — PHI and licence guard for medical data (`src/training/data_guard.py`): `cpt_hf.py` / `sft_hf.py` / `distill_generate.py` take `--data-manifest` / `--medical`; medical sources must be de-identified with licence and origin, are PHI-scanned, never go to an external API teacher, and research-only data cannot train releasable weights
 - **v5.214** — rule-based JSON → report grounding grader (`helioslm_v5/eval/grounded_report.py`): unverified facts, omissions and contradictions in zh-TW / English nodule reports; `examples/grounded_report_run.py` grades any OpenAI-compatible models on the same prompt
 - **v5.213** — download page and tier table list 32 GB unified memory under L24 and 64–96 GB under L48+ (RTX Spark laptops, Ryzen AI Max+ 395, Mac)
-- **v5.212** — README restructured: short opening with a "What's here" table, no hard-coded test counts (use `python -m helioslm_v5.tests.test_v5 --list`), legacy plugin harness moved to [docs/LEGACY_HARNESS.md](https://github.com/tonythetiger168/helioslm/blob/main/docs/LEGACY_HARNESS.md)
 
 ## License
 
