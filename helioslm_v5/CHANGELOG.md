@@ -1,5 +1,30 @@
 # HeliosLM v5 Changelog
 
+## v5.214 (2026-11-01) - JSON -> report grounding grader
+
+`helioslm_v5/eval/grounded_report.py` grades a generated report against
+the findings JSON it was written from (per nodule: lobe, diameter mm,
+volume mm3, type solid / part-solid / GGN, Lung-RADS; plus an overall
+Lung-RADS category). It returns `unverified_facts` (a measurement, lobe
+or type the JSON does not have), `contradictions` (a value that differs
+from the nodule the sentence is about, or a wrong overall category) and
+`omissions` (a required field the text never states), plus
+`abstentions` (未測量 / not measured next to a null field). Rules only,
+no LLM, CPU, deterministic. Full-width digits, 公釐 / 毫米 / mm, 公分 / cm
+(x10), 立方公釐 / mm3, zh-TW and English lobe names (舌葉 = left upper
+lobe), Lung-RADS 0–4X with version tags. A sentence naming one lobe that
+one nodule has is bound to that nodule; values in other sentences only
+have to exist in the JSON. Numbers without a unit and Chinese numerals
+are not read.
+
+`data/pulmoguard/findings_example.json` is the synthetic schema example.
+`examples/grounded_report_run.py` sends the same zh or en prompt
+(temperature 0) to any number of `name=BASE_URL/MODEL_ID` endpoints and
+writes per-report grades and a per-model summary. 24 synthetic zh-TW /
+English fixtures in `tests/fixtures/grounded_report/` (correct, fabricated
+number, missing nodule, wrong category, wrong unit, wrong type, swapped
+values) are pinned in `tests/test_grounded_report.py`. Issue #199.
+
 ## v5.213 (2026-10-31) - unified-memory laptops on the download page
 
 The L24 tier also names 32 GB unified-memory machines and L48+ names
