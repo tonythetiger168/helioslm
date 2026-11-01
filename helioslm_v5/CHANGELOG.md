@@ -1,5 +1,23 @@
 # HeliosLM v5 Changelog
 
+## v5.219 (2026-11-01) - device capability matrix and per-token cost record (#175, #135)
+
+`helioslm_v5/eval/device_matrix.py`: `probe_backends()` reports cpu /
+cuda / mps / xpu / xla (TPU, torch_xla) / npu (torch_npu), with a reason
+for each absent one. `FEATURES` gives nine model paths a status per
+backend (`native` needs a recorded run as evidence; only CPU and CUDA have
+any, everything else is `untested`; the FLA KDA kernel is `fallback` off
+CUDA). `resolve(..., strict=True)` refuses fallbacks. `forward_oracle`
+checks full-sequence and KV-cache decode logits against CPU float32 with
+tolerances fixed beforehand (fp32 1e-4, fp16 2e-2, bf16 6e-2), on a dense
+lite config because bf16 MoE routing flips experts. `measure_generation`
+and `make_record` write TTFT, decode tokens/s (p50, tail), CUDA peak
+memory and the context (hardware, dtype, batch, prompt, commit); a record
+needs a passing oracle, and USD per million tokens needs an explicit
+`--usd-per-hour`. `examples/device_bench.py` is the CLI;
+`docs/DEVICE_MATRIX.md` the notes. GPU / TPU / NPU tests skip with a
+reason when the backend is absent.
+
 ## v5.218 (2026-11-01) - PulmoGuard report bake-off pre-registration
 
 `docs/prereg/pulmoguard-report.json` pre-registers the JSON -> report
