@@ -336,7 +336,14 @@ def main(argv=None):
                     help="load the model, apply --freeze, write "
                          "<out>/dry_run.json (model class, trainable / "
                          "frozen counts, frozen parameter groups) and exit")
+    from helioslm_v5.src.training.data_guard import add_guard_args, guard_cli
+    add_guard_args(ap)
     a = ap.parse_args(argv)
+    # v5.215: medical sources need a manifest and a clean PHI scan
+    _, guard_report = guard_cli(a.data_manifest, release=not a.no_release,
+                                medical=a.medical)
+    if guard_report is not None and int(os.environ.get("RANK", "0")) == 0:
+        print(json.dumps({"data_guard": guard_report}, ensure_ascii=False))
 
     import torch.distributed as dist
     from transformers import AutoModelForCausalLM, AutoTokenizer

@@ -205,7 +205,25 @@ def read_jsonl(path):
                 yield json.loads(line)
 
 
+def run_guard(a):
+    """v5.215: medical data needs a manifest (deidentified, licence,
+    origin) and a clean PHI scan; research-only data cannot train
+    releasable weights. A no-op without --data-manifest / --medical."""
+    from helioslm_v5.src.training.data_guard import guard_cli
+    m, rep = guard_cli(a.data_manifest, release=not a.no_release, medical=a.medical)
+    if rep is not None:
+        print(json.dumps({"data_guard": rep}, ensure_ascii=False))
+    return m, rep
+
+
 def cmd_prepare(a):
+    from helioslm_v5.src.training.data_guard import DataGuardError, is_medical
+    m, _ = run_guard(a)
+    if m is not None and any(is_medical(s) for s in m["sources"]):
+        # the scanned file must be the one being tokenised
+        rec = str(Path(a.records).resolve())
+        if not any(is_medical(s) and s.get("path") == rec for s in m["sources"]):
+            raise DataGuardError(f"{a.records} is not a medical source in {a.data_manifest}")
     from transformers import AutoTokenizer
     tok = AutoTokenizer.from_pretrained(a.tokenizer)
     if not tok.chat_template:
@@ -226,6 +244,7 @@ def cmd_prepare(a):
 
 
 def cmd_train(a):
+    run_guard(a)
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
     from cpt_hf import cast_frozen, freeze
@@ -310,6 +329,9 @@ def main(argv=None):
     t.add_argument("--val-fraction", type=float, default=0.01)
     t.add_argument("--eval-every", type=int, default=200)
     t.add_argument("--seed", type=int, default=0)
+    from helioslm_v5.src.training.data_guard import add_guard_args
+    add_guard_args(p)
+    add_guard_args(t)
     a = ap.parse_args(argv)
     return cmd_prepare(a) if a.cmd == "prepare" else cmd_train(a)
 

@@ -52,6 +52,26 @@ def add_pricing(p):
                    help="pod price per hour (all GPUs), for self-hosting")
 
 
+def guard_teacher(a, prompts):
+    """v5.215: medical prompts only go to a self-hosted teacher on a
+    local / private address, after the manifest check and a PHI scan."""
+    from helioslm_v5.src.training.data_guard import (DataGuardError, check_manifest,
+                                                     check_teacher_endpoint, guard_records,
+                                                     is_medical, load_manifest)
+    if not a.data_manifest:
+        if a.medical:
+            raise DataGuardError("--medical needs --data-manifest")
+        return
+    m = load_manifest(a.data_manifest)
+    medical = any(is_medical(s) for s in m["sources"])
+    if a.medical and not medical:
+        raise DataGuardError("--medical given but the manifest declares no medical source")
+    check_manifest(m, release=False)  # licence for weights is checked at training
+    check_teacher_endpoint(m, a.base_url, a.endpoint)
+    if medical:
+        guard_records(prompts, source_name=a.prompts)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -88,6 +108,10 @@ def main(argv=None):
     g.add_argument("--max-cost", type=float, default=None)
     g.add_argument("--max-output-tokens", type=int, default=None)
     g.add_argument("--max-hours", type=float, default=None)
+    g.add_argument("--data-manifest", default=None,
+                   help="v5.215: medical prompts need a manifest; never sent to an external API")
+    g.add_argument("--medical", action="store_true",
+                   help="the prompts are medical: --data-manifest required, local teacher only")
     add_pricing(g)
 
     x = sub.add_parser("extract", help="questions out of meta-prompt answers")
@@ -116,6 +140,7 @@ def main(argv=None):
         print(json.dumps({"topics": len(seeds), "meta_prompts": len(rows)}))
     elif a.cmd == "generate":
         prompts = dg.read_jsonl(a.prompts)
+        guard_teacher(a, prompts)
         if a.shuffle_seed is not None:
             random.Random(a.shuffle_seed).shuffle(prompts)
         if a.limit:
