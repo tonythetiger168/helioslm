@@ -14,6 +14,10 @@ service_tier/max_input_tokens constrain applicability. --outcomes is a JSON
 mapping of task ids to booleans, used for cost per successful task.
 --settings records declared seed, shots, temperature, sample count and
 other evaluation conditions from a JSON object; it does not infer them.
+Repeat --expected-reported-model to allow specific returned model IDs.
+A missing/unexpected response model suppresses cost_per_correct_usd and
+marks model_identity=mismatch; billed token cost is still preserved.
+This cannot detect a provider that returns the expected name after fallback.
 
 Existing probe_debug/resp_*.json envelopes can be wrapped into records.
 Legacy aggregated probe summaries cannot recover missing cache counters.
@@ -37,6 +41,7 @@ def main(argv=None):
     ap.add_argument("--rates")
     ap.add_argument("--outcomes")
     ap.add_argument("--settings")
+    ap.add_argument("--expected-reported-model", action="append")
     ap.add_argument("--out", required=True)
     a = ap.parse_args(argv)
 
@@ -47,7 +52,8 @@ def main(argv=None):
                           harness_revision=a.harness_revision, tokenizer=a.tokenizer,
                           rate_card=read(a.rates) if a.rates else None,
                           outcomes=read(a.outcomes) if a.outcomes else None,
-                          evaluation_settings=read(a.settings) if a.settings else None)
+                          evaluation_settings=read(a.settings) if a.settings else None,
+                          expected_reported_models=a.expected_reported_model)
     Path(a.out).write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n",
                            encoding="utf-8")
     return report

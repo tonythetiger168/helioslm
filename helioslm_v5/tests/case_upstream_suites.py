@@ -94,6 +94,9 @@ def test_api_accounting_suite():
         "test_empty_rate_table_and_legacy_aggregates_remain_unknown",
         "test_provenance_and_outcomes_are_per_task_not_per_call",
         "test_cli_reads_saved_responses_without_credentials_or_network",
+        "test_report_model_identity_policy",
+        "test_missing_or_mixed_reported_models_fail_identity_policy",
+        "test_invalid_identity_allowlist_is_rejected",
     }
     _drift_guard(m, expected)
     m.test_mixed_ttl_cost_matches_hand_invoice_without_double_counting()
@@ -109,13 +112,23 @@ def test_api_accounting_suite():
         m.test_invalid_rates_rejected(value)
     m.test_empty_rate_table_and_legacy_aggregates_remain_unknown()
     m.test_provenance_and_outcomes_are_per_task_not_per_call()
-    with tempfile.TemporaryDirectory() as t:
-        m.test_cli_reads_saved_responses_without_credentials_or_network(
-            Path(t))
+    for expected in ["fixture-snapshot", "unexpected-target"]:
+        with tempfile.TemporaryDirectory() as t:
+            m.test_cli_reads_saved_responses_without_credentials_or_network(
+                Path(t), expected)
+    for allowed, status, eligible in [
+            (None, "unverified", True),
+            (["fixture-snapshot"], "matched", True),
+            (["fixture-alias", "fixture-snapshot"], "matched", True),
+            (["different-target"], "mismatch", False)]:
+        m.test_report_model_identity_policy(allowed, status, eligible)
+    m.test_missing_or_mixed_reported_models_fail_identity_policy()
+    for bad in [[], "model", [""], [None], [1]]:
+        m.test_invalid_identity_allowlist_is_rejected(bad)
     _pass("test_api_accounting_suite",
-          "v5.154 API accounting: all 10 sidecar tests (incl. 8+4+4 "
-          "parametrized cases and the no-network CLI) under the daily "
-          "gate")
+          "v5.154 API accounting: all 13 sidecar tests (incl. 8+4+4 "
+          "parametrized cases, the v5.222 model-identity policy and the "
+          "no-network CLI) under the daily gate")
 
 
 def test_moe_dispatch_suite():

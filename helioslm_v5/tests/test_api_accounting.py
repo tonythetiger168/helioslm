@@ -188,7 +188,8 @@ def test_provenance_and_outcomes_are_per_task_not_per_call():
     assert failed["cost_per_correct_usd"] is None
 
 
-def test_cli_reads_saved_responses_without_credentials_or_network(tmp_path):
+@pytest.mark.parametrize("expected", ["fixture-snapshot", "unexpected-target"])
+def test_cli_reads_saved_responses_without_credentials_or_network(tmp_path, expected):
     root = Path(__file__).resolve().parents[2]
     records = [{"provider": "openai", "response": response()}]
     for name, obj in (("records", records), ("rates", rates())):
@@ -202,8 +203,48 @@ def test_cli_reads_saved_responses_without_credentials_or_network(tmp_path):
         sys.executable, "-I", "-c", code, str(root / "examples/analyze_api_usage.py"),
         "--records", str(tmp_path / "records.json"), "--corpus", str(tmp_path / "corpus.txt"),
         "--harness-revision", "fixture-commit", "--rates", str(tmp_path / "rates.json"),
+        "--expected-reported-model", expected,
         "--out", str(tmp_path / "report.json")], capture_output=True, text=True, timeout=30)
     assert r.returncode == 0, r.stderr
     report = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
     assert report["cost_usd"] == "0.01615"
     assert report["provenance"]["tokenizer"] is None
+    assert report["model_identity"]["status"] == (
+        "matched" if expected == "fixture-snapshot" else "mismatch")
+
+
+@pytest.mark.parametrize("allowed, status, eligible", [
+    (None, "unverified", True),
+    (["fixture-snapshot"], "matched", True),
+    (["fixture-alias", "fixture-snapshot"], "matched", True),
+    (["different-target"], "mismatch", False),
+])
+def test_report_model_identity_policy(allowed, status, eligible):
+    record = {"provider": "openai", "requested_model": "different-target",
+              "response": response(), "task_id": "t"}
+    report = build_report([record], corpus=b"task", harness_revision="fixture",
+                          rate_card=rates(), outcomes={"t": True},
+                          expected_reported_models=allowed)
+    assert report["model_identity"]["status"] == status
+    assert (report["cost_per_correct_usd"] is not None) == eligible
+    # Costs still describe the model actually billed, even after fallback.
+    assert report["cost_usd"] == "0.01615"
+    assert report["provenance"]["snapshot_verified"] is False
+
+
+def test_missing_or_mixed_reported_models_fail_identity_policy():
+    missing = {"provider": "openai", "response": {"usage": {}}}
+    matching = {"provider": "openai", "response": response()}
+    report = build_report([matching, missing], corpus=b"task",
+                          harness_revision="fixture",
+                          expected_reported_models=["fixture-snapshot"])
+    assert report["model_identity"]["status"] == "mismatch"
+    assert report["model_identity"]["mismatched_call_indices"] == [1]
+
+
+@pytest.mark.parametrize("bad", [[], "model", [""], [None], [1]])
+def test_invalid_identity_allowlist_is_rejected(bad):
+    with pytest.raises(ValueError, match="expected_reported_models"):
+        build_report([{"provider": "openai", "response": response()}],
+                     corpus=b"t", harness_revision="fixture",
+                     expected_reported_models=bad)
