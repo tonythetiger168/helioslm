@@ -1,5 +1,29 @@
 # HeliosLM v5 Changelog
 
+## v5.223 (2026-11-01) - hsh clinical preset
+
+The `clinical` preset (`hsh/presets.py`, policy in `hsh/clinical.py`)
+mounts no bash / read / write / edit / glob / grep / subagent (nor skills,
+MCP or web_fetch). The host registers its own tools in `setup` and names
+them with `create_agent(..., allow_tools=[...])`; global tools outside the
+list are hidden and a guard denies any other name. Every call is "Ask
+first" through `ctx.approval`, and a guard denies any call that was not
+approved, so a host listener that answers `allow` cannot skip the
+clinician. `Execution.approval` now records `{question, approved, by}`
+whenever a call was asked; the approval callback may return `True` or
+`{"approved": True, "by": ...}` (only those approve, as before). Egress is
+`deny` with an empty allow list.
+
+The preset is locked: `compose` and `create_agent` refuse patches, and the
+new `patch_agent` (live insert-only patches for unlocked presets) refuses
+them for a locked one and logs a `policy/refused` event. Every call,
+refused ones included, is logged as an `audit/tool-call` event (call id,
+tool, arguments, question, approved, by, ran, outcome); `audit_export`
+rebuilds the table from a session log alone and checks it against the
+`tool/call` events. Both event types are log-only, so the requests
+`rebuild_requests` replays are unchanged. `Agents.by_key` finds a live
+agent by its scope key. Other presets behave as before.
+`tests/test_hsh_clinical.py`, docs in `docs/HSH_HARNESS.md`. Issue #203.
 ## v5.222 (2026-11-01) - guard API cost comparisons against a reported-model fallback
 
 Ported from draft PR #134 (written against the old package path; its

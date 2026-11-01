@@ -13,7 +13,8 @@ from .loop import Agent, Agents  # noqa: F401
 from .builtin import (Workspace, bash_tool, editor_tool, fs_tools,  # noqa: F401
                       run_code_tool, todo_tool)
 from .presets import (PLUGINS, PRESETS, PresetError, apply_preset,  # noqa: F401
-                      compose, create_agent, load_patch)
+                      compose, create_agent, is_locked, load_patch, patch_agent)
+from .clinical import AuditError, audit_export, clinical_policy  # noqa: F401
 from .compaction import compact, compaction, estimate_tokens  # noqa: F401
 from .subagent import agent_instructions, claude_hooks, subagent_tool  # noqa: F401
 from .skills import (FilesystemSkills, SkillError, Skills,  # noqa: F401

@@ -17,7 +17,14 @@ Shipped presets (dsh's four work modes):
 - ``code``: standard plus ``run_code`` in PTC mode: the model sees only
   ``run_code`` and calls the other tools from inside its program;
 - ``creator``: standard plus ``inspect`` for looking at the running
-  harness (plugins, services, tools, events, the session log, the preset).
+  harness (plugins, services, tools, events, the session log, the preset);
+- ``clinical`` (v5.223, clinical.py): no bash / read / write / edit /
+  glob / grep / subagent; only the host's own tools, named with
+  ``create_agent(..., allow_tools=[...])``; every call needs approval
+  through ``ctx.approval`` and is written to the session log as an audit
+  event; egress ``deny`` with an empty allow list. The preset is
+  **locked**: patches are refused at creation, and :func:`patch_agent`
+  refuses (and logs) them during the session.
 
 Any preset can add ``{"id": "egress", "name": "egress", "config":
 {"allow": [...]}}`` to record and block network access from ``bash`` and
@@ -38,6 +45,7 @@ import copy
 import json
 
 from .builtin import bash_tool, editor_tool, fs_tools, run_code_tool, todo_tool
+from .clinical import clinical_policy
 from .compaction import compaction
 from .egress import Egress
 from .interaction import ask_user_tool, plan_mode, web_fetch_tool
@@ -128,6 +136,7 @@ PLUGINS = {
     "tool-web-fetch": web_fetch_tool,
     "request-retry": request_retry,
     "egress": Egress,
+    "clinical-policy": clinical_policy,
 }
 
 _STANDARD = [
@@ -163,7 +172,26 @@ PRESETS = {
     "creator": _STANDARD + [
         {"id": "creator-inspect", "name": "creator-inspect"},
     ],
+    "clinical": [
+        {"id": "persona", "name": "persona",
+         "config": {"prefix": "You assist clinical staff in the HeliosLM harness. Use only "
+                              "the tools you are given; a clinician approves every tool call. "
+                              "Do not make diagnoses or change clinical decisions; say when "
+                              "you are not sure."}},
+        {"id": "clinical-policy", "name": "clinical-policy", "config": {"tools": []}},
+        {"id": "egress", "name": "egress", "config": {"mode": "deny", "allow": []}},
+        {"id": "request-retry", "name": "request-retry"},
+    ],
 }
+
+LOCKED = {"clinical"}
+
+
+def is_locked(base):
+    """A locked preset (by name, or rows carrying the clinical policy)."""
+    if isinstance(base, str):
+        return base in LOCKED
+    return any(r.get("name") == "clinical-policy" for r in base)
 
 
 def _index(rows, rid):
@@ -175,6 +203,9 @@ def _index(rows, rid):
 
 def compose(base, *patches):
     """Apply patch lists to a copy of ``base`` (a preset name or rows)."""
+    if is_locked(base) and any(patches):
+        raise PresetError(f"preset {base if isinstance(base, str) else 'clinical'!r} "
+                          "is locked; patches are refused")
     rows = copy.deepcopy(PRESETS[base] if isinstance(base, str) else base)
     for patch in patches:
         for op in patch:
@@ -231,11 +262,18 @@ def apply_preset(agent, rows):
 
 
 def create_agent(ctx, session_id, config, preset="standard", patches=(),
-                 setup=None, **kw):
+                 setup=None, allow_tools=None, **kw):
     """``ctx.agents.create`` with a preset mounted in the setup window.
 
-    ``setup(agent)``, if given, runs after the preset is mounted."""
+    ``setup(agent)``, if given, runs after the preset is mounted.
+    ``allow_tools`` names the host tools a ``clinical`` agent may call
+    (register them in ``setup``)."""
     rows = compose(preset, *patches)
+    if allow_tools is not None:
+        pol = [r for r in rows if r["name"] == "clinical-policy"]
+        if not pol:
+            raise PresetError("allow_tools is only for presets with a clinical policy")
+        pol[0]["config"] = dict(pol[0].get("config") or {}, tools=sorted(allow_tools))
     forks = []
 
     def mount(agent):
@@ -247,3 +285,25 @@ def create_agent(ctx, session_id, config, preset="standard", patches=(),
     agent.preset = rows
     agent.preset_forks = forks
     return agent
+
+
+def patch_agent(agent, *patches):
+    """Patch a live agent's preset. Only ``insert`` rows can be added in a
+    session (they are mounted now). A locked preset refuses every patch
+    and logs a ``policy/refused`` event in the agent's session."""
+    rows = getattr(agent, "preset", None) or []
+    if is_locked(rows):
+        agent.session.append("policy/refused", {
+            "action": "patch", "patches": copy.deepcopy(list(patches)),
+            "reason": "preset is locked"})
+        raise PresetError("preset is locked; patches are refused")
+    for patch in patches:
+        for op in patch:
+            if "insert" not in op:
+                raise PresetError("a live patch can only insert rows")
+    new_rows = compose(rows, *patches)
+    old = {r["id"] for r in rows}
+    added = [r for r in new_rows if r["id"] not in old]
+    agent.preset_forks.extend(apply_preset(agent, added))
+    agent.preset = new_rows
+    return added

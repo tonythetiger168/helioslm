@@ -5,7 +5,9 @@ docs/subsystems/tools.md). One call goes through, in order:
 
   parse + validate arguments
   -> ``tools/pre-execute``   waterfall: allow (call next), deny, or ask
-  -> ``ctx.approval``         only for ask; absent or unanswered = deny
+  -> ``ctx.approval``         only for ask; absent or unanswered = deny;
+                              answers True or {"approved": True, "by": ...},
+                              recorded on ``Execution.approval``
   -> guards                   monotonic: any guard may deny, none may allow
   -> ``tools/execute``        waterfall around the tool body (timeout,
                               retry, metrics); the body returns a JSON value
@@ -82,7 +84,7 @@ class Execution:
     """One call moving through the pipeline. Identity fields are fixed."""
 
     __slots__ = ("call_id", "name", "arguments", "scope", "parent", "tool",
-                 "contexts", "body_ran")
+                 "contexts", "body_ran", "approval")
 
     def __init__(self, call_id, name, arguments, scope, parent=None):
         self.call_id = call_id
@@ -93,6 +95,8 @@ class Execution:
         self.tool = None
         self.contexts = []      # deferred contexts, appended after tool/result
         self.body_ran = False
+        # v5.223: set when pre-execute asked: {"question", "approved", "by"}
+        self.approval = None
 
     def defer_context(self, text, source="tool"):
         self.contexts.append({"content": text, "source": source})
@@ -287,9 +291,12 @@ class Tools(Service):
         action = (decision or {}).get("action", "allow")
         if action == "ask":
             approve = self.ctx.get("approval")
-            ok = False
-            if approve is not None:
-                ok = approve(exe, decision.get("question", f"Run {exe.name}?")) is True
+            question = decision.get("question", f"Run {exe.name}?")
+            answer = approve(exe, question) if approve is not None else None
+            # True, or (v5.223) {"approved": True, "by": "<who>"} for audit logs
+            ok = answer is True or (isinstance(answer, dict) and answer.get("approved") is True)
+            exe.approval = {"question": question, "approved": ok,
+                            "by": answer.get("by") if isinstance(answer, dict) else None}
             if not ok:
                 return _fail(exe.name, "denied", "approval refused or unavailable")
         elif action == "deny":

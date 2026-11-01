@@ -134,6 +134,10 @@ class Agents(Service):
     def get(self, session_id):
         return self._live.get(session_id)
 
+    def by_key(self, key):
+        """The live agent whose scope key is ``key`` (None if absent)."""
+        return next((a for a in self._live.values() if a.key is key), None)
+
     # ----- the driver ---------------------------------------------------
     def _turn(self, agent):
         s = agent.session
