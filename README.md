@@ -526,11 +526,11 @@ As of 2026-10-31:
 
 The last five releases; every earlier release is in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md).
 
+- **v5.215** — PHI and licence guard for medical data (`src/training/data_guard.py`): `cpt_hf.py` / `sft_hf.py` / `distill_generate.py` take `--data-manifest` / `--medical`; medical sources must be de-identified with licence and origin, are PHI-scanned, never go to an external API teacher, and research-only data cannot train releasable weights
 - **v5.214** — rule-based JSON → report grounding grader (`helioslm_v5/eval/grounded_report.py`): unverified facts, omissions and contradictions in zh-TW / English nodule reports; `examples/grounded_report_run.py` grades any OpenAI-compatible models on the same prompt
 - **v5.213** — download page and tier table list 32 GB unified memory under L24 and 64–96 GB under L48+ (RTX Spark laptops, Ryzen AI Max+ 395, Mac)
 - **v5.212** — README restructured: short opening with a "What's here" table, no hard-coded test counts (use `python -m helioslm_v5.tests.test_v5 --list`), legacy plugin harness moved to [docs/LEGACY_HARNESS.md](https://github.com/tonythetiger168/helioslm/blob/main/docs/LEGACY_HARNESS.md)
 - **v5.211** — MoE packages (GGUF `expert_count`) tell how to keep experts in system RAM with llama.cpp `--cpu-moe` / `--n-cpu-moe` when the file does not fit the GPU
-- **v5.210** — tier packages document KV-cache quantization for long context (`-fa on -ctk q8_0 -ctv q8_0`, Ollama `OLLAMA_KV_CACHE_TYPE`); `quant_bench.py` measures perplexity and KV size per GGUF and KV type
 
 ## License
 

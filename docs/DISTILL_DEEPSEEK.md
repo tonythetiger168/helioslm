@@ -14,6 +14,8 @@
 
 授權：自架權重只受 MIT 約束（保留著作權與授權聲明）。若改走官方 API，DeepSeek 開放平台服務條款（2026-04-29 生效）第 4.2 條允許將輸出用於「training other models (such as model distillation)」；第 8.1 條要求向終端使用者揭露內容由 AI 生成。閉源模型（Claude、GPT、Gemini）不在審查表內，`check_teacher` 會拒絕。
 
+醫療資料（v5.215）：醫療領域的題目或資料**不得送到任何外部 API 教師**（包括 DeepSeek 官方 API），只能送到自架在 localhost／私有位址的教師。`distill_generate.py generate --data-manifest <manifest> [--medical]` 會檢查：manifest 中的醫療來源必須標 `deidentified: true` 並寫明授權與來源，`--endpoint openai` 或非本機的 `--base-url` 一律拒絕，送出前先做 PHI 掃描（`helioslm_v5/src/training/data_guard.py`）。研究限定授權的資料（例如 `medical-bench-tw`）不得進入可發佈權重的訓練；`cpt_hf.py`／`sft_hf.py` 預設視為可發佈，只有加 `--no-release` 才允許。
+
 ## 管線
 
 1. **D1 生成**（`distill_gen.py`、`examples/distill_generate.py`）

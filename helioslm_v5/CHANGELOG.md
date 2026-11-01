@@ -1,5 +1,29 @@
 # HeliosLM v5 Changelog
 
+## v5.215 (2026-11-01) - PHI and licence guard for medical training data
+
+`helioslm_v5/src/training/data_guard.py` checks medical training data
+before it is loaded. A JSON data manifest lists sources with `domain`,
+`deidentified`, `license`, `origin` (and optional `research_only`). A
+medical source without `deidentified: true`, a licence or an origin is
+refused; when the weights may be published (the default) research-only
+data (`research_only`, NC / research / academic licences, known datasets
+such as `medical-bench-tw`) is refused for every source. Medical source
+files are scanned by a conservative PHI scanner (Taiwanese ID / resident
+certificate format, record-number fields, Taiwanese phones, e-mail, a date
+with a name field or 先生 / 小姐 / 女士, DICOM patient tags); the run stops
+with `source:line kind masked-value` lines. General sources are not
+scanned, so existing non-medical runs are unchanged.
+
+`cpt_hf.py` and `sft_hf.py prepare / train` take `--data-manifest`,
+`--medical` (manifest required) and `--no-release` (weights stay private,
+research-only data allowed); `sft_hf.py prepare` also requires the
+records file to be a declared medical source when the manifest has one.
+`distill_generate.py generate --data-manifest / --medical` refuses an
+external teacher (`--endpoint openai` or a non-local / non-private
+`--base-url`) for medical prompts and PHI-scans them first;
+`docs/DISTILL_DEEPSEEK.md` states the rule. Issue #202.
+
 ## v5.214 (2026-11-01) - JSON -> report grounding grader
 
 `helioslm_v5/eval/grounded_report.py` grades a generated report against
