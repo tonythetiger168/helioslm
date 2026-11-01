@@ -1,5 +1,33 @@
 # HeliosLM v5 Changelog
 
+## v5.218 (2026-11-01) - PulmoGuard report bake-off pre-registration
+
+`docs/prereg/pulmoguard-report.json` pre-registers the JSON -> report
+bake-off as a draft (every revision PENDING until the 200-report test set,
+the rating sheet and the baseline revisions are pinned, so `check_gates`
+refuses it until then). Tasks: `report_grounding / unverified_facts`
+(facts the JSON does not support: the grader's unverified facts plus
+contradictions, summed over all reports and three seeds), `report_omission
+/ omission_rate`, `physician_rating / score` (external de-identified
+rating summary) and `missing_field_abstention / accuracy` (v5.216).
+Gates: unsupported facts exactly 0, and the 95% paired-bootstrap lower
+bound of (ours - baseline) physician score above -2 against each open
+model (Qwen3 14B / 32B, MedGemma 27B, Breeze 2 8B, unmodified Gemma 4 E4B),
+which is the same as against the best one; Gemma 4 E4B measures what the
+Route B continued pretraining adds. Claude Sonnet 5.5 (reference ceiling)
+and HeliosLM-B1 without the SFT are registered but not gated.
+
+`helioslm_v5/eval/pulmoguard_gate.py` builds the results file from
+per-model reports (`{seed: [{report_id, findings, text}]}`) and rating
+rows (`model, report_id, score`, optional `seed` / `rater`, raters
+averaged), with ours averaged over the plan's seeds in the bootstrap.
+`grounded_report.grade` counts now include `required` (the number of
+required fields, for the omission rate). `tests/test_pulmoguard_gate.py`
+runs the whole gate (bootstrap included) on synthetic findings and made-up
+ratings: pass, a fabricated value failing the grounding gate, a low
+rating failing against the best open model, and refusals for missing
+seeds, ratings or reports. Issue #201.
+
 ## v5.217 (2026-11-01) - LoRA option in sft_hf
 
 `examples/sft_hf.py train --lora` trains LoRA adapters instead of the full

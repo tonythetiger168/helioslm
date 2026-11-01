@@ -1,0 +1,33 @@
+{
+  "release": "PulmoGuard-report-bakeoff-draft",
+  "model": "HeliosLM-B1 + PulmoGuard SFT (LoRA on 300-1,000 de-identified JSON -> report pairs)",
+  "harness": {
+    "name": "helioslm_v5/eval/pulmoguard_gate.py (grader helioslm_v5/eval/grounded_report.py)",
+    "version": "v5.218"
+  },
+  "seeds": [0, 1, 2],
+  "tasks": [
+    {"name": "report_grounding", "revision": "PENDING", "split": "test", "n_shot": 0, "metric": "unverified_facts"},
+    {"name": "report_omission", "revision": "PENDING", "split": "test", "n_shot": 0, "metric": "omission_rate"},
+    {"name": "physician_rating", "revision": "PENDING", "split": "test", "n_shot": 0, "metric": "score"},
+    {"name": "missing_field_abstention", "revision": "PENDING", "split": "test", "n_shot": 0, "metric": "accuracy"}
+  ],
+  "baselines": [
+    {"name": "claude-sonnet-5-5", "revision": "PENDING"},
+    {"name": "Qwen/Qwen3-14B", "revision": "PENDING"},
+    {"name": "Qwen/Qwen3-32B", "revision": "PENDING"},
+    {"name": "google/medgemma-27b-text-it", "revision": "PENDING"},
+    {"name": "Llama-Breeze2-8B-Instruct", "revision": "PENDING"},
+    {"name": "google/gemma-4-E4B", "revision": "PENDING"},
+    {"name": "HeliosLM-B1", "revision": "PENDING"}
+  ],
+  "gates": [
+    {"task": "report_grounding", "metric": "unverified_facts", "op": "<=", "threshold": 0},
+    {"task": "physician_rating", "metric": "score", "vs": "Qwen/Qwen3-14B", "margin": -2.0},
+    {"task": "physician_rating", "metric": "score", "vs": "Qwen/Qwen3-32B", "margin": -2.0},
+    {"task": "physician_rating", "metric": "score", "vs": "google/medgemma-27b-text-it", "margin": -2.0},
+    {"task": "physician_rating", "metric": "score", "vs": "Llama-Breeze2-8B-Instruct", "margin": -2.0},
+    {"task": "physician_rating", "metric": "score", "vs": "google/gemma-4-E4B", "margin": -2.0}
+  ],
+  "notes": "DRAFT, revisions PENDING: the 200-report test set, the physician rating sheet and every baseline revision are pinned before the bake-off (around month 8), which re-locks the plan. Task: write the report from the findings JSON (helioslm_v5/eval/grounded_report.py schema), same prompt for every model (examples/grounded_report_run.py), temperature 0. report_grounding = facts the findings JSON does not support (the grader's unverified facts plus contradictions, i.e. values that differ from the nodule they are stated for), summed over all reports and all three seeds; the gate is that it is exactly 0. report_omission = omitted required fields / required fields (reported, not gated). physician_rating = mean radiologist score per report (external de-identified summary file; rows model, report_id, optional seed, score), ours averaged over three seeds. Gate: the 95% paired-bootstrap lower bound of (ours - baseline) is above -2 points against every open model, which is the same as against the best one; the open models are Qwen3 14B / 32B, MedGemma 27B, the Taiwanese reference model Breeze 2 8B, and unmodified Gemma 4 E4B (the base: this measures what the Route B Traditional Chinese continued pretraining adds). missing_field_abstention = removed measurement fields written as 未測量 / not measured, fabricated values counted wrong (src/training/report_abstain.py). Claude Sonnet 5.5 is a reference ceiling, HeliosLM-B1 without the PulmoGuard SFT shows what the SFT adds; neither is gated. No patient data in the repository: reports and ratings enter only as de-identified summary files."
+}

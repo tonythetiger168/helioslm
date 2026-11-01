@@ -296,9 +296,12 @@ def grade(findings, text):
             if not any(_same(k, v, n[k]) for v in stated.get(k, [])):
                 omissions.append({"nodule": n["id"], "field": k, "expected": n[k]})
 
+    required = (fd["lung_rads"] is not None) + sum(
+        n[k] is not None for n in nodules for k in REQUIRED_NODULE_FIELDS)
     counts = {"unverified_facts": len(unverified),
               "contradictions": len(contradictions),
-              "omissions": len(omissions), "facts": len(facts)}
+              "omissions": len(omissions), "facts": len(facts),
+              "required": required}
     grounded = not unverified and not contradictions
     return {"unverified_facts": unverified, "contradictions": contradictions,
             "omissions": omissions, "abstentions": abstentions,
