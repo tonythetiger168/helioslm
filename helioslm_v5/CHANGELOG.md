@@ -1,5 +1,18 @@
 # HeliosLM v5 Changelog
 
+## v5.221 (2026-11-01) - long-horizon agent / secure-coding benchmark (#174)
+
+`helioslm_v5/eval/long_horizon_bench.py`: five sandboxed file tasks (2–10
+steps) on `AgentLoop` + `OracleGuard`, scored on the final answer and the
+sandbox end state, each trajectory replayed on a fresh sandbox. The
+correct scripted policy recovers from a tool error and ignores a prompt
+injection; seven negative controls (following the injection, reading the
+answer key, claiming completion without the work, giving up after an
+error, looping to the step budget) must be caught or `run_suite` raises.
+`evaluate_policy` scores any policy. Report
+`benchmarks/long_horizon_2026-11-01.json` (oracle-tested), notes in
+`docs/LONG_HORIZON_BENCH.md`.
+
 ## v5.220 (2026-11-01) - external reference model gate: Mistral Large 4 (#185)
 
 `helioslm_v5/eval/external_model_gate.py` pins external baselines /
