@@ -125,8 +125,8 @@ def test_sft_records_and_cli(tmp_path):
     assert all("未測量" in r["response"] or "not measured" in r["response"]
                for r in recs if r["missing"])
     assert all(r["system"] not in r["prompt"] for r in recs)
-    import report_abstain_data
+    import abstain_report_sft
     out = tmp_path / "r.jsonl"
-    st = report_abstain_data.main(["--n", "20", "--lang", "en", "--out", str(out)])
+    st = abstain_report_sft.main(["--n", "20", "--lang", "en", "--out", str(out)])
     rows = [json.loads(x) for x in out.read_text(encoding="utf-8").splitlines()]
     assert st["records"] == len(rows) == 20 and {r["lang"] for r in rows} == {"en"}

@@ -1,7 +1,7 @@
-"""report_abstain_data.py — synthetic JSON -> report SFT records with
+"""abstain_report_sft.py — synthetic JSON -> report SFT records with
 removed measurement fields (v5.216, src/training/report_abstain.py).
 
-  python examples/report_abstain_data.py --n 1000 --out report_abstain.jsonl
+  python examples/abstain_report_sft.py --n 1000 --out report_abstain.jsonl
   python examples/sft_hf.py prepare --records report_abstain.jsonl ...
 
 Each record has system / prompt / response (the template report, which

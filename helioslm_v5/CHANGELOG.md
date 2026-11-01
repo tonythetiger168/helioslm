@@ -13,7 +13,7 @@ checks passed (each removed field written as 未測量 / not measured, each
 required present field stated). Writing 未測量 and a number for the same
 field counts as an answer, as in abstain.py. The phrase is attributed to a
 field by the word before it (直徑 / 體積 / diameter / volume).
-`make_sft_records` and `examples/report_abstain_data.py` write synthetic
+`make_sft_records` and `examples/abstain_report_sft.py` write synthetic
 zh-TW / English system / prompt / response records for `sft_hf.py`; every
 template reference is checked to score 1.0. The category mapping in the
 synthetic findings is simplified training text, not clinical guidance.
