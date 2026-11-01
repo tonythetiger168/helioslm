@@ -1,5 +1,21 @@
 # HeliosLM v5 Changelog
 
+## v5.220 (2026-11-01) - external reference model gate: Mistral Large 4 (#185)
+
+`helioslm_v5/eval/external_model_gate.py` pins external baselines /
+teacher candidates by model revision, card licence and LICENSE sha256
+(`check_source` fails closed on any drift or an unknown model) and records
+a licence reading per use (internal research, redistribution, commercial
+MaaS, official API, training on outputs); `use_allowed` passes only
+`allowed` readings. Mistral Large 4 (1T-A52B) is the first row:
+`pending_review`, not in the distillation allowlist, commercial MaaS needs
+Mistral's separate licence. `fit` / `fit_table` / `conclusion` check
+GGUF size (pinned ggml-org listing) + vision projector + MLA latent KV +
+runtime buffer against L128 / L256 / L512: only IQ2_XXS and Q2_K fit
+L512 at 128k context, nothing fits L128 / L256, and the status stays
+`unverified` until a runtime test exists. Notes in
+`docs/MISTRAL_LARGE_4_REVIEW.md`.
+
 ## v5.219 (2026-11-01) - device capability matrix and per-token cost record (#175, #135)
 
 `helioslm_v5/eval/device_matrix.py`: `probe_backends()` reports cpu /
