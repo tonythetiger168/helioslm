@@ -1,5 +1,17 @@
 # HeliosLM v5 Changelog
 
+## v5.222 (2026-11-01) - guard API cost comparisons against a reported-model fallback
+
+Ported from draft PR #134 (written against the old package path; its
+history no longer shares a base with main). `api_accounting.build_report`
+takes `expected_reported_models`, an exact allowlist of returned model
+ids (`--expected-reported-model`, repeatable, in
+`examples/analyze_api_usage.py`). Reports carry `model_identity`
+(`matched` / `mismatch` / `unverified`, mismatched call indices); a
+missing or unexpected returned id nulls `cost_per_correct_usd` while
+the billed token cost stays. A matching name cannot prove the weights
+behind it.
+
 ## v5.221 (2026-11-01) - long-horizon agent / secure-coding benchmark (#174)
 
 `helioslm_v5/eval/long_horizon_bench.py`: five sandboxed file tasks (2–10
