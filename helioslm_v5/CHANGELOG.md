@@ -1,5 +1,24 @@
 # HeliosLM v5 Changelog
 
+## v5.216 (2026-11-01) - field-level abstention for report writing
+
+`helioslm_v5/src/training/report_abstain.py` is the field-level version
+of the OS3 abstention reward for report writing. `ReportAbstainEnv`
+(MultiEnvBatch-compatible) builds synthetic findings (1–3 nodules in
+distinct lobes), removes `diameter_mm` / `volume_mm3` with probability
+`p_missing`, and scores the report with the v5.214 grounding grader:
+any number stated for a removed field, or any other unverified fact or
+contradiction, gets `-penalty`; otherwise the reward is the share of
+checks passed (each removed field written as 未測量 / not measured, each
+required present field stated). Writing 未測量 and a number for the same
+field counts as an answer, as in abstain.py. The phrase is attributed to a
+field by the word before it (直徑 / 體積 / diameter / volume).
+`make_sft_records` and `examples/abstain_report_sft.py` write synthetic
+zh-TW / English system / prompt / response records for `sft_hf.py`; every
+template reference is checked to score 1.0. The category mapping in the
+synthetic findings is simplified training text, not clinical guidance.
+`abstain.py` and its tests are unchanged. Issue #200.
+
 ## v5.215 (2026-11-01) - PHI and licence guard for medical training data
 
 `helioslm_v5/src/training/data_guard.py` checks medical training data
