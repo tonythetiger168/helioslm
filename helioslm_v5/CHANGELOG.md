@@ -1,5 +1,28 @@
 # HeliosLM v5 Changelog
 
+## v5.217 (2026-11-01) - LoRA option in sft_hf
+
+`examples/sft_hf.py train --lora` trains LoRA adapters instead of the full
+model, for small domain SFT sets (`--lora-r`, `--lora-alpha`,
+`--lora-dropout`, `--lora-targets`, `--lora-exclude`; default targets are
+the attention and MLP projections that Gemma, Llama and Qwen share, vision
+and audio towers excluded). The base is frozen; `--frozen-bf16` keeps it in
+bf16. At the end it writes the adapter to `<out>/adapter`
+(`adapter_config.json` and `adapter_model.safetensors` with peft key names)
+and the merged bf16 model to `<out>/final`, so `package_hf.py` packages it
+unchanged (`--lora-no-merge` keeps only the adapter). Without `--lora`
+nothing changes.
+
+`helioslm_v5/src/training/lora.py` is plain torch (no `peft` dependency):
+`apply_lora`, `merge_lora`, `save_adapter`, `load_adapter_weights`.
+`docs/LORA_SFT.md` has usage and a memory estimate per base size.
+`tests/test_lora.py`: two masked-SFT steps through `sft_hf.train` on a toy
+HF-shaped model on CPU (finite loss, only adapter tensors change, base
+weights bit-identical), the merge oracle (merged plain-Linear model equals
+base + adapter within tolerance), adapter save / reload with peft key
+names, and, when transformers is installed, tiny Llama and Qwen2 models.
+Issue #198.
+
 ## v5.216 (2026-11-01) - field-level abstention for report writing
 
 `helioslm_v5/src/training/report_abstain.py` is the field-level version
