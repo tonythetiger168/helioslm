@@ -1,0 +1,57 @@
+{
+  "A": {
+    "exam_id": "SYN-0001",
+    "lung_rads": "4A",
+    "nodules": [
+      {
+        "id": "N1",
+        "lobe": "RUL",
+        "diameter_mm": 9.4,
+        "volume_mm3": 310.0,
+        "type": "solid",
+        "lung_rads": "4A"
+      },
+      {
+        "id": "N2",
+        "lobe": "LLL",
+        "diameter_mm": 4.1,
+        "volume_mm3": null,
+        "type": "GGN",
+        "lung_rads": "2"
+      }
+    ]
+  },
+  "B": {
+    "exam_id": "SYN-0002",
+    "lung_rads": "3",
+    "nodules": [
+      {
+        "id": "N1",
+        "lobe": "RML",
+        "diameter_mm": 6.0,
+        "volume_mm3": 95.0,
+        "type": "part-solid",
+        "lung_rads": "3"
+      }
+    ]
+  },
+  "C": {
+    "exam_id": "SYN-0003",
+    "lung_rads": "1",
+    "nodules": []
+  },
+  "D": {
+    "exam_id": "SYN-0004",
+    "lung_rads": "2",
+    "nodules": [
+      {
+        "id": "N1",
+        "lobe": "LUL",
+        "diameter_mm": 5.5,
+        "volume_mm3": null,
+        "type": "GGN",
+        "lung_rads": "2"
+      }
+    ]
+  }
+}
