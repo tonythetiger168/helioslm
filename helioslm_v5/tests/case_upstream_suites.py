@@ -300,3 +300,305 @@ def test_compile_graph_breaks_suite():
     _pass("test_compile_graph_breaks_suite",
           "T155 compile graph breaks: all 6 sidecar tests under the "
           "daily gate")
+
+
+# ---------------------------------------------------------------------------
+# v5.225 (2026-11-02): fold the next sidecar batch into the daily gate —
+# handover-resume (T87/v5.54 contract), knowledge rephrasing (v5.206),
+# verifiable MCQ reward (v5.207), grounded-report grader (v5.214),
+# report abstention (v5.216) and the PulmoGuard pre-registered bake-off
+# gate (v5.218). Same gap class as v5.155: all six landed as pytest-only
+# sidecars that the mandated `python -m helioslm_v5.tests.test_v5` never
+# executed, so a regression in any of them would pass the daily gate
+# unnoticed. The five pytest-importing files carry the v5.225 in-file
+# shim (raises / raises(match) / approx / mark.parametrize — exactly the
+# features each file uses); test_handover_resume.py imports no pytest at
+# all. tmp_path fixtures get real TemporaryDirectory instances.
+# ---------------------------------------------------------------------------
+
+
+def test_handover_resume_suite():
+    """T87 handover-resume faithfulness (v5.54 contract) under the daily
+    gate. Pins: a handoff is accepted only for a bitwise-replayed strict
+    oracle-plan prefix; a fresh AgentLoop resumes from the rendered
+    packet and repeats zero completed work; stale state / goal tampering
+    / truncated plans abort loudly; a restarting policy scores as goal
+    drift; the committed artifact regenerates byte-for-byte."""
+    from helioslm_v5.tests import test_handover_resume as m
+    expected = {"test_packet_build_validate_roundtrip",
+                "test_fresh_resume_executes_suffix_without_rework",
+                "test_stale_state_goal_and_truncation_abort",
+                "test_restart_policy_records_goal_drift",
+                "test_committed_artifact_regenerates_and_registry"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_handover_resume_suite",
+          "T87 handover-resume: all 5 sidecar tests under the daily gate")
+
+
+def test_rephrase_suite():
+    """v5.206 knowledge rephrasing under the daily gate. Pins: bounded
+    ordered chunks, one stable-id prompt per (style, chunk) with the
+    previous chunk's tail as context, fidelity refusals (Simplified,
+    lost numbers, off-topic, near-copy, length ratio, truncation),
+    assemble joins in order with licence+teacher attribution and drops
+    counted, CLI round trip."""
+    from helioslm_v5.tests import test_rephrase as m
+    expected = {"test_split_chunks_bounds_and_order",
+                "test_prompts_ids_context_and_normalize",
+                "test_fidelity_pass_and_failures",
+                "test_clean_output_drops_preamble",
+                "test_assemble_joins_and_drops",
+                "test_assemble_multichunk_order",
+                "test_cli_round_trip",
+                "test_plan_tokens"}
+    _drift_guard(m, expected)
+    m.test_split_chunks_bounds_and_order()
+    m.test_prompts_ids_context_and_normalize()
+    m.test_fidelity_pass_and_failures()
+    m.test_clean_output_drops_preamble()
+    m.test_assemble_joins_and_drops()
+    m.test_assemble_multichunk_order()
+    with tempfile.TemporaryDirectory() as t:
+        m.test_cli_round_trip(Path(t))
+    m.test_plan_tokens()
+    _pass("test_rephrase_suite",
+          "v5.206 rephrase: all 8 sidecar tests (incl. the CLI round "
+          "trip) under the daily gate")
+
+
+def test_mcq_reward_suite():
+    """v5.207 verifiable multiple-choice reward for GRPO under the daily
+    gate. Pins: task building refusals, last-answer-wins letter parsing
+    (full-width letters, last-line fallback), reward 1/0/no-answer with
+    the Simplified-zh penalty scoped to zh-TW tasks, teacher-majority
+    task extraction from distillation records, eval-set decontamination,
+    and the prepare-mcq CLI."""
+    from helioslm_v5.tests import test_mcq_reward as m
+    expected = {"test_make_task", "test_final_letter", "test_reward",
+                "test_tasks_from_distill", "test_drop_contaminated",
+                "test_prepare_mcq_cli"}
+    _drift_guard(m, expected)
+    m.test_make_task()
+    m.test_final_letter()
+    m.test_reward()
+    m.test_tasks_from_distill()
+    m.test_drop_contaminated()
+    with tempfile.TemporaryDirectory() as t:
+        m.test_prepare_mcq_cli(Path(t))
+    _pass("test_mcq_reward_suite",
+          "v5.207 MCQ reward: all 6 sidecar tests (incl. the prepare-mcq "
+          "CLI) under the daily gate")
+
+
+def test_grounded_report_suite():
+    """v5.214 JSON -> report grounding grader under the daily gate.
+    Pins: the 24 zh-TW/English fixtures' unverified/contradiction/
+    omission counts, bound-vs-unbound sentence semantics, null-field
+    abstention, byte-identical determinism, schema refusals, and the
+    stubbed no-network runner."""
+    from helioslm_v5.tests import test_grounded_report as m
+    expected = {"test_fixture_coverage", "test_fixture",
+                "test_example_schema_matches_data_file",
+                "test_bound_sentence_uses_its_nodule",
+                "test_null_field_and_abstention",
+                "test_extract_units_and_categories",
+                "test_deterministic", "test_schema_rejects",
+                "test_summarize", "test_runner_stub"}
+    _drift_guard(m, expected)
+    m.test_fixture_coverage()
+    for case in m.CASES:
+        m.test_fixture(case)
+    m.test_example_schema_matches_data_file()
+    m.test_bound_sentence_uses_its_nodule()
+    m.test_null_field_and_abstention()
+    m.test_extract_units_and_categories()
+    m.test_deterministic()
+    for bad in [
+            {"nodules": [{"lobe": "XYZ"}]},
+            {"nodules": [{"lobe": "RUL", "type": "calcified-ish"}]},
+            {"lung_rads": "5", "nodules": []},
+            {"nodules": [{"id": "N1"}, {"id": "N1"}]},
+            {"lung_rads": "1"}]:
+        m.test_schema_rejects(bad)
+    m.test_summarize()
+    m.test_runner_stub()
+    _pass("test_grounded_report_suite",
+          f"v5.214 grounded report: all 10 sidecar tests (incl. "
+          f"{len(m.CASES)} fixture cases and 5 schema refusals) under "
+          f"the daily gate")
+
+
+def test_report_abstain_suite():
+    """v5.216 field-level abstention reward under the daily gate.
+    Parametrized cases are called with their full lists, rebuilt from
+    the module's own ZH_OK/EN_OK constants with the same replacements
+    the sidecar's decorators use."""
+    from helioslm_v5.tests import test_report_abstain as m
+    expected = {"test_abstain_on_missing_is_positive",
+                "test_number_on_missing_is_negative",
+                "test_present_and_correct_is_positive",
+                "test_hedge_is_an_answer",
+                "test_silent_and_attribution",
+                "test_contradiction_on_present_field_is_negative",
+                "test_env_deterministic_rate_and_batch",
+                "test_synth_findings_valid",
+                "test_sft_records_and_cli"}
+    _drift_guard(m, expected)
+    for text in [m.ZH_OK, m.EN_OK]:
+        m.test_abstain_on_missing_is_positive(text)
+    for text in [m.ZH_OK.replace("體積未測量", "體積 435 立方公釐"),
+                 m.EN_OK.replace("volume not measured", "volume 435 mm3")]:
+        m.test_number_on_missing_is_negative(text)
+        m.test_present_and_correct_is_positive(text)
+    for text in [m.ZH_OK.replace("體積未測量", "體積未測量（約 435 立方公釐）"),
+                 m.EN_OK.replace("volume not measured",
+                                 "volume not measured, about 435 mm3")]:
+        m.test_hedge_is_an_answer(text)
+    m.test_silent_and_attribution()
+    m.test_contradiction_on_present_field_is_negative()
+    m.test_env_deterministic_rate_and_batch()
+    m.test_synth_findings_valid()
+    with tempfile.TemporaryDirectory() as t:
+        m.test_sft_records_and_cli(Path(t))
+    _pass("test_report_abstain_suite",
+          "v5.216 report abstain: all 9 sidecar tests (incl. 4x2 "
+          "parametrized cases and the SFT CLI) under the daily gate")
+
+
+def test_pulmoguard_gate_suite():
+    """v5.218 PulmoGuard pre-registered bake-off gate under the daily
+    gate. Pins: the committed plan validates/locks and stays a draft,
+    the full synthetic gate computation (3 seeds, paired bootstrap)
+    passes a grounded model and fails fabrication / low ratings, the
+    grader-derived metrics, and the missing-data refusals. All findings
+    and ratings are synthetic."""
+    from helioslm_v5.tests import test_pulmoguard_gate as m
+    expected = {"test_committed_plan", "test_full_gate_passes",
+                "test_one_fabrication_fails",
+                "test_low_rating_fails_against_best_open_model",
+                "test_report_metrics_counts_omissions_and_abstention",
+                "test_refusals"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_pulmoguard_gate_suite",
+          "v5.218 PulmoGuard gate: all 6 sidecar tests (synthetic "
+          "findings/ratings only) under the daily gate")
+
+
+# ---------------------------------------------------------------------------
+# v5.225: sidecar coverage meta-guard. The folds above (and the earlier
+# v5.155 / 2026-10-29 rounds) were each discovered by HAND, days after
+# the sidecar landed. This guard makes the gap structurally impossible
+# to miss: every helioslm_v5/tests/test_*.py file must be either FOLDED
+# (executed through a wrapper in this module) or explicitly EXEMPT (the
+# pre-guard legacy backlog, listed verbatim below — 189 files present on
+# 2026-11-02 that have not yet been triaged for folding; shrinking that
+# backlog is the daily maintenance job's standing candidate pool). The
+# day upstream ADDS a sidecar, the daily gate fails loudly here naming
+# the new file, instead of the file silently never running.
+# ---------------------------------------------------------------------------
+
+FOLDED_SIDECARS = {
+    "test_zhtw_corpus": "test_zhtw_corpus_suite",
+    "test_api_accounting": "test_api_accounting_suite",
+    "test_moe_batched_dispatch": "test_moe_dispatch_suite",
+    "test_kda_recompute": "test_kda_recompute_suite",
+    "test_moe_compile": "test_moe_compile_suite",
+    "test_kda_fla": "test_kda_fla_suite",
+    "test_adaptive_batch_fallback": "test_adaptive_batch_suite",
+    "test_compile_graph_breaks": "test_compile_graph_breaks_suite",
+    "test_handover_resume": "test_handover_resume_suite",
+    "test_rephrase": "test_rephrase_suite",
+    "test_mcq_reward": "test_mcq_reward_suite",
+    "test_grounded_report": "test_grounded_report_suite",
+    "test_report_abstain": "test_report_abstain_suite",
+    "test_pulmoguard_gate": "test_pulmoguard_gate_suite",
+}
+
+# Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
+# folding. Being listed here is not an endorsement that a file should
+# stay out of the gate; it only means "known, pending triage".
+EXEMPT_SIDECARS = {
+    'test_abstain', 'test_agent', 'test_agent_workflow', 'test_api_distill',
+    'test_artifact_tiers', 'test_async_grpo', 'test_attn_res', 'test_base_gap',
+    'test_bench_quant', 'test_benchmark', 'test_bpe', 'test_calibrated_prefetcher',
+    'test_calibrated_router', 'test_calibration_board', 'test_chat', 'test_chat_tuned',
+    'test_chunked_ce', 'test_clamped_swiglu', 'test_cloudflare_bundles', 'test_copy_curriculum',
+    'test_cost_per_task', 'test_cpt_chunked_ce', 'test_cpt_pilot', 'test_cpt_plan',
+    'test_csa', 'test_csa_learned', 'test_csa_learned_16x', 'test_csa_learned_h64',
+    'test_csa_learned_r3', 'test_cuda_device_paths', 'test_cuda_smoke', 'test_custom_attention_notebook',
+    'test_cvdp_bench', 'test_data_guard', 'test_data_quality', 'test_decision',
+    'test_decision_data', 'test_decision_head', 'test_decision_head_integration', 'test_decontam',
+    'test_device_matrix', 'test_disagg', 'test_disagg_pareto', 'test_distill_agent',
+    'test_distill_filter', 'test_distill_gen', 'test_distill_sft', 'test_dpo',
+    'test_dsa', 'test_envs', 'test_external_model_gate', 'test_file_env',
+    'test_finetune_data', 'test_first_k_dense', 'test_gated_conv', 'test_gguf_quant',
+    'test_global_prope_kv', 'test_gpu_batch_run', 'test_grounded_replay', 'test_grounding',
+    'test_grpo_length', 'test_grpo_u1', 'test_harness', 'test_harness_deep',
+    'test_hca_rescue', 'test_hdl_bench', 'test_hdl_data', 'test_hdl_git_sources',
+    'test_hdl_projects', 'test_hdl_reward', 'test_hdl_train_eval', 'test_hf_license_audit',
+    'test_hsh_clinical', 'test_hsh_egress', 'test_hsh_extras', 'test_hsh_interaction',
+    'test_hsh_kernel', 'test_hsh_llm', 'test_hsh_loop', 'test_hsh_mcp',
+    'test_hsh_presets', 'test_hsh_session', 'test_hsh_skills', 'test_hsh_tools',
+    'test_hsh_web', 'test_hub', 'test_indexer_share', 'test_k3_block',
+    'test_k3_llamacpp_parts', 'test_kda_chunked', 'test_kda_k3_style', 'test_kda_subchunk',
+    'test_kv_compress', 'test_kv_share', 'test_llamacpp_export', 'test_llamacpp_kimi_k3',
+    'test_llamacpp_tokenizer', 'test_lm_decision_head', 'test_lm_harness', 'test_logit_kd',
+    'test_long_horizon_bench', 'test_longctx', 'test_longctx_harness', 'test_lora',
+    'test_merge', 'test_mhc', 'test_mhc_sinkhorn', 'test_midtrain',
+    'test_mimo_hybrid', 'test_mini_bench', 'test_mla_every', 'test_mla_expanded_training',
+    'test_moe_config_table', 'test_mopd', 'test_mtp_light', 'test_mtp_rollout',
+    'test_multiseed', 'test_nope_temperature', 'test_noul_continuous', 'test_nvfp4_qat_e2e',
+    'test_option_matrix', 'test_oracle_guard', 'test_package_tiers', 'test_ple',
+    'test_pool_ledger', 'test_prefix_pool_chained', 'test_prereg', 'test_pretrain_pilot',
+    'test_probe_api', 'test_quant_calib', 'test_quantile_balancing', 'test_qwen_next',
+    'test_repo_longctx', 'test_review_fixes', 'test_review_regressions', 'test_rlcd_head',
+    'test_rtllm_bench', 'test_ruler_lite', 'test_selfgen_meta', 'test_skill_docs',
+    'test_smebu_sandwich', 'test_std_bench', 'test_stop_calibration', 'test_swarm_parallel',
+    'test_swe_agent_rl', 'test_swe_bench', 'test_task_grammar', 'test_teacher_license_audit',
+    'test_term_bench', 'test_think', 'test_thinking_budget', 'test_three_modes',
+    'test_tool_recovery', 'test_toy_bpe', 'test_trust_gate', 'test_trust_gate_clarify',
+    'test_trust_gate_v2', 'test_tw_bench', 'test_uvm_bench', 'test_v110_github_pg',
+    'test_v111_office', 'test_v112_niche', 'test_v113_media', 'test_v114_blender_omi',
+    'test_v115_benchmark', 'test_v116_robot', 'test_v117_swarm', 'test_v118_robot_slam_vision',
+    'test_v119_voice_ui_drive', 'test_v120_dna', 'test_v121_science', 'test_v122_crypto_cloud',
+    'test_v123_spatial', 'test_v13_mid_model', 'test_v14_qwen', 'test_v15_math',
+    'test_v16_code', 'test_v17_ic', 'test_v18_agent_plugins', 'test_v19_common',
+    'test_v19_extended', 'test_v533_mid', 'test_v5_cases', 'test_v5_stage_a',
+    'test_v5_stage_b', 'test_web_ui', 'test_web_ui_v2', 'test_zh_tokenizer_coverage',
+    'test_zh_train_speed',
+}
+
+
+def test_sidecar_coverage_guard():
+    """Every helioslm_v5/tests/test_*.py sidecar is accounted for: either
+    FOLDED into the daily gate through a wrapper in this module, or
+    explicitly EXEMPT (pre-guard legacy backlog, 2026-11-02 snapshot).
+    Loud both ways: a NEW sidecar upstream lands must be folded or
+    exempted the same day; a deleted/renamed file must be dropped from
+    the registry. Also pins that every FOLDED entry really names a
+    wrapper defined in this module."""
+    tests_dir = Path(__file__).resolve().parent
+    on_disk = {p.stem for p in tests_dir.glob("test_*.py")}
+    on_disk.discard("test_v5")  # the gate itself, not a sidecar
+    folded = set(FOLDED_SIDECARS)
+    exempt = set(EXEMPT_SIDECARS)
+    overlap = folded & exempt
+    assert not overlap, f"listed as both folded and exempt: {sorted(overlap)}"
+    import helioslm_v5.tests.case_upstream_suites as self_mod
+    missing_wrappers = [w for w in FOLDED_SIDECARS.values()
+                        if not callable(getattr(self_mod, w, None))]
+    assert not missing_wrappers, \
+        f"FOLDED entries without a wrapper function: {missing_wrappers}"
+    new = sorted(on_disk - folded - exempt)
+    gone = sorted((folded | exempt) - on_disk)
+    assert not new and not gone, (
+        f"sidecar coverage drift: new={new} (fold into a wrapper above "
+        f"or add to EXEMPT_SIDECARS with a reason) gone={gone} (drop "
+        f"from the registry)")
+    _pass("test_sidecar_coverage_guard",
+          f"sidecar coverage locked: {len(folded)} folded + "
+          f"{len(exempt)} exempt legacy = {len(on_disk)} files on disk")

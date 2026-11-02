@@ -1,5 +1,64 @@
 # HeliosLM v5 Changelog
 
+## v5.225 (2026-11-02) - fold six more sidecar suites into the daily gate + sidecar coverage meta-guard
+
+Daily-maintenance round. **Version recalibration, loud:** `model_name`
+had drifted to `HeliosLM-v5.201` while the changelog head reached
+v5.224 — a 23-minor lag accumulated over four days of upstream entries
+that do not touch `config_v5.py` (the `test_version_never_ahead_of_changelog`
+lock tolerates lag by design; the daily job recalibrates). v5.225 brings
+`model_name`, the test banner and this changelog head back into
+agreement.
+
+**Folded sidecar suites (same gap class as v5.155):** six more
+pytest-only sidecars that CI collects but the mandated daily gate
+(`python -m helioslm_v5.tests.test_v5`) never executed are now wrapped,
+drift-guarded and registered in TESTS — a regression in any of them
+would previously have passed the daily gate unnoticed:
+
+- `test_handover_resume.py` (T87, v5.54 contract): handoff accepted only
+  for a bitwise-replayed oracle-plan prefix; fresh-AgentLoop resume
+  without rework; stale state / goal tampering / truncation abort;
+  restart policy scores as goal drift; artifact regenerates
+  byte-for-byte. No pytest import; pure direct calls.
+- `test_rephrase.py` (v5.206): bounded ordered chunks, stable-id prompts
+  with previous-chunk context, fidelity refusals, ordered assemble with
+  licence+teacher attribution, CLI round trip (8 tests).
+- `test_mcq_reward.py` (v5.207): verifiable MCQ reward for GRPO — task
+  refusals, last-answer-wins parsing, Simplified-zh penalty scoped to
+  zh-TW, teacher-majority extraction, decontamination, prepare-mcq CLI
+  (6 tests).
+- `test_grounded_report.py` (v5.214): 24-fixture grounding grader,
+  bound/unbound sentence semantics, null-field abstention, determinism,
+  schema refusals, stubbed no-network runner (10 tests, 24+5
+  parametrized cases).
+- `test_report_abstain.py` (v5.216): field-level abstention reward —
+  abstain-positive / fabrication-negative / hedge-is-an-answer,
+  deterministic env at the requested missing rate, SFT records CLI
+  (9 tests, 4x2 parametrized cases).
+- `test_pulmoguard_gate.py` (v5.218): pre-registered PulmoGuard bake-off
+  gate — committed plan locks as a draft, synthetic 3-seed paired
+  bootstrap passes a grounded model and fails fabrication / low ratings,
+  missing-data refusals (6 tests; all findings and ratings synthetic).
+
+The five pytest-importing files gained the in-file pytest shim (v5.155
+pattern), each covering exactly the features that file uses
+(`raises` / `raises(match=...)` / `approx` / `mark.parametrize`);
+`tmp_path` fixtures get real `TemporaryDirectory` instances in the
+wrappers.
+
+**Sidecar coverage meta-guard** (`test_sidecar_coverage_guard`): the
+folds above were each discovered by hand, days after the sidecar
+landed. The guard makes the gap structurally loud — every
+`helioslm_v5/tests/test_*.py` file must now be either FOLDED (executed
+via a wrapper in `case_upstream_suites.py`) or explicitly EXEMPT (the
+189-file pre-guard legacy backlog as of 2026-11-02, listed verbatim as
+the standing triage candidate pool). The day upstream adds a sidecar,
+the daily gate fails here naming the file, instead of it silently
+never running.
+
+Daily gate: 124/124 PASS (117 -> 124 registered tests).
+`integration_test_v51.py`: 9/9 PASS.
 ## v5.224 (2026-11-02) - thinking off by default in reasoning chat packages
 
 `package_gguf(..., reasoning=True)` / `examples/package_hf.py --reasoning`

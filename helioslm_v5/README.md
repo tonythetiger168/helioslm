@@ -1,5 +1,10 @@
-# HeliosLM v5.201 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.225 - DeepSeek/K3-Style Architecture
 
+v5.225 (2026-11-02): six more pytest-only sidecar suites folded into
+the mandated daily gate (drift-guarded wrappers in
+`tests/case_upstream_suites.py`), plus a coverage meta-guard that fails
+loudly the day any `tests/test_*.py` file is neither folded nor
+explicitly exempted; `model_name` recalibrated from the v5.201 drift.
 v5.201 (2026-10-29): `package_hf.py --quants` / `--chat` for packaging
 instruction-tuned models (per-tier quants, GGUF chat template kept).
 v5.197 (2026-10-29): `--list` reports the MODEL/CHANGELOG version pair;

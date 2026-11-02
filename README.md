@@ -526,11 +526,11 @@ As of 2026-10-31:
 
 The last five releases; every earlier release is in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md).
 
+- **v5.225** — daily-maintenance round: six more pytest-only sidecar suites (handover-resume T87, rephrase v5.206, MCQ reward v5.207, grounded report v5.214, report abstain v5.216, PulmoGuard gate v5.218) folded into the mandated daily gate with drift-guarded wrappers, plus a sidecar coverage meta-guard that fails loudly the day any `tests/test_*.py` file is neither folded nor explicitly exempted; `model_name` recalibrated from the v5.201 drift to the changelog head
 - **v5.224** — tier packages for chat models that think before answering (`package_hf.py --reasoning`): llama.cpp commands default to `--reasoning-budget 0` (direct answers), with a note on turning thinking on
 - **v5.223** — hsh `clinical` preset (`hsh/clinical.py`): only the host's allow-listed tools, clinician approval on every call (an auto permission mode cannot skip it), egress deny, locked against patches, and an `audit/tool-call` log that `audit_export` rebuilds from the session
 - **v5.218** — PulmoGuard report bake-off pre-registration draft (`docs/prereg/pulmoguard-report.json`, revisions PENDING) and `helioslm_v5/eval/pulmoguard_gate.py`: zero unsupported facts and a physician-score bootstrap lower bound above −2 against every open model, unmodified Gemma 4 E4B included
 - **v5.217** — `sft_hf.py train --lora`: plain-torch LoRA adapters (no `peft` needed), peft-format adapter plus a merged model that `package_hf.py` packages as is; usage and memory estimate in [docs/LORA_SFT.md](https://github.com/tonythetiger168/helioslm/blob/main/docs/LORA_SFT.md)
-- **v5.216** — field-level abstention for JSON → report writing (`src/training/report_abstain.py`): a removed measurement must read 未測量 / not measured, a filled-in number is penalised; `ReportAbstainEnv` for GRPO and `examples/abstain_report_sft.py` for synthetic SFT records
 
 ## License
 

@@ -225,6 +225,19 @@ TESTS = [
     case_upstream_suites.test_kda_fla_suite,
     case_upstream_suites.test_adaptive_batch_suite,
     case_upstream_suites.test_compile_graph_breaks_suite,
+    # v5.225 (2026-11-02): the next sidecar batch — handover-resume
+    # (T87), rephrase (v5.206), MCQ reward (v5.207), grounded report
+    # (v5.214), report abstain (v5.216), PulmoGuard gate (v5.218) —
+    # folded with the same drift-guarded wrapper pattern, plus the
+    # coverage meta-guard that fails loudly the day any sidecar file
+    # is neither folded nor explicitly exempted.
+    case_upstream_suites.test_handover_resume_suite,
+    case_upstream_suites.test_rephrase_suite,
+    case_upstream_suites.test_mcq_reward_suite,
+    case_upstream_suites.test_grounded_report_suite,
+    case_upstream_suites.test_report_abstain_suite,
+    case_upstream_suites.test_pulmoguard_gate_suite,
+    case_upstream_suites.test_sidecar_coverage_guard,
 ]
 
 # CI thread guard (2026-10-13): PR #16's full-suite probe passes with
@@ -260,7 +273,7 @@ def main():
         print(f"MODEL={_m.group(1) if _m else 'UNKNOWN'}")
         print(f"CHANGELOG=v{_h.group(1) if _h else 'UNKNOWN'}")
         sys.exit(0)
-    print("HeliosLM v5.201 Test Suite (lite config, CPU)")
+    print("HeliosLM v5.225 Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:
