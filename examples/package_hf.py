@@ -35,7 +35,7 @@ from helioslm_v5.src.export.package import IMATRIX_QUANTS, TIERS, package_gguf  
 from helioslm_v5.src.export.speculative import SPEC_TYPES  # noqa: E402
 
 # quant key -> llama-quantize type (f16 is convert_hf_to_gguf's output)
-_QTYPE = {"q8_0": "Q8_0", "q4_k": "Q4_K_M"}
+_QTYPE = {"q8_0": "Q8_0", "q4_k": "Q4_K_M", "q3_k": "Q3_K_M"}
 
 
 def convert_commands(hf, llama_cpp, work, quants, imatrix_data=None, imatrix=None,

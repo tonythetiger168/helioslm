@@ -58,7 +58,9 @@ TIERS = {t.name: t for t in (
 # weights may use this share of the tier's memory; the rest is KV cache,
 # activations and the desktop
 FIT_SHARE = 0.75
-QUANT_LABEL = {"f16": "F16", "q8_0": "Q8_0", "q4_k": "Q4_K"}
+QUANT_LABEL = {"f16": "F16", "q8_0": "Q8_0", "q4_k": "Q4_K", "q3_k": "Q3_K"}
+# quants only llama.cpp's llama-quantize makes (v5.226): package_gguf only
+LLAMACPP_ONLY_QUANTS = ("q3_k",)
 # llama.cpp KV-cache types for long context (v5.210): bytes per element
 # relative to F16, and the -ctk / -ctv flags. A quantized V cache needs
 # flash attention. q8_0 is near-lossless; q4_0 costs some quality.
@@ -109,7 +111,7 @@ def gguf_expert_count(path):
 
 
 # quants an importance matrix changes (v5.208)
-IMATRIX_QUANTS = ("q4_k",)
+IMATRIX_QUANTS = ("q4_k", "q3_k")
 
 
 def _sha256(path):
@@ -178,9 +180,10 @@ def package_tier(model, config, tier, out_dir, *, name="helioslm", tokenizer=Non
     if ctx is not None:
         t = Tier(t.name, t.memory_gb, t.quants, int(ctx), t.gpu_layers, t.hardware)
     quants = tuple(quants or t.quants)
-    bad = [q for q in quants if q not in QUANT_LABEL]
+    bad = [q for q in quants if q not in QUANT_LABEL or q in LLAMACPP_ONLY_QUANTS]
     if bad:
-        raise ValueError(f"quants must be from {list(QUANT_LABEL)}, got {bad}")
+        raise ValueError(f"quants must be from {[q for q in QUANT_LABEL if q not in LLAMACPP_ONLY_QUANTS]}"
+                         f" (q3_k: package_gguf with llama-quantize output), got {bad}")
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     files = []

@@ -1,5 +1,15 @@
 # HeliosLM v5 Changelog
 
+## v5.226 (2026-11-02) - Q3_K quant for a smaller L-Edge
+
+`QUANT_LABEL` gains `q3_k` (llama.cpp `Q3_K_M`, made by
+`examples/package_hf.py`, importance-matrix aware like Q4_K). It is a
+llama-quantize-only quant: `package_tier` (the built-in exporter) still
+takes f16 / q8_0 / q4_k only. Used for the CPU tier:
+`package_hf.py --tiers L-Edge --quants L-Edge=q3_k --imatrix-data calib.txt`
+gives a ~4 GB E4B file for 8 GB laptops / Raspberry Pi 5. T168 in
+`tests/test_package_tiers.py`.
+
 ## v5.225 (2026-11-02) - fold six more sidecar suites into the daily gate + sidecar coverage meta-guard
 
 Daily-maintenance round. **Version recalibration, loud:** `model_name`
