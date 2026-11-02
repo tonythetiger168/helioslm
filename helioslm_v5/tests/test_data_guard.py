@@ -17,7 +17,56 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    # This file is also executed directly by the daily TESTS suite
+    # (case_upstream_suites), where pytest is not installed. The shim
+    # covers exactly the pytest features used below: mark.parametrize
+    # (collection-time only; a no-op when the functions are called
+    # directly with explicit arguments), raises(match=...) (pytest
+    # semantics: re.search on str(exception)) and importorskip.
+    # importorskip cannot skip under the daily gate (there is no skip
+    # concept there): it returns the module when present and raises
+    # loudly otherwise. Same pattern as test_lora.py.
+    import contextlib as _contextlib
+    import importlib as _importlib
+    import re as _re
+
+    class _Mark:
+        @staticmethod
+        def parametrize(*_args, **_kwargs):
+            return lambda f: f
+
+    class _PytestShim:
+        mark = _Mark()
+
+        @staticmethod
+        def importorskip(name):
+            try:
+                return _importlib.import_module(name)
+            except ImportError:
+                raise ImportError(
+                    f"importorskip({name!r}) reached under the daily-gate "
+                    "shim: the module is absent and the daily gate has no "
+                    "skip concept — the case_upstream_suites wrapper must "
+                    "pre-check the dependency and account for the case"
+                ) from None
+
+        @staticmethod
+        @_contextlib.contextmanager
+        def raises(exc, match=None):
+            try:
+                yield
+            except exc as e:
+                if match is not None and not _re.search(match, str(e)):
+                    raise AssertionError(
+                        f"raised {e!r}, which does not match /{match}/"
+                    ) from None
+                return
+            raise AssertionError(f"{exc.__name__} was not raised")
+
+    pytest = _PytestShim()
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -64,7 +113,8 @@ def test_masked_and_line_numbers(tmp_path):
     rows = [{"prompt": CLEAN[0], "response": CLEAN[1]},
             {"prompt": "身分證 A123456789", "response": "ok"},
             {"prompt": CLEAN[2], "response": "PatientID: 77"}]
-    f.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n")
+    f.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n",
+                 encoding="utf-8")
     hits = scan_file(f)
     assert [(h["line"], h["kind"]) for h in hits] == [(2, "tw_national_id"), (3, "dicom_tag")]
     assert "A123456789" not in json.dumps(hits)
@@ -72,16 +122,18 @@ def test_masked_and_line_numbers(tmp_path):
 
 def _manifest(tmp_path, **med):
     f = tmp_path / "pairs.jsonl"
-    f.write_text("\n".join(json.dumps({"p": t}, ensure_ascii=False) for t in CLEAN) + "\n")
+    f.write_text("\n".join(json.dumps({"p": t}, ensure_ascii=False) for t in CLEAN) + "\n",
+                 encoding="utf-8")
     g = tmp_path / "web.jsonl"
-    g.write_text(json.dumps({"text": "客服電話 0912-345-678"}, ensure_ascii=False) + "\n")
+    g.write_text(json.dumps({"text": "客服電話 0912-345-678"}, ensure_ascii=False) + "\n",
+                 encoding="utf-8")
     src = {"name": "pairs", "path": "pairs.jsonl", "domain": "medical",
            "deidentified": True, "license": "internal", "origin": "synthetic"}
     src.update(med)
     m = {"sources": [src, {"name": "web", "path": "web.jsonl", "domain": "general",
                            "license": "ODC-By", "origin": "crawl"}]}
     p = tmp_path / "manifest.json"
-    p.write_text(json.dumps(m))
+    p.write_text(json.dumps(m), encoding="utf-8")
     return p
 
 
@@ -153,7 +205,8 @@ def test_guard_cli(tmp_path):
     with pytest.raises(DataGuardError, match="--medical needs"):
         guard_cli(None, medical=True)
     p = tmp_path / "gen.json"
-    p.write_text(json.dumps({"sources": [{"name": "w", "domain": "general"}]}))
+    p.write_text(json.dumps({"sources": [{"name": "w", "domain": "general"}]}),
+              encoding="utf-8")
     with pytest.raises(DataGuardError, match="declares no medical"):
         guard_cli(str(p), medical=True)
     m, rep = guard_cli(str(_manifest(tmp_path)), medical=True)
@@ -167,7 +220,7 @@ def test_sft_prepare_refuses(tmp_path):
                      "--out", str(tmp_path / "o"), "--medical"])
     p = _manifest(tmp_path)
     other = tmp_path / "other.jsonl"
-    other.write_text("{}\n")
+    other.write_text("{}\n", encoding="utf-8")
     with pytest.raises(DataGuardError, match="not a medical source"):
         sft_hf.main(["prepare", "--records", str(other), "--tokenizer", "t",
                      "--out", str(tmp_path / "o"), "--data-manifest", str(p)])
@@ -179,7 +232,9 @@ def test_sft_prepare_refuses(tmp_path):
 def test_distill_refuses_external(tmp_path):
     import distill_generate
     prompts = tmp_path / "prompts.jsonl"
-    prompts.write_text(json.dumps({"id": "1", "prompt": CLEAN[0]}, ensure_ascii=False) + "\n")
+    prompts.write_text(json.dumps({"id": "1", "prompt": CLEAN[0]},
+                                  ensure_ascii=False) + "\n",
+                       encoding="utf-8")
     with pytest.raises(DataGuardError, match="external teacher"):
         distill_generate.main(["generate", "--prompts", str(prompts), "--out",
                                str(tmp_path / "a.jsonl"), "--endpoint", "openai",

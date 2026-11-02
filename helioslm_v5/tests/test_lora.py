@@ -18,7 +18,60 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import pytest
+
+try:
+    import pytest
+except ImportError:
+    # This file is also executed directly by the daily TESTS suite
+    # (case_upstream_suites), where pytest is not installed. The shim
+    # covers exactly the pytest features used below: importorskip,
+    # mark.parametrize (collection-time only; a no-op when the functions
+    # are called directly with explicit arguments) and raises(match=...)
+    # (pytest semantics: re.search on str(exception)).
+    # importorskip cannot skip under the daily gate (there is no skip
+    # concept there): it returns the module when present and raises
+    # loudly otherwise — the wrapper in case_upstream_suites.py
+    # pre-checks find_spec("transformers") for the tiny-HF cases and
+    # accounts for them in its result line, so a missed pre-check fails
+    # the gate instead of silently under-covering.
+    import contextlib as _contextlib
+    import importlib as _importlib
+    import re as _re
+
+    class _Mark:
+        @staticmethod
+        def parametrize(*_args, **_kwargs):
+            return lambda f: f
+
+    class _PytestShim:
+        mark = _Mark()
+
+        @staticmethod
+        def importorskip(name):
+            try:
+                return _importlib.import_module(name)
+            except ImportError:
+                raise ImportError(
+                    f"importorskip({name!r}) reached under the daily-gate "
+                    "shim: the module is absent and the daily gate has no "
+                    "skip concept — the case_upstream_suites wrapper must "
+                    "pre-check the dependency and account for the case"
+                ) from None
+
+        @staticmethod
+        @_contextlib.contextmanager
+        def raises(exc, match=None):
+            try:
+                yield
+            except exc as e:
+                if match is not None and not _re.search(match, str(e)):
+                    raise AssertionError(
+                        f"raised {e!r}, which does not match /{match}/"
+                    ) from None
+                return
+            raise AssertionError(f"{exc.__name__} was not raised")
+
+    pytest = _PytestShim()
 
 torch = pytest.importorskip("torch")
 nn = torch.nn

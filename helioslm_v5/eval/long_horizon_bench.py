@@ -258,16 +258,37 @@ def run_one(sc, policy_name):
 
 
 def _traj_sha(traj, box):
-    """sha256 of the trajectory as text with the temp sandbox path masked
-    (blocked-path tool errors quote it), so reruns hash the same."""
-    root = str(box.resolve())
+    r"""sha256 of the trajectory as text with the temp sandbox path masked
+    (blocked-path tool errors quote it), so reruns hash the same.
+
+    Windows fix (2026-11-02, found by folding test_long_horizon_bench
+    into the daily gate): the mask used to replace only the raw
+    ``str(box.resolve())`` in the JSON-serialized text, but JSON escapes
+    backslashes, so a Windows path ``C:\...`` appears as ``C:\\...``
+    and the mask never matched — every rerun hashed differently and the
+    committed-artifact comparison failed. Mask both the raw and the
+    JSON-escaped spelling of both the given and the resolved path, then
+    normalize the separator right after a mask (``<sandbox>\oracle`` ->
+    ``<sandbox>/oracle``) so a Windows run hashes the same trajectory as
+    the Linux run that committed the artifact. On POSIX paths the
+    escaped forms equal the raw forms and no separator follows a mask,
+    so behavior there is unchanged and the committed artifact hash still
+    matches."""
+    raw = str(box)
+    resolved = str(box.resolve())
     d = traj.to_dict()
     for st in d["steps"]:
         st["prompt"] = ids_to_text(st.pop("prompt_ids"))
         st["generated"] = ids_to_text(st.pop("generated_ids"))
     text = json.dumps(d, sort_keys=True, ensure_ascii=False)
-    return hashlib.sha256(text.replace(root, "<sandbox>")
-                          .encode("utf-8")).hexdigest()
+    for form in {raw, resolved,
+                 json.dumps(raw)[1:-1], json.dumps(resolved)[1:-1]}:
+        text = text.replace(form, "<sandbox>")
+    # a Windows separator left right after a mask is part of the quoted
+    # path; fold it to the POSIX spelling (in the JSON text a literal
+    # backslash is two chars)
+    text = text.replace("<sandbox>\\\\", "<sandbox>/")
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _flags(r):

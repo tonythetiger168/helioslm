@@ -489,6 +489,239 @@ def test_pulmoguard_gate_suite():
 
 
 # ---------------------------------------------------------------------------
+# limitations round (2026-11-02): fold the five sidecars the 2026-11-02
+# daily report named as the next EXEMPT-backlog triage candidates into
+# the daily gate — the long-horizon agent bench (#174, v5.221), the
+# external reference model gate (v5.220), LoRA SFT (v5.217), the hsh
+# clinical preset (v5.223) and the medical-data PHI/licence guard
+# (v5.215). Same gap class as v5.155: all five were pytest-only sidecars
+# that the mandated `python -m helioslm_v5.tests.test_v5` never
+# executed, so a regression in any of them would pass the daily gate
+# unnoticed. Each file now carries the in-file pytest shim covering
+# exactly the features it uses (fixture / raises(match) /
+# mark.parametrize / approx / importorskip). tmp_path fixtures get real
+# TemporaryDirectory instances; the monkeypatch fixture gets the
+# _MonkeyPatch stand-in; the transformers-dependent tiny-HF LoRA cases
+# are pre-checked on find_spec so no skip exception crosses the shim
+# boundary.
+# ---------------------------------------------------------------------------
+
+
+def test_long_horizon_bench_suite():
+    """#174 long-horizon agent / secure-coding bench (v5.221) under the
+    daily gate. Pins: the correct scripted policy solves all five
+    sandboxed tasks (2-10 steps) replay-clean with no violations; the
+    seven negative controls are each caught; run_suite is deterministic
+    and matches the committed artifact byte-for-byte; breaking the
+    correct policy or un-catching a control fails loudly;
+    evaluate_policy reports rates. The module-scoped `suite` fixture is
+    called once here and its return value passed in; monkeypatch gets
+    the _MonkeyPatch stand-in (undo in finally)."""
+    from helioslm_v5.tests import test_long_horizon_bench as m
+    expected = {"test_correct_policy_solves_everything",
+                "test_negative_controls_are_caught",
+                "test_deterministic_and_matches_artifact",
+                "test_suite_fails_when_correct_policy_breaks",
+                "test_suite_fails_when_a_control_is_not_caught",
+                "test_evaluate_policy_reports_rates"}
+    _drift_guard(m, expected)
+    # Real pytest wraps fixture functions so direct calls fail; unwrap
+    # (_fixture_function) in that case. Under the shim the decorator is
+    # the identity and there is nothing to unwrap.
+    suite_fn = getattr(m.suite, "_fixture_function", m.suite)
+    suite = suite_fn()
+    m.test_correct_policy_solves_everything(suite)
+    m.test_negative_controls_are_caught(suite)
+    m.test_deterministic_and_matches_artifact(suite)
+    for fn in (m.test_suite_fails_when_correct_policy_breaks,
+               m.test_suite_fails_when_a_control_is_not_caught):
+        mp = _MonkeyPatch()
+        try:
+            fn(mp)
+        finally:
+            mp.undo()
+    m.test_evaluate_policy_reports_rates()
+    _pass("test_long_horizon_bench_suite",
+          "#174 long-horizon bench: all 6 sidecar tests (module fixture "
+          "called once, monkeypatch stand-in) under the daily gate")
+
+
+def test_external_model_gate_suite():
+    """v5.220 external reference model gate (Mistral Large 4) under the
+    daily gate. Pins: the pinned source passes; any drift in sha / card
+    licence / licence hash fails closed; an unknown model is refused;
+    per-use licence readings; the candidate is not a distillation
+    teacher; the KV-cache formula; the L128/L256/L512 fit table;
+    reserve/context bounds; the conclusion never claims feasibility
+    without a run. Parametrized drift cases are called with their full
+    literal list (the same rows the decorator carries)."""
+    import hashlib
+    from helioslm_v5.tests import test_external_model_gate as m
+    expected = {"test_pinned_source_passes", "test_drift_fails_closed",
+                "test_unknown_model_is_refused", "test_per_use_readings",
+                "test_not_a_distillation_teacher", "test_kv_cache_formula",
+                "test_fit_table_l128_l256_l512",
+                "test_reserve_and_context_bounds",
+                "test_conclusion_is_never_feasible_without_a_run"}
+    _drift_guard(m, expected)
+    m.test_pinned_source_passes()
+    for over in [{"sha": "0" * 40},
+                 {"card_license": "mit"},
+                 {"license_sha256": hashlib.sha256(
+                     b"edited licence").hexdigest()},
+                 {"license_sha256": None}]:
+        m.test_drift_fails_closed(over)
+    m.test_unknown_model_is_refused()
+    m.test_per_use_readings()
+    m.test_not_a_distillation_teacher()
+    m.test_kv_cache_formula()
+    m.test_fit_table_l128_l256_l512()
+    m.test_reserve_and_context_bounds()
+    m.test_conclusion_is_never_feasible_without_a_run()
+    _pass("test_external_model_gate_suite",
+          "v5.220 external model gate: all 9 sidecar tests (incl. 4 "
+          "parametrized drift cases) under the daily gate")
+
+
+def test_lora_suite():
+    """v5.217 LoRA SFT under the daily gate. Pins: apply_lora wraps only
+    the targeted projections (vision/audio excluded) and freezes
+    everything else (step 0 equals the base model); two masked-SFT steps
+    through sft_hf.train change only adapter tensors (base weights
+    bit-identical); the merge oracle matches base+adapter and the
+    adapter round-trips into a fresh wrapped copy; peft key names; rank
+    validation. The transformers-dependent tiny-HF cases (llama/qwen2)
+    are pre-checked on find_spec so no skip crosses the shim boundary;
+    tmp_path gets a real TemporaryDirectory."""
+    import importlib.util
+    from helioslm_v5.tests import test_lora as m
+    expected = {"test_apply_targets_and_identity",
+                "test_two_steps_only_adapter_changes_and_merge_oracle",
+                "test_peft_key_names", "test_rank_must_be_positive",
+                "test_tiny_hf_models"}
+    _drift_guard(m, expected)
+    m.test_apply_targets_and_identity()
+    with tempfile.TemporaryDirectory() as t:
+        m.test_two_steps_only_adapter_changes_and_merge_oracle(Path(t))
+    m.test_peft_key_names()
+    m.test_rank_must_be_positive()
+    skipped = ""
+    if importlib.util.find_spec("transformers") is not None:
+        for arch in ("llama", "qwen2"):
+            m.test_tiny_hf_models(arch)
+    else:
+        skipped = " (transformers not installed: 2 tiny-HF cases skipped)"
+    _pass("test_lora_suite",
+          f"v5.217 LoRA: all 5 sidecar tests under the daily gate{skipped}")
+
+
+def test_hsh_clinical_suite():
+    """v5.223 hsh clinical preset under the daily gate. Pins: no builtin
+    tools mounted (bash is refused as unknown-tool and audited); global
+    tools hidden; every call needs approval (7-row matrix, incl. a host
+    auto-allow listener still being asked); an unlisted host tool is
+    denied; the preset is locked (compose / create / live patch refused,
+    policy/refused logged); egress is deny with an empty allow list; the
+    audit table rebuilds from the log alone (incl. a save/load round
+    trip and tamper detection) while requests still rebuild identically;
+    other presets unchanged. tmp_path gets a real TemporaryDirectory;
+    the parametrized approval matrix is called with its full literal
+    rows (same rows as the decorator)."""
+    from helioslm_v5.tests import test_hsh_clinical as m
+    expected = {"test_no_builtin_tools_and_bash_refused",
+                "test_global_tools_hidden",
+                "test_every_call_needs_approval",
+                "test_unlisted_host_tool_denied", "test_locked",
+                "test_egress_deny", "test_end_to_end_audit_and_replay",
+                "test_other_presets_unchanged"}
+    _drift_guard(m, expected)
+    with tempfile.TemporaryDirectory() as t:
+        m.test_no_builtin_tools_and_bash_refused(Path(t))
+    with tempfile.TemporaryDirectory() as t:
+        m.test_global_tools_hidden(Path(t))
+    for approval, auto, expect in [
+            (None, False, False),                 # no approval service
+            (lambda e, q: False, False, False),   # refused
+            (lambda e, q: "yes", False, False),   # only True/dict approves
+            (lambda e, q: False, True, False),    # host allow: still asks
+            (None, True, False),                  # auto mode, no clinician
+            (lambda e, q: True, False, True),
+            (lambda e, q: {"approved": True, "by": "dr-lin"}, True, True)]:
+        with tempfile.TemporaryDirectory() as t:
+            m.test_every_call_needs_approval(Path(t), approval, auto, expect)
+    with tempfile.TemporaryDirectory() as t:
+        m.test_unlisted_host_tool_denied(Path(t))
+    with tempfile.TemporaryDirectory() as t:
+        m.test_locked(Path(t))
+    m.test_egress_deny()
+    with tempfile.TemporaryDirectory() as t:
+        m.test_end_to_end_audit_and_replay(Path(t))
+    with tempfile.TemporaryDirectory() as t:
+        m.test_other_presets_unchanged(Path(t))
+    _pass("test_hsh_clinical_suite",
+          "v5.223 hsh clinical: all 8 sidecar tests (incl. the 7-row "
+          "approval matrix) under the daily gate")
+
+
+def test_data_guard_suite():
+    """v5.215 PHI / licence guard for medical training data under the
+    daily gate. Pins: the PHI scanner flags fake TW IDs / record numbers
+    / phones / e-mail / date+name / DICOM tags (values masked, line
+    numbers reported) while clean synthetic text passes; medical
+    manifests missing deidentified / licence / origin are refused;
+    research-only data is refused for releasable weights; a PHI hit in a
+    medical source file stops guard(); external teachers are refused for
+    medical data; the sft/cpt/distill CLIs refuse --medical without a
+    manifest. All data is fake. tmp_path gets a real TemporaryDirectory;
+    parametrized cases are called with their full lists (CLEAN/DIRTY
+    tables from the module, the manifest-refusal rows literal)."""
+    from helioslm_v5.tests import test_data_guard as m
+    expected = {"test_clean_passes", "test_dirty_flagged",
+                "test_masked_and_line_numbers",
+                "test_clean_manifest_passes_general_not_scanned",
+                "test_medical_source_without_fields_refused",
+                "test_research_only", "test_phi_in_medical_file_stops",
+                "test_missing_medical_file", "test_teacher_endpoint",
+                "test_guard_records", "test_guard_cli",
+                "test_sft_prepare_refuses", "test_distill_refuses_external",
+                "test_cpt_refuses"}
+    _drift_guard(m, expected)
+    for text in m.CLEAN:
+        m.test_clean_passes(text)
+    for kind, text in m.DIRTY:
+        m.test_dirty_flagged(kind, text)
+    with tempfile.TemporaryDirectory() as t:
+        m.test_masked_and_line_numbers(Path(t))
+    with tempfile.TemporaryDirectory() as t:
+        m.test_clean_manifest_passes_general_not_scanned(Path(t))
+    for bad, msg in [({"deidentified": False}, "deidentified"),
+                     ({"deidentified": None}, "deidentified"),
+                     ({"license": ""}, "license"),
+                     ({"origin": None}, "origin")]:
+        with tempfile.TemporaryDirectory() as t:
+            m.test_medical_source_without_fields_refused(Path(t), bad, msg)
+    with tempfile.TemporaryDirectory() as t:
+        m.test_research_only(Path(t))
+    with tempfile.TemporaryDirectory() as t:
+        m.test_phi_in_medical_file_stops(Path(t))
+    with tempfile.TemporaryDirectory() as t:
+        m.test_missing_medical_file(Path(t))
+    with tempfile.TemporaryDirectory() as t:
+        m.test_teacher_endpoint(Path(t))
+    m.test_guard_records()
+    with tempfile.TemporaryDirectory() as t:
+        m.test_guard_cli(Path(t))
+    with tempfile.TemporaryDirectory() as t:
+        m.test_sft_prepare_refuses(Path(t))
+    with tempfile.TemporaryDirectory() as t:
+        m.test_distill_refuses_external(Path(t))
+    m.test_cpt_refuses()
+    _pass("test_data_guard_suite",
+          "v5.215 data guard: all 14 sidecar tests (incl. 4+10+4 "
+          "parametrized cases) under the daily gate")
+
+
+# ---------------------------------------------------------------------------
 # v5.225: sidecar coverage meta-guard. The folds above (and the earlier
 # v5.155 / 2026-10-29 rounds) were each discovered by HAND, days after
 # the sidecar landed. This guard makes the gap structurally impossible
@@ -499,6 +732,10 @@ def test_pulmoguard_gate_suite():
 # backlog is the daily maintenance job's standing candidate pool). The
 # day upstream ADDS a sidecar, the daily gate fails loudly here naming
 # the new file, instead of the file silently never running.
+# 2026-11-02 limitations round: the five daily-report triage candidates
+# (test_long_horizon_bench / test_external_model_gate / test_lora /
+# test_hsh_clinical / test_data_guard) moved from EXEMPT to FOLDED —
+# the backlog is now 184 files.
 # ---------------------------------------------------------------------------
 
 FOLDED_SIDECARS = {
@@ -516,6 +753,12 @@ FOLDED_SIDECARS = {
     "test_grounded_report": "test_grounded_report_suite",
     "test_report_abstain": "test_report_abstain_suite",
     "test_pulmoguard_gate": "test_pulmoguard_gate_suite",
+    # limitations round 2026-11-02 (daily-report triage candidates)
+    "test_long_horizon_bench": "test_long_horizon_bench_suite",
+    "test_external_model_gate": "test_external_model_gate_suite",
+    "test_lora": "test_lora_suite",
+    "test_hsh_clinical": "test_hsh_clinical_suite",
+    "test_data_guard": "test_data_guard_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -530,24 +773,24 @@ EXEMPT_SIDECARS = {
     'test_cost_per_task', 'test_cpt_chunked_ce', 'test_cpt_pilot', 'test_cpt_plan',
     'test_csa', 'test_csa_learned', 'test_csa_learned_16x', 'test_csa_learned_h64',
     'test_csa_learned_r3', 'test_cuda_device_paths', 'test_cuda_smoke', 'test_custom_attention_notebook',
-    'test_cvdp_bench', 'test_data_guard', 'test_data_quality', 'test_decision',
+    'test_cvdp_bench', 'test_data_quality', 'test_decision',
     'test_decision_data', 'test_decision_head', 'test_decision_head_integration', 'test_decontam',
     'test_device_matrix', 'test_disagg', 'test_disagg_pareto', 'test_distill_agent',
     'test_distill_filter', 'test_distill_gen', 'test_distill_sft', 'test_dpo',
-    'test_dsa', 'test_envs', 'test_external_model_gate', 'test_file_env',
+    'test_dsa', 'test_envs', 'test_file_env',
     'test_finetune_data', 'test_first_k_dense', 'test_gated_conv', 'test_gguf_quant',
     'test_global_prope_kv', 'test_gpu_batch_run', 'test_grounded_replay', 'test_grounding',
     'test_grpo_length', 'test_grpo_u1', 'test_harness', 'test_harness_deep',
     'test_hca_rescue', 'test_hdl_bench', 'test_hdl_data', 'test_hdl_git_sources',
     'test_hdl_projects', 'test_hdl_reward', 'test_hdl_train_eval', 'test_hf_license_audit',
-    'test_hsh_clinical', 'test_hsh_egress', 'test_hsh_extras', 'test_hsh_interaction',
+    'test_hsh_egress', 'test_hsh_extras', 'test_hsh_interaction',
     'test_hsh_kernel', 'test_hsh_llm', 'test_hsh_loop', 'test_hsh_mcp',
     'test_hsh_presets', 'test_hsh_session', 'test_hsh_skills', 'test_hsh_tools',
     'test_hsh_web', 'test_hub', 'test_indexer_share', 'test_k3_block',
     'test_k3_llamacpp_parts', 'test_kda_chunked', 'test_kda_k3_style', 'test_kda_subchunk',
     'test_kv_compress', 'test_kv_share', 'test_llamacpp_export', 'test_llamacpp_kimi_k3',
     'test_llamacpp_tokenizer', 'test_lm_decision_head', 'test_lm_harness', 'test_logit_kd',
-    'test_long_horizon_bench', 'test_longctx', 'test_longctx_harness', 'test_lora',
+    'test_longctx', 'test_longctx_harness',
     'test_merge', 'test_mhc', 'test_mhc_sinkhorn', 'test_midtrain',
     'test_mimo_hybrid', 'test_mini_bench', 'test_mla_every', 'test_mla_expanded_training',
     'test_moe_config_table', 'test_mopd', 'test_mtp_light', 'test_mtp_rollout',
