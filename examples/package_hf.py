@@ -84,6 +84,9 @@ def main():
     ap.add_argument("--ctx", type=int)
     ap.add_argument("--chat", action="store_true",
                     help="instruction-tuned model: Modelfile keeps the GGUF chat template")
+    ap.add_argument("--reasoning", action="store_true",
+                    help="chat model that can think first: README commands default "
+                         "to --reasoning-budget 0 (thinking off)")
     ap.add_argument("--quants", nargs="+", metavar="TIER=Q[,Q]", default=[],
                     help="per-tier quant override, e.g. L16=q8_0 L24=f16")
     ap.add_argument("--imatrix-data", metavar="TXT",
@@ -123,7 +126,8 @@ def main():
     for tier in args.tiers:
         m = package_gguf(ggufs, tier, out / tier, name=args.name, arch=args.arch,
                          ctx=args.ctx, base=args.base, quants=override.get(tier),
-                         chat=args.chat, imatrix=imatrix, draft=drafts.get(tier),
+                         chat=args.chat, reasoning=args.reasoning, imatrix=imatrix,
+                         draft=drafts.get(tier),
                          draft_base=args.draft_base, spec_type=args.spec_type)
         print(tier, [(f["file"], f["bytes"], f["fits"]) for f in m["files"]])
 
