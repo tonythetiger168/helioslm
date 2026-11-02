@@ -400,3 +400,28 @@ def test_unified_memory_laptops_on_tiers():
     assert "32 GB unified memory" in TIERS["L24"].hardware
     assert "64-96 GB unified memory" in TIERS["L48+"].hardware
     assert "32 GB 統一記憶體" in _MEMORY["L24"] and "64–96 GB 統一記憶體" in _MEMORY["L48+"]
+
+
+def test_package_gguf_reasoning_off(tmp_path):
+    """T167 (v5.224): a chat model that thinks before answering ships with
+    thinking off by default: the README's llama.cpp commands carry
+    ``--reasoning-budget 0`` plus a note on turning it on, the manifest
+    records ``reasoning: off``; a base model cannot be marked."""
+    src = tmp_path / "q4.gguf"
+    src.write_bytes(b"\0" * 1000)
+    m = package.package_gguf({"q4_k": src}, "L24", tmp_path / "L24", name="tw-26b",
+                             arch="gemma4", chat=True, reasoning=True)
+    assert m["reasoning"] == "off" and m["chat"]
+    readme = (tmp_path / "L24" / "README.md").read_text()
+    f = m["files"][0]["file"]
+    assert f"llama-cli -m {f} --reasoning-budget 0 " in readme
+    assert f"llama-server -m {f} --reasoning-budget 0 " in readme
+    assert "enable_thinking=false" in readme and "-n 2048" in readme
+    assert "TEMPLATE" not in (tmp_path / "L24" / "Modelfile").read_text()
+    plain = package.package_gguf({"q4_k": src}, "L24", tmp_path / "p", name="n",
+                                 arch="gemma4", chat=True)
+    assert "reasoning" not in plain
+    assert "--reasoning-budget" not in (tmp_path / "p" / "README.md").read_text()
+    with pytest.raises(ValueError):
+        package.package_gguf({"q4_k": src}, "L24", tmp_path / "x", name="n",
+                             arch="gemma4", reasoning=True)

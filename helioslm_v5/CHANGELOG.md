@@ -1,5 +1,18 @@
 # HeliosLM v5 Changelog
 
+## v5.224 (2026-11-02) - thinking off by default in reasoning chat packages
+
+`package_gguf(..., reasoning=True)` / `examples/package_hf.py --reasoning`
+mark a chat model that can think before it answers (the Gemma 4 26B-A4B
+instruct preview). The package README's `llama-cli` / `llama-server`
+commands get `--reasoning-budget 0`, so a download answers directly, and a
+note says how to turn thinking on (drop the flag, allow 1500+ tokens). The
+manifest records `reasoning: "off"`. The GGUF chat template already
+defaults to `enable_thinking=false`; llama.cpp turns reasoning on unless
+told otherwise. Measured on the L24 Q4_K_M package (L40S): thinking off
+gives direct zh-TW / English answers at 130-147 tok/s; thinking on spends
+300-700 tokens of mostly English reasoning first. T167 in
+`tests/test_package_tiers.py`.
 ## v5.223 (2026-11-01) - hsh clinical preset
 
 The `clinical` preset (`hsh/presets.py`, policy in `hsh/clinical.py`)

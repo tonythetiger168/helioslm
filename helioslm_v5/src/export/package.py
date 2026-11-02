@@ -194,10 +194,27 @@ def package_tier(model, config, tier, out_dir, *, name="helioslm", tokenizer=Non
     return _write_package(out, name, t, arch, files, tokenizer is not None)
 
 
+def _reasoning_note(first, t):
+    """README lines for a model that can think before it answers (v5.224):
+    the commands above turn thinking off, and this says how to turn it on."""
+    ngl = f" -ngl {t.gpu_layers}" if t.gpu_layers else ""
+    return ["", "Thinking: this model can reason step by step before it answers. "
+            "The llama.cpp commands above turn that off (`--reasoning-budget 0`) "
+            "for short, direct answers; the chat template also defaults to "
+            "`enable_thinking=false`. To turn thinking on, drop that flag and allow "
+            "longer output (1500+ tokens):", "", "```",
+            f"llama-cli -m {first} -c {t.ctx}{ngl} -n 2048", "```", ""]
+
+
 def _write_package(out, name, t, arch, files, has_tokenizer, extra=None, chat=False):
     if has_tokenizer:
         (out / "Modelfile").write_text(modelfile(files[0]["file"], t, chat))
     readme = _readme(name, t, arch, files, has_tokenizer)
+    if (extra or {}).get("reasoning"):
+        first = files[0]["file"]
+        readme = readme.replace(f"llama-cli -m {first} ", f"llama-cli -m {first} --reasoning-budget 0 ", 1)
+        readme = readme.replace(f"llama-server -m {first} ", f"llama-server -m {first} --reasoning-budget 0 ", 1)
+        readme = readme.rstrip("\n") + "\n" + "\n".join(_reasoning_note(first, t))
     dr = (extra or {}).get("draft")
     if dr:
         readme += ("\nFaster generation (speculative decoding): the drafter "
@@ -226,7 +243,7 @@ def _write_package(out, name, t, arch, files, has_tokenizer, extra=None, chat=Fa
 
 def package_gguf(ggufs, tier, out_dir, *, name, arch, ctx=None, base=None, quants=None,
                  chat=False, imatrix=None, draft=None, draft_base=None,
-                 spec_type="draft-mtp"):
+                 spec_type="draft-mtp", reasoning=False):
     """Package GGUF files made outside this repo (v5.196).
 
     For a continued-pretraining checkpoint of an open Hugging Face base
@@ -249,8 +266,13 @@ def package_gguf(ggufs, tier, out_dir, *, name, arch, ctx=None, base=None, quant
     vocabulary). It is checked with :func:`speculative.draft_mismatch`
     (``ValueError`` if it does not fit), copied in, and the README gets the
     ``llama-server --spec-type`` command; ``draft_base`` names its model
-    in the manifest.
+    in the manifest. ``reasoning`` (v5.224) marks a chat model that can
+    think before answering: the README's llama.cpp commands get
+    ``--reasoning-budget 0`` (direct answers by default) and a note on
+    turning thinking on; the manifest records ``reasoning: "off"``.
     """
+    if reasoning and not chat:
+        raise ValueError("reasoning applies to chat models only (set chat=True)")
     if tier not in TIERS:
         raise ValueError(f"tier must be one of {list(TIERS)}, got {tier!r}")
     t = TIERS[tier]
@@ -272,7 +294,8 @@ def package_gguf(ggufs, tier, out_dir, *, name, arch, ctx=None, base=None, quant
         files.append({"file": fname, "quant": q, "bytes": size,
                       "sha256": _sha256(out / fname),
                       "fits": size <= FIT_SHARE * t.memory_gb * 2**30})
-    extra = {"chat": chat, **({"base": base} if base else {})}
+    extra = {"chat": chat, **({"base": base} if base else {}),
+             **({"reasoning": "off"} if reasoning else {})}
     if draft:
         why = draft_mismatch(out / files[0]["file"], draft, spec_type)
         if why:
