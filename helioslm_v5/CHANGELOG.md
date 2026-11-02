@@ -1,6 +1,6 @@
 # HeliosLM v5 Changelog
 
-## v5.225 (2026-11-02) - Q3_K quant for a smaller L-Edge
+## v5.226 (2026-11-02) - Q3_K quant for a smaller L-Edge
 
 `QUANT_LABEL` gains `q3_k` (llama.cpp `Q3_K_M`, made by
 `examples/package_hf.py`, importance-matrix aware like Q4_K). It is a

@@ -59,7 +59,7 @@ TIERS = {t.name: t for t in (
 # activations and the desktop
 FIT_SHARE = 0.75
 QUANT_LABEL = {"f16": "F16", "q8_0": "Q8_0", "q4_k": "Q4_K", "q3_k": "Q3_K"}
-# quants only llama.cpp's llama-quantize makes (v5.225): package_gguf only
+# quants only llama.cpp's llama-quantize makes (v5.226): package_gguf only
 LLAMACPP_ONLY_QUANTS = ("q3_k",)
 # llama.cpp KV-cache types for long context (v5.210): bytes per element
 # relative to F16, and the -ctk / -ctv flags. A quantized V cache needs

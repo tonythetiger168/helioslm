@@ -428,7 +428,7 @@ def test_package_gguf_reasoning_off(tmp_path):
 
 
 def test_q3k_edge_package(tmp_path):
-    """T168 (v5.225): Q3_K (llama-quantize Q3_K_M, imatrix-aware) packages a
+    """T168 (v5.226): Q3_K (llama-quantize Q3_K_M, imatrix-aware) packages a
     smaller L-Edge file via package_gguf."""
     src = tmp_path / "q3.gguf"
     src.write_bytes(b"\0" * 1000)
