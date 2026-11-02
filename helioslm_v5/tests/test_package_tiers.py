@@ -425,3 +425,18 @@ def test_package_gguf_reasoning_off(tmp_path):
     with pytest.raises(ValueError):
         package.package_gguf({"q4_k": src}, "L24", tmp_path / "x", name="n",
                              arch="gemma4", reasoning=True)
+
+
+def test_q3k_edge_package(tmp_path):
+    """T168 (v5.225): Q3_K (llama-quantize Q3_K_M, imatrix-aware) packages a
+    smaller L-Edge file via package_gguf."""
+    src = tmp_path / "q3.gguf"
+    src.write_bytes(b"\0" * 1000)
+    m = package.package_gguf({"q3_k": src}, "L-Edge", tmp_path / "e", name="tw-e4b",
+                             arch="gemma4", quants=["q3_k"])
+    assert m["files"][0]["file"].endswith("-Q3_K.gguf") and m["ctx"] == 8192
+    assert "q3_k" in package.IMATRIX_QUANTS
+    sys.path.insert(0, str(_REPO / "examples"))
+    import package_hf
+    cmds, paths = package_hf.convert_commands("ckpt", "/llama", tmp_path, ["q3_k"])
+    assert cmds[-1][-1] == "Q3_K_M" and "q3_k" in paths
