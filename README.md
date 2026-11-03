@@ -6,14 +6,14 @@ tags:
 - calibrated-decisions
 - decision-layer
 - agentic-rl
-- deepseek-v3
+- mixture-of-experts
 - reference-implementation
 pipeline_tag: text-generation
 ---
 
 # HeliosLM（羲和）
 
-DeepSeek-V3/V4 and Kimi-K3-style LLM architectures in pure PyTorch, where every mechanism ships with an oracle test and everything runs on CPU.
+Open LLM architecture techniques (latent attention, mixture-of-experts, linear attention, multi-token prediction) in pure PyTorch, where every mechanism ships with an oracle test and everything runs on CPU. The continued-pretraining models built with this stack are based on Google Gemma 4.
 
 > 中文名「羲和」：中國神話中駕日車的太陽神，對應希臘的 Helios。標語「知止」（《大學》「知止而后有定」）：可驗證的機制，加上知道自己何時可能出錯、該停下來的決策層。
 
@@ -49,7 +49,7 @@ DeepSeek-V3/V4 and Kimi-K3-style LLM architectures in pure PyTorch, where every 
 
 `helioslm_v5/hsh/` is the agent harness: it runs a model in a loop with tools,
 skills, MCP servers, plan mode and a session log, and it has a local web
-UI. It follows the design of the open-source DeepSeek Harness and is
+UI. It is
 pure Python standard library, so it needs nothing beyond Python 3.11+
 (PyTorch is only needed for the model code, not for the harness). Design
 notes and every contract it keeps: [docs/HSH_HARNESS.md](docs/HSH_HARNESS.md).
@@ -66,7 +66,7 @@ python -m helioslm_v5.hsh.web --help        # no pip install needed for the harn
 
 | Model | How |
 |---|---|
-| DeepSeek API | `export DEEPSEEK_API_KEY=sk-...` (PowerShell: `$env:DEEPSEEK_API_KEY="sk-..."`). Models `deepseek-v4-flash`, `deepseek-v4-pro`. |
+| A hosted API (any OpenAI-compatible endpoint) | `export MY_API_KEY=...` (PowerShell: `$env:MY_API_KEY="..."`), then pass `--openai-base https://api.example.com/v1 --openai-models <model-id> --openai-key-env MY_API_KEY`. |
 | A local model or any OpenAI-compatible server (llama.cpp, vLLM, SGLang) | Start it, then pass `--openai-base http://127.0.0.1:8080/v1 --openai-models <model-id>`; add `--openai-key-env NAME` if it needs a key. For llama.cpp: `llama-server -m model.gguf --port 8080`. |
 | Several providers | `--config providers.json` with `{"providers": {"name": {"label", "base_url", "api_key_env", "models": [...], "stream": true}}}` |
 | No model (to try the UI) | `--demo` |
@@ -115,15 +115,15 @@ ctx = Context()
 for p in (Sessions, Tools, LLM, Agents):
     ctx.plugin(p)
 ctx.plugin(Workspace, {"root": "/path/to/your/repo"})
-ctx.llm.register("deepseek", OpenAICompatAdapter(
-    "https://api.deepseek.com", "DEEPSEEK_API_KEY", stream=True))
+ctx.llm.register("api", OpenAICompatAdapter(
+    "https://api.example.com/v1", "MY_API_KEY", stream=True))
 
 # optional: print the reply as it streams; answer questions and approvals
 ctx.on("agent/assistant-stream", lambda agent, chunk: print(chunk["text"], end=""))
 ctx.provide("questions", lambda exe, qs: {q["id"]: input(q["question"] + " ") for q in qs})
 ctx.provide("approval", lambda exe, question: input(question + " [y/N] ") == "y")
 
-agent = create_agent(ctx, "fix-1", {"provider": "deepseek", "model": "deepseek-v4-flash"},
+agent = create_agent(ctx, "fix-1", {"provider": "api", "model": "<model-id>"},
                      "standard")
 print(agent.send("Run the tests and fix the first failure."))
 agent.session.save("fix-1.jsonl")     # the whole session, replayable
@@ -244,19 +244,19 @@ The pre-hsh plugin harness (`harness/`, v1.0–v1.22) is documented in [docs/LEG
 
 **One-liner:** The open-source reference for the RLCD "decision layer" --
 calibrated confidence on acting models, measured across three scales
-(8.5M / 360M / Qwen3-0.6B) and on the 7,193-instance RLCDAlignBench.
+(8.5M / 360M / 0.6B) and on the 7,193-instance RLCDAlignBench.
 
 **Why this matters for the HF community:**
 - Open-weight models now span the full price spectrum ($0 -> $0.14/M ->
   $0.20/M frontier tiers) but NO vendor publishes calibration-on-wrong-
   answers curves. This repo is the open, replay-verifiable measurement.
-- The API probe (GPT-5.6 Luna + DeepSeek V4 Flash) found THREE distinct
+- The API probe (two commercial API models) found three distinct
   calibration failure modes across the price spectrum: stable
-  hallucination (360M/Qwen), unstable hallucination (Luna), refusal
-  (V4 Flash) -- none healthy. Probe cost: $0.02.
+  hallucination (360M / 0.6B), unstable hallucination (one API model),
+  refusal (the other) -- none healthy. Probe cost: $0.02.
 - On RLCDAlignBench our supervised TF-IDF readout reaches 0.726 median
-  AUROC and beats the commercial Jev detector's zero-shot numbers on
-  11/41 benchmarks. The open audit is 15x cheaper than the commercial
+  AUROC, above the commercial Jev detector's published zero-shot numbers
+  on 11 of 41 benchmarks. The open audit is 15x cheaper than the commercial
   detector it audits.
 - HeliosLM's policy-in-code route (GroundingGate, CalibratedPrefetcher)
   is the engineering embodiment of the vendor's own finding: prompt
@@ -264,7 +264,7 @@ calibrated confidence on acting models, measured across three scales
   probability and routing decisions in code is what works.
 
 **Artifacts:** paper PDF + LaTeX in `docs/`; all benchmark JSONs in
-`benchmarks/`; three-tier deployment (lite 8.5M / mid 360M / full V3-class)
+`benchmarks/`; three-tier deployment (lite 8.5M / mid 360M / full MLA + MoE reference)
 with per-task replay verification and tokenizer-fingerprint pairing.
 
 ## Paper
@@ -279,12 +279,12 @@ Canonical-Benchmark Comparison** — Chien-Hsin Lin, working draft 2026-10-03.
 (Looking for `paper.pdf`? The PDF ships under a dated filename —
 `docs/paper_draft_2026-10-03.pdf`; no file is literally named `paper.pdf`.)
 Headline numbers: overconfidence on wrong answers grows with scale
-(0.94 -> 0.9999 -> ~1.0 at 8.5M/360M/Qwen3-0.6B); deterministic grounding
+(0.94 -> 0.9999 -> ~1.0 at 8.5M/360M/0.6B); deterministic grounding
 cures a 360M model's copy-shaped agentic failure (0/12 -> 9/12 + 3
 abstained); trust is f(state, intervention) with an 8.4x measured
 contrast; on RLCDAlignBench our open readout reaches 0.726 median AUROC
-and beats the commercial Jev detector's zero-shot numbers on 11/41
-benchmarks. Every claim traces to a versioned artifact in `benchmarks/`.
+and is above the commercial Jev detector's published zero-shot numbers
+on 11 of 41 benchmarks. Every claim traces to a versioned artifact in `benchmarks/`.
 
 ## Citation
 
@@ -313,7 +313,7 @@ Three rungs, each with one recorded reason to exist (no spectrum theater):
 |---|---|---|---|---|---|
 | **lite** | 8.5M | 1,024 char-level | ~17 MB | **<500 MB, CPU, millisecond latency** | Protocol/audit research at $0: agent, chat, decision layer, replay verification |
 | **mid** (v5.33) | 360M | 32,768 BPE (HeliosBPE, T31) | ~720 MB | ~1.5 GB, CPU-runnable inference | **Scale validation**: separate toy artifacts from scale-invariant findings (acceptance oracles T32; GPU training run pending) |
-| **full** | DeepSeek-V3/Kimi-K3-class spec | 160,000 | fp8 still needs hundreds of GB HBM | H200/B200-class servers | Architecture decision reference (MLA + MoE + FP8 + MTP), not a local target |
+| **full** | Frontier-scale MLA + MoE spec | 160,000 | fp8 still needs hundreds of GB HBM | H200/B200-class servers | Architecture decision reference (MLA + MoE + FP8 + MTP), not a local target |
 
 Any intermediate size is constructible by explicit field overrides --
 caller-provided non-None values always win over presets and are validated
@@ -346,8 +346,8 @@ python helioslm_v5/tests/test_review_fixes.py       # T87 review fixes: deferred
 python helioslm_v5/tests/test_calibration_board.py  # T88 calibration leaderboard: metric oracles + byte-exact board rebuild
 python helioslm_v5/tests/test_std_bench.py          # T89 GSM8K/HumanEval harness: provenance, sandbox, reference gates, mock API run
 python helioslm_v5/tests/test_term_bench.py         # T90 terminal sandbox tasks: references, trap rejection, sandbox limits, mock agent run
-python helioslm_v5/tests/test_k3_block.py           # T91 K3 block preset: Gated MLA bitwise oracle, K3 layer order, decode == full
-python helioslm_v5/tests/test_csa.py                # T92 CSA compress-then-select: dense reduction, slow-reference equality, V4 stack preset
+python helioslm_v5/tests/test_k3_block.py           # T91 hybrid block preset: Gated MLA bitwise oracle, layer order, decode == full
+python helioslm_v5/tests/test_csa.py                # T92 CSA compress-then-select: dense reduction, slow-reference equality, full-stack preset
 python helioslm_v5/tests/test_csa_learned.py        # T93 CSA learned compressor: starts as mean pooling, masked softmax, stored-weight re-evaluation
 python helioslm_v5/tests/test_csa_learned_h64.py    # T94 learned compressor round 2: 16x re-evaluation, oracle ceiling, artifact-sized --check
 python helioslm_v5/tests/test_csa_learned_r3.py     # T95 learned compressor round 3: 4x re-evaluation beats round 2, relu2 option
@@ -356,7 +356,6 @@ python helioslm_v5/tests/test_swe_bench.py          # T97 mini SWE tasks: per-ta
 python helioslm_v5/tests/test_stop_calibration.py   # T98 知止 stop metrics: false DONE, tested-before-done, trap = false DONE
 python helioslm_v5/tests/test_tool_recovery.py      # T99 tool-call recovery: 7 repairs, never-repaired classes, 3000-case fuzz
 python helioslm_v5/tests/test_swe_agent_rl.py       # T100 agent RL on the SWE sandbox: GRPO action_mask, env semantics, rollouts
-python helioslm_v5/tests/test_qwen_next.py          # T101 Qwen Q1-Q5: GDA short conv, zero-centered norm, global-batch balance, preset, MTP gate
 python helioslm_v5/tests/test_grpo_u1.py           # T102 U1 GRPO options: defaults bit-identical, token-level loss, filtering, TIS, clip-higher
 python helioslm_v5/tests/test_first_k_dense.py      # T103 B2-3 dense first layers: default unchanged, layout, decode == full, routing stats exclude dense
 python helioslm_v5/tests/test_mhc_sinkhorn.py       # T104 B2-4 learnable mHC: identity at init, doubly stochastic always, HC branch-fold regression
@@ -371,7 +370,7 @@ python helioslm_v5/tests/test_thinking_budget.py    # T112 U2 thinking budget: f
 python helioslm_v5/tests/test_repo_longctx.py       # T113 AC4 repo-scale probe: task generator, causality of every arm, all-SWA receptive-field oracle, A/B artifact
 python helioslm_v5/tests/test_zh_tokenizer_coverage.py  # T114 TW4 zh-TW tokenizer coverage: held-out split and leak check, UTF-8 / char-toy oracles, report artifact
 python helioslm_v5/tests/test_mopd.py               # T115 B2-6 MOPD: expected gradient = reverse-KL gradient, self-distillation zero, TROPD bound, routing, action mask, probe artifact
-python helioslm_v5/tests/test_quantile_balancing.py  # T116 Stable LatentMoE: K3 Quantile Balancing — histogram quantile, fixed-batch convergence, centring, summed-rank histograms, A/B artifact
+python helioslm_v5/tests/test_quantile_balancing.py  # T116 Stable LatentMoE: Quantile Balancing — histogram quantile, fixed-batch convergence, centring, summed-rank histograms, A/B artifact
 python helioslm_v5/tests/test_csa_learned_16x.py   # T117 16x CSA compressor by 4x->16x curriculum: state transfer, fine-tuned and zero-shot slices, ordering up to the oracle ceiling
 python helioslm_v5/tests/test_zh_train_speed.py    # T118 Chinese training speed: Big5/GB2312 seed lists, seeded BPE single tokens, bits-per-char metric, speed artifact
 python -m pytest helioslm_v5/tests/ -q --ignore=helioslm_v5/tests/test_v5.py  # full pytest suite
@@ -400,11 +399,11 @@ print(out)
 | **Cross-layer** | **Attention Residuals** — per-layer gated injection of accumulated lower-layer attention outputs, threaded through DualPipe (gradient-exact, bitwise-verified). |
 | **Agent** | v5.23 agent layer: strict tool-call schema/parser (16 error classes), deterministic sandboxed tools, trajectory bitwise-replay oracle, ground-truth-by-construction toy envs, routing gates (v5.22 decision-audit discipline); v5.26 real-model oracles (T15); v5.27 **tool-tuned checkpoint** trained on agent-loop replays (data format == inference by construction) — T17 end-to-end baseline parse 0.15 / finish 1/9, `sparse_top_k=4` ~= dense; hardened by real-model findings (TOOL_ERROR recovery, ASCII-safe docs) ; v5.29 three-modes benchmark with strict-monotone tau routing curves and a recorded overconfidence finding (max conf 0.925-0.944 on wrong answers), artifact oracles T19 |
 | **Chat** | v5.30: dual-mode protocol (plain text OR @@tool@@ block; text bypasses the gate, gate governs tools only), multi-turn ChatSession with transcript replay, chat SFT data with inference-identical prompts; v5.30.2 fixed a dataset filter bias that had hidden the text channel (mode-choice: text 11/20) — T20/T21 |
-| **Frontier references** | v5.31: five readable toy-scale references distilled from the 2026 frontier — manifold-constrained hyper-connections (DS-V4), HCA/CSA-style compressed attention with exact causality, long-horizon file env (8-14 steps), think-mode + experience reuse (Qwen3-Max direction), async GRPO with bitwise sync-parity (GLM-5 direction) — T22-T26 |
-| **Decision layer** | v5.32: typed decision primitives Choice/Score/Noul (System One / Jev direction) with schema enforcement, gate ask/ask_batch extension point, non-autoregressive DecisionHead answering K questions in one pass, outcome-targeted Brier calibration (RLCD direction; the label-targeted variant is provably redundant with CE — recorded) — T27/T28 ; v5.36 continuous Noul (P(yes), floor retired); v5.34 deterministic grounding (0/12 -> 9/12 + 3 abstained on a real 360M checkpoint, zero hallucination leakage); v5.37 TrustGate calibrated abstention + TherapyPair composition (trust is f(state, intervention) — 8.4x measured contrast); v5.38 RLCDAlignBench: our supervised TF-IDF readout median 0.726 AUROC, beats the commercial Jev detector's zero-shot numbers on 11/41 benchmarks (charts in benchmarks/charts/) — T27-T39 |
+| **Frontier references** | v5.31: five readable toy-scale references of 2026 techniques — manifold-constrained hyper-connections, HCA/CSA-style compressed attention with exact causality, long-horizon file env (8-14 steps), think-mode + experience reuse, async GRPO with bitwise sync-parity — T22-T26 |
+| **Decision layer** | v5.32: typed decision primitives Choice/Score/Noul (System One / Jev direction) with schema enforcement, gate ask/ask_batch extension point, non-autoregressive DecisionHead answering K questions in one pass, outcome-targeted Brier calibration (RLCD direction; the label-targeted variant is provably redundant with CE — recorded) — T27/T28 ; v5.36 continuous Noul (P(yes), floor retired); v5.34 deterministic grounding (0/12 -> 9/12 + 3 abstained on a real 360M checkpoint, zero hallucination leakage); v5.37 TrustGate calibrated abstention + TherapyPair composition (trust is f(state, intervention) — 8.4x measured contrast); v5.38 RLCDAlignBench: our supervised TF-IDF readout median 0.726 AUROC, above the commercial Jev detector's published zero-shot numbers on 11 of 41 benchmarks (charts in benchmarks/charts/) — T27-T39 |
 | **Benchmarks** | Top-10 LLM position paper with verified leaderboard data and the calibration/replay axes no vendor publishes (`helioslm_v5/docs/benchmark_top5_2026-09-27.md`); probe suite (toy + file-env + chat) with scripted oracles, runnable against any API |
 | **Disaggregation** | v5.25 Mooncake-style prefill/decode module behind a monotonicity gate; v5.28 three-axis **Pareto sweep** (makespan / workers / worker-seconds) with latency-cost curves per workload — cache-aware anti-monotonicity recorded as a structural finding, not hidden |
-| **Speculative decoding** | DeepSeek-style MTP with **strict verification** (residual (p−q)₊ resampling), batch support, O(1) cache-truncation rollback; hybrid recurrent-state rollback via restore+replay. |
+| **Speculative decoding** | Multi-token prediction (MTP) with **strict verification** (residual (p−q)₊ resampling), batch support, O(1) cache-truncation rollback; hybrid recurrent-state rollback via restore+replay. |
 | **Serving** | vLLM-style engine: paged KV accounting, copy-on-write forks, watermark-aligned continuous batching. |
 | **Training** | FP8 trainer (native float8 + STE, E5M2 gradient hooks, AdamW master weights), DualPipe schedule simulation (recompute-based, gradient-exact), GRPO (real sampling, k3 KL, answer-extraction rewards), Muon optimizer (Newton–Schulz orthogonalized momentum, optional per-head blocks), QAT straight-through fake-quant training. |
 | **Adaptation** | `AdaptationLoop`: transferred harnesses must be re-accepted under the target workload's gate or dropped; cold/prefix-free targets shed draft+pool, matching the v5.16 break-even data |
@@ -478,12 +477,12 @@ As of 2026-10-31:
 - **No trained product weights yet.** The checkpoints in this repo are toy
   and pilot models; the deployment series below are a plan until each
   generation is trained and passes its pre-registered evaluation.
-- **kimi-k3 GGUF files need a recent runtime.** llama.cpp has the `kimi-k3`
-  architecture since f5027fb; Ollama builds that bundle an older llama.cpp
-  cannot load them. `deepseek2` files load everywhere.
+- **Hybrid-attention GGUF files need a recent runtime.** They use llama.cpp's
+  `kimi-k3` architecture id, available since f5027fb; Ollama builds that bundle an older llama.cpp
+  cannot load them. Files with the `deepseek2` architecture id load everywhere.
 - **The older HeliosBPE tokenizer stays token-id only** in llama.cpp (no
   equivalent pre-tokenizer); byte-level BPE `tokenizer.json` files embed fine.
-- **Q4_K at non-256 widths falls back to Q8_0** for most kimi-k3 tensors (pilot
+- **Q4_K at non-256 widths falls back to Q8_0** for most hybrid-attention tensors (pilot
   width 640); real model widths are multiples of 256.
 - **`moe.dispatch="grouped"` is not the default** until it is measured on a
   GPU; `batched` stays the default.
@@ -526,7 +525,7 @@ As of 2026-10-31:
 
 The last five releases; every earlier release is in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md).
 
-- **v5.227** — `Qwen/Qwen3.6-35B-A3B` (Apache 2.0, pinned from a live licence fetch) joins the distillation teacher whitelist as `qwen3.6-35b-a3b`, a teacher that fits one GPU
+- **v5.227** — a single-GPU open-weight teacher (Apache 2.0, licence pinned from a live fetch) joins the distillation teacher whitelist
 - **v5.226** — Q3_K quant (`package_hf.py --quants L-Edge=q3_k`, imatrix-aware) for a smaller CPU-tier L-Edge file
 - **v5.225** — daily-maintenance round: six more pytest-only sidecar suites (handover-resume T87, rephrase v5.206, MCQ reward v5.207, grounded report v5.214, report abstain v5.216, PulmoGuard gate v5.218) folded into the mandated daily gate with drift-guarded wrappers, plus a sidecar coverage meta-guard that fails loudly the day any `tests/test_*.py` file is neither folded nor explicitly exempted; `model_name` recalibrated from the v5.201 drift to the changelog head
 - **v5.224** — tier packages for chat models that think before answering (`package_hf.py --reasoning`): llama.cpp commands default to `--reasoning-budget 0` (direct answers), with a note on turning thinking on
@@ -566,7 +565,7 @@ HeliosLM aims to evolve from a verifiable, modifiable LLM research stack into an
 | **v5.0 — Pro / Enterprise** | HeliosLM Pro | **300B** | ~20B | MoE | Multimodal/long-context R&D, enterprise pilot, distributed serving |
 | **v6.0 — Frontier** | HeliosLM Frontier | **1T (1,000B)** | ~40B | MoE | Frontier research candidate; competitive performance on defined evaluations |
 
-These are **stretch targets, not mandatory training commitments**. A version may ship with a smaller verified model if quality, economics or safety gates are not met. The 1T target is contingent on major external funding, training data rights, infrastructure and distributed-systems validation; matching parameter count alone does not imply matching DeepSeek, Kimi, OpenAI or Anthropic capabilities.
+These are **stretch targets, not mandatory training commitments**. A version may ship with a smaller verified model if quality, economics or safety gates are not met. The 1T target is contingent on major external funding, training data rights, infrastructure and distributed-systems validation; matching parameter count alone does not imply matching the capabilities of any existing frontier model.
 
 ### Deployment series (proposed, 2026-10-23)
 
@@ -594,7 +593,7 @@ Each generation above is trained once; the deployment series below are cut from 
 | **C8** | one 8-GPU NVLink node | 100B-A10B; 300B-A20B | FP8 | 100 GB; 300 GB | Reasoning and code agents, private deployment; expert parallelism inside the node | v4.0, v5.0 |
 | **CX** | 8× B200 and up, multi-node or NVL72 | 1T-A40B | FP8 or MXFP4 | 1,000 GB; 530 GB | Flagship; prefill/decode disaggregation, cross-node experts | v6.0 |
 
-Context sizes assume the default MLA cache (latent 512 + RoPE 64, about 37 KB per token for a 3B model); plain 8-head GQA needs about 3.5x more. The local series need checkpoints that llama.cpp-family runtimes can load: `src/export/gguf.py` writes Q8_0 / Q4_K blocks since v5.122, and since v5.130 `src/export/llamacpp.py` writes a model as llama.cpp's `deepseek2` architecture when `llamacpp_incompatibilities(config)` is empty (no KDA, NoPE, cross-layer KV, LatentMoE, per-layer embeddings or conv layers). Since v5.135, passing the pretraining `tokenizer.json` embeds the vocabulary, so llama.cpp and Ollama take text; the older HeliosBPE (space-only splitting) has no llama.cpp equivalent and stays id-only. Since v5.142, hybrid KDA + MLA and K3-block configs export as llama.cpp's `kimi-k3` architecture instead of being refused (`llamacpp_arch(config)` picks `deepseek2` or `kimi-k3`). A series whose source generation is still gated (v4.0 and later) inherits that gate.
+Context sizes assume the default MLA cache (latent 512 + RoPE 64, about 37 KB per token for a 3B model); plain 8-head GQA needs about 3.5x more. The local series need checkpoints that llama.cpp-family runtimes can load: `src/export/gguf.py` writes Q8_0 / Q4_K blocks since v5.122, and since v5.130 `src/export/llamacpp.py` writes a model as llama.cpp's `deepseek2` architecture when `llamacpp_incompatibilities(config)` is empty (no KDA, NoPE, cross-layer KV, LatentMoE, per-layer embeddings or conv layers). Since v5.135, passing the pretraining `tokenizer.json` embeds the vocabulary, so llama.cpp and Ollama take text; the older HeliosBPE (space-only splitting) has no llama.cpp equivalent and stays id-only. Since v5.142, hybrid KDA + MLA and hybrid-block configs export as llama.cpp's `kimi-k3` architecture instead of being refused (`llamacpp_arch(config)` picks `deepseek2` or `kimi-k3`). A series whose source generation is still gated (v4.0 and later) inherits that gate.
 
 **Status of the local series (2026-10-29)**
 
@@ -613,7 +612,7 @@ Context sizes assume the default MLA cache (latent 512 + RoPE 64, about 37 KB pe
 
 | Version | Packages (tiers) | Quantizations | Status |
 | --- | --- | --- | --- |
-| **Route-B pilot** (Taiwanese continued pretraining of Gemma 4 E2B) | L8, L16 | Q4_K_M + Q8_0 (L8); F16 + Q4_K_M (L16) | pilot B0 training on public data; packaged with `examples/package_hf.py` once it passes (TMMLU+ above its base, C-Eval / CMMLU within 2 points) |
+| **Route-B pilot** (Taiwanese continued pretraining of Gemma 4 E2B) | L8, L16 | Q4_K_M + Q8_0 (L8); F16 + Q4_K_M (L16) | pilot B0 training on public data; packaged with `examples/package_hf.py` once it passes its predeclared evaluation gates |
 | **v1.0** Lite 0.5B | L-Edge | Q4_K + Q8_0 | 開發中, not trained |
 | **v2.0** Base 3B | L8, L16 | Q4_K + Q8_0; F16 + Q4_K | 開發中, not trained |
 | **v3.0** MoE 30B-A3B | L16 (experts in RAM), L24, L48+, L128 | Q4_K; Q8_0 / F16 | 開發中, not trained |
@@ -660,7 +659,7 @@ Context sizes assume the default MLA cache (latent 512 + RoPE 64, about 37 KB pe
 - **Local RTX 4060:** development, CPU/CUDA oracles, tiny-model training and CI reproduction.
 - **On-demand RTX PRO 6000 Blackwell 96GB:** prototyping, fine-tuning/quantized inference for suitably sized models, memory and performance measurements; **not** a single-GPU path to training 300B–1T models.
 - **Multi-GPU clusters:** only after measured throughput, interconnect, memory, data, reliability and cost justify the scale.
-- **Independent model + optional external APIs:** research open architectures (including DeepSeek/Kimi ideas) while using properly licensed OpenAI/Anthropic or other APIs for routing/benchmarks where permitted. Do not present external model output as an independently trained HeliosLM model or assume API outputs may be used for competitive training.
+- **Independent model + optional external APIs:** research open architectures while using properly licensed OpenAI/Anthropic or other APIs for routing/benchmarks where permitted. Do not present external model output as an independently trained HeliosLM model or assume API outputs may be used for competitive training.
 
 ### Roadmap governance
 
