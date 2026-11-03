@@ -290,9 +290,11 @@ def to_verilog(top, start, files, order, info, texts, tool,
             f.write_text(hp.drop_translate_off(t), encoding="utf-8")
         inc = [f"-I{d}" for d in hp.include_dirs(files, info)]
         out = Path(tmp, "out.v")
-        code, log = hp._run([tool["sv2v"], "-DSYNTHESIS", *inc,
-                             f"--top={top}", f"--write={out}", *order],
-                            src, timeout)
+        cmd = [tool["sv2v"], "-DSYNTHESIS", *inc, f"--top={top}",
+               f"--write={out}", *order]
+        code, log = hp._run(cmd, src, timeout)
+        if code and "Resource temporarily unavailable" in log:
+            code, log = hp._run(cmd, src, timeout)   # GHC thread limit: once more
         if code or not out.exists():
             return None, "sv2v: " + hp._first_error(log)
         return out.read_text(encoding="utf-8", errors="replace"), None
@@ -470,6 +472,25 @@ def build(root, *, seed=0, per_ip=10, max_tasks=200, manifest=None,
 
 # ----------------------------------------------------------------- score
 
+_HOLE = re.compile(r"^([ \t]*)// TODO: one \w+ block was removed here; restore it\n", re.M)
+
+
+def splice(task, code):
+    """A ``complete`` answer that holds only the missing block (no
+    ``module``): the task file with the TODO comment replaced by it.
+    None for a ``bugfix`` task or an empty answer."""
+    if task["kind"] != "complete" or not code.strip():
+        return None
+    m = _HOLE.search(task["prompt_text"])
+    if not m:
+        return None
+    body = code.strip("\n")
+    if "// TODO: one" in body:          # the model echoed the comment
+        body = "\n".join(ln for ln in body.splitlines() if "// TODO: one" not in ln)
+    t = task["prompt_text"]
+    return t[:m.start()] + body + "\n" + t[m.end():]
+
+
 class Scorer:
     """Scores answers against one checkout; caches each task's gold."""
 
@@ -496,9 +517,13 @@ class Scorer:
         model answer."""
         code = hb.extract_code(answer_text)
         res = {"synth": False, "pass": False, "error": None}
+        res["spliced"] = False
         if "module" not in code:
-            res["error"] = "no module in answer"
-            return res
+            spliced = splice(task, code)
+            if spliced is None:
+                res["error"] = "no module in answer"
+                return res
+            code, res["spliced"] = spliced, True
         files, order = self._closure(task)
         gate, err = to_verilog(task["top"], task["path"], files, order,
                                self.info, self.texts, self.tool, replace=code)
