@@ -9,7 +9,12 @@
   python examples/ot_bugfix_run.py score --tasks ot_tasks.jsonl \\
       --ot /workspace/opentitan --samples e4b_it.samples.json --out e4b_it.json
 
-``build`` checks out the pinned OpenTitan commit when ``--ot`` is empty.
+  python examples/ot_bugfix_run.py pairs --ot /workspace/opentitan \\
+      --tasks ot_tasks.jsonl --docs stack.jsonl --out edit_pairs.jsonl
+
+``pairs`` (v5.231) writes edit / repair SFT records (``system``,
+``prompt``, ``response``) for ``examples/sft_hf.py`` from files outside
+every evaluation IP. ``build`` checks out the pinned OpenTitan commit when ``--ot`` is empty.
 ``generate`` reuses ``hdl_eval_all.vllm_generate`` (chat template,
 greedy by default) and writes {task id: [answers]}. ``score`` writes the
 per-task results and the summary (by kind, seen/unseen split, operator).
@@ -43,6 +48,35 @@ def cmd_build(a):
         for t in tasks:
             f.write(json.dumps(t, ensure_ascii=False) + "\n")
     print(f"build: {len(tasks)} tasks in {time.time() - t0:.0f}s -> {a.out}")
+
+
+def cmd_pairs(a):
+    """Edit / repair SFT records (v5.231) from OpenTitan files outside the
+    evaluation tasks' IPs, plus packed project documents (``--docs``,
+    jsonl with a ``text`` field, e.g. the H5 data)."""
+    import random
+    ips, paths = ob.eval_exclusions(read_tasks(a.tasks))
+    texts = ob.repo_texts(ob.checkout(a.ot))
+    recs = ob.edit_pairs(texts, exclude_ips=ips, exclude_paths=paths,
+                         per_file=a.per_file, seed=a.seed)
+    n_ot = len(recs)
+    for path in a.docs or []:
+        for i, line in enumerate(Path(path).read_text().splitlines()):
+            if not line.strip():
+                continue
+            files = ob.split_packed(json.loads(line).get("text", ""))
+            # project files only; an OpenTitan path is already covered
+            files = {f"{Path(path).stem}/{i}/{k}": v for k, v in files.items()
+                     if not k.startswith("hw/ip/")}
+            recs += ob.edit_pairs(files, per_file=a.per_file,
+                                  seed=a.seed + i + 1, source=Path(path).stem)
+    random.Random(a.seed).shuffle(recs)
+    recs = recs[:a.max_records]
+    with open(a.out, "w") as f:
+        for r in recs:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    print(f"pairs: {len(recs)} records ({n_ot} from OpenTitan before the cap; "
+          f"{len(ips)} eval IPs excluded) -> {a.out}")
 
 
 def cmd_generate(a):
@@ -89,6 +123,15 @@ def main(argv=None):
     b.add_argument("--per-ip", type=int, default=10)
     b.add_argument("--max-tasks", type=int, default=200)
     b.add_argument("--workers", type=int, default=8)
+    pr = sub.add_parser("pairs", help="edit / repair SFT records (v5.231)")
+    pr.add_argument("--ot", default="data/opentitan")
+    pr.add_argument("--tasks", required=True,
+                    help="evaluation tasks: their IPs and files are excluded")
+    pr.add_argument("--docs", nargs="*", help="packed project jsonl files")
+    pr.add_argument("--per-file", type=int, default=2)
+    pr.add_argument("--max-records", type=int, default=20000)
+    pr.add_argument("--seed", type=int, default=0)
+    pr.add_argument("--out", default="edit_pairs.jsonl")
     g = sub.add_parser("generate")
     g.add_argument("--tasks", required=True)
     g.add_argument("--model", required=True)
@@ -106,7 +149,8 @@ def main(argv=None):
     s.add_argument("--out", required=True)
     s.add_argument("--workers", type=int, default=8)
     a = ap.parse_args(argv)
-    {"build": cmd_build, "generate": cmd_generate, "score": cmd_score}[a.cmd](a)
+    {"build": cmd_build, "pairs": cmd_pairs, "generate": cmd_generate,
+     "score": cmd_score}[a.cmd](a)
 
 
 if __name__ == "__main__":

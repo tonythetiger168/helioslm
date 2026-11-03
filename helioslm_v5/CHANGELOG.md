@@ -1,5 +1,19 @@
 # HeliosLM v5 Changelog
 
+## v5.231 (2026-11-03) - Edit / repair SFT pairs for the HDL model
+
+The OpenTitan bench (v5.228) showed the HDL H4 RL model has lost the
+skill of editing an existing file: on 179 tasks it passed 3% against 23%
+for stock Gemma 4 E4B-it, and 0 bug fixes, because it rewrites each
+module from scratch and drops the package imports and header.
+`ot_bugfix_bench.edit_pairs` builds SFT records for that skill: a seeded
+`bugfix` / `complete` mutation of a real single-module file as the
+prompt (the benchmark's own wording) and the whole original file as the
+response between [BEGIN] and [DONE]. Every IP and file an evaluation
+task uses is excluded (`eval_exclusions`). `split_packed` reads packed
+project documents (H5 data), so The Stack / GitHub projects add pairs
+too. CLI: `examples/ot_bugfix_run.py pairs`. T169 item 8.
+
 ## v5.230 (2026-11-03) - OT bug-fix bench: snippet answers for completion, sv2v retry
 
 First pod run (179 tasks): 73 of stock Gemma 4 E4B-it's answers to

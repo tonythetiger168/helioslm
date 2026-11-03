@@ -244,14 +244,16 @@ def mutate(text, kind, rng):
 
 
 def prompt(task):
+    """The user message for a task (also the SFT prompt of ``edit_pairs``)."""
     if task["kind"] == "bugfix":
         ask = (f"This file has exactly one bug: {SYMPTOM[task['op']]}. "
                "Fix it.")
     else:
         ask = ("One block of this file was removed and replaced by a "
                "`// TODO` comment. Write it back so the module works.")
-    return (f"The file below is `{task['path']}` from the OpenTitan "
-            f"`{task['ip']}` IP. {ask} Return the complete corrected file "
+    return (f"The file below is `{task['path']}` from the "
+            f"{task.get('origin', 'OpenTitan')} `{task['ip']}` IP. {ask} "
+            "Return the complete corrected file "
             "between [BEGIN] and [DONE], with no other changes.\n\n"
             f"```systemverilog\n{task['prompt_text']}```\n")
 
@@ -580,3 +582,69 @@ def have_tools(tool=None):
     tool = tool or tools()
     return bool(tool.get("yosys") and tool.get("sv2v")
                 and shutil.which("git"))
+
+
+# ------------------------------------------------- edit / repair SFT pairs
+
+_FILE_HDR = re.compile(r"^// file: (\S+)\n", re.M)
+
+
+def split_packed(doc):
+    """{path: text} of an ``hdl_projects.pack`` document."""
+    heads = list(_FILE_HDR.finditer(doc))
+    return {m.group(1): doc[m.end():(heads[i + 1].start() if i + 1 < len(heads)
+                                     else len(doc))].rstrip() + "\n"
+            for i, m in enumerate(heads)}
+
+
+def single_module_files(texts, min_chars=200, max_chars=MAX_CHARS):
+    """[(path, module)] of design files that define exactly one module."""
+    info, _ = hp.index(texts)
+    out = []
+    for p, t in texts.items():
+        if not p.endswith((".sv", ".v")) or hp.TB_PATH.search(p) \
+                or not (min_chars <= len(t) <= max_chars):
+            continue
+        defs = info[p]["defs"]
+        if len(defs) == 1 and defs[0][0] in ("module", "macromodule"):
+            out.append((p, defs[0][1]))
+    return sorted(out)
+
+
+def edit_pairs(texts, *, exclude_ips=(), exclude_paths=(), per_file=2,
+               seed=0, source="opentitan"):
+    """SFT records teaching the skill this benchmark measures (v5.231):
+    a seeded ``bugfix`` / ``complete`` mutation of a real file as the
+    prompt (the same wording as the benchmark) and the whole original
+    file as the response, between [BEGIN] and [DONE]. No tool check: the
+    target is always the original file. Files of ``exclude_ips``
+    (``hw/ip/<ip>/``) and ``exclude_paths`` are skipped, so nothing an
+    evaluation task uses is trained on."""
+    rng = random.Random(seed)
+    skip = set(exclude_paths)
+    recs = []
+    for p, mod in single_module_files(texts):
+        m = re.match(r"hw/ip/([^/]+)/", p)
+        if p in skip or (m and m.group(1) in exclude_ips):
+            continue
+        ip = m.group(1) if m else Path(p).parent.name or source
+        kinds = list(KINDS)
+        rng.shuffle(kinds)
+        for kind in kinds[:per_file]:
+            mut = mutate(texts[p], kind, rng)
+            if not mut:
+                continue
+            task = {"kind": kind, "op": mut["op"], "path": p, "ip": ip,
+                    "prompt_text": mut["text"],
+                    "origin": "OpenTitan" if source == "opentitan" else "open-source"}
+            recs.append({"system": SYSTEM, "prompt": prompt(task),
+                         "response": f"[BEGIN]\n{texts[p]}[DONE]",
+                         "source": source, "path": p, "kind": kind,
+                         "op": mut["op"]})
+    return recs
+
+
+def eval_exclusions(tasks):
+    """(ips, paths) of an evaluation task list: every IP and file the
+    benchmark uses, to keep out of training."""
+    return ({t["ip"] for t in tasks}, {t["path"] for t in tasks})

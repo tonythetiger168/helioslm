@@ -16,7 +16,10 @@ Pins:
    mutant is not equivalent, the original file scores as a pass and the
    mutant as a fail (skipped without the tools);
 7. v5.230 ``splice``: a ``complete`` answer holding only the missing
-   block is put in place of the TODO comment (never for ``bugfix``).
+   block is put in place of the TODO comment (never for ``bugfix``);
+8. v5.231 ``edit_pairs``: SFT records (mutated file -> whole original)
+   skip every evaluation IP and file, are seeded, and also come from
+   packed project documents (``split_packed``).
 
 Plain functions, no pytest fixtures (folded into the daily gate).
 Run from repo root: python3 -m pytest helioslm_v5/tests/test_ot_bugfix_bench.py
@@ -193,3 +196,27 @@ def test_splice_snippet_answers():
     assert out.count("module") == m["text"].count("module")
     assert ob.splice(dict(task, kind="bugfix"), snippet) is None
     assert ob.splice(task, "  \n") is None
+
+
+def test_edit_pairs_exclude_eval_ips():
+    texts = {"hw/ip/toy/rtl/toy_cnt.sv": TOY,
+             "hw/ip/other/rtl/other_cnt.sv": TOY.replace("toy_cnt", "other_cnt"),
+             "hw/ip/prim/rtl/prim_cnt.sv": TOY.replace("toy_cnt", "prim_cnt")}
+    tasks = [{"ip": "toy", "path": "hw/ip/toy/rtl/toy_cnt.sv"}]
+    ips, paths = ob.eval_exclusions(tasks)
+    recs = ob.edit_pairs(texts, exclude_ips=ips, exclude_paths=paths,
+                         per_file=2, seed=0)
+    assert {r["path"] for r in recs} == {"hw/ip/other/rtl/other_cnt.sv",
+                                         "hw/ip/prim/rtl/prim_cnt.sv"}
+    assert len(recs) == 4 and {r["kind"] for r in recs} == set(ob.KINDS)
+    for r in recs:
+        assert r["response"] == f"[BEGIN]\n{texts[r['path']]}[DONE]"
+        assert "[BEGIN]" in r["prompt"] and r["system"] == ob.SYSTEM
+        assert texts[r["path"]] not in r["prompt"]       # the prompt is mutated
+    assert recs == ob.edit_pairs(texts, exclude_ips=ips, exclude_paths=paths,
+                                 per_file=2, seed=0)
+    doc = hp.pack("p", ["a/x.v", "a/y.v"], {"a/x.v": TOY, "a/y.v": "// y\n"})
+    files = ob.split_packed(doc)
+    assert files["a/x.v"].strip() == TOY.strip() and files["a/y.v"] == "// y\n"
+    other = ob.edit_pairs(files, source="stack")
+    assert other and "open-source `a` IP" in other[0]["prompt"]

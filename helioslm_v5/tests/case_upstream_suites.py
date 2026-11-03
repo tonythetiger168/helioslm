@@ -425,7 +425,7 @@ def test_grounded_report_suite():
     m.test_summarize()
     m.test_runner_stub()
     _pass("test_grounded_report_suite",
-          f"v5.214 grounded report: all 10 sidecar tests (incl. "
+          f"v5.214 grounded report: all 11 sidecar tests (incl. "
           f"{len(m.CASES)} fixture cases and 5 schema refusals) under "
           f"the daily gate")
 
@@ -734,12 +734,12 @@ def test_ot_bugfix_bench_suite():
                 "test_complete_masks_one_block", "test_always_end_follows_else",
                 "test_prompt_asks_for_whole_file", "test_candidates_and_seen_ips",
                 "test_summarize_groups", "test_build_and_score_with_tools",
-                "test_splice_snippet_answers"}
+                "test_splice_snippet_answers", "test_edit_pairs_exclude_eval_ips"}
     _drift_guard(m, expected)
     for name in sorted(expected):
         getattr(m, name)()
     _pass("test_ot_bugfix_bench_suite",
-          "v5.228 OpenTitan bug-fix bench: all 10 sidecar tests under the "
+          "v5.228 OpenTitan bug-fix bench: all 11 sidecar tests under the "
           "daily gate")
 
 # ---------------------------------------------------------------------------
