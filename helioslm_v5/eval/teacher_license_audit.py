@@ -221,6 +221,20 @@ REVIEWS.update({
         ],
     },
 })
+# 2026-11-03: Qwen3.6-35B-A3B (35B total / 3B active) as a small
+# self-hosted teacher that fits one 80-141 GB GPU with vLLM. LICENSE read
+# from a live fetch of the Hub (revision 995ad96e): the standard Apache 2.0
+# text with "Copyright 2026 Alibaba Cloud" in the appendix; no NOTICE
+# file, nothing on outputs or on training other models.
+REVIEWS.update({
+    "Qwen/Qwen3.6-35B-A3B": {
+        "reviewed_sha256": "50cbab8a892c5f2993b8c7351a99182507472def3b1374558308605d99b86b32",
+        "license": "Apache-2.0 (Copyright 2026 Alibaba Cloud)",
+        "verdict": "allowed",
+        "conditions": ["keep the licence and copyright notice (s.4)",
+                       "trademarks not licensed (s.6)"],
+    },
+})
 TEACHERS = tuple(r for r, v in REVIEWS.items()
                  if v["reviewed_sha256"] != PENDING)
 PENDING_TEACHERS = tuple(r for r, v in REVIEWS.items()
