@@ -1,5 +1,16 @@
 # HeliosLM v5 Changelog
 
+## v5.232 (2026-11-03) - Thinking switch for Qwen-family vLLM teachers
+
+`distill_gen` sent only `chat_template_kwargs={"thinking": ...}` to a
+self-hosted vLLM teacher. That key is what DeepSeek chat templates read;
+Qwen templates read `enable_thinking`, so with `--no-thinking` the
+Qwen3.6-35B-A3B teacher still wrote a "Thinking Process" preamble into
+the answer text, ran into `max_tokens` on most subtopic-list prompts, and
+`extract` could parse only 20-35% of them. `template_kwargs()` now sends
+both keys (Jinja ignores the one a template does not use);
+`distill_agent.agent_config` does the same.
+
 ## v5.231 (2026-11-03) - Edit / repair SFT pairs for the HDL model
 
 The OpenTitan bench (v5.228) showed the HDL H4 RL model has lost the
