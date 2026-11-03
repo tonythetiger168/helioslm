@@ -194,7 +194,7 @@ def agent_config(model, temperature=0.6, max_tokens=4096, thinking=True, endpoin
     cfg = {"provider": "teacher", "model": model, "temperature": temperature,
            "max_tokens": max_tokens}
     if endpoint == "vllm":
-        cfg["chat_template_kwargs"] = {"thinking": thinking}
+        cfg["chat_template_kwargs"] = {"thinking": thinking, "enable_thinking": thinking}
     return cfg
 
 

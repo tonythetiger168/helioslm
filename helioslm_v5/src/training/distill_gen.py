@@ -103,6 +103,18 @@ class Pricing:
         return self.token_cost(totals) + self.per_hour * seconds / 3600
 
 
+
+def template_kwargs(thinking):
+    """Chat-template switches for a self-hosted vLLM teacher.
+
+    DeepSeek templates read ``thinking``; Qwen templates read
+    ``enable_thinking`` (v5.232: with only ``thinking`` set, a Qwen teacher
+    kept writing its reasoning into the answer text). Jinja ignores unknown
+    variables, so both are sent.
+    """
+    return {"thinking": thinking, "enable_thinking": thinking}
+
+
 @dataclass
 class GenConfig:
     teacher: str = "deepseek-v4.1-flash"
@@ -129,8 +141,7 @@ class GenConfig:
                "temperature": self.temperature, "top_p": self.top_p,
                "max_tokens": self.max_tokens}
         if self.endpoint == "vllm":
-            # DeepSeek's chat template switches thinking on this kwarg
-            cfg["chat_template_kwargs"] = {"thinking": self.thinking}
+            cfg["chat_template_kwargs"] = template_kwargs(self.thinking)
         elif self.endpoint != "openai":
             raise ValueError("endpoint must be 'vllm' or 'openai'")
         elif not self.thinking:

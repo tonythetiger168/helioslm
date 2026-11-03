@@ -101,7 +101,7 @@ def test_request_shape_and_keep_thinking():
     req = g.request(p)
     c = req["header"]["config"]
     assert c["model"] == "deepseek-ai/DeepSeek-V4.1-Flash"
-    assert c["chat_template_kwargs"] == {"thinking": False}
+    assert c["chat_template_kwargs"] == {"thinking": False, "enable_thinking": False}
     assert "reasoning" not in req["messages"][1]
     assert msgs[1]["reasoning"] == "r1"                # caller's data untouched
     g_all = dg.Generator(cfg(keep_thinking="all"), complete=fake_teacher())
@@ -110,7 +110,7 @@ def test_request_shape_and_keep_thinking():
     c = api.request(p)["header"]["config"]
     assert c["model"] == "deepseek-chat" and "chat_template_kwargs" not in c
     wire = OpenAICompatAdapter.to_wire(g.request(p))
-    assert wire["chat_template_kwargs"] == {"thinking": False} and "provider" not in wire
+    assert wire["chat_template_kwargs"] == {"thinking": False, "enable_thinking": False} and "provider" not in wire
     with pytest.raises(ValueError):
         dg.prompt_messages(msgs, "some")
     with pytest.raises(ValueError):
@@ -310,7 +310,7 @@ def test_cli_against_a_local_openai_server(tmp_path, capsys):
         cli.main(["generate", "--prompts", str(d / "meta.jsonl"), "--out",
                   str(d / "meta_ans.jsonl"), "--base-url", url, "--no-thinking",
                   "--workers", "2"])
-        assert all(b["chat_template_kwargs"] == {"thinking": False} for b in bodies)
+        assert all(b["chat_template_kwargs"] == {"thinking": False, "enable_thinking": False} for b in bodies)
         cli.main(["extract", "--answers", str(d / "meta_ans.jsonl"),
                   "--out", str(d / "prompts.jsonl")])
         prompts = dg.read_jsonl(str(d / "prompts.jsonl"))
@@ -322,7 +322,7 @@ def test_cli_against_a_local_openai_server(tmp_path, capsys):
         cli.main(["stats", "--answers", str(d / "ans.jsonl")])
         st = json.loads(capsys.readouterr().out)
         assert st["all"]["n"] == 6 and st["all"]["reasoning_estimated"] == 6
-        assert bodies[-1]["chat_template_kwargs"] == {"thinking": True}
+        assert bodies[-1]["chat_template_kwargs"] == {"thinking": True, "enable_thinking": True}
         assert bodies[-1]["model"] == "deepseek-ai/DeepSeek-V4.1-Flash"
     finally:
         srv.shutdown()
@@ -336,3 +336,8 @@ def test_openai_endpoint_thinking_off():
     assert "thinking" not in on
     over = dg.GenConfig(endpoint="openai", thinking=False, extra={"thinking": {"type": "enabled"}})
     assert over.body_config(dg.TEACHERS["deepseek-v4.1-flash"])["thinking"] == {"type": "enabled"}
+
+
+def test_template_kwargs_switch_both_template_families():
+    assert dg.template_kwargs(False) == {"thinking": False, "enable_thinking": False}
+    assert dg.template_kwargs(True) == {"thinking": True, "enable_thinking": True}
