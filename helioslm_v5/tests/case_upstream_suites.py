@@ -721,6 +721,26 @@ def test_data_guard_suite():
           "parametrized cases) under the daily gate")
 
 
+
+def test_ot_bugfix_bench_suite():
+    """v5.228 OpenTitan real-IP bug-fix / completion benchmark under the
+    daily gate. Pins mutation sites (never comments or the port header),
+    seeded single-site bugs, line-preserving masked blocks, the prompt,
+    candidate filtering, the H5-manifest seen split and the summary; the
+    tool-backed end-to-end case returns early without yosys / sv2v."""
+    from helioslm_v5.tests import test_ot_bugfix_bench as m
+    expected = {"test_mask_and_body_span", "test_bugfix_mutation_sites",
+                "test_mutate_is_seeded_and_single_site",
+                "test_complete_masks_one_block", "test_always_end_follows_else",
+                "test_prompt_asks_for_whole_file", "test_candidates_and_seen_ips",
+                "test_summarize_groups", "test_build_and_score_with_tools"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_ot_bugfix_bench_suite",
+          "v5.228 OpenTitan bug-fix bench: all 9 sidecar tests under the "
+          "daily gate")
+
 # ---------------------------------------------------------------------------
 # v5.225: sidecar coverage meta-guard. The folds above (and the earlier
 # v5.155 / 2026-10-29 rounds) were each discovered by HAND, days after
@@ -759,6 +779,8 @@ FOLDED_SIDECARS = {
     "test_lora": "test_lora_suite",
     "test_hsh_clinical": "test_hsh_clinical_suite",
     "test_data_guard": "test_data_guard_suite",
+    # v5.228 (2026-11-03): new sidecar, folded the day it landed
+    "test_ot_bugfix_bench": "test_ot_bugfix_bench_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for

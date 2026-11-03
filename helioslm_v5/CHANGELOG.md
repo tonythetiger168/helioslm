@@ -13,6 +13,24 @@ to `<out>.round0.samples.json`, per-round stats to `repair` in the
 result. `--thinking on|off` passes `enable_thinking` to the chat template
 (default: the template's own). Tests in `tests/test_hdl_train_eval.py`
 (item 5).
+## v5.228 (2026-11-03) - OpenTitan real-IP bug-fix / completion benchmark
+
+`eval/ot_bugfix_bench.py` + `examples/ot_bugfix_run.py` (build /
+generate / score). Tasks come from single-module `hw/ip/*/rtl/*.sv`
+files of OpenTitan at the H5 data commit (`ecedaa5a`) whose module
+passes sv2v + Yosys synth as its own top: `bugfix` (one seeded
+single-site bug: swapped operator, inverted `if`, off-by-one sized
+constant, flipped `'0`/`'1` reset or default value) and `complete` (one
+`assign` / `always` block replaced by a TODO comment, line count kept).
+A task is kept only when the original is proven equivalent to itself
+and a `bugfix` mutant still synthesises but is not proven equivalent.
+An answer passes when it synthesises and Yosys `equiv_make` /
+`equiv_simple -seq 8` / `equiv_induct -seq 8` / `equiv_status -assert`
+prove it equivalent to the original (timeouts and unproven count as
+fail, so the score is a lower bound). Tasks are tagged `seen` / `unseen`
+from the H5 data manifest (IPs that were passing training units).
+T169 in `tests/test_ot_bugfix_bench.py`, folded into the daily gate the
+day it landed (`case_upstream_suites.test_ot_bugfix_bench_suite`).
 
 ## v5.227 (2026-11-03) - Qwen3.6-35B-A3B as a one-GPU distillation teacher
 

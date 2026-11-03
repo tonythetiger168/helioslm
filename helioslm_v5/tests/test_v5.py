@@ -250,6 +250,8 @@ TESTS = [
     case_upstream_suites.test_lora_suite,
     case_upstream_suites.test_hsh_clinical_suite,
     case_upstream_suites.test_data_guard_suite,
+    # v5.228: OpenTitan bug-fix bench sidecar, folded the day it landed
+    case_upstream_suites.test_ot_bugfix_bench_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 
