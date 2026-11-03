@@ -1,5 +1,17 @@
 # HeliosLM v5 Changelog
 
+## v5.229 (2026-11-03) - HDL agent repair loop with open-tool feedback
+
+`examples/hdl_eval_all.py --repair-rounds N`: after the first
+generation, every VerilogEval / RTLLM sample whose extracted code fails
+`hdl_bench.tool_feedback` (iverilog compile of the answer alone, with
+the failure warnings the scorer counts; no testbench, so no expected
+outputs reach the model) is sent back with the tool messages as a
+multi-turn chat, up to N rounds. One vLLM engine (`VllmGen`) serves all
+rounds; `vllm_generate` keeps its signature. First-round generations go
+to `<out>.round0.samples.json`, per-round stats to `repair` in the
+result. Tests in `tests/test_hdl_train_eval.py` (item 5).
+
 ## v5.227 (2026-11-03) - Qwen3.6-35B-A3B as a one-GPU distillation teacher
 
 `eval/teacher_license_audit.py` pins `Qwen/Qwen3.6-35B-A3B` from a live

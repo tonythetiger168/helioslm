@@ -18,6 +18,11 @@ summary line. ``--model`` may also be a local checkpoint directory.
 ``uvm`` needs Verilator >= 5.052 and ``uvm_bench fetch`` + ``prepare``;
 its prompts get at least ``--uvm-new-tokens`` (a UVM testbench is long).
 ``--extra`` adds yosys gate counts (``area_ratio_mean``) to VerilogEval.
+``--repair-rounds N`` (v5.229) is the agent loop: a VerilogEval / RTLLM
+answer that fails an iverilog compile of the answer alone (no testbench,
+so no expected outputs leak) goes back to the model with the tool
+messages, up to N times; the first-round generations are saved to
+``<out>.round0.samples.json`` and the per-round stats under ``repair``.
 The raw generations are written to ``<out>.samples.json`` before any
 scoring, so a scoring failure never costs the GPU time (v5.179).
 """
@@ -105,38 +110,105 @@ def summary(res):
     return out
 
 
+def chat_prompt(tok, system, user):
+    """The rendered prompt. ``user`` is a string, or a list of chat
+    messages after the system one (multi-turn repair, v5.229)."""
+    msgs = user if isinstance(user, list) else [{"role": "user", "content": user}]
+    if not tok.chat_template:
+        return system + "\n" + "\n".join(m["content"] for m in msgs)
+    try:
+        return tok.apply_chat_template(
+            [{"role": "system", "content": system}, *msgs],
+            tokenize=False, add_generation_prompt=True)
+    except Exception:       # templates without a system role
+        first = dict(msgs[0], content=system + "\n\n" + msgs[0]["content"])
+        return tok.apply_chat_template([first, *msgs[1:]], tokenize=False,
+                                       add_generation_prompt=True)
+
+
+class VllmGen:
+    """One vLLM engine reused across generation rounds."""
+
+    def __init__(self, model, max_model_len, gpu_mem):
+        from vllm import LLM
+        self.llm = LLM(model=model, dtype="bfloat16", max_model_len=max_model_len,
+                       gpu_memory_utilization=gpu_mem, trust_remote_code=False)
+        self.tok = self.llm.get_tokenizer()
+        self.max_model_len = max_model_len
+
+    def __call__(self, jobs, n, temperature, top_p, max_new_tokens,
+                 uvm_new_tokens=None):
+        from vllm import SamplingParams
+        prompts, sps = [], []
+        for bench, _, system, user in jobs:
+            new = (max(max_new_tokens, uvm_new_tokens or 0) if bench == "uvm"
+                   else max_new_tokens)
+            sps.append(SamplingParams(n=n, temperature=temperature,
+                                      top_p=top_p if temperature > 0 else 1.0,
+                                      max_tokens=new))
+            ids = self.tok(chat_prompt(self.tok, system, user),
+                           add_special_tokens=False).input_ids
+            prompts.append({"prompt_token_ids": ids[-(self.max_model_len - new):]})
+        outs = self.llm.generate(prompts, sps)
+        return [[c.text for c in o.outputs] for o in outs]
+
+
 def vllm_generate(model, jobs, n, temperature, top_p, max_new_tokens,
                   max_model_len, gpu_mem, uvm_new_tokens=None):
-    from vllm import LLM, SamplingParams
-    llm = LLM(model=model, dtype="bfloat16", max_model_len=max_model_len,
-              gpu_memory_utilization=gpu_mem, trust_remote_code=False)
-    tok = llm.get_tokenizer()
-    def params(bench):
-        new = max(max_new_tokens, uvm_new_tokens or 0) if bench == "uvm" else max_new_tokens
-        return new, SamplingParams(n=n, temperature=temperature,
-                                   top_p=top_p if temperature > 0 else 1.0,
-                                   max_tokens=new)
-    prompts, sps = [], []
-    for bench, _, system, user in jobs:
-        new, sp = params(bench)
-        sps.append(sp)
-        if tok.chat_template:
-            try:
-                p = tok.apply_chat_template(
-                    [{"role": "system", "content": system},
-                     {"role": "user", "content": user}],
-                    tokenize=False, add_generation_prompt=True)
-            except Exception:       # templates without a system role
-                p = tok.apply_chat_template(
-                    [{"role": "user", "content": system + "\n\n" + user}],
-                    tokenize=False, add_generation_prompt=True)
-        else:
-            p = system + "\n" + user
-        ids = tok(p, add_special_tokens=False).input_ids
-        limit = max_model_len - new
-        prompts.append({"prompt_token_ids": ids[-limit:]})
-    outs = llm.generate(prompts, sps)
-    return [[c.text for c in o.outputs] for o in outs]
+    return VllmGen(model, max_model_len, gpu_mem)(
+        jobs, n, temperature, top_p, max_new_tokens, uvm_new_tokens)
+
+
+REPAIR_BENCHES = ("verilog-eval", "rtllm")
+REPAIR_ASK = ("The open-source tools reported these problems with your "
+              "answer:\n\n{feedback}\n\nFix them. Return the complete "
+              "corrected Verilog module, with no other text.")
+
+
+def repair(gen, jobs, outputs, rounds, check, benches=REPAIR_BENCHES,
+           temperature=0.0, top_p=1.0, max_new_tokens=2048, workers=8):
+    """Agent loop with open-tool feedback only (v5.229): every sample of
+    a ``benches`` job whose extracted code fails ``check`` (``hb.
+    tool_feedback``: compile alone, no testbench) is sent back to the
+    model with the tool messages, up to ``rounds`` times. Returns the new
+    outputs (same shape) and per-round stats {"round", "failing",
+    "fixed"}. ``gen(jobs, n, temperature, top_p, max_new_tokens)`` is a
+    ``VllmGen`` or any stand-in."""
+    from concurrent.futures import ThreadPoolExecutor
+    outputs = [list(o) for o in outputs]
+    hist = {}                                       # (job, sample) -> msgs
+    stats = []
+
+    def judge(text):
+        return check(hb.extract_code(text))
+    todo = [(i, j) for i, (b, _, _, _) in enumerate(jobs) if b in benches
+            for j in range(len(outputs[i]))]
+    with ThreadPoolExecutor(max(1, workers)) as ex:
+        verdict = dict(zip(todo, ex.map(lambda ij: judge(outputs[ij[0]][ij[1]]), todo)))
+        for r in range(1, rounds + 1):
+            failing = [ij for ij in todo if not verdict[ij]["ok"]]
+            if not failing:
+                stats.append({"round": r, "failing": 0, "fixed": 0})
+                break
+            rjobs = []
+            for i, j in failing:
+                b, k, system, user = jobs[i]
+                msgs = hist.get((i, j)) or [{"role": "user", "content": user}]
+                msgs = msgs + [
+                    {"role": "assistant", "content": outputs[i][j]},
+                    {"role": "user", "content": REPAIR_ASK.format(
+                        feedback=verdict[(i, j)]["feedback"] or "compile failed")}]
+                hist[(i, j)] = msgs
+                rjobs.append((b, k, system, msgs))
+            new = gen(rjobs, 1, temperature, top_p, max_new_tokens)
+            for (i, j), o in zip(failing, new):
+                outputs[i][j] = o[0]
+            again = list(ex.map(lambda ij: judge(outputs[ij[0]][ij[1]]), failing))
+            for ij, v in zip(failing, again):
+                verdict[ij] = v
+            stats.append({"round": r, "failing": len(failing),
+                          "fixed": sum(v["ok"] for v in again)})
+    return outputs, stats
 
 
 def main(argv=None):
@@ -161,6 +233,10 @@ def main(argv=None):
     ap.add_argument("--samples", default=None,
                     help="score the generations of an earlier <out>.samples.json "
                          "instead of generating (no GPU, v5.194)")
+    ap.add_argument("--repair-rounds", type=int, default=0,
+                    help="agent loop: resend answers that fail an iverilog "
+                         "compile (no testbench) with the tool messages, up "
+                         "to N times (VerilogEval / RTLLM, v5.229)")
     ap.add_argument("--workers", type=int, default=ub.cpu_limit(),
                     help="simulation jobs (default: the container's CPU limit)")
     a = ap.parse_args(argv)
@@ -175,14 +251,28 @@ def main(argv=None):
                          a.uvm_cache)
     t0 = time.time()
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+    if a.repair_rounds and a.samples:
+        ap.error("--repair-rounds needs the model (not --samples)")
+    repair_stats = None
     if a.samples:
         got = {(s["bench"], s["key"]): s["outputs"]
                for s in json.loads(Path(a.samples).read_text(encoding="utf-8"))}
         outputs = [got[(b, k)] for b, k, _, _ in jobs]
     else:
-        outputs = vllm_generate(a.model, jobs, a.n, a.temperature, a.top_p,
-                                a.max_new_tokens, a.max_model_len, a.gpu_mem,
-                                a.uvm_new_tokens)
+        gen = VllmGen(a.model, a.max_model_len, a.gpu_mem)
+        outputs = gen(jobs, a.n, a.temperature, a.top_p, a.max_new_tokens,
+                      a.uvm_new_tokens)
+        if a.repair_rounds:
+            first = outputs
+            Path(a.out).with_suffix(".round0.samples.json").write_text(
+                json.dumps([{"bench": b, "key": k, "outputs": o}
+                            for (b, k, _, _), o in zip(jobs, first)]) + "\n",
+                encoding="utf-8")
+            outputs, repair_stats = repair(
+                gen, jobs, outputs, a.repair_rounds, hb.tool_feedback,
+                temperature=a.temperature, top_p=a.top_p,
+                max_new_tokens=a.max_new_tokens, workers=a.workers)
+            print("repair:", json.dumps(repair_stats), flush=True)
     gen_s = time.time() - t0
     samples = [{"bench": b, "key": k, "outputs": o}
                for (b, k, _, _), o in zip(jobs, outputs)]
@@ -193,6 +283,7 @@ def main(argv=None):
     res = score_all(jobs, outputs, data, a.n, ks, exclude, a.workers, a.extra)
     out = {"model": a.model, "n": a.n, "temperature": a.temperature,
            "generate_seconds": round(gen_s), "summary": summary(res),
+           "repair_rounds": a.repair_rounds, "repair": repair_stats,
            "results": res, "samples": samples}
     Path(a.out).write_text(json.dumps(out, indent=1) + "\n", encoding="utf-8")
     print(json.dumps({"model": a.model, **out["summary"]}))

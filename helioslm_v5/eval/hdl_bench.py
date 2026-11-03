@@ -291,6 +291,38 @@ def simulate(sample, prob, timeout=SIM_TIMEOUT_S):
     return {"code": code, "passed": code == ".", "log": text[-4000:]}
 
 
+REPAIR_FLAGS = ("-Wall", "-Winfloop", "-Wno-timescale", "-g2012")
+_FEEDBACK_HITS = tuple(s for s, c in _LOG_CODES if c not in ("T", "c"))
+
+
+def tool_feedback(sample, timeout=COMPILE_TIMEOUT_S, max_lines=12):
+    """Open-tool feedback for one answer, without any testbench (v5.229
+    repair loop): compile the sample alone with iverilog. Returns
+    ``{"ok", "feedback"}``; ``ok`` is False on a compile error or a
+    warning the scorer treats as a failure (reg declared as wire, no
+    sensitivities, ...). ``feedback`` is the tool's own messages, cut to
+    ``max_lines``. Never reveals expected outputs."""
+    iverilog = need_tool("iverilog")
+    if "module" not in sample:
+        return {"ok": False, "feedback": "No Verilog module was found in "
+                "the answer. Write the complete module."}
+    with tempfile.TemporaryDirectory(prefix="hdlr_") as td:
+        Path(td, "sample.sv").write_text(sample, encoding="utf-8")
+        try:
+            c = subprocess.run([iverilog, *REPAIR_FLAGS, "-o", "out",
+                                "sample.sv"], cwd=td, capture_output=True,
+                               text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "feedback": "iverilog timed out compiling "
+                    "the module (check for infinite generate loops)."}
+    log = (c.stdout + c.stderr).replace("sample.sv:", "line ")
+    bad = [ln for ln in log.splitlines()
+           if "error" in ln.lower() or any(h in ln for h in _FEEDBACK_HITS)]
+    ok = c.returncode == 0 and not bad
+    return {"ok": ok, "feedback": "\n".join(bad[:max_lines]) if bad
+            else ("" if ok else log.strip()[-800:])}
+
+
 def _text(b):
     if b is None:
         return ""
