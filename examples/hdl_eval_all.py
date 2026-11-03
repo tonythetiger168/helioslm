@@ -28,6 +28,7 @@ scoring, so a scoring failure never costs the GPU time (v5.179).
 """
 import argparse
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -129,8 +130,27 @@ def chat_prompt(tok, system, user, thinking=None):
                                        add_generation_prompt=True, **kw)
 
 
+REASONING_END = ("<channel|>", "</think>")
+SPECIAL = re.compile(r"<\|[^<>\s]*>|<[^<>\s|]*\|>")
+
+
+def strip_reasoning(text):
+    """The answer after a thinking-mode response's reasoning (v5.233):
+    everything after the last end-of-reasoning marker (Gemma 4
+    ``<channel|>``, ``</think>``), with leftover chat special tokens
+    removed. A response with no marker is kept whole."""
+    for mark in REASONING_END:
+        if mark in text:
+            text = text.rsplit(mark, 1)[1]
+            break
+    return SPECIAL.sub("", text).lstrip()
+
+
 class VllmGen:
-    """One vLLM engine reused across generation rounds."""
+    """One vLLM engine reused across generation rounds. With thinking on,
+    special tokens are kept so the reasoning can be cut off
+    (``strip_reasoning``); vLLM otherwise drops the Gemma 4 channel
+    markers and the reasoning ends up in the scored answer."""
 
     def __init__(self, model, max_model_len, gpu_mem, thinking=None):
         self.thinking = thinking
@@ -149,11 +169,14 @@ class VllmGen:
                    else max_new_tokens)
             sps.append(SamplingParams(n=n, temperature=temperature,
                                       top_p=top_p if temperature > 0 else 1.0,
-                                      max_tokens=new))
+                                      max_tokens=new,
+                                      skip_special_tokens=not self.thinking))
             ids = self.tok(chat_prompt(self.tok, system, user, self.thinking),
                            add_special_tokens=False).input_ids
             prompts.append({"prompt_token_ids": ids[-(self.max_model_len - new):]})
         outs = self.llm.generate(prompts, sps)
+        if self.thinking:
+            return [[strip_reasoning(c.text) for c in o.outputs] for o in outs]
         return [[c.text for c in o.outputs] for o in outs]
 
 

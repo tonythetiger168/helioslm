@@ -1,5 +1,16 @@
 # HeliosLM v5 Changelog
 
+## v5.233 (2026-11-03) - Thinking-mode HDL eval and OT scoring retry
+
+`hdl_eval_all --thinking on` scored the reasoning as the answer: vLLM
+dropped the Gemma 4 channel markers, so the reply began with `thought`
+and the extracted code was the start of the reasoning (RTLLM syntax 0.0
+for a model that reaches 0.87 with thinking off). With thinking on,
+`VllmGen` now keeps special tokens and `strip_reasoning` keeps only the
+text after the last end-of-reasoning marker. The OpenTitan bug-fix
+scorer also retries sv2v once after "Too many open files" (a pod with a
+low open-file limit failed all 179 tasks that way).
+
 ## v5.232 (2026-11-03) - Thinking switch for Qwen-family vLLM teachers
 
 `distill_gen` sent only `chat_template_kwargs={"thinking": ...}` to a

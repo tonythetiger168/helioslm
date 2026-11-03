@@ -17,7 +17,9 @@ Pins:
 5. v5.229 repair loop: only failing VerilogEval / RTLLM samples are sent
    back, with the whole conversation and the tool messages; chat_prompt
    handles multi-turn and templates without a system role;
-   hb.tool_feedback compiles the answer alone (needs iverilog).
+   hb.tool_feedback compiles the answer alone (needs iverilog);
+6. v5.233 strip_reasoning: thinking-mode answers are scored without
+   their reasoning.
 
 Run from repo root: python3 -m pytest helioslm_v5/tests/test_hdl_train_eval.py
 """
@@ -249,3 +251,16 @@ def test_tool_feedback_compile_only():
     r = hb.tool_feedback(bad)
     assert not r["ok"] and "line" in r["feedback"]
     assert not hb.tool_feedback("no code")["ok"]
+
+
+def test_strip_reasoning_keeps_only_the_answer():
+    """v5.233: thinking-mode output is cut after the reasoning marker."""
+    import hdl_eval_all as ea
+    gemma = ("<|channel>thought\nadd 8 bits, ripple carry [BEGIN] not this"
+             "<channel|>```verilog\nmodule a(input x, output y);\n"
+             "  assign y = x < 1'b1;\nendmodule\n```<turn|>")
+    out = ea.strip_reasoning(gemma)
+    assert out.startswith("```verilog") and "thought" not in out
+    assert "x < 1'b1" in out and "<turn|>" not in out
+    assert ea.strip_reasoning("<think>a</think>\n[BEGIN]\nm\n[DONE]") == "[BEGIN]\nm\n[DONE]"
+    assert ea.strip_reasoning("module m; endmodule") == "module m; endmodule"
