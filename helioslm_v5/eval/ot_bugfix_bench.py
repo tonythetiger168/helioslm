@@ -36,6 +36,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -295,8 +296,12 @@ def to_verilog(top, start, files, order, info, texts, tool,
         cmd = [tool["sv2v"], "-DSYNTHESIS", *inc, f"--top={top}",
                f"--write={out}", *order]
         code, log = hp._run(cmd, src, timeout)
-        if code and "Resource temporarily unavailable" in log:
-            code, log = hp._run(cmd, src, timeout)   # GHC thread limit: once more
+        if code and ("Resource temporarily unavailable" in log
+                     or "Too many open files" in log):
+            # GHC thread limit / open-file limit under parallel scoring:
+            # once more after a short pause (v5.233)
+            time.sleep(1.0)
+            code, log = hp._run(cmd, src, timeout)
         if code or not out.exists():
             return None, "sv2v: " + hp._first_error(log)
         return out.read_text(encoding="utf-8", errors="replace"), None
