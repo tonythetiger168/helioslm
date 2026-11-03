@@ -14,7 +14,9 @@ Pins:
 5. ``summarize`` groups by kind, split, kind x split and operator;
 6. with yosys + sv2v installed: ``build`` on a toy IP keeps tasks whose
    mutant is not equivalent, the original file scores as a pass and the
-   mutant as a fail (skipped without the tools).
+   mutant as a fail (skipped without the tools);
+7. v5.230 ``splice``: a ``complete`` answer holding only the missing
+   block is put in place of the TODO comment (never for ``bugfix``).
 
 Plain functions, no pytest fixtures (folded into the daily gate).
 Run from repo root: python3 -m pytest helioslm_v5/tests/test_ot_bugfix_bench.py
@@ -178,3 +180,16 @@ def test_build_and_score_with_tools():
                 bad = scorer.score(t, f"```systemverilog\n{t['prompt_text']}```")
                 assert bad["synth"] and not bad["pass"], (t["id"], bad)
         assert not scorer.score(tasks[0], "no code here")["pass"]
+
+
+def test_splice_snippet_answers():
+    m = ob.mutate(TOY, "complete", random.Random(0))
+    task = {"kind": "complete", "prompt_text": m["text"]}
+    hole = next(ln for ln in m["text"].splitlines() if "// TODO: one" in ln)
+    snippet = "  assign cnt_o = cnt_q;"
+    out = ob.splice(task, "// TODO: one assign block was removed here; restore it\n"
+                    + snippet + "\n")
+    assert out is not None and snippet in out and hole not in out
+    assert out.count("module") == m["text"].count("module")
+    assert ob.splice(dict(task, kind="bugfix"), snippet) is None
+    assert ob.splice(task, "  \n") is None

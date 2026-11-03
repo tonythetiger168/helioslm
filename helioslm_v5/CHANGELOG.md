@@ -1,5 +1,16 @@
 # HeliosLM v5 Changelog
 
+## v5.230 (2026-11-03) - OT bug-fix bench: snippet answers for completion, sv2v retry
+
+First pod run (179 tasks): 73 of stock Gemma 4 E4B-it's answers to
+`complete` tasks were just the missing block, not the whole file, and
+scored "no module in answer". `ot_bugfix_bench.splice` now puts such a
+block in place of the TODO comment (`complete` only; a `bugfix` answer
+still has to be the whole file), and the result row says
+`spliced: true`. sv2v runs once more when the GHC runtime cannot create
+a thread ("Resource temporarily unavailable", 5 answers in that run).
+T169 item 7.
+
 ## v5.229 (2026-11-03) - HDL agent repair loop with open-tool feedback
 
 `examples/hdl_eval_all.py --repair-rounds N`: after the first
