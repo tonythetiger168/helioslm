@@ -28,10 +28,11 @@ OS4 = ("tencent/Hy3", "XiaomiMiMo/MiMo-V2.5-Pro",
 NEW_1024 = ("deepseek-ai/DeepSeek-V4.1-Flash-1017",
             "deepseek-ai/DeepSeek-V4-Pro-0813", "zai-org/GLM-5.3-Flash")
 NEW_1030 = ("moonshotai/Kimi-K2.6",)   # hash pinned from a live fetch
+NEW_1103 = ("Qwen/Qwen3.6-35B-A3B",)   # hash pinned from a live fetch
 
 
 def test_reviews_complete():
-    assert len(ta.TEACHERS) == 18 and len(ta.REVIEWS) == 18
+    assert len(ta.TEACHERS) == 19 and len(ta.REVIEWS) == 19
     for rid, r in ta.REVIEWS.items():
         assert r["verdict"] in ta.VERDICTS, rid
         assert r["conditions"] and r["license"], rid
@@ -107,7 +108,7 @@ def test_committed_audit():
     art = json.loads(_ART.read_text())
     rows = art["rows"]
     assert [r["id"] for r in rows] == [t for t in ta.TEACHERS
-                                       if t not in OS4 + NEW_1024 + NEW_1030]
+                                       if t not in OS4 + NEW_1024 + NEW_1030 + NEW_1103]
     for r in rows:
         assert r["license_sha256"] == ta.REVIEWS[r["id"]]["reviewed_sha256"]
         assert r["verdict"] in ta.VERDICTS
@@ -166,6 +167,16 @@ def test_2026_10_30_kimi_rows():
     print("PASS test_2026_10_30_kimi_rows")
 
 
+def test_2026_11_03_qwen_row():
+    # Qwen3.6-35B-A3B: plain Apache 2.0, reachable from distill_gen
+    from helioslm_v5.src.training import distill_gen as dg
+    r = ta.REVIEWS[NEW_1103[0]]
+    assert ta.usable(NEW_1103[0]) and r["verdict"] == "allowed"
+    assert len(r["reviewed_sha256"]) == 64
+    assert dg.check_teacher("qwen3.6-35b-a3b")["repo"] == NEW_1103[0]
+    print("PASS test_2026_11_03_qwen_row")
+
+
 if __name__ == "__main__":
     test_reviews_complete()
     test_changed_or_unreviewed_licence_is_refused()
@@ -173,4 +184,5 @@ if __name__ == "__main__":
     test_committed_audit()
     test_2026_10_24_rows()
     test_2026_10_30_kimi_rows()
+    test_2026_11_03_qwen_row()
 

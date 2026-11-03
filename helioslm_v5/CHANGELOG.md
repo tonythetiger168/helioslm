@@ -1,5 +1,16 @@
 # HeliosLM v5 Changelog
 
+## v5.227 (2026-11-03) - Qwen3.6-35B-A3B as a one-GPU distillation teacher
+
+`eval/teacher_license_audit.py` pins `Qwen/Qwen3.6-35B-A3B` from a live
+fetch of its LICENSE (revision 995ad96e: the standard Apache 2.0 text,
+"Copyright 2026 Alibaba Cloud", no NOTICE file), verdict `allowed`.
+`distill_gen.TEACHERS` gains the alias `qwen3.6-35b-a3b`, so
+`distill_generate.py generate --teacher qwen3.6-35b-a3b --endpoint vllm`
+runs against a vLLM server on a single 96–141 GB GPU (3B active
+parameters, far cheaper per token than the 8-GPU teachers). 19 reviewed
+teachers; `test_2026_11_03_qwen_row` in `tests/test_teacher_license_audit.py`.
+
 ## v5.226 (2026-11-02) - Q3_K quant for a smaller L-Edge
 
 `QUANT_LABEL` gains `q3_k` (llama.cpp `Q3_K_M`, made by
