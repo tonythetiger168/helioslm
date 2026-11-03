@@ -1,4 +1,4 @@
-# hsh — the HeliosLM harness after DeepSeek Harness
+# hsh — the HeliosLM agent harness
 
 `helioslm_v5/hsh/` rebuilds the agent harness on the design of
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`,
@@ -117,8 +117,8 @@ A real model in five lines:
 from helioslm_v5.hsh import *
 ctx = Context()
 for p in (Sessions, Tools, LLM, Agents): ctx.plugin(p)
-ctx.llm.register("deepseek", OpenAICompatAdapter("https://api.deepseek.com", "DEEPSEEK_API_KEY"))
-agent = ctx.agents.create("demo", {"provider": "deepseek", "model": "deepseek-v4-flash"})
+ctx.llm.register("api", OpenAICompatAdapter("https://api.example.com/v1", "MY_API_KEY"))
+agent = ctx.agents.create("demo", {"provider": "api", "model": "<model-id>"})
 print(agent.send("hello"))
 ```
 
@@ -302,8 +302,8 @@ Tests: `helioslm_v5/tests/test_hsh_interaction.py` (4).
   and reasoning deltas go to `on_chunk` as they arrive and the loop
   re-emits them as `agent/assistant-stream` (`emit`, live only: the
   log keeps the merged stream on `assistant/message`). Tool-call
-  fragments are joined by index; usage includes DeepSeek's
-  `prompt_cache_hit_tokens` as `cached_input_tokens`.
+  fragments are joined by index; usage maps a server's
+  `prompt_cache_hit_tokens` field as `cached_input_tokens`.
 - HTTP failures raise `LLMError` with `status`, `transient` (408, 409,
   425, 429, 5xx, dropped connections) and the server's `retry_after`.
 - Row `request-retry` (in every preset): on a transient failure it waits
@@ -322,13 +322,13 @@ Tests: `helioslm_v5/tests/test_hsh_llm.py` (4).
 
 ## H12: web UI (`hsh/web.py`, `hsh/webui/`)
 
-Modelled on the DeepSeek Harness web app and written fresh: standard
+Modelled on dsh's web app and written fresh: standard
 library server plus one static page (HTML, CSS, JS; no build step, no
 third-party code). It replaces `helioslm_v5/harness/web_ui_v2.py` as the
 harness UI (that file stays only for the legacy plugin harness).
 
 ```
-python -m helioslm_v5.hsh.web --workspace /path/to/repo --open        # DeepSeek (DEEPSEEK_API_KEY)
+python -m helioslm_v5.hsh.web --workspace /path/to/repo --config providers.json --open
 python -m helioslm_v5.hsh.web --workspace . --openai-base http://127.0.0.1:8080/v1 --openai-models my-model
 python -m helioslm_v5.hsh.web --workspace . --demo                    # no model, to try the UI
 ```
