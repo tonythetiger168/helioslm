@@ -225,16 +225,19 @@ def test_chat_prompt_multi_turn_and_no_system_role():
         def __init__(self, system_ok):
             self.system_ok = system_ok
 
-        def apply_chat_template(self, msgs, tokenize, add_generation_prompt):
+        def apply_chat_template(self, msgs, tokenize, add_generation_prompt,
+                                **kw):
             if not self.system_ok and msgs[0]["role"] == "system":
                 raise ValueError("no system role")
-            return "|".join(f"{m['role']}:{m['content']}" for m in msgs)
+            head = f"think={kw['enable_thinking']}|" if kw else ""
+            return head + "|".join(f"{m['role']}:{m['content']}" for m in msgs)
 
     turns = [{"role": "user", "content": "u1"},
              {"role": "assistant", "content": "a1"},
              {"role": "user", "content": "u2"}]
     assert ea.chat_prompt(Tok(True), "S", "u") == "system:S|user:u"
     assert ea.chat_prompt(Tok(False), "S", turns) == "user:S\n\nu1|assistant:a1|user:u2"
+    assert ea.chat_prompt(Tok(True), "S", "u", thinking=False) == "think=False|system:S|user:u"
 
 
 @pytest.mark.skipif(shutil.which("iverilog") is None, reason="needs iverilog")

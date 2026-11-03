@@ -10,7 +10,9 @@ outputs reach the model) is sent back with the tool messages as a
 multi-turn chat, up to N rounds. One vLLM engine (`VllmGen`) serves all
 rounds; `vllm_generate` keeps its signature. First-round generations go
 to `<out>.round0.samples.json`, per-round stats to `repair` in the
-result. Tests in `tests/test_hdl_train_eval.py` (item 5).
+result. `--thinking on|off` passes `enable_thinking` to the chat template
+(default: the template's own). Tests in `tests/test_hdl_train_eval.py`
+(item 5).
 
 ## v5.227 (2026-11-03) - Qwen3.6-35B-A3B as a one-GPU distillation teacher
 

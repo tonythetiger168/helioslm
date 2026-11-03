@@ -110,26 +110,30 @@ def summary(res):
     return out
 
 
-def chat_prompt(tok, system, user):
+def chat_prompt(tok, system, user, thinking=None):
     """The rendered prompt. ``user`` is a string, or a list of chat
-    messages after the system one (multi-turn repair, v5.229)."""
+    messages after the system one (multi-turn repair, v5.229).
+    ``thinking`` (True / False) is passed as ``enable_thinking`` to the
+    template; None leaves the template's default."""
     msgs = user if isinstance(user, list) else [{"role": "user", "content": user}]
     if not tok.chat_template:
         return system + "\n" + "\n".join(m["content"] for m in msgs)
+    kw = {} if thinking is None else {"enable_thinking": thinking}
     try:
         return tok.apply_chat_template(
             [{"role": "system", "content": system}, *msgs],
-            tokenize=False, add_generation_prompt=True)
+            tokenize=False, add_generation_prompt=True, **kw)
     except Exception:       # templates without a system role
         first = dict(msgs[0], content=system + "\n\n" + msgs[0]["content"])
         return tok.apply_chat_template([first, *msgs[1:]], tokenize=False,
-                                       add_generation_prompt=True)
+                                       add_generation_prompt=True, **kw)
 
 
 class VllmGen:
     """One vLLM engine reused across generation rounds."""
 
-    def __init__(self, model, max_model_len, gpu_mem):
+    def __init__(self, model, max_model_len, gpu_mem, thinking=None):
+        self.thinking = thinking
         from vllm import LLM
         self.llm = LLM(model=model, dtype="bfloat16", max_model_len=max_model_len,
                        gpu_memory_utilization=gpu_mem, trust_remote_code=False)
@@ -146,7 +150,7 @@ class VllmGen:
             sps.append(SamplingParams(n=n, temperature=temperature,
                                       top_p=top_p if temperature > 0 else 1.0,
                                       max_tokens=new))
-            ids = self.tok(chat_prompt(self.tok, system, user),
+            ids = self.tok(chat_prompt(self.tok, system, user, self.thinking),
                            add_special_tokens=False).input_ids
             prompts.append({"prompt_token_ids": ids[-(self.max_model_len - new):]})
         outs = self.llm.generate(prompts, sps)
@@ -233,6 +237,9 @@ def main(argv=None):
     ap.add_argument("--samples", default=None,
                     help="score the generations of an earlier <out>.samples.json "
                          "instead of generating (no GPU, v5.194)")
+    ap.add_argument("--thinking", choices=("on", "off"), default=None,
+                    help="pass enable_thinking to the chat template "
+                         "(default: the template's own default)")
     ap.add_argument("--repair-rounds", type=int, default=0,
                     help="agent loop: resend answers that fail an iverilog "
                          "compile (no testbench) with the tool messages, up "
@@ -259,7 +266,8 @@ def main(argv=None):
                for s in json.loads(Path(a.samples).read_text(encoding="utf-8"))}
         outputs = [got[(b, k)] for b, k, _, _ in jobs]
     else:
-        gen = VllmGen(a.model, a.max_model_len, a.gpu_mem)
+        gen = VllmGen(a.model, a.max_model_len, a.gpu_mem,
+                      None if a.thinking is None else a.thinking == "on")
         outputs = gen(jobs, a.n, a.temperature, a.top_p, a.max_new_tokens,
                       a.uvm_new_tokens)
         if a.repair_rounds:
@@ -283,7 +291,7 @@ def main(argv=None):
     res = score_all(jobs, outputs, data, a.n, ks, exclude, a.workers, a.extra)
     out = {"model": a.model, "n": a.n, "temperature": a.temperature,
            "generate_seconds": round(gen_s), "summary": summary(res),
-           "repair_rounds": a.repair_rounds, "repair": repair_stats,
+           "thinking": a.thinking, "repair_rounds": a.repair_rounds, "repair": repair_stats,
            "results": res, "samples": samples}
     Path(a.out).write_text(json.dumps(out, indent=1) + "\n", encoding="utf-8")
     print(json.dumps({"model": a.model, **out["summary"]}))
