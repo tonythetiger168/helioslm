@@ -13,7 +13,11 @@ Pins:
    while the rest trains under autocast;
 4. hdl_eval_all.collect / score_all: every VerilogEval and RTLLM fixture
    gets one job with its harness's own prompt, RTLLM exclusions are
-   skipped, and generated references score pass@1 = 1 (needs iverilog).
+   skipped, and generated references score pass@1 = 1 (needs iverilog);
+5. v5.229 repair loop: only failing VerilogEval / RTLLM samples are sent
+   back, with the whole conversation and the tool messages; chat_prompt
+   handles multi-turn and templates without a system role;
+   hb.tool_feedback compiles the answer alone (needs iverilog).
 
 Run from repo root: python3 -m pytest helioslm_v5/tests/test_hdl_train_eval.py
 """
@@ -176,3 +180,72 @@ def test_eval_all_references(tmp_path):
                     "--benches", "rtllm", "--rtllm-cache", str(tmp_path / "rt"),
                     "--rtllm-exclude", "multi_pipe_4bit", "--workers", "1"]) == 0
     assert json.loads(out.read_text())["summary"]["rtllm"]["pass@1"] == 1.0
+
+
+# ---- v5.229: agent repair loop with open-tool feedback (no testbench) ----
+
+def test_repair_loop_resends_only_failing_samples():
+    import hdl_eval_all as ea
+    jobs = [("verilog-eval", 0, "sys", "write A"),
+            ("rtllm", 1, "sys", "write B"),
+            ("cvdp", "c", "sys", "write C")]           # not repaired
+    outputs = [["BAD a", "module ok a"], ["BAD b"], ["BAD c"]]
+    calls = []
+
+    def gen(rjobs, n, t, p, new):
+        calls.append(rjobs)
+        # round 1 fixes job 0 only; round 2 fixes job 1
+        return [["module fixed"] if (len(calls) == 1 and k == 0) or len(calls) == 2
+                else ["BAD again"] for _, k, _, _ in rjobs]
+
+    def check(code):
+        ok = code.lstrip().startswith("module")
+        return {"ok": ok, "feedback": "" if ok else "line 1: syntax error"}
+
+    out, stats = ea.repair(gen, jobs, outputs, 3, check, workers=2)
+    assert out[0] == ["module fixed", "module ok a"]
+    assert out[1] == ["module fixed"] and out[2] == ["BAD c"]
+    assert stats == [{"round": 1, "failing": 2, "fixed": 1},
+                     {"round": 2, "failing": 1, "fixed": 1},
+                     {"round": 3, "failing": 0, "fixed": 0}]
+    # round 2 carries the whole conversation: prompt, answer, feedback x2
+    msgs = calls[1][0][3]
+    assert [m["role"] for m in msgs] == ["user", "assistant", "user",
+                                        "assistant", "user"]
+    assert msgs[0]["content"] == "write B" and "syntax error" in msgs[2]["content"]
+    assert msgs[3]["content"] == "BAD again"
+
+
+def test_chat_prompt_multi_turn_and_no_system_role():
+    import hdl_eval_all as ea
+
+    class Tok:
+        chat_template = "x"
+
+        def __init__(self, system_ok):
+            self.system_ok = system_ok
+
+        def apply_chat_template(self, msgs, tokenize, add_generation_prompt,
+                                **kw):
+            if not self.system_ok and msgs[0]["role"] == "system":
+                raise ValueError("no system role")
+            head = f"think={kw['enable_thinking']}|" if kw else ""
+            return head + "|".join(f"{m['role']}:{m['content']}" for m in msgs)
+
+    turns = [{"role": "user", "content": "u1"},
+             {"role": "assistant", "content": "a1"},
+             {"role": "user", "content": "u2"}]
+    assert ea.chat_prompt(Tok(True), "S", "u") == "system:S|user:u"
+    assert ea.chat_prompt(Tok(False), "S", turns) == "user:S\n\nu1|assistant:a1|user:u2"
+    assert ea.chat_prompt(Tok(True), "S", "u", thinking=False) == "think=False|system:S|user:u"
+
+
+@pytest.mark.skipif(shutil.which("iverilog") is None, reason="needs iverilog")
+def test_tool_feedback_compile_only():
+    from helioslm_v5.eval import hdl_bench as hb
+    good = "module TopModule(input a, output b);\n  assign b = ~a;\nendmodule\n"
+    bad = "module TopModule(input a, output b);\n  assign b = ~a\nendmodule\n"
+    assert hb.tool_feedback(good)["ok"]
+    r = hb.tool_feedback(bad)
+    assert not r["ok"] and "line" in r["feedback"]
+    assert not hb.tool_feedback("no code")["ok"]

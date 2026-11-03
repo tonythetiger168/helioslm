@@ -1,5 +1,18 @@
 # HeliosLM v5 Changelog
 
+## v5.229 (2026-11-03) - HDL agent repair loop with open-tool feedback
+
+`examples/hdl_eval_all.py --repair-rounds N`: after the first
+generation, every VerilogEval / RTLLM sample whose extracted code fails
+`hdl_bench.tool_feedback` (iverilog compile of the answer alone, with
+the failure warnings the scorer counts; no testbench, so no expected
+outputs reach the model) is sent back with the tool messages as a
+multi-turn chat, up to N rounds. One vLLM engine (`VllmGen`) serves all
+rounds; `vllm_generate` keeps its signature. First-round generations go
+to `<out>.round0.samples.json`, per-round stats to `repair` in the
+result. `--thinking on|off` passes `enable_thinking` to the chat template
+(default: the template's own). Tests in `tests/test_hdl_train_eval.py`
+(item 5).
 ## v5.228 (2026-11-03) - OpenTitan real-IP bug-fix / completion benchmark
 
 `eval/ot_bugfix_bench.py` + `examples/ot_bugfix_run.py` (build /
