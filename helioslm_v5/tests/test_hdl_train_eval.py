@@ -19,7 +19,9 @@ Pins:
    handles multi-turn and templates without a system role;
    hb.tool_feedback compiles the answer alone (needs iverilog);
 6. v5.233 strip_reasoning: thinking-mode answers are scored without
-   their reasoning.
+   their reasoning;
+7. v5.234 cvdp_check: single-file CVDP answers are compiled with their
+   RTL context only, and the repair loop resends the failing ones.
 
 Run from repo root: python3 -m pytest helioslm_v5/tests/test_hdl_train_eval.py
 """
@@ -264,3 +266,35 @@ def test_strip_reasoning_keeps_only_the_answer():
     assert "x < 1'b1" in out and "<turn|>" not in out
     assert ea.strip_reasoning("<think>a</think>\n[BEGIN]\nm\n[DONE]") == "[BEGIN]\nm\n[DONE]"
     assert ea.strip_reasoning("module m; endmodule") == "module m; endmodule"
+
+
+def test_cvdp_check_and_repair():
+    """v5.234: CVDP answers in the repair loop (compile stubbed)."""
+    import hdl_eval_all as ea
+    rows = {"one": {"input": {"context": {"rtl/pkg.sv": "package p; endpackage",
+                                          "verif/tb.sv": "module tb; endmodule",
+                                          "rtl/top.sv": "old"}},
+                    "output": {"context": {"rtl/top.sv": ""}}},
+            "two": {"input": {"context": {}},
+                    "output": {"context": {"rtl/a.sv": "", "rtl/b.sv": ""}}}}
+    seen = []
+
+    def fake_compile(td, target, others):
+        seen.append((target, others))
+        code = Path(td, target).read_text()
+        return None if code.startswith("module") else f"{target}:1: syntax error\nI give up."
+    check = ea.cvdp_check(rows, compile_fn=fake_compile)
+    bad = check("one", "rtl/top.sv\nmodule top; endmodule")
+    assert not bad["ok"] and bad["feedback"] == "line 1: syntax error"
+    assert seen[-1] == ("rtl/top.sv", ["rtl/pkg.sv"])          # no tb, no old copy
+    assert check("one", "```verilog\nmodule top; endmodule\n```")["ok"]
+    assert check("two", "{}")["ok"]                            # JSON multi-file: skipped
+    assert not check("one", "sorry")["ok"]
+    jobs = [("cvdp", "one", "sys", "write top")]
+
+    def gen(rjobs, n, t, p, new):
+        return [["module top; endmodule"] for _ in rjobs]
+    out, stats = ea.repair(gen, jobs, [["rtl/top.sv\nmodule top; endmodule"]], 2,
+                           None, workers=1, bench_checks={"cvdp": check})
+    assert out == [["module top; endmodule"]]
+    assert stats[0] == {"round": 1, "failing": 1, "fixed": 1}
