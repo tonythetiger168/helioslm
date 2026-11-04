@@ -1,5 +1,11 @@
 # HeliosLM v5 Changelog
 
+## v5.235 (2026-11-04) - gpt-oss answers in the HDL eval
+
+`strip_reasoning` also cuts gpt-oss (harmony) replies at
+`<|channel|>final<|message|>`, so `hdl_eval_all --thinking on` scores
+only the final answer of gpt-oss-120b, not its analysis channel.
+
 ## v5.234 (2026-11-04) - CVDP answers in the HDL repair loop
 
 Stock Gemma 4 26B-A4B-it scores 0.641 on VerilogEval but 6% on CVDP:
