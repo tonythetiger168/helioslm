@@ -266,6 +266,9 @@ def test_strip_reasoning_keeps_only_the_answer():
     assert "x < 1'b1" in out and "<turn|>" not in out
     assert ea.strip_reasoning("<think>a</think>\n[BEGIN]\nm\n[DONE]") == "[BEGIN]\nm\n[DONE]"
     assert ea.strip_reasoning("module m; endmodule") == "module m; endmodule"
+    oss = ("<|channel|>analysis<|message|>use assign<|end|><|start|>assistant"
+           "<|channel|>final<|message|>module m; endmodule<|return|>")
+    assert ea.strip_reasoning(oss) == "module m; endmodule"
 
 
 def test_cvdp_check_and_repair():

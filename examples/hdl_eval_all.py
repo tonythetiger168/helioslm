@@ -130,14 +130,15 @@ def chat_prompt(tok, system, user, thinking=None):
                                        add_generation_prompt=True, **kw)
 
 
-REASONING_END = ("<channel|>", "</think>")
+REASONING_END = ("<|channel|>final<|message|>", "<channel|>", "</think>")
 SPECIAL = re.compile(r"<\|[^<>\s]*>|<[^<>\s|]*\|>")
 
 
 def strip_reasoning(text):
     """The answer after a thinking-mode response's reasoning (v5.233):
     everything after the last end-of-reasoning marker (Gemma 4
-    ``<channel|>``, ``</think>``), with leftover chat special tokens
+    ``<channel|>``, gpt-oss ``<|channel|>final<|message|>`` (v5.235),
+    ``</think>``), with leftover chat special tokens
     removed. A response with no marker is kept whole."""
     for mark in REASONING_END:
         if mark in text:
