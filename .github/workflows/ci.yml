@@ -20,9 +20,11 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install flake8==7.4.1
-      # Python trees the release zip ships (build-release below). docs/
-      # has no .py; scripts/ and integration_test_v51.py are not zipped.
-      - run: flake8 helioslm_v5/ harness/ agent/ benchmarks/ examples/
+      # Python trees the release zip ships (build-release below), plus
+      # serving/ (OpenAI-compatible stream client; pytest covers it, the
+      # release zip does not). docs/ has no .py; scripts/ and
+      # integration_test_v51.py are not zipped.
+      - run: flake8 helioslm_v5/ harness/ agent/ benchmarks/ examples/ serving/
       # v5.132: LF guard. The digest-pinned benchmark/data artifacts hash
       # raw bytes, so a CRLF blob (e.g. a Windows checkout/commit without
       # the v5.110 .gitattributes policy) fails digest gates on content
