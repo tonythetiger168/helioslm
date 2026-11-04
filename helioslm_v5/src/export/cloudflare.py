@@ -124,11 +124,120 @@ def bundle_package(pkg_dir, out_dir, *, version, status="preview"):
                         "bytes": zpath.stat().st_size, "sha256": _sha256(zpath),
                         "fits": f["fits"]})
     return {"tier": tier.name, "memory_gb": tier.memory_gb, "hardware": tier.hardware,
-            "ctx": m["ctx"], "arch": m["arch"], "status": status, "bundles": bundles}
+            "ctx": m["ctx"], "arch": m["arch"], "status": status,
+            "chat": bool(m.get("chat")), "reasoning": m.get("reasoning"),
+            "bundles": bundles}
 
 
 def _size(n):
     return f"{n / 2**30:.2f} GB" if n >= 2**30 else f"{n / 2**20:.1f} MB"
+
+
+# which tier a Mac takes, by unified memory (the GPU may use about 2/3-3/4)
+_MAC_TIERS = (("8 GB", "L-Edge"), ("16 GB", "L8"), ("24 GB", "L16"),
+              ("32–48 GB", "L24"), ("64–96 GB", "L48+"), ("128 GB 以上", "L128"))
+
+
+def _cmd(t, b):
+    """The llama.cpp command a tier's README gives, for the guide."""
+    ngl = " -ngl 99" if t["tier"] != "L-Edge" else ""
+    if not t.get("chat"):
+        return (f'llama-completion -m {b["gguf"]} -c {t["ctx"]}{ngl} -n 256 '
+                f'-p "台灣的夜市文化"')
+    rb = " --reasoning-budget 0" if t.get("reasoning") == "off" else ""
+    return f'llama-server -m {b["gguf"]} -c {t["ctx"]}{ngl}{rb} --port 8080'
+
+
+def run_guide(tiers):
+    """HTML section on downloading and running a package locally (v5.237):
+    which file per GPU or Mac, download + checksum + unzip on Windows /
+    Linux / macOS, and the llama.cpp, Ollama and LM Studio steps. Commands
+    use each tier's own GGUF name, context and model kind (a base model
+    continues text; a chat model answers)."""
+    e = html.escape
+    rows, first = [], None
+    for t in tiers:
+        if not t.get("bundles"):
+            continue
+        b = t["bundles"][0]
+        first = first or (t, b)
+        kind = "對話模型" if t.get("chat") else "基底模型（文字續寫）"
+        name = b["gguf"].rsplit("-", 1)[0]
+        rows.append(f"<tr><td><b>{e(t['tier'])}</b></td><td>{e(kind)}</td>"
+                    f"<td><code>{e(b['gguf'])}</code></td>"
+                    f"<td><code>{e(_cmd(t, b))}</code><br>"
+                    f"<code>ollama create {e(name)} -f Modelfile</code></td></tr>")
+    if not rows:
+        return ""
+    chat = next((t for t in tiers if t.get("bundles") and t.get("chat")), None)
+    base = next((t for t in tiers if t.get("bundles") and not t.get("chat")), None)
+    t0, b0 = first
+    zipname = e(b0["zip"])
+    mac = "、".join(f"{m} → {k}" for m, k in _MAC_TIERS)
+    kinds = ""
+    if chat and base:
+        kinds = (f"<p><b>模型差別</b>：{e(base['tier'])} 等標「基底模型」的層級只做過續訓、"
+                 "沒有對話微調：給它一段開頭，它會接著寫，不適合一問一答。"
+                 f"想要對話請用標「對話模型」的層級（{e(chat['tier'])} 起）。"
+                 "12–16 GB 顯示卡也能跑 L24，加上 <code>--cpu-moe</code>，"
+                 "專家權重放在系統記憶體（建議 32 GB RAM 以上，速度較慢）。</p>")
+    return f"""<h2>如何下載並在本機執行 · Run it on your computer</h2>
+<p>三個步驟：選檔、下載解壓、用 llama.cpp、Ollama 或 LM Studio 執行。
+模型完全在你的電腦上跑，不需要網路，對話內容不會傳出去。</p>
+<h3>1. 選哪個檔</h3>
+<ul>
+<li><b>NVIDIA / AMD 顯示卡</b>：看顯示卡記憶體（VRAM），對照上表的 Memory 欄。
+Windows：工作管理員 → 效能 → GPU →「專用 GPU 記憶體」；Linux：<code>nvidia-smi</code>。</li>
+<li><b>Mac（Apple M 系列）</b>：看「關於這台 Mac」的記憶體：{e(mac)}。</li>
+<li><b>Intel Mac、沒有獨立顯示卡的電腦</b>：L-Edge，只用 CPU（至少 8 GB RAM）。</li>
+</ul>
+{kinds}
+<div class=wrap><table>
+<tr><th>Tier</th><th>類型</th><th>zip 內的模型檔</th><th>執行指令（在解壓後的資料夾內）</th></tr>
+{chr(10).join(rows)}
+</table></div>
+<h3>2. 下載、驗證、解壓</h3>
+<p>在上表按右鍵複製下載連結。硬碟要留約兩倍檔案大小的空間，解壓後可刪掉 zip。
+算出的 SHA-256 要和 <a href="packages.json">packages.json</a> 的 <code>sha256</code> 相同。</p>
+<p><b>Windows</b>（PowerShell）：</p>
+<pre><code>curl.exe -L -O &lt;下載連結&gt;
+Get-FileHash .\\{zipname} -Algorithm SHA256
+tar -xf .\\{zipname}</code></pre>
+<p><b>Linux</b>：</p>
+<pre><code>curl -L -O &lt;下載連結&gt;
+sha256sum {zipname}
+unzip {zipname}</code></pre>
+<p><b>macOS</b>：</p>
+<pre><code>curl -L -O &lt;下載連結&gt;
+shasum -a 256 {zipname}
+unzip {zipname}</code></pre>
+<h3>3. 安裝執行工具（三選一）</h3>
+<ul>
+<li><b>LM Studio</b>（有圖形介面，最簡單）：從 lmstudio.ai 下載安裝，用「匯入模型」選 zip 裡的
+<code>.gguf</code>（或命令列 <code>lms import &lt;模型檔&gt;.gguf</code>），載入時把 GPU Offload 拉到最大。</li>
+<li><b>Ollama</b>：從 ollama.com 下載安裝（Windows / macOS）；Linux：
+<code>curl -fsSL https://ollama.com/install.sh | sh</code>。</li>
+<li><b>llama.cpp</b>：Windows <code>winget install llama.cpp</code>；macOS / Linux
+<code>brew install llama.cpp</code>；也可下載官方預編譯版（NVIDIA 選 CUDA 版，
+AMD / Intel 顯示卡選 Vulkan 版，Mac 已內建 Metal）。</li>
+</ul>
+<h3>4. 執行</h3>
+<p><b>llama.cpp</b>：在解壓後的資料夾執行上表的指令。<code>llama-server</code>
+啟動後用瀏覽器開 <code>http://127.0.0.1:8080</code> 就能對話，
+其他程式可用 OpenAI 相容 API <code>http://127.0.0.1:8080/v1</code>。
+基底模型用 <code>llama-completion</code>，把 <code>-p</code> 換成你的開頭。</p>
+<p><b>Ollama</b>：在解壓後的資料夾執行上表的 <code>ollama create</code>，再
+<code>ollama run &lt;名稱&gt;</code>（名稱同 create 那一行）。</p>
+<h3>5. 記憶體不夠時</h3>
+<ul>
+<li>把 <code>-c</code> 調小（例如 <code>-c 8192</code>），上下文越長越吃記憶體。</li>
+<li>KV 快取量化：加 <code>-fa on -ctk q8_0 -ctv q8_0</code>（Ollama：啟動前設
+<code>OLLAMA_FLASH_ATTENTION=1</code> 和 <code>OLLAMA_KV_CACHE_TYPE=q8_0</code>）。</li>
+<li>26B-A4B（L24 起）是混合專家模型：加 <code>--cpu-moe</code> 把專家權重放到系統記憶體，
+或用 <code>--n-cpu-moe N</code> 只放前 N 層；統一記憶體的電腦不需要。</li>
+<li>每個 zip 裡的 README.md 有該層級的完整指令。</li>
+</ul>
+"""
 
 
 def _page(name, version, tiers, base, generations):
@@ -176,6 +285,8 @@ h2 {{ font-size:18px; margin-top:32px; }}
 .tag {{ font-size:12px; border:1px solid var(--acc); color:var(--acc);
   border-radius:4px; padding:0 4px; }}
 code {{ font-size:12px; }}
+pre {{ overflow-x:auto; background:var(--line); border-radius:6px; padding:8px 10px; }}
+h3 {{ font-size:16px; margin-top:20px; }}
 </style></head><body><main>
 <h1>{html.escape(name)} {html.escape(version)}</h1>
 <p>依顯示卡記憶體選擇套件。每個 zip 含 GGUF、Ollama Modelfile、README 和 manifest。
@@ -187,9 +298,7 @@ Modelfile, a README and the manifest. Full SHA-256 sums are in
 <tr><th>Tier</th><th>Memory</th><th>Hardware</th><th>Download</th><th>Context</th><th>SHA-256</th></tr>
 {chr(10).join(rows)}
 </table></div>
-<p class=dim>Run: <code>llama-cli -m &lt;file&gt;.gguf</code> or
-<code>ollama create &lt;name&gt; -f Modelfile</code>.</p>
-<h2>版本與功能 · Versions</h2>
+{run_guide(tiers)}<h2>版本與功能 · Versions</h2>
 <div class=wrap><table>
 <tr><th>版本</th><th>模型</th><th>功能</th><th>狀態</th></tr>
 {gens}
