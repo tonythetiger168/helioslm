@@ -30,7 +30,7 @@ from helioslm_v5.configs.config_v5 import HeliosLMv5Config
 from helioslm_v5.src.model_v5 import HeliosLMv5
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from train_tool_tuned import BOS, EOS, PAD, MAX_CHAR, collate, encode, generate
+from train_tool_tuned import collate, encode, generate
 
 EPISODES_PER_ENV = 400
 EVAL_PER_TYPE = 20   # stratified: 20 tool-target + 20 text-target evals

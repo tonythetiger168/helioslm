@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "helioslm_v5" / "ag
 
 import random
 
-from chat import CHAT_SYSTEM, ChatSession, ChatTurn
+from chat import CHAT_SYSTEM, ChatSession
 from envs import make_envs
 from gate import FixedGate, Route
 from helioslm_v5.configs.config_v5 import HeliosLMv5Config

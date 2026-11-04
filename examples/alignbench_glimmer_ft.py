@@ -16,7 +16,7 @@ Prereqs:
 Usage:
   python examples/alignbench_glimmer_ft.py
 """
-import json, time, os
+import json, time
 import numpy as np
 import torch
 import torch.nn.functional as F
