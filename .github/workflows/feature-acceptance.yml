@@ -30,7 +30,7 @@ jobs:
       - name: Install CPU test dependencies
         run: |
           python -m pip install -r requirements-ci.txt
-          python -m pip install tokenizers==0.22.1
+          python -m pip install -r requirements-test-extras.txt
           # plan E1: the lm-evaluation-harness adapter (version used to build it)
           python -m pip install lm-eval==0.4.13
       - name: Run focused regression tests

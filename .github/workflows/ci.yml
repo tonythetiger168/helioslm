@@ -52,7 +52,7 @@ jobs:
       - name: Install Icarus Verilog
         run: sudo apt-get update -q && sudo apt-get install -y -q iverilog
       - name: Install optional BPE tokenizer dependency
-        run: pip install tokenizers==0.22.1
+        run: pip install -r requirements-test-extras.txt
       # v5.79 (tech-debt Phase 3): one parallel pytest run covers both
       # suites; test_v5_cases.py runs test_v5.py's 93 cases as pytest
       # cases (test_v5.py itself still works as a script). conftest.py
@@ -65,7 +65,7 @@ jobs:
       # for this step so the main suite runs without it.
       - name: CVDP harness on cocotb + Icarus
         run: |
-          pip install cocotb==2.0.1
+          pip install -r requirements-cvdp.txt
           python -m pytest -q helioslm_v5/tests/test_cvdp_bench.py
 
   build-release:

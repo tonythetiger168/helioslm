@@ -28,6 +28,24 @@ More starters:
 - Improve error messages and docstrings in a module you just read
 - Fix a `TODO`/`FIXME` you find in the source
 
+## Install
+
+Reproducing the v5 suite CI runs takes three installs. `requirements-ci.txt` is the CPU torch, numpy, and pytest pin. `requirements-test-extras.txt` is the `tokenizers` pin CI installs before that suite. `iverilog` is an apt/system package (not pip); HDL tests skip when it is absent.
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-ci.txt
+pip install -r requirements-test-extras.txt
+sudo apt-get install -y iverilog
+```
+
+`requirements-cvdp.txt` (`cocotb`) is only for the CVDP harness step. CI installs it after the suite, so the main pytest run does not import cocotb. That suite command is:
+
+```bash
+python -m pytest helioslm_v5/tests/ -q -n 4 --ignore=helioslm_v5/tests/test_v5.py
+```
+
 ## Development workflow
 
 1. Fork and clone the repo

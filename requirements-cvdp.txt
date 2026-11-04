@@ -1,0 +1,3 @@
+# Python pin for the CVDP harness step in ci.yml. Installed after the
+# main v5 suite so that suite still runs without cocotb.
+cocotb==2.0.1
