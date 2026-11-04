@@ -33,7 +33,37 @@ Open LLM architecture techniques (latent attention, mixture-of-experts, linear a
 | **Decision layer** | Calibrated confidence for acting models (RLCD): DecisionHead, TrustGate, deterministic grounding | `helioslm_v5/agent/`, `helioslm_v5/src/decision_head.py` |
 | **HDL track** | Verilog / SystemVerilog benchmark, data and RL for chip-design models | `helioslm_v5/eval/hdl_bench.py`, `examples/hdl_bench_run.py`, [docs/HDL_BENCH.md](https://github.com/tonythetiger168/helioslm/blob/main/docs/HDL_BENCH.md) |
 
-**Status:** a correctness-focused reference implementation with no trained product weights yet (only toy and pilot checkpoints); see [Known Limitations](#known-limitations).
+**Status:** the code is a correctness-focused reference implementation. The models you can download and run today are preview builds based on Google Gemma 4, listed under [Local models](#local-models-by-gpu-memory). HeliosLM's own from-scratch generations (v1.0–v6.0) are planned and not trained yet; see [Product roadmap](#product-roadmap-proposed-not-a-release-claim) and [Known Limitations](#known-limitations).
+
+## Local models (by GPU memory)
+
+本機模型：依顯示卡記憶體選擇套件，下載頁 **https://helioslm.pages.dev/** 。
+
+Preview packages that run locally today. Every tier is a GGUF file for llama.cpp or Ollama, zipped with an Ollama `Modelfile`, a README with the run commands and a `manifest.json` (sizes and SHA-256). All of them are **based on Google Gemma 4**: the CPU and 8–16 GB tiers use HeliosLM TW E4B (continued pretraining on Traditional Chinese text), and the 24 GB and larger tiers use HeliosLM TW 26B-A4B (an instruction-tuned mixture-of-experts model with about 4B active parameters per token, which answers directly by default, with thinking off).
+
+| Tier | Memory | Example hardware | Model | Format | File size | Context |
+|---|---|---|---|---|---:|---|
+| **L-Edge** | CPU, ≤ 8 GB RAM | laptop CPU, Raspberry Pi 5 | HeliosLM TW E4B | GGUF Q4_K | 4.94 GB | 8K |
+| **L8** | 8 GB VRAM | RTX 4060, 3060 Ti | HeliosLM TW E4B | GGUF Q4_K | 4.94 GB | 32K |
+| **L16** | 12–16 GB VRAM | RTX 3060 12GB, 4070, 4060 Ti / 5060 Ti 16GB | HeliosLM TW E4B | GGUF Q8_0 | 7.43 GB | 32K |
+| **L24** | 24–32 GB VRAM, or 32 GB unified memory | RTX 3090, 4090, 5090; 32 GB Mac / Ryzen AI Max+ 395 | HeliosLM TW 26B-A4B | GGUF Q4_K | 15.64 GB | 32K |
+| **L48+** | 48–96 GB VRAM, or 64–96 GB unified memory | RTX PRO 6000 96GB, 2× 24 GB, 64–96 GB unified memory | HeliosLM TW 26B-A4B | GGUF Q8_0 | 25.02 GB | 128K |
+| **L128** | 128 GB unified memory | NVIDIA DGX Spark, Ryzen AI Max+ 395, Mac 128 GB | HeliosLM TW 26B-A4B | GGUF F16 | 47.04 GB | 128K |
+| **L256 / L512** | 256 / 512 GB unified memory | Mac Studio / Ultra-class Macs | — | — | — | planned (規劃中) |
+
+A chip-design preview for Verilog / SystemVerilog, also based on Google Gemma 4, is on its own page: **https://helioslm.pages.dev/hdl/**.
+
+```bash
+# llama.cpp
+llama-cli -m <file>.gguf
+# Ollama (from the unzipped package folder)
+ollama create helioslm -f Modelfile && ollama run helioslm
+```
+
+On a 16 GB card the 26B-A4B Q4_K file also runs with llama.cpp's `--cpu-moe` (expert weights in system RAM); each package README lists that and the KV-cache flags.
+
+> **Preview builds (預覽版):** these are early pilots that have not passed the release evaluation yet, and no scores are claimed for them here. The packaging tooling is described under [Deployment series](#deployment-series-proposed-2026-10-23).
+
 
 ## Who is this for?
 
@@ -565,7 +595,7 @@ HeliosLM aims to evolve from a verifiable, modifiable LLM research stack into an
 | **v5.0 — Pro / Enterprise** | HeliosLM Pro | **300B** | ~20B | MoE | Multimodal/long-context R&D, enterprise pilot, distributed serving |
 | **v6.0 — Frontier** | HeliosLM Frontier | **1T (1,000B)** | ~40B | MoE | Frontier research candidate; competitive performance on defined evaluations |
 
-These are **stretch targets, not mandatory training commitments**. A version may ship with a smaller verified model if quality, economics or safety gates are not met. The 1T target is contingent on major external funding, training data rights, infrastructure and distributed-systems validation; matching parameter count alone does not imply matching the capabilities of any existing frontier model.
+**None of these six generations is trained yet; all are planned (v6.0 is not scheduled).** The models you can download now are the Gemma 4–based previews under [Local models](#local-models-by-gpu-memory). These are **stretch targets, not mandatory training commitments**. A version may ship with a smaller verified model if quality, economics or safety gates are not met. The 1T target is contingent on major external funding, training data rights, infrastructure and distributed-systems validation; matching parameter count alone does not imply matching the capabilities of any existing frontier model.
 
 ### Deployment series (proposed, 2026-10-23)
 
@@ -608,18 +638,18 @@ Context sizes assume the default MLA cache (latent 512 + RoPE 64, about 37 KB pe
 | **L256** | Q8_0 + Q4_K, 128K (v5.190) | same (GGUF on Metal; MLX export not yet) | v4.0 / v5.0 not trained yet |
 | **L512** | Q8_0 + Q4_K, 128K (v5.190) | same (GGUF on Metal; MLX export not yet) | v5.0 not trained yet |
 
-**Download packages by version (2026-10-29).** Every version is listed on the download page as 開發中 (in development) until it passes its gate; nothing below is downloadable yet.
+**Download packages by version (updated 2026-11-04).** The preview packages that are downloadable now are listed under [Local models](#local-models-by-gpu-memory). HeliosLM's own generations v1.0–v6.0 are planned (規劃中) and not trained; none of them is downloadable yet.
 
 | Version | Packages (tiers) | Quantizations | Status |
 | --- | --- | --- | --- |
-| **Route-B pilot** (Taiwanese continued pretraining of Gemma 4 E2B) | L8, L16 | Q4_K_M + Q8_0 (L8); F16 + Q4_K_M (L16) | pilot B0 training on public data; packaged with `examples/package_hf.py` once it passes its predeclared evaluation gates |
-| **v1.0** Lite 0.5B | L-Edge | Q4_K + Q8_0 | 開發中, not trained |
-| **v2.0** Base 3B | L8, L16 | Q4_K + Q8_0; F16 + Q4_K | 開發中, not trained |
-| **v3.0** MoE 30B-A3B | L16 (experts in RAM), L24, L48+, L128 | Q4_K; Q8_0 / F16 | 開發中, not trained |
-| **v4.0** Reasoner 100B-A10B | L48+, L128, L256 | Q4_K; Q8_0 | 開發中, not trained |
-| **v5.0** Pro 300B-A20B | L256, L512 | Q4_K; Q8_0 | 開發中, not trained |
-| **v6.0** Frontier 1T-A40B | cloud only (CX) | FP8 / MXFP4 | 開發中, not trained |
-| **HDL** (Verilog / SystemVerilog / UVM) | follows its source generation | same | 開發中: eval harness (VerilogEval, RTLLM, CVDP, UVM) and data tools done; no model yet |
+| **Preview (based on Google Gemma 4)** | L-Edge, L8, L16 (E4B); L24, L48+, L128 (26B-A4B) | Q4_K; Q8_0; F16 | downloadable as preview builds, see [Local models](#local-models-by-gpu-memory); not yet past the release evaluation |
+| **v1.0** Lite 0.5B | L-Edge | Q4_K + Q8_0 | planned (規劃中), not trained |
+| **v2.0** Base 3B | L8, L16 | Q4_K + Q8_0; F16 + Q4_K | planned (規劃中), not trained |
+| **v3.0** MoE 30B-A3B | L16 (experts in RAM), L24, L48+, L128 | Q4_K; Q8_0 / F16 | planned (規劃中), not trained |
+| **v4.0** Reasoner 100B-A10B | L48+, L128, L256 | Q4_K; Q8_0 | planned (規劃中), not trained |
+| **v5.0** Pro 300B-A20B | L256, L512 | Q4_K; Q8_0 | planned (規劃中), not trained |
+| **v6.0** Frontier 1T-A40B | cloud only (CX) | FP8 / MXFP4 | not scheduled (未排程), not trained |
+| **HDL** (Verilog / SystemVerilog / UVM) | follows its source generation | same | in development (開發中): eval harness (VerilogEval, RTLLM, CVDP, UVM) and data tools done; a preview based on Google Gemma 4 is on https://helioslm.pages.dev/hdl/ |
 
 `examples/package_tiers.py --run <pilot run> --out dist/` (v5.148) writes each tier's GGUF files, an Ollama `Modelfile` (when a tokenizer is embedded), the `llama-cli` / `llama-server` commands and a `manifest.json` with sizes, sha256 and whether the weights fit in 75% of the tier's memory. F16 stands in for the table's BF16 and Q4_K for Q4_K_M / Q6_K. On the pilots, llama.cpp logits match PyTorch at cosine 1.0000 (F16), ≥ 0.989 (Q8_0) and ≥ 0.983 (Q4_K). The cloud series has no packaging step yet; it serves the same checkpoints.
 
