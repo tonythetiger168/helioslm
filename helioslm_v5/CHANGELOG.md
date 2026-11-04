@@ -12,6 +12,7 @@ command (they continue text), chat tiers a `llama-server` command
 (with `--reasoning-budget 0` when the package turns thinking off).
 `bundle_package` now records `chat` and `reasoning` in `packages.json`.
 The full guide is `docs/LOCAL_RUN.md`.
+
 ## v5.235 (2026-11-04) - gpt-oss answers in the HDL eval
 
 `strip_reasoning` also cuts gpt-oss (harmony) replies at
