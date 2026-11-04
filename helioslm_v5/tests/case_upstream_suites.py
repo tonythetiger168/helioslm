@@ -923,6 +923,86 @@ def test_hsh_presets_suite():
 
 
 # ---------------------------------------------------------------------------
+# limitations round (2026-11-04): fold the remaining offline hsh core
+# sidecars — the plugin kernel (H1) and the streaming / HTTP-error /
+# request-retry pins in hsh/llm.py — into the daily gate. Same gap class
+# and the same drift-wrapper as the H2–H5 fold above. Both files carry
+# the in-file pytest shim; raises yields an ExceptionInfo stand-in
+# because these cases read `.value`. The two llm wire tests take the
+# _MonkeyPatch stand-in (setenv) and inject an opener, so they never
+# touch the network. test_hsh_web stays in EXEMPT_SIDECARS: it binds
+# 127.0.0.1 through ThreadingHTTPServer (ephemeral port), runs each turn
+# on a background thread and sleeps on the SSE / cancel path, so it is
+# not a clean offline fold.
+# ---------------------------------------------------------------------------
+
+
+def test_hsh_kernel_suite():
+    """hsh H1 plugin kernel under the daily gate. Pins: provide / lookup /
+    duplicate refused / withdrawn on dispose; inject waits, activates,
+    unwinds and reactivates; effects unwind LIFO exactly once, including
+    nested plugins; a failing apply rolls back and leaves the fork
+    'failed'; settle failures are recorded not raised; Service subclass
+    lifecycle and dependents seeing a started service; dispatch modes are
+    contracts (undeclared / wrong mode raises); emit swallows and records;
+    serial / parallel / bail; waterfall delegate, replace and
+    short-circuit, including no listeners; scoped dispatch filter and
+    unwind; a chain of services cascades. No fixtures: every case is a
+    plain function."""
+    from helioslm_v5.tests import test_hsh_kernel as m
+    expected = {"test_provide_lookup_and_duplicate",
+                "test_service_withdrawn_when_plugin_disposed",
+                "test_inject_waits_activates_and_reactivates",
+                "test_effects_unwind_lifo_once_and_nested",
+                "test_disposer_runs_once_and_leaves_stack",
+                "test_failed_apply_rolls_back",
+                "test_failure_during_settle_is_recorded_not_raised",
+                "test_service_subclass_lifecycle",
+                "test_dependents_see_started_service",
+                "test_modes_are_contracts",
+                "test_emit_swallows_and_records",
+                "test_serial_parallel_bail",
+                "test_waterfall_delegate_replace_shortcircuit",
+                "test_waterfall_without_listeners_runs_final",
+                "test_scoped_dispatch_filter_and_unwind",
+                "test_chain_of_services_cascades"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_hsh_kernel_suite",
+          "hsh H1 plugin kernel: all 16 sidecar tests under the daily gate")
+
+
+def test_hsh_llm_suite():
+    """hsh streaming / HTTP errors / request retry under the daily gate.
+    Pins: SSE deltas fold into one message (text, reasoning, tool-call
+    fragments, usage incl. cache hits) and the loop re-emits them live
+    while the log keeps the merged stream; HTTP 429/5xx are transient
+    LLMErrors with Retry-After, 400 is not, URLError is transient;
+    request-retry retries transient failures in the same step, gives up
+    after max_retries, never retries a permanent error, and every attempt
+    is logged. The wire tests inject an opener and never touch the
+    network. monkeypatch.setenv goes through the _MonkeyPatch stand-in
+    (undo in finally)."""
+    from helioslm_v5.tests import test_hsh_llm as m
+    expected = {"test_sse_fold", "test_streaming_through_the_loop",
+                "test_http_errors", "test_request_retry"}
+    _drift_guard(m, expected)
+    for name in sorted(expected - {"test_streaming_through_the_loop",
+                                   "test_http_errors"}):
+        getattr(m, name)()
+    for name in ("test_streaming_through_the_loop", "test_http_errors"):
+        mp = _MonkeyPatch()
+        try:
+            getattr(m, name)(mp)
+        finally:
+            mp.undo()
+    _pass("test_hsh_llm_suite",
+          "hsh llm streaming/retry: all 4 sidecar tests (monkeypatch "
+          "stand-in, injected opener, no network) under the daily gate")
+
+
+# ---------------------------------------------------------------------------
 # v5.225: sidecar coverage meta-guard. The folds above (and the earlier
 # v5.155 / 2026-10-29 rounds) were each discovered by HAND, days after
 # the sidecar landed. This guard makes the gap structurally impossible
@@ -940,6 +1020,11 @@ def test_hsh_presets_suite():
 # 2026-11-04 limitations round: the four hsh harness core sidecars
 # (test_hsh_session / test_hsh_tools / test_hsh_loop / test_hsh_presets)
 # moved from EXEMPT to FOLDED — the backlog is now 180 files.
+# 2026-11-04 limitations round: test_hsh_kernel (H1) and test_hsh_llm
+# (streaming / HTTP errors / request retry) moved from EXEMPT to FOLDED —
+# the backlog is now 178 files. test_hsh_web stays exempt: its cases bind
+# 127.0.0.1 through ThreadingHTTPServer (ephemeral port), run the turn on
+# a background thread and sleep on the SSE / cancel path.
 # ---------------------------------------------------------------------------
 
 FOLDED_SIDECARS = {
@@ -970,6 +1055,9 @@ FOLDED_SIDECARS = {
     "test_hsh_tools": "test_hsh_tools_suite",
     "test_hsh_loop": "test_hsh_loop_suite",
     "test_hsh_presets": "test_hsh_presets_suite",
+    # limitations round 2026-11-04 (hsh kernel + offline llm pins)
+    "test_hsh_kernel": "test_hsh_kernel_suite",
+    "test_hsh_llm": "test_hsh_llm_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -995,7 +1083,7 @@ EXEMPT_SIDECARS = {
     'test_hca_rescue', 'test_hdl_bench', 'test_hdl_data', 'test_hdl_git_sources',
     'test_hdl_projects', 'test_hdl_reward', 'test_hdl_train_eval', 'test_hf_license_audit',
     'test_hsh_egress', 'test_hsh_extras', 'test_hsh_interaction',
-    'test_hsh_kernel', 'test_hsh_llm', 'test_hsh_mcp',
+    'test_hsh_mcp',
     'test_hsh_skills',
     'test_hsh_web', 'test_hub', 'test_indexer_share', 'test_k3_block',
     'test_k3_llamacpp_parts', 'test_kda_chunked', 'test_kda_k3_style', 'test_kda_subchunk',

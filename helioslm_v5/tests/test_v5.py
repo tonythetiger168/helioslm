@@ -264,6 +264,15 @@ TESTS = [
     case_upstream_suites.test_hsh_tools_suite,
     case_upstream_suites.test_hsh_loop_suite,
     case_upstream_suites.test_hsh_presets_suite,
+    # limitations round (2026-11-04): the remaining offline hsh core
+    # sidecars — plugin kernel (H1) and streaming / HTTP-error /
+    # request-retry (hsh/llm.py) — folded with the same drift-guarded
+    # wrapper (plain functions; monkeypatch stand-in for the two wire
+    # tests, which inject an opener and do not touch the network).
+    # test_hsh_web stays exempt: it binds 127.0.0.1 and sleeps on the
+    # live SSE / cancel path.
+    case_upstream_suites.test_hsh_kernel_suite,
+    case_upstream_suites.test_hsh_llm_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 
