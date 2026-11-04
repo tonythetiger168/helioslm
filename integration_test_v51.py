@@ -4,13 +4,14 @@ Every test instantiates the real HeliosLMv5(size="lite") model (or the real
 module under test) — no dummy stand-ins. Each test prints PASS/FAIL plus key
 numbers; the script exits non-zero if any test fails.
 
-Run:  python /mnt/agents/output/integration_test_v51.py
+Run:  python integration_test_v51.py
 """
 import copy
+import os
 import sys
 import traceback
 
-sys.path.insert(0, "/mnt/agents/output")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import torch
 import torch.nn as nn

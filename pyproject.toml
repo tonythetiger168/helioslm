@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "helioslm"
+version = "5.234.0"
+description = "Open LLM architecture techniques in pure PyTorch, plus the hsh agent harness."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+# No third-party runtime dependencies. torch and numpy stay pinned in
+# requirements-ci.txt (CPU index). hsh imports with the standard library
+# alone; declaring torch here would force an unpinned wheel onto that
+# install and fight the CPU pin. Model code still needs those packages
+# installed before import.
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["helioslm_v5*"]
+namespaces = true
+
+# Static files the harness UI reads next to hsh/web.py. Checkpoints,
+# data/, and the top-level harness/, agent/, benchmarks/, and examples/
+# trees are not part of this distribution: library code does not import
+# them. Tests and scripts that need those trees run from a checkout.
+[tool.setuptools.package-data]
+"helioslm_v5.hsh" = ["webui/*"]

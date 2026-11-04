@@ -6,6 +6,8 @@ __pycache__/
 .Python
 *.egg-info/
 .eggs/
+build/
+dist/
 
 # PyTorch
 *.pth
