@@ -1,5 +1,15 @@
 # HeliosLM v5 Changelog
 
+## v5.238 (2026-11-04) - Measured speeds and MTP tip in the local-run guide
+
+The download page and `docs/LOCAL_RUN.md` get a measured speed table
+(llama.cpp, one request, 512 new tokens: L8 E4B Q4_K 241 tok/s and L24
+26B-A4B Q4_K 254 tok/s on an RTX 5090, L48+ Q8_0 121 tok/s on an L40S),
+the MTP flags for the 26B tiers (`-md <assistant head> --spec-type
+draft-mtp --spec-draft-n-max 3`, +37-40% decode, +0.5 GB VRAM; not for
+the E4B tiers, where the head's acceptance is 6-11%), and a `-t` tip.
+`cloudflare.SPEED` holds the numbers; only measured GPUs are listed.
+
 ## v5.237 (2026-11-04) - Local download-and-run guide
 
 The download page and the README now explain how to download and run a

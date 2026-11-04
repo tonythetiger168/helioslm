@@ -138,6 +138,43 @@ _MAC_TIERS = (("8 GB", "L-Edge"), ("16 GB", "L8"), ("24 GB", "L16"),
               ("32–48 GB", "L24"), ("64–96 GB", "L48+"), ("128 GB 以上", "L128"))
 
 
+# measured 2026-11-04 (v5.238): llama.cpp build 12098, llama-server -ngl 99
+# -c 8192 -fa on, one request, 512 new tokens, median of 8 chat prompts;
+# (tier, file, GPU, decode tok/s, with MTP or None, VRAM)
+SPEED = (("L8", "E4B Q4_K", "RTX 5090", 241, None, "3.7 GB"),
+         ("L16", "E4B Q8_0", "RTX 5090", 196, None, "5.6 GB"),
+         ("L24", "26B-A4B Q4_K", "RTX 5090", 254, 349, "17.2 GB"),
+         ("L24", "26B-A4B Q4_K", "L40S 48 GB", 161, None, "17.1 GB"),
+         ("L48+", "26B-A4B Q8_0", "L40S 48 GB", 121, None, "26.7 GB"),
+         ("L48+", "26B-A4B Q8_0", "A40 48 GB", 85, 119, "26.5 GB"))
+# Gemma 4 26B-A4B assistant (MTP) head used for the measurement above
+MTP_HEAD_26B = "AtomicChat/gemma-4-26B-A4B-it-assistant-GGUF"
+
+
+def _speed_html():
+    e = html.escape
+    rows = "\n".join(
+        f"<tr><td><b>{e(t)}</b></td><td>{e(f)}</td><td>{e(g)}</td><td>{d}</td>"
+        f"<td>{m if m else '—'}</td><td>{e(v)}</td></tr>"
+        for t, f, g, d, m, v in SPEED)
+    return f"""<h3>6. 速度參考（實測）</h3>
+<p>llama.cpp、單一請求、產生 512 個 token 的中位數（2026-11-04 實測）。
+單位 token/秒，越高越快；首字延遲約 0.04 秒（E4B）到 0.2 秒（26B）。
+其他顯示卡沒有實測，請自行比較。</p>
+<div class=wrap><table>
+<tr><th>Tier</th><th>檔案</th><th>顯示卡</th><th>速度</th><th>開 MTP</th><th>VRAM</th></tr>
+{rows}
+</table></div>
+<ul>
+<li><b>MTP 加速（只建議 26B，L24 起）</b>：另外下載 Gemma 4 26B-A4B 的 assistant（MTP）GGUF
+（例如 Hugging Face 上的 <code>{e(MTP_HEAD_26B)}</code>，Q8_0），在 <code>llama-server</code> 指令加上
+<code>-md &lt;assistant 檔&gt;.gguf -ngld 99 --spec-type draft-mtp --spec-draft-n-max 3</code>，
+實測快 37–40%，多用約 0.5 GB VRAM。E4B 層級（L-Edge、L8、L16）開 MTP 沒有幫助，L8 反而變慢。</li>
+<li><b>CPU 執行緒</b>：加 <code>-t &lt;實體核心數&gt;</code>。在核心很多的機器上用預設值可能反而大幅變慢。</li>
+</ul>
+"""
+
+
 def _cmd(t, b):
     """The llama.cpp command a tier's README gives, for the guide."""
     ngl = " -ngl 99" if t["tier"] != "L-Edge" else ""
@@ -149,8 +186,8 @@ def _cmd(t, b):
 
 
 def run_guide(tiers):
-    """HTML section on downloading and running a package locally (v5.237):
-    which file per GPU or Mac, download + checksum + unzip on Windows /
+    """HTML section on downloading and running a package locally (v5.237;
+    speed table and MTP tip v5.238): which file per GPU or Mac, download + checksum + unzip on Windows /
     Linux / macOS, and the llama.cpp, Ollama and LM Studio steps. Commands
     use each tier's own GGUF name, context and model kind (a base model
     continues text; a chat model answers)."""
@@ -237,7 +274,7 @@ AMD / Intel 顯示卡選 Vulkan 版，Mac 已內建 Metal）。</li>
 或用 <code>--n-cpu-moe N</code> 只放前 N 層；統一記憶體的電腦不需要。</li>
 <li>每個 zip 裡的 README.md 有該層級的完整指令。</li>
 </ul>
-"""
+{_speed_html()}"""
 
 
 def _page(name, version, tiers, base, generations):

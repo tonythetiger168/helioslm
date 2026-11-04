@@ -140,3 +140,38 @@ L-Edge 只用 CPU，不加 `-ngl`。舊版 llama.cpp 沒有 `llama-completion` �
   ```
 
 - **Windows 上變得很慢**：關掉其他吃顯示卡記憶體的程式（瀏覽器硬體加速、遊戲、Docker / WSL）。
+
+## 6. 速度參考（實測）
+
+llama.cpp（build 12098）、`llama-server -ngl 99 -c 8192 -fa on`、單一請求、產生 512 個 token，
+8 個對話提示的中位數，2026-11-04 實測。單位 token/秒，越高越快。
+其他顯示卡（例如 RTX 4090、3090）沒有實測。
+
+| 層級 | 檔案 | 顯示卡 | 速度 | 開 MTP | 首字延遲 | VRAM |
+|---|---|---|---:|---:|---:|---:|
+| L8 | E4B Q4_K | RTX 5090 | 241 | 不建議（173） | 0.04 秒 | 3.7 GB |
+| L16 | E4B Q8_0 | RTX 5090 | 196 | 不建議（206） | 0.04 秒 | 5.6 GB |
+| L24 | 26B-A4B Q4_K | RTX 5090 | 254 | **349**（+37%） | 0.13 秒 | 17.2 GB |
+| L24 | 26B-A4B Q4_K | L40S 48 GB | 161 | — | 0.16 秒 | 17.1 GB |
+| L48+ | 26B-A4B Q8_0 | L40S 48 GB | 121 | — | 0.16 秒 | 26.7 GB |
+| L48+ | 26B-A4B Q8_0 | A40 48 GB | 85 | **119**（+40%） | 0.20 秒 | 26.5 GB |
+
+E4B 層級的 VRAM 比檔案小，因為每層嵌入（per-layer embeddings）留在系統記憶體。
+
+### MTP 加速（只建議 26B，L24 起）
+
+MTP 用 Gemma 4 26B-A4B 的 assistant 頭當草稿模型，一次猜幾個 token 再驗證。
+另外下載它的 GGUF（實測用的是 Hugging Face 上 `AtomicChat/gemma-4-26B-A4B-it-assistant-GGUF` 的 Q8_0），然後：
+
+```bash
+llama-server -m helioslm-tw-26b-a4b-l24-Q4_K.gguf -c 32768 -ngl 99 --reasoning-budget 0 \
+  -md <assistant 檔>.gguf -ngld 99 --spec-type draft-mtp --spec-draft-n-max 3 --port 8080
+```
+
+實測快 37–40%，多用約 0.5 GB VRAM，草稿接受率約 61–64%。
+E4B 層級（L-Edge、L8、L16）開 MTP 沒有幫助（接受率 6–11%），L8 反而變慢 28%。
+舊版 llama.cpp 的 `--draft-max` 已移除，請用 `--spec-draft-n-max`。
+
+### CPU 執行緒
+
+加 `-t <實體核心數>`。在核心很多或虛擬化的機器上，預設的執行緒數可能讓速度掉到個位數 token/秒。
