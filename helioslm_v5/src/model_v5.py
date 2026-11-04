@@ -624,6 +624,14 @@ class HeliosLMv5(nn.Module):
                 "one token (an empty sequence has no defined positions or "
                 "causal structure)"
             )
+        if B == 0:
+            # Same boundary as sequence length 0. An empty batch otherwise
+            # dies inside RoPE on position_ids.max() (numel == 0).
+            raise ValueError(
+                "input_ids has batch size 0; forward requires at least "
+                "one sequence (an empty batch has no defined positions or "
+                "causal structure)"
+            )
         past_len = 0
         if past_key_values is not None:
             if len(past_key_values) != len(self.layers):

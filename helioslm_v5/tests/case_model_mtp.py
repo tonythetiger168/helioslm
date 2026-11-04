@@ -94,6 +94,21 @@ def test_v5_model():
           f"config validation raises, mtp batch>1 == per-row greedy")
 
 
+def test_forward_rejects_empty_batch():
+    """A batch of zero rows is bad input, same as a sequence of length 0.
+
+    Asserts only the exception type: callers catch ValueError, and the
+    check must not depend on the internal message or the RoPE failure
+    it replaces.
+    """
+    model, _config = _lite_model(seed=105)
+    empty = torch.zeros(0, 4, dtype=torch.long)
+    _expect_raises(ValueError, lambda: model.forward(empty),
+                   "forward on an empty batch")
+    _pass("test_forward_rejects_empty_batch",
+          "lite forward rejects input_ids (0, 4) with ValueError")
+
+
 # ----------------------------------------------------------------------
 # MTP: weight sharing, causality, MTPDecoder.generate plumbing
 # ----------------------------------------------------------------------
