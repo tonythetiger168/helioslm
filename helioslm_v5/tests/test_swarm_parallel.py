@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # harness/
 
 from harness.harness_core import Context  # noqa: E402
 from harness.harness_plugins import (AgentSwarmPlugin,  # noqa: E402

@@ -40,6 +40,7 @@ letting silent truncation happen downstream.
 """
 from dataclasses import dataclass, field
 from typing import Callable, Optional, Tuple
+from helioslm_v5.version import __version__
 
 
 @dataclass
@@ -672,7 +673,7 @@ OPTION_RULES = (
 
 @dataclass
 class HeliosLMv5Config:
-    model_name: str = "HeliosLM-v5.225"
+    model_name: str = f"HeliosLM-v{__version__}"  # v5.236: helioslm_v5/version.py
     size: str = "full"  # "full" (production defaults) or "lite" (CPU smoke tests)
     # Size-dependent architecture dims: None = "follow the size" (filled
     # from _SIZE_PRESETS in __post_init__; the values below are the "full"

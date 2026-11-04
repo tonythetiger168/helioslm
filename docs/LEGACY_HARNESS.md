@@ -1,9 +1,26 @@
 # Legacy plugin harness (helios-harness, v1.0–v1.22)
 
-Moved from the root README in v5.212. The `harness/` plugin context
-predates the hsh agent harness (`helioslm_v5/hsh/`, see the root README's
-"Using the harness (hsh)") and is kept for its existing callers; new agent
-work uses hsh.
+Moved from the root README in v5.212. The plugin context predates the hsh
+agent harness (`helioslm_v5/hsh/`, see the root README's "Using the
+harness (hsh)") and is kept for its existing callers; new agent work uses
+hsh.
+
+## Where the harness code lives (v5.236)
+
+There is one agent harness, **hsh** (`helioslm_v5/hsh/`). Everything else
+named "harness" is either frozen legacy or an eval adapter:
+
+| Path | What it is | Status |
+|---|---|---|
+| `helioslm_v5/hsh/` | hsh agent harness + web UI (`python -m helioslm_v5.hsh.web`) | current |
+| `helioslm_v5/harness/` | legacy plugin context (`harness_core.py`, `harness_plugins.py`) and the old web UIs (`web_ui_v2.py`, `legacy/web_ui_v1.py`) | frozen, kept for tests and old scripts |
+| `helioslm_v5/eval/harness.py`, `eval/lm_harness.py` | log-likelihood scorer and the lm-evaluation-harness adapter | eval code, not an agent harness |
+
+Until v5.236 the plugin context sat in a second, top-level `harness/`
+directory, and Python merged it with `helioslm_v5/harness/` into one
+namespace package whenever both the repo root and `helioslm_v5/` were on
+`sys.path`. Both files now live in `helioslm_v5/harness/`; imports stay
+`from harness.harness_core import ...` with `helioslm_v5/` on `sys.path`.
 
 ## Plugins by release (v1.0-v1.22, 23 releases)
 
@@ -136,7 +153,7 @@ All plugins register as `ctx.<name>.<op>` with per-call audit effects.
 | Voice/UI | VoiceDialog, TerminalUI, AutoDrive, WebUI (v2: stdlib-only rewrite) | v1.19, v1.36/v2 |
 | IC | RTL gen, UVM scaffold, Coverage | v1.7 |
 
-**Usage:**
+**Usage** (with `helioslm_v5/` on `sys.path`):
 ```python
 from harness.harness_core import Context
 from harness.harness_plugins import *

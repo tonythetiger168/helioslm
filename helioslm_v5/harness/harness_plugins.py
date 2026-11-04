@@ -10,8 +10,10 @@ import sys
 # then died with ModuleNotFoundError. os.path is cross-platform; a
 # missing directory is now loud at insert time rather than confusing
 # at first import.
-_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_AGENT = os.path.join(_ROOT, "helioslm_v5", "agent")
+# v5.236: this file now lives in helioslm_v5/harness/, so the package
+# root is two levels up and the agent modules are its agent/ subdir.
+_PKG = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_AGENT = os.path.join(_PKG, "agent")
 if not os.path.isdir(_AGENT):
     raise ValueError(f"harness plugins cannot find the agent modules at "
                      f"{_AGENT} — refusing to run with a broken import "
