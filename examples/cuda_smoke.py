@@ -566,6 +566,20 @@ def main():
         sys.exit("CUDA is not available on this machine")
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
+    if DEV.type == "cpu":
+        # oneDNN's bf16 GEMM (what autocast selects on CPU) sometimes
+        # returns a wrong tensor. Same seeded weights and input: max
+        # |blocked - batched| in moe_batched_dispatch sits at one ulp
+        # (2.4e-4) or, when the kernel misfires, jumps past the 5e-2 gate
+        # (measured to 0.53). It misfires at the default intra-op width
+        # (one thread per core; this child does not inherit conftest's
+        # 1-thread pin) and still misfires at one thread when several
+        # such processes run together, which is `pytest -n 4`.
+        # mkldnn.deterministic does not stop it. The reference kernel
+        # (mkldnn off) matches the two dispatches bitwise, so the gate is
+        # unchanged. CUDA does not use this backend.
+        torch.set_num_threads(1)
+        torch.backends.mkldnn.enabled = False
     env = {"torch": torch.__version__, "cuda": torch.version.cuda,
            "device": DEV.type, "python": sys.version.split()[0],
            "platform": platform.platform()}
