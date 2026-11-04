@@ -21,7 +21,32 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    # This file is also executed directly by the daily TESTS suite
+    # (case_upstream_suites), where pytest is not installed. The shim
+    # covers exactly the one pytest feature used below: raises (no
+    # match= arguments are passed). Same pattern as test_rephrase.py
+    # (v5.225).
+    import contextlib as _contextlib
+    import re as _re
+
+    class _PytestShim:
+        @staticmethod
+        @_contextlib.contextmanager
+        def raises(exc, match=None):
+            try:
+                yield
+            except exc as e:
+                if match is not None and not _re.search(match, str(e)):
+                    raise AssertionError(
+                        f"raised {e!r}, which does not match /{match}/"
+                    ) from None
+                return
+            raise AssertionError(f"{exc.__name__} was not raised")
+
+    pytest = _PytestShim()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 

@@ -36,7 +36,10 @@ class _MonkeyPatch:
     """Subset of pytest's monkeypatch fixture used by the wrapped
     sidecar suites (limitations round 2026-10-29): ``setattr`` /
     ``setitem`` with LIFO ``undo``. The suites run sequentially in one
-    process, so every user must undo before returning control."""
+    process, so every user must undo before returning control.
+    2026-11-04: ``setenv`` / ``delenv`` for the OpenAI-adapter wire test
+    in test_hsh_loop (environment variables go through the same
+    item-undo machinery)."""
 
     def __init__(self):
         self._undo = []
@@ -48,6 +51,16 @@ class _MonkeyPatch:
     def setitem(self, mapping, key, value):
         self._undo.append(("item", mapping, key, mapping.get(key, _MISSING)))
         mapping[key] = value
+
+    def setenv(self, name, value):
+        import os
+        self.setitem(os.environ, name, value)
+
+    def delenv(self, name):
+        import os
+        self._undo.append(("item", os.environ, name,
+                           os.environ.get(name, _MISSING)))
+        del os.environ[name]
 
     def undo(self):
         while self._undo:
@@ -742,6 +755,173 @@ def test_ot_bugfix_bench_suite():
           "v5.228 OpenTitan bug-fix bench: all 11 sidecar tests under the "
           "daily gate")
 
+
+# ---------------------------------------------------------------------------
+# limitations round (2026-11-04): fold the hsh harness core sidecars —
+# the session log (H2), the tool registry/pipeline (H3), the LLM seam
+# and turn driver (H4), and built-in tools / PTC mode / presets (H5) —
+# into the daily gate. Same gap class as v5.155: four pytest-only
+# sidecars the mandated `python -m helioslm_v5.tests.test_v5` never
+# executed, while the README's flagship "Using the harness" surface and
+# the v5.223 clinical preset (folded 2026-11-02) all build on this core.
+# The four files carry the in-file pytest shim (raises /
+# mark.parametrize — exactly the features each uses); tmp_path fixtures
+# get real TemporaryDirectory instances; the OpenAI-adapter wire test's
+# monkeypatch gets the _MonkeyPatch stand-in (setenv/delenv added for
+# it). test_workspace_confinement's symlink probe is capability-gated in
+# the sidecar itself (Windows without the symlink privilege still runs
+# the parent-dir and absolute-path probes).
+# ---------------------------------------------------------------------------
+
+
+def test_hsh_session_suite():
+    """hsh H2 session log under the daily gate. Pins: contiguous
+    validated append (NaN / set / unknown type refused, data detached),
+    derive_messages shape with system-head replace/clear, keep_thinking
+    none/turn/all semantics, model-visible-means-logged (rebuilt
+    requests hash-equal the hand-driven loop's, incl. a retry), unlogged
+    input detection, header requirement, JSONL round trip + version
+    refusal, interrupted-tail repair, turn-boundary fork, usage_summary,
+    and the sessions service broadcast/unwind. The keep_thinking matrix
+    is called with its full mode list; tmp_path gets a real
+    TemporaryDirectory."""
+    from helioslm_v5.tests import test_hsh_session as m
+    expected = {"test_append_contiguous_and_validated",
+                "test_register_event_type_log_only",
+                "test_derive_history_shape",
+                "test_system_head_replaced_and_cleared",
+                "test_keep_thinking_modes",
+                "test_model_visible_means_logged",
+                "test_unlogged_input_is_detected",
+                "test_request_needs_header",
+                "test_jsonl_roundtrip_and_version",
+                "test_repair_interrupted_tail",
+                "test_fork_at_turn_boundary", "test_usage_summary",
+                "test_sessions_service_broadcasts_and_unwinds"}
+    _drift_guard(m, expected)
+    for name in sorted(expected - {"test_model_visible_means_logged",
+                                   "test_jsonl_roundtrip_and_version"}):
+        getattr(m, name)()
+    for mode in ("none", "turn", "all"):
+        m.test_model_visible_means_logged(mode)
+    with tempfile.TemporaryDirectory() as t:
+        m.test_jsonl_roundtrip_and_version(Path(t))
+    _pass("test_hsh_session_suite",
+          "hsh H2 session log: all 13 sidecar tests (incl. the 3-mode "
+          "keep_thinking matrix) under the daily gate")
+
+
+def test_hsh_tools_suite():
+    """hsh H3 tool registry / execution pipeline under the daily gate.
+    Pins: the schema subset is enforced at registration, the validator's
+    rules (bool is not an integer), schemas() shape, the pipeline order
+    (pre-execute -> guards -> execute -> project -> post-execute ->
+    finalize -> tools/result), deny/ask semantics incl. only True
+    approving, guard monotonicity, post-execute replacement, input
+    failures still finalizing, body/output failure codes, listener
+    exception containment, deferred context + immutable args, scoped
+    shadow/restrict/dispatch, plugin unwind, and the session payload.
+    Both parametrized matrices are called with their full literal
+    rows."""
+    from helioslm_v5.tests import test_hsh_tools as m
+    expected = {"test_schema_subset_enforced", "test_validator_rules",
+                "test_schemas_only_model_fields_sorted",
+                "test_happy_path_and_order", "test_deny_and_ask",
+                "test_guards_are_monotonic", "test_post_execute_replaces",
+                "test_input_failures_still_finalize",
+                "test_body_and_output_failures",
+                "test_listener_exception_is_contained",
+                "test_deferred_context_and_args_not_mutable",
+                "test_scoped_shadow_restrict_and_dispatch",
+                "test_registrations_unwind_with_plugin",
+                "test_session_payload"}
+    _drift_guard(m, expected)
+    for name in sorted(expected - {"test_deny_and_ask",
+                                   "test_input_failures_still_finalize"}):
+        getattr(m, name)()
+    for decision, approval, expect_ran in [
+            ({"action": "deny", "reason": "no"}, None, False),
+            ({"action": "ask"}, None, False),
+            ({"action": "ask"}, lambda e, q: False, False),
+            ({"action": "ask"}, lambda e, q: "yes", False),
+            ({"action": "ask"}, lambda e, q: True, True)]:
+        m.test_deny_and_ask(decision, approval, expect_ran)
+    for name, args, code in [
+            ("add", "{bad json", "invalid-arguments"),
+            ("add", '{"a": 1}', "invalid-arguments"),
+            ("add", None, "invalid-arguments"),
+            ("nope", "{}", "unknown-tool")]:
+        m.test_input_failures_still_finalize(name, args, code)
+    _pass("test_hsh_tools_suite",
+          "hsh H3 tools pipeline: all 14 sidecar tests (incl. 5+4 "
+          "parametrized rows) under the daily gate")
+
+
+def test_hsh_loop_suite():
+    """hsh H4 LLM seam / turn-step driver under the daily gate. Pins:
+    the tool-turn event sequence with replay (model-visible means
+    logged) across turns, retries, injected context and a system-prompt
+    change; pre-step reject/rewrite; request config changes logged;
+    turn-stopping continuation and max-steps; request-error retry/fail
+    paths; scoped tools and deferred context; unknown provider; the
+    llm/stream waterfall; the TextModelAdapter @@tool@@ protocol (incl.
+    malformed blocks as text); render_transcript shape; and the
+    OpenAICompatAdapter wire mapping offline (monkeypatch setenv/delenv
+    via the _MonkeyPatch stand-in, undo in finally)."""
+    from helioslm_v5.tests import test_hsh_loop as m
+    expected = {"test_tool_turn_sequence_and_replay",
+                "test_pre_step_reject_and_rewrite",
+                "test_request_config_change_is_logged",
+                "test_turn_stopping_continues_and_max_steps",
+                "test_request_error_retry_and_fail",
+                "test_scoped_tools_and_deferred_context",
+                "test_unknown_provider_fails_turn",
+                "test_llm_stream_waterfall_wraps_calls",
+                "test_text_model_adapter_protocol",
+                "test_text_model_malformed_block_is_text",
+                "test_render_transcript_shape",
+                "test_openai_wire_mapping_offline"}
+    _drift_guard(m, expected)
+    for name in sorted(expected - {"test_openai_wire_mapping_offline"}):
+        getattr(m, name)()
+    mp = _MonkeyPatch()
+    try:
+        m.test_openai_wire_mapping_offline(mp)
+    finally:
+        mp.undo()
+    _pass("test_hsh_loop_suite",
+          "hsh H4 loop/LLM seam: all 12 sidecar tests (monkeypatch "
+          "stand-in for the wire test) under the daily gate")
+
+
+def test_hsh_presets_suite():
+    """hsh H5 built-in tools / PTC mode / presets under the daily gate.
+    Pins: workspace confinement (parent-dir / absolute / symlink probes
+    — the symlink probe is capability-gated in the sidecar for Windows
+    hosts without the symlink privilege), bash exit/output/workdir/
+    timeout/scrubbed env, the str_replace_editor and fs/todo tools, PTC
+    code mode (only run_code visible, guards apply inside the program),
+    preset tool isolation + persona, creator inspect, patches
+    insert/replace/remove/disable and refusals, preset unwind with the
+    Agents service, the minimal-preset end-to-end edit, and bash
+    background jobs. tmp_path gets a real TemporaryDirectory."""
+    from helioslm_v5.tests import test_hsh_presets as m
+    expected = {"test_workspace_confinement", "test_bash", "test_editor",
+                "test_fs_and_todo", "test_ptc_code_mode",
+                "test_presets_isolate_agents_and_persona",
+                "test_creator_inspect", "test_patches",
+                "test_preset_unwinds_with_agents_service",
+                "test_minimal_agent_edits_file_end_to_end",
+                "test_bash_jobs"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        with tempfile.TemporaryDirectory() as t:
+            getattr(m, name)(Path(t))
+    _pass("test_hsh_presets_suite",
+          "hsh H5 presets/builtins: all 11 sidecar tests under the daily "
+          "gate")
+
+
 # ---------------------------------------------------------------------------
 # v5.225: sidecar coverage meta-guard. The folds above (and the earlier
 # v5.155 / 2026-10-29 rounds) were each discovered by HAND, days after
@@ -757,6 +937,9 @@ def test_ot_bugfix_bench_suite():
 # (test_long_horizon_bench / test_external_model_gate / test_lora /
 # test_hsh_clinical / test_data_guard) moved from EXEMPT to FOLDED —
 # the backlog is now 184 files.
+# 2026-11-04 limitations round: the four hsh harness core sidecars
+# (test_hsh_session / test_hsh_tools / test_hsh_loop / test_hsh_presets)
+# moved from EXEMPT to FOLDED — the backlog is now 180 files.
 # ---------------------------------------------------------------------------
 
 FOLDED_SIDECARS = {
@@ -782,6 +965,11 @@ FOLDED_SIDECARS = {
     "test_data_guard": "test_data_guard_suite",
     # v5.228 (2026-11-03): new sidecar, folded the day it landed
     "test_ot_bugfix_bench": "test_ot_bugfix_bench_suite",
+    # limitations round 2026-11-04 (hsh harness core)
+    "test_hsh_session": "test_hsh_session_suite",
+    "test_hsh_tools": "test_hsh_tools_suite",
+    "test_hsh_loop": "test_hsh_loop_suite",
+    "test_hsh_presets": "test_hsh_presets_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -807,8 +995,8 @@ EXEMPT_SIDECARS = {
     'test_hca_rescue', 'test_hdl_bench', 'test_hdl_data', 'test_hdl_git_sources',
     'test_hdl_projects', 'test_hdl_reward', 'test_hdl_train_eval', 'test_hf_license_audit',
     'test_hsh_egress', 'test_hsh_extras', 'test_hsh_interaction',
-    'test_hsh_kernel', 'test_hsh_llm', 'test_hsh_loop', 'test_hsh_mcp',
-    'test_hsh_presets', 'test_hsh_session', 'test_hsh_skills', 'test_hsh_tools',
+    'test_hsh_kernel', 'test_hsh_llm', 'test_hsh_mcp',
+    'test_hsh_skills',
     'test_hsh_web', 'test_hub', 'test_indexer_share', 'test_k3_block',
     'test_k3_llamacpp_parts', 'test_kda_chunked', 'test_kda_k3_style', 'test_kda_subchunk',
     'test_kv_compress', 'test_kv_share', 'test_llamacpp_export', 'test_llamacpp_kimi_k3',

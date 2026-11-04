@@ -61,7 +61,12 @@ class Workspace(Service):
         return full
 
     def rel(self, full):
-        return str(Path(full).relative_to(self.root)) or "."
+        # POSIX spelling on every platform: these strings are
+        # model-facing (tool results land in the session log and feed
+        # request hashes), so a Windows run must produce the same text
+        # as a Linux one. Found 2026-11-04 by folding test_hsh_presets
+        # into the daily gate (glob returned "pkg\m.py").
+        return Path(full).relative_to(self.root).as_posix() or "."
 
 
 def _clip(text, limit=MAX_OUTPUT):
@@ -365,7 +370,9 @@ def editor_tool(ctx, config=None):
         cmd, path = args["command"], ws.resolve(args["path"])
         if cmd == "view":
             if path.is_dir():
-                items = sorted(str(p.relative_to(path)) for p in path.rglob("*")
+                # as_posix like Workspace.rel: model-facing paths are
+                # platform-stable (see rel()).
+                items = sorted(p.relative_to(path).as_posix() for p in path.rglob("*")
                                if not any(part.startswith(".") for part in p.relative_to(path).parts)
                                and len(p.relative_to(path).parts) <= 2)
                 return "\n".join(items)

@@ -22,7 +22,32 @@ import os
 import sys
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    # This file is also executed directly by the daily TESTS suite
+    # (case_upstream_suites), where pytest is not installed. The shim
+    # covers exactly the one pytest feature used below: raises (no
+    # match= arguments are passed). Same pattern as test_rephrase.py
+    # (v5.225).
+    import contextlib as _contextlib
+    import re as _re
+
+    class _PytestShim:
+        @staticmethod
+        @_contextlib.contextmanager
+        def raises(exc, match=None):
+            try:
+                yield
+            except exc as e:
+                if match is not None and not _re.search(match, str(e)):
+                    raise AssertionError(
+                        f"raised {e!r}, which does not match /{match}/"
+                    ) from None
+                return
+            raise AssertionError(f"{exc.__name__} was not raised")
+
+    pytest = _PytestShim()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -55,8 +80,16 @@ def test_workspace_confinement(tmp_path):
     ctx = world(tmp_path)
     a = create_agent(ctx, "s", CFG, "standard")
     outside = tmp_path.parent / "outside.txt"
-    (tmp_path / "link").symlink_to(tmp_path.parent)
-    for p in ("../outside.txt", str(outside), "link/outside.txt"):
+    paths = ["../outside.txt", str(outside)]
+    try:
+        (tmp_path / "link").symlink_to(tmp_path.parent)
+        paths.append("link/outside.txt")
+    except OSError:
+        # Windows without developer mode / SeCreateSymbolicLinkPrivilege
+        # cannot create symlinks; the parent-dir and absolute-path probes
+        # above still cover confinement (limitations round 2026-11-04).
+        pass
+    for p in paths:
         res = run(ctx, a, "write", {"path": p, "content": "x"})
         assert res.is_error and "outside the workspace" in res.content
     assert not outside.exists()
