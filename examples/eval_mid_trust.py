@@ -22,7 +22,6 @@ Usage (local):
 import json
 import random
 import sys
-import tempfile
 from pathlib import Path
 
 import torch
@@ -67,7 +66,7 @@ class ReviewOracle:
     """Stand-in for the human/vendor review path an abstention routes
     to in production."""
     def decide(self, call, context):
-        from gate import FixedGate, Route
+        from gate import Route
         return Route.DIRECT
 
     def escalate(self, call, context):

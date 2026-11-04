@@ -8,7 +8,6 @@ Times are CPU wall-clock medians; no speedup is assumed.
 """
 import argparse
 import json
-import os
 from pathlib import Path
 import platform
 import statistics

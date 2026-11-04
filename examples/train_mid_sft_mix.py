@@ -23,8 +23,8 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # reuse the training backbone from train_mid_sft
-from examples.train_mid_sft import (BATCH, EPISODES_PER_ENV, LR, MAXLEN,
-                                    SEED, collate, gen_dataset)
+from examples.train_mid_sft import (BATCH, LR, MAXLEN, SEED, collate,
+                                    gen_dataset)
 from helioslm_v5.configs.config_v5 import HeliosLMv5Config
 from helioslm_v5.src.model_v5 import HeliosLMv5
 from helioslm_v5.src.tokenizer.bpe import BOS, HeliosBPE, build_corpus

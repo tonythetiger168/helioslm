@@ -80,7 +80,6 @@ def gda_state_bytes(cfg: HeliosLMv5Config) -> int:
 
 def cache_bytes(cfg: HeliosLMv5Config, seq_len: int) -> dict:
     """Total cache bytes at ``seq_len`` for this config."""
-    hy = cfg.hybrid_attention
     n_layers = cfg.num_hidden_layers
     n_gda = sum(1 for i in range(n_layers) if _is_gda_layer(cfg, i))
     n_mla = n_layers - n_gda
