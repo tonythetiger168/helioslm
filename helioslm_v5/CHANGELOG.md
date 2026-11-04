@@ -1,5 +1,18 @@
 # HeliosLM v5 Changelog
 
+## v5.236 (2026-11-04) - Local download-and-run guide
+
+The download page and the README now explain how to download and run a
+package on your own computer, in Traditional Chinese: which file per
+GPU memory or Mac unified memory, download + SHA-256 check + unzip on
+Windows / Linux / macOS, and the LM Studio, Ollama and llama.cpp steps.
+`cloudflare.run_guide` writes the page section from each tier's own GGUF
+name, context and model kind: base-model tiers get a `llama-completion`
+command (they continue text), chat tiers a `llama-server` command
+(with `--reasoning-budget 0` when the package turns thinking off).
+`bundle_package` now records `chat` and `reasoning` in `packages.json`.
+The full guide is `docs/LOCAL_RUN.md`.
+
 ## v5.234 (2026-11-04) - CVDP answers in the HDL repair loop
 
 Stock Gemma 4 26B-A4B-it scores 0.641 on VerilogEval but 6% on CVDP:

@@ -53,12 +53,25 @@ Preview packages that run locally today. Every tier is a GGUF file for llama.cpp
 
 A chip-design preview for Verilog / SystemVerilog, also based on Google Gemma 4, is on its own page: **https://helioslm.pages.dev/hdl/**.
 
+### 如何下載並在本機執行 · How to run it locally
+
+完整說明（繁體中文）：**[docs/LOCAL_RUN.md](docs/LOCAL_RUN.md)**，下載頁上也有同樣的步驟。
+
+1. **選檔**：依顯示卡記憶體（VRAM）對照上表；Mac 依統一記憶體：8 GB → L-Edge、16 GB → L8、24 GB → L16、32–48 GB → L24、64–96 GB → L48+、128 GB 以上 → L128。沒有獨立顯示卡或 Intel Mac 用 L-Edge（只用 CPU）。
+2. **下載、驗證、解壓**：從下載頁複製連結，`curl -L -O <連結>`；用 `Get-FileHash`（Windows）、`sha256sum`（Linux）或 `shasum -a 256`（macOS）核對 `packages.json` 的 SHA-256；Windows 用 `tar -xf <zip>`，Linux / macOS 用 `unzip <zip>`。
+3. **安裝工具（三選一）**：LM Studio（圖形介面，匯入 zip 裡的 `.gguf`）、Ollama（ollama.com）、llama.cpp（`winget install llama.cpp` 或 `brew install llama.cpp`）。
+4. **執行**（在解壓後的資料夾內）：
+
 ```bash
-# llama.cpp
-llama-cli -m <file>.gguf
-# Ollama (from the unzipped package folder)
-ollama create helioslm -f Modelfile && ollama run helioslm
+# 對話模型（L24 起，26B-A4B）：啟動後開 http://127.0.0.1:8080
+llama-server -m helioslm-tw-26b-a4b-l24-Q4_K.gguf -c 32768 -ngl 99 --reasoning-budget 0 --port 8080
+# 基底模型（L-Edge / L8 / L16，E4B）：給一段開頭，讓它接著寫
+llama-completion -m helioslm-tw-e4b-l8-Q4_K.gguf -c 32768 -ngl 99 -n 256 -p "台灣的夜市文化"
+# Ollama
+ollama create helioslm-tw-26b-a4b-l24 -f Modelfile && ollama run helioslm-tw-26b-a4b-l24
 ```
+
+The E4B tiers (L-Edge, L8, L16) are base models: they continue text and are not tuned for chat. For chat, use L24 or larger; a 12–16 GB card can run L24 with `--cpu-moe` and 32 GB or more of system RAM.
 
 On a 16 GB card the 26B-A4B Q4_K file also runs with llama.cpp's `--cpu-moe` (expert weights in system RAM); each package README lists that and the KV-cache flags.
 

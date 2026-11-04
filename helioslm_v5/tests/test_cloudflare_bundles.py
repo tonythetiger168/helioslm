@@ -111,3 +111,23 @@ def test_cli_and_dry_run_upload(dist, tmp_path):
     assert r.returncode == 0, r.stderr
     assert "s3://bkt/" in r.stdout and "acct.r2.cloudflarestorage.com" in r.stdout
     assert "pages deploy" in r.stdout and "github" not in r.stdout.lower()
+
+
+def test_site_has_local_run_guide(dist, tmp_path):
+    """v5.236: the page explains how to download and run each package
+    (which file per GPU / Mac, checksum + unzip per OS, llama.cpp / Ollama /
+    LM Studio), with each tier's own GGUF name and context."""
+    e = bundle_package(dist / "L8", tmp_path / "r2", version="v1")
+    assert e["chat"] is False and e["reasoning"] is None
+    chat = dict(e, tier="L24", chat=True, reasoning="off")
+    build_site([e, chat], tmp_path / "site", base_url=BASE, version="v1")
+    page = (tmp_path / "site" / "index.html").read_text()
+    gguf = e["bundles"][0]["gguf"]
+    assert "如何下載並在本機執行" in page
+    for s in ("Get-FileHash", "sha256sum", "shasum -a 256", "LM Studio",
+              "ollama create", "--cpu-moe", "127.0.0.1:8080"):
+        assert s in page, s
+    assert f"llama-completion -m {gguf} -c {e['ctx']} -ngl 99" in page  # base model
+    assert f"llama-server -m {gguf} -c {e['ctx']} -ngl 99 --reasoning-budget 0" in page
+    assert page.count("開發中") == len(TIERS) - 2 + len(GENERATIONS)
+    assert "github" not in page.lower()
