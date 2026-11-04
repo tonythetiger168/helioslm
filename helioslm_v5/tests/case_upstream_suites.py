@@ -1051,6 +1051,11 @@ def test_kv_cache_analytic_suite():
 # helioslm_v5/tests/test_openai_stream_smoke.py, which is what CI runs.
 # This entry is an extra exemption on top of the 178-file legacy backlog,
 # not a file from that snapshot.
+# Worker launch env (serving/worker.env.example): test_worker_launch_env
+# is folded the day it landed. It only reads checked-in text (no socket,
+# no sleep, no network). Leaving it exempt would let a bad served name,
+# a quantization flag, or a pasted token pass the daily gate.
+# test_openai_stream_smoke stays exempt because it binds 127.0.0.1.
 # ---------------------------------------------------------------------------
 
 FOLDED_SIDECARS = {
@@ -1086,6 +1091,8 @@ FOLDED_SIDECARS = {
     "test_hsh_llm": "test_hsh_llm_suite",
     # published KV-cache row: analytic pin, folded the day it landed
     "test_kv_cache_analytic": "test_kv_cache_analytic_suite",
+    # worker launch env: file parse, folded the day it landed
+    "test_worker_launch_env": "test_worker_launch_env_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1143,6 +1150,23 @@ EXEMPT_SIDECARS = {
     'test_v5_stage_b', 'test_web_ui', 'test_web_ui_v2', 'test_zh_tokenizer_coverage',
     'test_zh_train_speed',
 }
+
+
+def test_worker_launch_env_suite():
+    """Checked-in worker env (served name, MTP, lengths, no secrets).
+
+    Folded the day it landed, same shape as test_kv_cache_analytic:
+    one in-process function, no fixtures, no socket. EXEMPT_SIDECARS is
+    the pre-guard backlog plus port-binding sidecars such as
+    test_openai_stream_smoke; this file is neither.
+    """
+    from helioslm_v5.tests import test_worker_launch_env as m
+    expected = {"test_worker_launch_env"}
+    _drift_guard(m, expected)
+    m.test_worker_launch_env()
+    _pass("test_worker_launch_env_suite",
+          "worker.env.example: helioslm, MTP x4, len 16384, "
+          "16 seqs, no quant, no secret")
 
 
 def test_sidecar_coverage_guard():
