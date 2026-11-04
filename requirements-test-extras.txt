@@ -1,0 +1,11 @@
+# Python pins ci.yml installs before the v5 pytest suite, outside
+# requirements-ci.txt. That file stays the CPU torch / numpy / pytest
+# resolution (pytorch CPU index, 2026-10-16). These extras are a later
+# addition and are not part of that resolution.
+#
+# cocotb is intentionally not in this file. CI installs it only for the
+# CVDP step (requirements-cvdp.txt), after the suite, so the main run
+# still executes without cocotb. test_cvdp_bench.py skips its simulation
+# tests unless cocotb imports; installing it here would change the
+# suite's skip count.
+tokenizers==0.22.1

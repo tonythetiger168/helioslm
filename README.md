@@ -352,7 +352,11 @@ in `__post_init__` (no silent truncation).
 ## Quick Start
 
 ```bash
-pip install -r requirements-ci.txt        # the exact CPU torch / numpy / pytest versions CI uses
+pip install -r requirements-ci.txt            # CPU torch / numpy / pytest versions CI uses
+pip install -r requirements-test-extras.txt   # tokenizers pin CI installs before the suite
+sudo apt-get install -y iverilog              # apt/system package, not pip; HDL tests skip without it
+# CVDP step only, after the suite (CI keeps cocotb out of the main run):
+# pip install -r requirements-cvdp.txt
 python -m helioslm_v5.tests.test_v5 --list   # prints TESTS=<count>, the registered unit tests, and the version pair
 python -m helioslm_v5.tests.test_v5     # the mandated unit suite (checkpoint-dependent tests self-skip without checkpoints/toy_v5.13.pt)
 python integration_test_v51.py          # end-to-end integration tests
