@@ -431,6 +431,14 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
     fourth and fifth tensor (``KDShard``) trains on
     ``(1 - kd_alpha) * CE + kd_alpha * sparse_kd_loss``; positions
     without a target contribute CE only. ``kd_loss`` is logged.
+
+    A non-finite accumulated loss or gradient norm stops the run before
+    ``opt.step`` and the router-bias update, so the weights and any
+    checkpoint stay as they were. The summary's ``stopped`` is
+    ``"non_finite_loss"`` or ``"non_finite_grad"`` (the loss wins when
+    both are bad), the same names as ``examples/cpt_hf.train``, and
+    that record is appended to ``log.jsonl``. A finite run returns
+    ``stopped`` None.
     """
     if not 0.0 <= kd_alpha <= 1.0:
         raise ValueError(f"kd_alpha must be in [0, 1], got {kd_alpha}")
@@ -481,6 +489,7 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
     t_window, tok_window = time.perf_counter(), 0
     t_step = t_window
     last = {}
+    stopped = None
     while step < steps:
         cur_lr = lr_at(step, plan, lr, warmup, min_lr_ratio, schedule,
                        decay_frac, decay_shape)
@@ -528,6 +537,29 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
             loss.backward()
             loss_sum += loss.item()
         gnorm = torch.nn.utils.clip_grad_norm_(model.parameters(), clip).item()
+        # Stop, do not skip. Batches are a function of the step, so
+        # advancing the counter without an update would make a resume
+        # diverge from an uninterrupted run, and not advancing would
+        # retry this batch forever. A non-finite grad must not reach
+        # AdamW or update_router_biases: that one update poisons the
+        # weights and every checkpoint saved after it.
+        # non_finite_loss wins when both are bad (examples/cpt_hf.train).
+        if not math.isfinite(loss_sum) or not math.isfinite(gnorm):
+            stopped = ("non_finite_loss" if not math.isfinite(loss_sum)
+                       else "non_finite_grad")
+            opt.zero_grad(set_to_none=True)
+            # step number this attempt would have logged; resume drops
+            # lines past the checkpoint, so a retry replaces this record
+            rec = {"step": step + 1, "stopped": stopped,
+                   "train_loss": (round(loss_sum, 5)
+                                  if math.isfinite(loss_sum) else None),
+                   "grad_norm": (round(gnorm, 4)
+                                 if math.isfinite(gnorm) else None)}
+            log(json.dumps(rec))
+            logf.write(json.dumps(rec) + "\n")
+            logf.flush()
+            last = rec
+            break
         opt.step()
         update_router_biases(model)
         step += 1
@@ -569,4 +601,4 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
             tmp.replace(ckpt)
     logf.close()
     return {"params": params, "steps": step, "tokens": step * tokens_per_step,
-            "last": last}
+            "last": last, "stopped": stopped}
