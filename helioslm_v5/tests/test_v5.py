@@ -273,6 +273,9 @@ TESTS = [
     # live SSE / cancel path.
     case_upstream_suites.test_hsh_kernel_suite,
     case_upstream_suites.test_hsh_llm_suite,
+    # Published full-config KV-cache row (131072, 99.2% vs MHA). Folded
+    # the day the sidecar landed: one analytic function, no fixtures.
+    case_upstream_suites.test_kv_cache_analytic_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 

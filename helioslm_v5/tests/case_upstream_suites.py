@@ -1002,6 +1002,24 @@ def test_hsh_llm_suite():
           "stand-in, injected opener, no network) under the daily gate")
 
 
+def test_kv_cache_analytic_suite():
+    """Published full-config KV-cache row (131072) under the daily gate.
+
+    Folded the day it landed, same as test_ot_bugfix_bench: EXEMPT is
+    the pre-guard backlog pending triage, and a one-function analytic
+    pin (no fixtures, no network, no timing) is the shape these
+    wrappers call. Leaving it exempt would let a cache-layout change
+    pass the mandated gate while the README's 99.2% row went stale.
+    """
+    from helioslm_v5.tests import test_kv_cache_analytic as m
+    expected = {"test_full_kv_cache_savings_at_128k"}
+    _drift_guard(m, expected)
+    m.test_full_kv_cache_savings_at_128k()
+    _pass("test_kv_cache_analytic_suite",
+          "full-config KV cache at 131072: published 1999.6 MB vs "
+          "257698.0 MB (99.2%) locked via bench_cpu.cache_bytes")
+
+
 # ---------------------------------------------------------------------------
 # v5.225: sidecar coverage meta-guard. The folds above (and the earlier
 # v5.155 / 2026-10-29 rounds) were each discovered by HAND, days after
@@ -1058,6 +1076,8 @@ FOLDED_SIDECARS = {
     # limitations round 2026-11-04 (hsh kernel + offline llm pins)
     "test_hsh_kernel": "test_hsh_kernel_suite",
     "test_hsh_llm": "test_hsh_llm_suite",
+    # published KV-cache row: analytic pin, folded the day it landed
+    "test_kv_cache_analytic": "test_kv_cache_analytic_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
