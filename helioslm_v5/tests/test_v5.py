@@ -276,6 +276,10 @@ TESTS = [
     # Published full-config KV-cache row (131072, 99.2% vs MHA). Folded
     # the day the sidecar landed: one analytic function, no fixtures.
     case_upstream_suites.test_kv_cache_analytic_suite,
+    # test_openai_stream_smoke is not registered here. It binds
+    # 127.0.0.1 through ThreadingHTTPServer (ephemeral port) and reads a
+    # live SSE response, so it stays in EXEMPT_SIDECARS with test_hsh_web.
+    # CI's pytest invocation collects the sidecar and runs it there.
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 

@@ -1043,6 +1043,14 @@ def test_kv_cache_analytic_suite():
 # the backlog is now 178 files. test_hsh_web stays exempt: its cases bind
 # 127.0.0.1 through ThreadingHTTPServer (ephemeral port), run the turn on
 # a background thread and sleep on the SSE / cancel path.
+# OpenAI-compatible stream smoke (serving/openai_stream_smoke.py):
+# test_openai_stream_smoke is exempt for the same reason as test_hsh_web.
+# It binds 127.0.0.1 through ThreadingHTTPServer on an ephemeral port and
+# reads a live SSE response (including a bounded timeout), so it is not a
+# clean in-process fold for the daily TESTS list. pytest collects
+# helioslm_v5/tests/test_openai_stream_smoke.py, which is what CI runs.
+# This entry is an extra exemption on top of the 178-file legacy backlog,
+# not a file from that snapshot.
 # ---------------------------------------------------------------------------
 
 FOLDED_SIDECARS = {
@@ -1113,7 +1121,9 @@ EXEMPT_SIDECARS = {
     'test_merge', 'test_mhc', 'test_mhc_sinkhorn', 'test_midtrain',
     'test_mimo_hybrid', 'test_mini_bench', 'test_mla_every', 'test_mla_expanded_training',
     'test_moe_config_table', 'test_mopd', 'test_mtp_light', 'test_mtp_rollout',
-    'test_multiseed', 'test_nope_temperature', 'test_noul_continuous', 'test_nvfp4_qat_e2e',
+    'test_multiseed', 'test_nope_temperature',     'test_noul_continuous', 'test_nvfp4_qat_e2e',
+    # Binds 127.0.0.1 (ephemeral port); same exemption as test_hsh_web.
+    'test_openai_stream_smoke',
     'test_option_matrix', 'test_oracle_guard', 'test_package_tiers', 'test_ple',
     'test_pool_ledger', 'test_prefix_pool_chained', 'test_prereg', 'test_pretrain_pilot',
     'test_probe_api', 'test_quant_calib', 'test_quantile_balancing', 'test_qwen_next',
