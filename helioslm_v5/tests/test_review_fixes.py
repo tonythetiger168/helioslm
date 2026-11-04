@@ -20,6 +20,7 @@ from pathlib import Path
 
 _REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_REPO))
+sys.path.insert(0, str(_REPO / "helioslm_v5"))  # harness/ package
 
 from harness.harness_core import Context  # noqa: E402
 from harness.harness_plugins import (  # noqa: E402

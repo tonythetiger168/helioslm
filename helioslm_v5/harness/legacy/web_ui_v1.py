@@ -16,7 +16,6 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # helioslm_v5/ (this file is helioslm_v5/harness/legacy/web_ui_v1.py)
 _HERE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.dirname(_HERE))   # repo root: top-level harness/
 sys.path.insert(0, _HERE)
 sys.path.insert(0, _HERE + "/agent")
 

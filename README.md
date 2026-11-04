@@ -268,7 +268,7 @@ environment are not passed to the server process.
 - Transient model errors (429, 5xx, dropped connections) are retried
   with backoff; each attempt is in the session log.
 
-The pre-hsh plugin harness (`harness/`, v1.0–v1.22) is documented in [docs/LEGACY_HARNESS.md](https://github.com/tonythetiger168/helioslm/blob/main/docs/LEGACY_HARNESS.md).
+The pre-hsh plugin harness (`helioslm_v5/harness/`, v1.0–v1.22, frozen) is documented in [docs/LEGACY_HARNESS.md](https://github.com/tonythetiger168/helioslm/blob/main/docs/LEGACY_HARNESS.md).
 
 ## Paper Highlights (for HF Papers)
 
