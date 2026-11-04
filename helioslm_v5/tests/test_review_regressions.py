@@ -1,5 +1,6 @@
 """Regression oracles for the project review's P1/P2 findings."""
 import fnmatch
+import json
 import shlex
 import subprocess
 import sys
@@ -67,6 +68,89 @@ def test_cpt_rejects_batch_before_optimizer(fault, monkeypatch):
     assert result["steps"] == result["tokens"] == 0
     assert torch.equal(model.weight, before)
     assert model.weight.grad is None
+
+
+def _pretrain_stub(fault):
+    """HeliosLMv5 stand-in. ``fault`` is None, ``loss``, ``nan_grad`` or
+    ``inf_grad``."""
+
+    class Model(_TrainLM):
+        def __init__(self, config):
+            super().__init__(bad_loss=False)
+            self.config = config
+            if fault in ("nan_grad", "inf_grad"):
+                value = float("nan") if fault == "nan_grad" else float("inf")
+                self.weight.register_hook(
+                    lambda g: torch.full_like(g, value))
+
+        def forward(self, x):
+            logits = super().forward(x).logits
+            if fault == "loss":
+                logits = logits * float("nan")
+            return logits, None, None
+
+    return Model
+
+
+class _PretrainShard(_Source):
+    def eval_windows(self, seq, max_windows):
+        yield self.batch(1, seq)
+
+
+@pytest.mark.parametrize("fault", ["loss", "nan_grad", "inf_grad"])
+def test_pretrain_rejects_non_finite_before_step(fault, tmp_path, monkeypatch):
+    """A non-finite loss or grad does not step, does not rewrite the
+    checkpoint, and is reported. Matches cpt_hf's stop contract."""
+    from helioslm_v5.src.training import pretrain as training
+
+    live = []
+
+    class Recording(_pretrain_stub(fault)):
+        def __init__(self, config):
+            super().__init__(config)
+            live.append(self)
+
+    monkeypatch.setattr(training, "HeliosLMv5", _pretrain_stub(None))
+    cfg = pilot_config("dense", vocab_size=3)
+    kw = dict(batch=2, seq=2, grad_accum=2, lr=0.01, warmup=0,
+              eval_every=10, eval_windows=1, ckpt_every=1, seed=0,
+              log=lambda *args: None)
+    out = tmp_path / "run"
+    pretrain(cfg, _PretrainShard(), _PretrainShard(), out, steps=1, **kw)
+    before = torch.load(out / "ckpt.pt", weights_only=False)
+    before_model = {k: v.clone() for k, v in before["model"].items()}
+    assert before["step"] == 1
+    assert not torch.equal(before_model["weight"], _TrainLM().weight)
+
+    def forbidden_step(*args, **kwargs):
+        raise AssertionError("non-finite batch reached optimizer.step")
+
+    monkeypatch.setattr(training, "HeliosLMv5", Recording)
+    monkeypatch.setattr(torch.optim.AdamW, "step", forbidden_step)
+    result = pretrain(cfg, _PretrainShard(), _PretrainShard(), out,
+                      steps=4, **kw)
+    assert result["stopped"] == (
+        "non_finite_loss" if fault == "loss" else "non_finite_grad")
+    assert result["steps"] == 1
+    assert result["tokens"] == 2 * 2 * 2
+    assert result["last"]["stopped"] == result["stopped"]
+    after = torch.load(out / "ckpt.pt", weights_only=False)
+    assert after["step"] == 1
+    for k, v in before_model.items():
+        assert torch.equal(after["model"][k], v), k
+    assert len(live) == 1
+    assert torch.equal(live[0].weight.detach(), before_model["weight"])
+    assert live[0].weight.grad is None
+    rows = [json.loads(ln) for ln in (out / "log.jsonl").read_text().splitlines()
+            if ln]
+    assert rows[-1]["stopped"] == result["stopped"]
+    assert rows[-1]["step"] == 2
+    assert all("stopped" not in row for row in rows[:-1])
+    if fault == "loss":
+        assert rows[-1]["train_loss"] is None
+    else:
+        assert rows[-1]["train_loss"] is not None
+        assert rows[-1]["grad_norm"] is None
 
 
 class _PrefixLM:

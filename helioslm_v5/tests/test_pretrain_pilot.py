@@ -233,6 +233,48 @@ def test_exact_resume_and_learning():
     print("PASS test_exact_resume_and_learning")
 
 
+def test_nonfinite_stop_then_resume_is_bitwise():
+    """A refused step is logged one past the checkpoint. Resume drops that
+    line, retries the same batch, and matches an uninterrupted run."""
+    torch.set_num_threads(1)
+    import helioslm_v5.src.training.pretrain as training
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        tr, va = _stream(d)
+        kw = dict(batch=4, seq=32, grad_accum=2, lr=3e-3, warmup=1,
+                  eval_every=2, eval_windows=2, ckpt_every=2, seed=0,
+                  log=lambda m: None)
+        straight, resumed = d / "a", d / "b"
+        pretrain(_tiny("dense"), tr, va, straight, steps=4, **kw)
+        pretrain(_tiny("dense"), tr, va, resumed, steps=2, **kw)
+        real = training.F.cross_entropy
+
+        def nan_ce(*args, **kwargs):
+            return real(*args, **kwargs) * float("nan")
+
+        training.F.cross_entropy = nan_ce
+        try:
+            stopped = pretrain(_tiny("dense"), tr, va, resumed, steps=4, **kw)
+        finally:
+            training.F.cross_entropy = real
+        assert stopped["stopped"] == "non_finite_loss" and stopped["steps"] == 2
+        log = [json.loads(x) for x in (resumed / "log.jsonl").read_text().splitlines()]
+        assert log[-1]["stopped"] == "non_finite_loss" and log[-1]["step"] == 3
+        pretrain(_tiny("dense"), tr, va, resumed, steps=4, **kw)
+        sa = torch.load(straight / "ckpt.pt", weights_only=False)
+        sb = torch.load(resumed / "ckpt.pt", weights_only=False)
+        assert sa["step"] == sb["step"] == 4
+        for k, v in sa["model"].items():
+            assert torch.equal(v, sb["model"][k]), k
+        timing = ("tokens_per_s", "step_tokens_per_s", "peak_mem_gb")
+        strip = [{k: v for k, v in json.loads(x).items() if k not in timing}
+                 for x in (straight / "log.jsonl").read_text().splitlines()]
+        assert strip == [
+            {k: v for k, v in json.loads(x).items() if k not in timing}
+            for x in (resumed / "log.jsonl").read_text().splitlines()]
+    print("PASS test_nonfinite_stop_then_resume_is_bitwise")
+
+
 def test_prepare_data_script():
     try:
         import tokenizers  # noqa: F401
@@ -279,4 +321,5 @@ if __name__ == "__main__":
     test_wsd_schedule()
     test_wsd_decay_data_switch()
     test_exact_resume_and_learning()
+    test_nonfinite_stop_then_resume_is_bitwise()
     test_prepare_data_script()
