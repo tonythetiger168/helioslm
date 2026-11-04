@@ -78,6 +78,7 @@ TESTS = [
     case_mla.test_packed_positions,
     case_moe.test_sigmoid_moe,
     case_model_mtp.test_v5_model,
+    case_model_mtp.test_forward_rejects_empty_batch,
     case_model_mtp.test_mtp,
     case_engine.test_paged_attention,
     case_engine.test_vllm_engine,
