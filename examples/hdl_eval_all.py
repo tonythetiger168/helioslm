@@ -193,25 +193,35 @@ REPAIR_ASK = ("The open-source tools reported these problems with your "
 
 
 def repair(gen, jobs, outputs, rounds, check, benches=REPAIR_BENCHES,
-           temperature=0.0, top_p=1.0, max_new_tokens=2048, workers=8):
+           temperature=0.0, top_p=1.0, max_new_tokens=2048, workers=8,
+           bench_checks=None):
     """Agent loop with open-tool feedback only (v5.229): every sample of
     a ``benches`` job whose extracted code fails ``check`` (``hb.
     tool_feedback``: compile alone, no testbench) is sent back to the
     model with the tool messages, up to ``rounds`` times. Returns the new
     outputs (same shape) and per-round stats {"round", "failing",
     "fixed"}. ``gen(jobs, n, temperature, top_p, max_new_tokens)`` is a
-    ``VllmGen`` or any stand-in."""
+    ``VllmGen`` or any stand-in. ``bench_checks`` (v5.234) maps more
+    benches to their own ``check(key, raw answer)``, e.g. CVDP
+    (``cvdp_check``)."""
     from concurrent.futures import ThreadPoolExecutor
     outputs = [list(o) for o in outputs]
     hist = {}                                       # (job, sample) -> msgs
     stats = []
 
-    def judge(text):
+    bench_checks = bench_checks or {}
+
+    def judge(ij):
+        b, k = jobs[ij[0]][:2]
+        text = outputs[ij[0]][ij[1]]
+        if b in bench_checks:
+            return bench_checks[b](k, text)
         return check(hb.extract_code(text))
-    todo = [(i, j) for i, (b, _, _, _) in enumerate(jobs) if b in benches
+    todo = [(i, j) for i, (b, _, _, _) in enumerate(jobs)
+            if b in benches or b in bench_checks
             for j in range(len(outputs[i]))]
     with ThreadPoolExecutor(max(1, workers)) as ex:
-        verdict = dict(zip(todo, ex.map(lambda ij: judge(outputs[ij[0]][ij[1]]), todo)))
+        verdict = dict(zip(todo, ex.map(judge, todo)))
         for r in range(1, rounds + 1):
             failing = [ij for ij in todo if not verdict[ij]["ok"]]
             if not failing:
@@ -230,12 +240,73 @@ def repair(gen, jobs, outputs, rounds, check, benches=REPAIR_BENCHES,
             new = gen(rjobs, 1, temperature, top_p, max_new_tokens)
             for (i, j), o in zip(failing, new):
                 outputs[i][j] = o[0]
-            again = list(ex.map(lambda ij: judge(outputs[ij[0]][ij[1]]), failing))
+            again = list(ex.map(judge, failing))
             for ij, v in zip(failing, again):
                 verdict[ij] = v
             stats.append({"round": r, "failing": len(failing),
                           "fixed": sum(v["ok"] for v in again)})
     return outputs, stats
+
+
+HDL_SUFFIXES = (".sv", ".v", ".svh", ".vh")
+
+
+def cvdp_check(rows, compile_fn=None, max_lines=12):
+    """Open-tool check for single-file CVDP answers (v5.234): the file the
+    upstream harness would write (``cb.parse_response``) is compiled with
+    iverilog together with the RTL context files given in the prompt
+    (never the test harness). Only messages about the answer's own file
+    count; multi-file (JSON) answers and non-HDL targets always pass.
+    ``compile_fn(dir, target, others) -> log or None`` replaces iverilog
+    in tests."""
+    import subprocess
+    import tempfile
+
+    def run_iverilog(td, target, others):
+        iverilog = hb.need_tool("iverilog")
+        try:
+            c = subprocess.run([iverilog, *hb.REPAIR_FLAGS, "-o", "out",
+                                *sorted({f"-I{Path(td, o).parent}"
+                                         for o in [*others, target]}),
+                                *others, target], cwd=td, capture_output=True,
+                               text=True, timeout=hb.COMPILE_TIMEOUT_S)
+        except subprocess.TimeoutExpired:
+            return f"{target}: iverilog timed out (check for infinite loops)"
+        return None if c.returncode == 0 else c.stdout + c.stderr
+    compile_fn = compile_fn or run_iverilog
+
+    def check(key, text):
+        row = rows.get(key)
+        files = list(row["output"]["context"]) if row else []
+        if len(files) != 1 or not files[0].endswith(HDL_SUFFIXES):
+            return {"ok": True, "feedback": ""}
+        target = files[0]
+        code = cb.parse_response(text, files).get(target, "")
+        if "module" not in code and "package" not in code:
+            return {"ok": False, "feedback": f"No Verilog was found for {target}. "
+                    "Write the complete file contents only."}
+        with tempfile.TemporaryDirectory(prefix="cvdpr_") as td:
+            others = []
+            for name, body in row["input"]["context"].items():
+                if (name == target or not name.endswith(HDL_SUFFIXES)
+                        or not cb.safe_name(name) or not name.startswith("rtl/")):
+                    continue
+                Path(td, name).parent.mkdir(parents=True, exist_ok=True)
+                Path(td, name).write_text(body, encoding="utf-8")
+                if name.endswith((".sv", ".v")):
+                    others.append(name)
+            Path(td, target).parent.mkdir(parents=True, exist_ok=True)
+            Path(td, target).write_text(code, encoding="utf-8")
+            others.sort(key=lambda n: "pkg" not in n)      # packages first
+            log = compile_fn(td, target, others)
+        if not log:
+            return {"ok": True, "feedback": ""}
+        mine = [ln.replace(target + ":", "line ") for ln in log.splitlines()
+                if ln.startswith(target + ":")]
+        bad = [ln for ln in mine if "error" in ln.lower()
+               or any(h in ln for h in hb._FEEDBACK_HITS)]
+        return {"ok": not bad, "feedback": "\n".join(bad[:max_lines])}
+    return check
 
 
 def main(argv=None):
@@ -266,7 +337,8 @@ def main(argv=None):
     ap.add_argument("--repair-rounds", type=int, default=0,
                     help="agent loop: resend answers that fail an iverilog "
                          "compile (no testbench) with the tool messages, up "
-                         "to N times (VerilogEval / RTLLM, v5.229)")
+                         "to N times (VerilogEval / RTLLM, v5.229; single-file "
+                         "CVDP with its RTL context, v5.234)")
     ap.add_argument("--workers", type=int, default=ub.cpu_limit(),
                     help="simulation jobs (default: the container's CPU limit)")
     a = ap.parse_args(argv)
@@ -302,7 +374,10 @@ def main(argv=None):
             outputs, repair_stats = repair(
                 gen, jobs, outputs, a.repair_rounds, hb.tool_feedback,
                 temperature=a.temperature, top_p=a.top_p,
-                max_new_tokens=a.max_new_tokens, workers=a.workers)
+                max_new_tokens=a.max_new_tokens, workers=a.workers,
+                bench_checks={"cvdp": cvdp_check(
+                    {r["id"]: r for r in data.get("cvdp", [])})}
+                if "cvdp" in benches else None)
             print("repair:", json.dumps(repair_stats), flush=True)
     gen_s = time.time() - t0
     samples = [{"bench": b, "key": k, "outputs": o}

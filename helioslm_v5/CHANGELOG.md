@@ -1,5 +1,17 @@
 # HeliosLM v5 Changelog
 
+## v5.234 (2026-11-04) - CVDP answers in the HDL repair loop
+
+Stock Gemma 4 26B-A4B-it scores 0.641 on VerilogEval but 6% on CVDP:
+256 of its 283 single-file CVDP answers start with the target file name
+(`rtl/x.sv`) above the code, which the upstream harness writes into the
+file. `hdl_eval_all --repair-rounds` now also covers single-file CVDP
+answers: `cvdp_check` compiles the file the harness would write with
+iverilog, together with the prompt's RTL context files (never the test
+harness), and only messages about the answer's own file count.
+Multi-file (JSON) answers are left as they are. Repair runs are agentic
+(tool feedback), so they are reported apart from single-turn scores.
+
 ## v5.233 (2026-11-03) - Thinking-mode HDL eval and OT scoring retry
 
 `hdl_eval_all --thinking on` scored the reasoning as the answer: vLLM
