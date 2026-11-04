@@ -6,7 +6,7 @@ MIT, developer preview released 2026-08-13). dsh is a TypeScript/Node
 project; hsh is pure Python, written from dsh's design documents
 (`docs/architecture.md`, `docs/cordis-primer.md`,
 `docs/tool-execution-pipeline.md`, `docs/glossary.md`), not ported from its
-source. The older `harness/harness_core.py` (a 50-line Cordis-inspired
+source. The older `helioslm_v5/harness/harness_core.py` (a 50-line Cordis-inspired
 service map) stays as it is until hsh replaces its callers.
 
 ## What dsh does that hsh copies

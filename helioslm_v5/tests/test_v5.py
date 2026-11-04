@@ -186,7 +186,7 @@ TESTS = [
     # and the model_name <= changelog-head invariant.
     case_harness_repair.test_sandbox_pwd_home_posix_form,
     case_harness_repair.test_ci_lf_guard,
-    case_harness_repair.test_version_never_ahead_of_changelog,
+    case_harness_repair.test_version_matches_changelog,
     # v5.153 (2026-10-25): the mandated `python -m helioslm_v5.tests.test_v5`
     # entry point runs end-to-end via the --list probe.
     case_harness_repair.test_dash_m_smoke,
@@ -308,18 +308,17 @@ def main():
         # needing a second command (the drift has recurred: v5.49->v5.109,
         # v5.134->v5.152, both caught by hand).
         import re as _re
-        _cfg = (_REPO_ROOT / "helioslm_v5" / "configs" / "config_v5.py") \
-            .read_text(encoding="utf-8")
-        _m = _re.search(
-            r'model_name:\s*str\s*=\s*"(HeliosLM-v[\d.]+)"',
-            _cfg)
+        # v5.236: model_name is built from helioslm_v5/version.py.
+        from helioslm_v5.configs.config_v5 import HeliosLMv5Config
+        _model = HeliosLMv5Config(size="lite").model_name
         _ch = (_REPO_ROOT / "helioslm_v5" / "CHANGELOG.md") \
             .read_text(encoding="utf-8")
         _h = _re.search(r"^## v(\d+\.\d+)", _ch, _re.M)
-        print(f"MODEL={_m.group(1) if _m else 'UNKNOWN'}")
+        print(f"MODEL={_model}")
         print(f"CHANGELOG=v{_h.group(1) if _h else 'UNKNOWN'}")
         sys.exit(0)
-    print("HeliosLM v5.225 Test Suite (lite config, CPU)")
+    from helioslm_v5.version import __version__
+    print(f"HeliosLM v{__version__} Test Suite (lite config, CPU)")
     print("=" * 72)
     for t in TESTS:
         try:

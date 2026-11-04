@@ -149,7 +149,7 @@ def _cmd(t, b):
 
 
 def run_guide(tiers):
-    """HTML section on downloading and running a package locally (v5.236):
+    """HTML section on downloading and running a package locally (v5.237):
     which file per GPU or Mac, download + checksum + unzip on Windows /
     Linux / macOS, and the llama.cpp, Ollama and LM Studio steps. Commands
     use each tier's own GGUF name, context and model kind (a base model

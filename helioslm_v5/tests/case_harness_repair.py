@@ -32,7 +32,7 @@ from helioslm_v5.tests.case_common import _REPO_ROOT, _pass
 #
 # Two tiers, matching the two real consumption contracts:
 #   Tier 1 — dotted namespace-package imports over helioslm_v5/ (src,
-#     configs, ...) and harness/. The tree has NO __init__.py outside
+#     configs, harness, ...). The tree has NO __init__.py outside
 #     agent/envs, so pkgutil.walk_packages silently skips every
 #     subpackage — that silence is exactly how a broken module hid. The
 #     scan is therefore filesystem-based (os.walk).
@@ -70,8 +70,14 @@ def test_import_smoke():
             rel = os.path.relpath(os.path.join(dirpath, fn[:-3]),
                                   _REPO_ROOT)
             _try(rel.replace(os.sep, "."))
-    # harness/ (namespace package; harness_plugins carries the v5.47-fixed
-    # agent-path insertion — importing it exercises exactly that logic).
+    # helioslm_v5/harness/ (v5.236: the only harness/ dir; the walk above
+    # already imported it dotted). Callers import it as top-level
+    # `harness.*` with helioslm_v5/ on sys.path; harness_plugins carries
+    # the v5.47-fixed agent-path insertion, so importing it exercises
+    # exactly that logic.
+    _pkg = str(_REPO_ROOT / "helioslm_v5")
+    if _pkg not in sys.path:
+        sys.path.insert(0, _pkg)
     for fn in ("harness_core", "harness_plugins"):
         _try(f"harness.{fn}")
 
@@ -322,7 +328,8 @@ def test_patch_command_base64_roundtrip():
 # ---------------------------------------------------------------------------
 # v5.132 (2026-10-24): three repo-hygiene locks — the sandbox pwd/$HOME
 # POSIX-form semantics the repaired test_sandbox_limits relies on, the CI
-# LF guard's presence, and the model_name <= changelog-head invariant.
+# LF guard's presence, and the version invariant (v5.236: version.py ==
+# model_name == changelog head; it was model_name <= changelog head).
 # See CHANGELOG v5.132.
 # ---------------------------------------------------------------------------
 
@@ -367,30 +374,34 @@ def test_ci_lf_guard():
     _pass("test_ci_lf_guard", "ci.yml syntax-gate carries the LF guard step")
 
 
-def test_version_never_ahead_of_changelog():
-    """`model_name` may LAG the changelog head: upstream entries do not
-    update it (the 2026-10-23 calibration found it stuck at v5.49 with the
-    changelog at v5.109 — a 60-minor drift), and the daily maintenance job
-    re-calibrates. But it must never claim a version NEWER than the
-    changelog head: that would assert an undocumented release. Locked:
-    model_version <= changelog_head_version."""
+def test_version_matches_changelog():
+    """v5.236: one version number. helioslm_v5/version.py is the source;
+    pyproject.toml reads it (dynamic) and HeliosLMv5Config.model_name is
+    built from it. Before this, model_name was allowed to lag (it sat at
+    v5.225 with the changelog at v5.235 and pyproject at 5.234.0), so
+    three files told three stories. Locked: version.py == the newest
+    CHANGELOG heading, model_name == HeliosLM-v<version>, and pyproject
+    carries no hard-coded version of its own."""
     import re
-    cfg = (_REPO_ROOT / "helioslm_v5" / "configs" / "config_v5.py") \
-        .read_text(encoding="utf-8")
-    m = re.search(r'model_name:\s*str\s*=\s*"HeliosLM-v(\d+)\.(\d+)"', cfg)
-    assert m, "model_name not found or unparseable in config_v5.py"
+    from helioslm_v5.configs.config_v5 import HeliosLMv5Config
+    from helioslm_v5.version import __version__
     ch = (_REPO_ROOT / "helioslm_v5" / "CHANGELOG.md") \
         .read_text(encoding="utf-8")
-    h = re.search(r"^## v(\d+)\.(\d+)", ch, re.M)
+    h = re.search(r"^## v(\d+\.\d+)", ch, re.M)
     assert h, "no version heading found in CHANGELOG.md"
-    model_v = (int(m.group(1)), int(m.group(2)))
-    head_v = (int(h.group(1)), int(h.group(2)))
-    assert model_v <= head_v, \
-        f"model_name v{model_v[0]}.{model_v[1]} claims a version newer " \
-        f"than the changelog head v{head_v[0]}.{head_v[1]}"
-    _pass("test_version_never_ahead_of_changelog",
-          f"model_name v{model_v[0]}.{model_v[1]} <= changelog head "
-          f"v{head_v[0]}.{head_v[1]} (lag tolerated, calibrated daily)")
+    assert __version__ == h.group(1), \
+        f"helioslm_v5/version.py says {__version__} but the CHANGELOG " \
+        f"head is v{h.group(1)}: bump version.py with the entry"
+    assert HeliosLMv5Config(size="lite").model_name == \
+        f"HeliosLM-v{__version__}"
+    py = (_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'dynamic = ["version"]' in py and \
+        "helioslm_v5.version.__version__" in py, \
+        "pyproject.toml must read the version from helioslm_v5/version.py"
+    assert not re.search(r"^version\s*=\s*\"", py, re.M), \
+        "pyproject.toml hard-codes a version again"
+    _pass("test_version_matches_changelog",
+          f"version.py == model_name == CHANGELOG head v{__version__}")
 
 
 # ---------------------------------------------------------------------------
@@ -442,9 +453,9 @@ def test_list_probe_reports_versions():
     model = _re.search(r"^MODEL=(\S+)$", r.stdout, _re.M)
     head = _re.search(r"^CHANGELOG=v(\d+\.\d+)$", r.stdout, _re.M)
     assert model and head, f"probe missing MODEL/CHANGELOG: {r.stdout!r}"
-    cfg = (_REPO_ROOT / "helioslm_v5" / "configs" / "config_v5.py")         .read_text(encoding="utf-8")
-    m2 = _re.search(
-        r'model_name:\s*str\s*=\s*"(HeliosLM-v[\d.]+)"', cfg)
+    from helioslm_v5.configs.config_v5 import HeliosLMv5Config
+    m2 = _re.match(r"(HeliosLM-v[\d.]+)$",
+                   HeliosLMv5Config(size="lite").model_name)
     ch = (_REPO_ROOT / "helioslm_v5" / "CHANGELOG.md")         .read_text(encoding="utf-8")
     h2 = _re.search(r"^## v(\d+\.\d+)", ch, _re.M)
     assert m2 and h2, "config model_name or changelog head unparseable"

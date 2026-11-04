@@ -114,7 +114,7 @@ def test_cli_and_dry_run_upload(dist, tmp_path):
 
 
 def test_site_has_local_run_guide(dist, tmp_path):
-    """v5.236: the page explains how to download and run each package
+    """v5.237: the page explains how to download and run each package
     (which file per GPU / Mac, checksum + unzip per OS, llama.cpp / Ollama /
     LM Studio), with each tier's own GGUF name and context."""
     e = bundle_package(dist / "L8", tmp_path / "r2", version="v1")

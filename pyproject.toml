@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "helioslm"
-version = "5.236.0"
+dynamic = ["version"]
 description = "Open LLM architecture techniques in pure PyTorch, plus the hsh agent harness."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -15,13 +15,17 @@ license = "Apache-2.0"
 # install and fight the CPU pin. Model code still needs those packages
 # installed before import.
 
+# v5.236: the version lives in helioslm_v5/version.py only.
+[tool.setuptools.dynamic]
+version = {attr = "helioslm_v5.version.__version__"}
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["helioslm_v5*"]
 namespaces = true
 
 # Static files the harness UI reads next to hsh/web.py. Checkpoints,
-# data/, and the top-level harness/, agent/, benchmarks/, and examples/
+# data/, and the top-level agent/, benchmarks/, and examples/
 # trees are not part of this distribution: library code does not import
 # them. Tests and scripts that need those trees run from a checkout.
 [tool.setuptools.package-data]

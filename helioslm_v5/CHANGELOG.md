@@ -1,6 +1,6 @@
 # HeliosLM v5 Changelog
 
-## v5.236 (2026-11-04) - Local download-and-run guide
+## v5.237 (2026-11-04) - Local download-and-run guide
 
 The download page and the README now explain how to download and run a
 package on your own computer, in Traditional Chinese: which file per
@@ -12,6 +12,32 @@ command (they continue text), chat tiers a `llama-server` command
 (with `--reasoning-budget 0` when the package turns thinking off).
 `bundle_package` now records `chat` and `reasoning` in `packages.json`.
 The full guide is `docs/LOCAL_RUN.md`.
+
+## v5.236 (2026-11-04) - One version number, one harness directory
+
+**Version.** The release number lived in three places and they had
+drifted apart: `pyproject.toml` said 5.234.0, `HeliosLMv5Config.model_name`
+said v5.225, and this changelog's head said v5.235. The new
+`helioslm_v5/version.py` is now the only place the number is written.
+`pyproject.toml` reads it (`dynamic = ["version"]`), `model_name` and
+the `test_v5.py` banner are built from it, and
+`case_harness_repair.test_version_matches_changelog` (replacing
+`test_version_never_ahead_of_changelog`, which tolerated lag) fails CI
+unless `version.py` equals this changelog's newest heading. A PR that
+adds an entry here bumps that one line too; the daily re-calibration of
+`model_name` is no longer needed.
+
+**Harness layout.** `harness/harness_core.py` and
+`harness/harness_plugins.py` moved from the top-level `harness/` into
+`helioslm_v5/harness/`, next to the old web UIs. Before, the two
+`harness/` directories were silently merged into one namespace package
+whenever both the repo root and `helioslm_v5/` were on `sys.path`. Imports
+stay `from harness.harness_core import ...` with `helioslm_v5/` on the
+path; `test_review_fixes.py` and `test_swarm_parallel.py`, which only
+added the repo root, now add `helioslm_v5/` too. hsh (`helioslm_v5/hsh/`)
+is the one agent harness; `docs/LEGACY_HARNESS.md` now has a table of
+which "harness" path is what. CI's flake8 and release zip lists drop the
+removed `harness/`.
 
 ## v5.235 (2026-11-04) - gpt-oss answers in the HDL eval
 
