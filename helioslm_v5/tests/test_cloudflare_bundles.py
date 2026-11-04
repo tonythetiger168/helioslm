@@ -131,3 +131,16 @@ def test_site_has_local_run_guide(dist, tmp_path):
     assert f"llama-server -m {gguf} -c {e['ctx']} -ngl 99 --reasoning-budget 0" in page
     assert page.count("開發中") == len(TIERS) - 2 + len(GENERATIONS)
     assert "github" not in page.lower()
+
+
+def test_site_has_measured_speed_and_mtp_tip(dist, tmp_path):
+    """v5.238: measured llama.cpp speeds per tier, the MTP flags for the
+    26B tiers (current llama.cpp spelling) and the -t tip."""
+    from helioslm_v5.src.export.cloudflare import SPEED
+    e = bundle_package(dist / "L8", tmp_path / "r2", version="v1")
+    build_site([e], tmp_path / "site", base_url=BASE, version="v1")
+    page = (tmp_path / "site" / "index.html").read_text()
+    assert "速度參考" in page and "--spec-type draft-mtp --spec-draft-n-max 3" in page
+    assert "--draft-max" not in page and "-t &lt;" in page
+    assert all(str(row[3]) in page for row in SPEED)
+    assert all(row[4] is None or row[4] > row[3] for row in SPEED)  # MTP only where it helps
