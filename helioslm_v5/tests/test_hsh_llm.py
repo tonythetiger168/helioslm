@@ -16,7 +16,39 @@ import sys
 import urllib.error
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    # This file is also executed directly by the daily TESTS suite
+    # (case_upstream_suites), where pytest is not installed. The shim
+    # covers exactly the pytest feature used below: raises. These cases
+    # bind the context (`as e`) and read `.value`, so the stand-in
+    # yields an object with that attribute. No match= arguments are
+    # passed. Same pattern as test_hsh_session.py.
+    import contextlib as _contextlib
+    import re as _re
+
+    class _RaisesInfo:
+        def __init__(self):
+            self.value = None
+
+    class _PytestShim:
+        @staticmethod
+        @_contextlib.contextmanager
+        def raises(exc, match=None):
+            info = _RaisesInfo()
+            try:
+                yield info
+            except exc as e:
+                info.value = e
+                if match is not None and not _re.search(match, str(e)):
+                    raise AssertionError(
+                        f"raised {e!r}, which does not match /{match}/"
+                    ) from None
+                return
+            raise AssertionError(f"{exc.__name__} was not raised")
+
+    pytest = _PytestShim()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
