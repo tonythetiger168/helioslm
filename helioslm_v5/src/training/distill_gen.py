@@ -58,6 +58,8 @@ TEACHERS = {
                   "served_model": "moonshotai/Kimi-K2.6"},
     "kimi-k3": {"repo": "moonshotai/Kimi-K3",
                 "served_model": "moonshotai/Kimi-K3"},
+    "kimi-k3.1-pro": {"repo": "moonshotai/Kimi-K3.1-Pro",
+                      "served_model": "moonshotai/Kimi-K3.1-Pro"},
     # 2026-11-03: one-GPU self-hosted teacher (Apache-2.0)
     "qwen3.6-35b-a3b": {"repo": "Qwen/Qwen3.6-35B-A3B",
                         "served_model": "Qwen/Qwen3.6-35B-A3B"},

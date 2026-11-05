@@ -1,5 +1,15 @@
 # HeliosLM v5 Changelog
 
+## v5.239 (2026-11-05) - Kimi K3.1 Pro teacher row
+
+`eval/teacher_license_audit.py` adds `moonshotai/Kimi-K3.1-Pro` (released
+on the Hub 2026-11-02; 2.78T parameters, 1.56 TB of weights). The Kimi
+K3.1-Pro License is the Kimi K3 licence with the name changed: display
+clause over 100M MAU or US$20M monthly revenue, a separate agreement for
+large Model-as-a-Service businesses, internal use exempt, nothing on outputs
+or on training other models. Hash pinned from a live fetch.
+`distill_gen.TEACHERS` gains the alias `kimi-k3.1-pro`.
+
 ## v5.238 (2026-11-04) - Measured speeds and MTP tip in the local-run guide
 
 The download page and `docs/LOCAL_RUN.md` get a measured speed table
