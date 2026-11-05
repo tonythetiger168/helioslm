@@ -235,6 +235,26 @@ REVIEWS.update({
                        "trademarks not licensed (s.6)"],
     },
 })
+# 2026-11-05: Kimi K3.1 Pro (2.78T, 1.56 TB of weights), released on the
+# Hub 2026-11-02 under its own licence. LICENSE read and hashed from a live
+# fetch (revision 6d0a0202): the Kimi K3 terms with the name changed;
+# nothing on outputs or on training other models.
+REVIEWS.update({
+    "moonshotai/Kimi-K3.1-Pro": {
+        "reviewed_sha256": "da05c356f773d22a0e1c6de390f280304d7cee6eb56fa161aa789d30dedba63b",
+        "license": "Kimi K3.1-Pro License",
+        "verdict": "allowed_with_conditions",
+        "conditions": [
+            "keep the copyright and permission notice (s.1)",
+            "commercial products over 100M MAU or US$20M monthly revenue "
+            "must display 'Kimi K3.1-Pro' (s.3)",
+            "a Model-as-a-Service business over US$20M revenue in 12 months "
+            "needs a separate agreement before commercial use (s.2)",
+            "internal use (nothing made available to third parties) is "
+            "exempt from s.2 and s.3 (s.4)",
+        ],
+    },
+})
 TEACHERS = tuple(r for r, v in REVIEWS.items()
                  if v["reviewed_sha256"] != PENDING)
 PENDING_TEACHERS = tuple(r for r, v in REVIEWS.items()
