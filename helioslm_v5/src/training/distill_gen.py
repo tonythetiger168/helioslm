@@ -321,6 +321,9 @@ class Generator:
             t0 = self.clock()
             try:
                 out = self.complete(req)
+                if not (out.get("content") or out.get("reasoning") or out.get("tool_calls")):
+                    # v5.244: an empty answer is a failure, never a record
+                    raise LLMError("empty answer from teacher", transient=True)
             except Exception as e:  # noqa: BLE001 - classified below
                 if attempt < self.cfg.retries and _retryable(e):
                     self.sleep(delay)

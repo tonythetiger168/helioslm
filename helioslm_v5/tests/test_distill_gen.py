@@ -350,3 +350,17 @@ def test_llm_error_is_retried():
     assert dg._retryable(LLMError("HTTP 429", status=429))
     assert not dg._retryable(LLMError("HTTP 400", status=400))
     assert dg._retryable(LLMError("cannot reach", transient=True))
+
+
+def test_empty_answer_is_an_error(tmp_path):
+    # v5.244: 1,100 empty "answers" were written on the K3.1 pilot
+    out = str(tmp_path / "gen.jsonl")
+    calls = []
+
+    def empty(req):
+        calls.append(1)
+        return {"content": "", "reasoning": None, "tool_calls": [], "usage": {}}
+    g = dg.Generator(cfg(retries=2), complete=empty, sleep=lambda s: None)
+    s = g.run([{"id": "a", "prompt": "q"}], out)
+    assert s["written"] == 0 and s["errors"] == 1 and len(calls) == 3
+    assert "empty answer" in dg.read_jsonl(out + ".errors.jsonl")[0]["error"]

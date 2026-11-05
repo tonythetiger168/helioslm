@@ -988,7 +988,7 @@ def test_hsh_llm_suite():
     (undo in finally)."""
     from helioslm_v5.tests import test_hsh_llm as m
     expected = {"test_sse_fold", "test_streaming_through_the_loop",
-                "test_http_errors", "test_request_retry"}
+                "test_http_errors", "test_request_retry", "test_sse_without_events"}
     _drift_guard(m, expected)
     for name in sorted(expected - {"test_streaming_through_the_loop",
                                    "test_http_errors"}):
