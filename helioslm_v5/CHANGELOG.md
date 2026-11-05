@@ -1,5 +1,22 @@
 # HeliosLM v5 Changelog
 
+## v5.247 (2026-11-05) - Pick HDL answers with model-written testbenches
+
+`examples/hdl_eval_all.py --select tb --tb-n 2` asks the model for `--tb-n`
+self-checking testbenches per VerilogEval / RTLLM problem, written from the
+problem text alone (the prompt asks for expected values worked out from the
+spec and an `ERRORS <n> CHECKS <m>` line). Each compiling sample runs under
+each testbench (Icarus). The pick is the sample with the most zero-error
+testbenches, then the highest fraction of checks passed, then the v5.241
+simulation votes (CodeT-style). A testbench under which no sample runs is
+ignored. CVDP keeps the first sample that passes its compile check. The
+testbenches go to `<out>.tbs.json`, and the counts to `select_stats`.
+Background: on gpt-oss-120b, 8 samples with v5.241 consensus scored
+VerilogEval 0.789, against a per-sample mean of 0.785 and a pass@5 of 0.877,
+so the votes alone did not find the right answer. New `tb_pick`,
+`select_tb`, `run_tb` and test
+`test_tb_pick_prefers_candidates_passing_model_testbenches`.
+
 ## v5.246 (2026-11-05) - MLX quantization recipes for the Mac builds
 
 Plain MLX 4-bit breaks Gemma 4 E4B (held zh-TW PPL 23.2 vs 5.71 for bf16
@@ -59,23 +76,6 @@ the first attempt. `distill_generate.py generate --stream` (GenConfig.stream)
 reads the answer as server-sent events, for hosted endpoints whose proxy
 answers long non-streamed requests with 502. Found on the Kimi K3.1 Pro
 pilot: 2,000 of 2,000 requests failed with an unretried 502.
-
-## v5.242 (2026-11-05) - Pick HDL answers with model-written testbenches
-
-`examples/hdl_eval_all.py --select tb --tb-n 2` asks the model for `--tb-n`
-self-checking testbenches per VerilogEval / RTLLM problem, written from the
-problem text alone (the prompt asks for expected values worked out from the
-spec and an `ERRORS <n> CHECKS <m>` line). Each compiling sample runs under
-each testbench (Icarus). The pick is the sample with the most zero-error
-testbenches, then the highest fraction of checks passed, then the v5.241
-simulation votes (CodeT-style). A testbench under which no sample runs is
-ignored. CVDP keeps the first sample that passes its compile check. The
-testbenches go to `<out>.tbs.json`, and the counts to `select_stats`.
-Background: on gpt-oss-120b, 8 samples with v5.241 consensus scored
-VerilogEval 0.789, against a per-sample mean of 0.785 and a pass@5 of 0.877,
-so the votes alone did not find the right answer. New `tb_pick`,
-`select_tb`, `run_tb` and test
-`test_tb_pick_prefers_candidates_passing_model_testbenches`.
 
 ## v5.241 (2026-11-05) - Best-of-n HDL answers without the answer key
 

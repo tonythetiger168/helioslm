@@ -27,7 +27,7 @@ messages, up to N times; the first-round generations are saved to
 without the answer key: the compiling sample that is random-simulation
 equivalent to the most other samples (CVDP: the first that passes its
 compile check); all samples go to ``<out>.all.samples.json``.
-``--select tb`` (v5.242) ranks the samples by ``--tb-n`` self-checking
+``--select tb`` (v5.247) ranks the samples by ``--tb-n`` self-checking
 testbenches the model writes from the problem text alone (CodeT-style),
 then by the same simulation votes; the testbenches go to ``<out>.tbs.json``.
 The raw generations are written to ``<out>.samples.json`` before any
@@ -345,7 +345,7 @@ def run_tb(code, tb, timeout=20):
 
 
 def tb_pick(codes, ok, tbs, run=run_tb, equiv=None):
-    """Index of the candidate to submit (v5.242, CodeT-style): candidates
+    """Index of the candidate to submit (v5.247, CodeT-style): candidates
     that compile are ranked by the number of model-written testbenches
     they pass with zero errors, then by the fraction of checks passed,
     then by :func:`consensus_votes`. A testbench counts only if at least
