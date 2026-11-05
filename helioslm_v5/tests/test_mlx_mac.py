@@ -16,7 +16,7 @@ import pytest
 from helioslm_v5.src.export.cloudflare import build_site
 from helioslm_v5.src.export.mlx import (
     MAC_ROWS, add_mac_to_site, bundle_mlx, fix_mlx_config, mac_ram, mac_section,
-    mlx_config_fixes)
+    mlx_config_fixes, quant_predicate)
 
 _REPO = Path(__file__).resolve().parents[2]
 BASE = "https://dl.example.com"
@@ -157,3 +157,17 @@ def test_mlx_config_fixes_from_per_layer_config(tmp_path):
     bad["text_config"]["per_layer_config"]["11"]["head_dim"] = 256
     with pytest.raises(ValueError):
         mlx_config_fixes(bad)
+
+
+def test_quant_recipes():
+    small = quant_predicate("e4b-small")
+    assert small("language_model.model.per_layer_model_projection") is False
+    assert small("language_model.model.layers.3.per_layer_input_gate") is False
+    assert small("language_model.model.embed_tokens_per_layer") is True
+    assert small("language_model.model.layers.3.mlp.down_proj") == {"group_size": 64, "bits": 6}
+    assert small("language_model.model.layers.3.router.proj")["bits"] == 8
+    assert quant_predicate("plain")("x.layers.0.self_attn.q_proj") is True
+    assert quant_predicate("emb8")("x.embed_tokens")["bits"] == 8
+    assert quant_predicate("emb8")("x.layers.0.mlp.up_proj") is True
+    with pytest.raises(ValueError):
+        quant_predicate("q3")

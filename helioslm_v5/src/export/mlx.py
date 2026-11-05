@@ -254,3 +254,39 @@ def fix_mlx_config(hf_dir):
         cfg.get("text_config", cfg).update(fixes)
         p.write_text(json.dumps(cfg, indent=2) + "\n")
     return fixes
+
+
+# per-layer embedding projections of Gemma 4 E2B/E4B: tiny, but 4-bit (or
+# even 8-bit) quantization of them wrecks the model (held zh-TW PPL, E4B:
+# bf16 5.71, plain 4-bit 23.2, these at 8-bit 8.2)
+_PLE = ("per_layer_model_projection", "per_layer_input_gate", "per_layer_projection")
+
+# quantization recipes for mlx_lm.convert (v5.246), measured 2026-11-05 on
+# E4B (held zh-TW PPL, bf16 5.71; 8-bit 5.71):
+#   plain     every Linear/Embedding at --q-bits (4-bit E4B: 23.2, broken)
+#   e4b-small per-layer projections bf16, embeddings 4-bit, other layers
+#             6-bit: 5.87 at 5.29 GB (fits an 8 GB Mac)
+#   emb8      embeddings 8-bit, rest --q-bits (used for 26B-A4B 4-bit)
+RECIPES = ("plain", "e4b-small", "emb8")
+
+
+def quant_predicate(recipe):
+    """``quant_predicate`` for ``mlx_lm.convert`` (path, module) -> bool or
+    ``{"bits", "group_size"}``. Every recipe keeps the MoE router at 8-bit,
+    as mlx-lm's own Gemma 4 predicate does."""
+    if recipe not in RECIPES:
+        raise ValueError(f"unknown recipe {recipe!r}; choose from {RECIPES}")
+
+    def pred(path, module=None):
+        last = path.split(".")[-1]
+        if path.endswith("router.proj"):
+            return {"group_size": 64, "bits": 8}
+        if recipe == "plain":
+            return True
+        if recipe == "emb8":
+            return {"group_size": 64, "bits": 8} if "embed" in last else True
+        if last in _PLE:
+            return False
+        return True if "embed" in last else {"group_size": 64, "bits": 6}
+
+    return pred

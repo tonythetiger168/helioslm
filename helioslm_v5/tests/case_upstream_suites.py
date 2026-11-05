@@ -1180,7 +1180,7 @@ def test_mlx_mac_suite():
     real TemporaryDirectory each. No mlx install needed (the CLI test
     uses ready MLX directories)."""
     from helioslm_v5.tests import test_mlx_mac as m
-    plain = ["test_mac_rows_cover_both_models"]
+    plain = ["test_mac_rows_cover_both_models", "test_quant_recipes"]
     with_tmp = ["test_bundle_mlx_zip", "test_bundle_mlx_checks_bits_and_weights",
                 "test_mac_section_order_and_commands", "test_build_site_with_mac",
                 "test_add_mac_to_built_site_replaces_earlier_section",
