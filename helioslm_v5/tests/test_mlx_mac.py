@@ -15,7 +15,8 @@ import pytest
 
 from helioslm_v5.src.export.cloudflare import build_site
 from helioslm_v5.src.export.mlx import (
-    MAC_ROWS, add_mac_to_site, bundle_mlx, mac_ram, mac_section)
+    MAC_ROWS, add_mac_to_site, bundle_mlx, fix_mlx_config, mac_ram, mac_section,
+    mlx_config_fixes)
 
 _REPO = Path(__file__).resolve().parents[2]
 BASE = "https://dl.example.com"
@@ -127,3 +128,28 @@ def test_package_mlx_cli_with_ready_dirs(tmp_path):
     assert [m["bits"] for m in mac] == [4, 8]
     assert (tmp_path / "cf" / "r2" / "mac-1" / "helioslm-tw-e4b-mlx-8bit-mac-1.zip").exists()
     assert "16–24 GB" in (tmp_path / "site" / "index.html").read_text()
+
+
+def _g26_config():
+    types = (["sliding_attention"] * 5 + ["full_attention"]) * 5
+    per = {f"{i:02d}": {"head_dim": 512, "num_key_value_heads": 2}
+           for i, t in enumerate(types) if t == "full_attention"}
+    return {"model_type": "gemma4", "text_config": {
+        "head_dim": 256, "num_key_value_heads": 8, "attention_k_eq_v": True,
+        "layer_types": types, "per_layer_config": per}}
+
+
+def test_mlx_config_fixes_from_per_layer_config(tmp_path):
+    cfg = _g26_config()
+    assert mlx_config_fixes(cfg) == {"global_head_dim": 512, "num_global_key_value_heads": 2}
+    (tmp_path / "config.json").write_text(json.dumps(cfg))
+    assert fix_mlx_config(tmp_path) == {"global_head_dim": 512,
+                                        "num_global_key_value_heads": 2}
+    tc = json.loads((tmp_path / "config.json").read_text())["text_config"]
+    assert tc["global_head_dim"] == 512 and tc["num_global_key_value_heads"] == 2
+    assert fix_mlx_config(tmp_path) == {}  # already there
+    assert mlx_config_fixes({"text_config": {"head_dim": 256}}) == {}
+    bad = _g26_config()
+    bad["text_config"]["per_layer_config"]["11"]["head_dim"] = 256
+    with pytest.raises(ValueError):
+        mlx_config_fixes(bad)

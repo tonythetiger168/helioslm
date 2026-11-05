@@ -212,3 +212,39 @@ def add_mac_to_site(site_dir, entries, base):
     doc["mac"] = [dict(m, url=f"{base}/{m['key']}") for m in entries]
     (site / "packages.json").write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
     return doc
+
+
+def mlx_config_fixes(config):
+    """Keys to add to a Gemma 4 ``config.json`` so mlx-lm builds the right
+    attention shapes. Checkpoints saved by newer transformers describe the
+    full-attention layers in ``text_config.per_layer_config`` (e.g. 26B-A4B:
+    ``{"05": {"head_dim": 512, "num_key_value_heads": 2}, ...}``), while
+    mlx-lm 0.32 reads ``global_head_dim`` / ``num_global_key_value_heads``
+    and otherwise expects 8 KV heads there (shape error on ``k_proj``).
+    Returns ``{}`` when nothing is missing."""
+    tc = config.get("text_config", config)
+    per = tc.get("per_layer_config") or {}
+    types = tc.get("layer_types") or []
+    full = [v for k, v in per.items()
+            if k.isdigit() and int(k) < len(types) and types[int(k)] == "full_attention"]
+    fixes = {}
+    for src, dst in (("head_dim", "global_head_dim"),
+                     ("num_key_value_heads", "num_global_key_value_heads")):
+        vals = {v[src] for v in full if src in v}
+        if len(vals) > 1:
+            raise ValueError(f"full-attention layers disagree on {src}: {sorted(vals)}")
+        if vals and dst not in tc:
+            fixes[dst] = vals.pop()
+    return fixes
+
+
+def fix_mlx_config(hf_dir):
+    """Apply :func:`mlx_config_fixes` to ``hf_dir/config.json`` in place
+    (into ``text_config`` when there is one); returns the keys added."""
+    p = Path(hf_dir) / "config.json"
+    cfg = json.loads(p.read_text())
+    fixes = mlx_config_fixes(cfg)
+    if fixes:
+        cfg.get("text_config", cfg).update(fixes)
+        p.write_text(json.dumps(cfg, indent=2) + "\n")
+    return fixes

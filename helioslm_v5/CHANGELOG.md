@@ -11,7 +11,10 @@ Intel Mac → L-Edge GGUF on CPU); `build_site(mac_entries=...)` adds it and
 a `mac` list to `packages.json`, and `add_mac_to_site` adds it to an
 already built site without re-bundling the GGUF tiers.
 `examples/package_mlx.py` converts, zips and updates the site;
-`docs/LOCAL_RUN.md` gains a Mac MLX section. New tests
+`docs/LOCAL_RUN.md` gains a Mac MLX section. `fix_mlx_config` adds
+`global_head_dim` / `num_global_key_value_heads` from
+`text_config.per_layer_config` before converting (our 26B-A4B checkpoints
+otherwise fail in mlx-lm 0.32 with a `k_proj` shape error). New tests
 `test_mlx_mac.py`.
 
 ## v5.241 (2026-11-05) - Best-of-n HDL answers without the answer key

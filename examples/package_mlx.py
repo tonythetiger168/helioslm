@@ -25,7 +25,8 @@ _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
 from helioslm_v5.src.export.cloudflare import check_base_url  # noqa: E402
-from helioslm_v5.src.export.mlx import add_mac_to_site, bundle_mlx, mac_ram  # noqa: E402
+from helioslm_v5.src.export.mlx import (  # noqa: E402
+    add_mac_to_site, bundle_mlx, fix_mlx_config, mac_ram)
 
 
 def convert(hf, out, bits, group=64):
@@ -63,6 +64,10 @@ def main():
         dirs = {int(b): Path(d) for b, d in (x.split("=", 1) for x in args.mlx)}
     else:
         dirs = {}
+        if Path(args.hf, "config.json").exists():
+            fixes = fix_mlx_config(args.hf)
+            if fixes:
+                print("config.json: added for mlx-lm", fixes)
         for b in args.bits:
             mac_ram(args.model, b)  # fail before a long conversion
             dirs[b] = convert(args.hf, out / "mlx" / f"{args.model}-{b}bit", b)
