@@ -1,4 +1,4 @@
-"""Mac (Apple Silicon) downloads in MLX format (v5.242).
+"""Mac (Apple Silicon) downloads in MLX format (v5.245).
 
 On an Apple M-series Mac the GGUF packages already run through llama.cpp
 with Metal, but Apple's own MLX runtime (``mlx-lm``) is usually faster on

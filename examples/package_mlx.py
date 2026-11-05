@@ -1,4 +1,4 @@
-"""package_mlx.py — Mac (Apple Silicon) MLX download zips (v5.242).
+"""package_mlx.py — Mac (Apple Silicon) MLX download zips (v5.245).
 
   pip install mlx-lm            # on Linux: pip install "mlx[cpu]" mlx-lm
   python examples/package_mlx.py --hf ckpt/e4b --model e4b --bits 4 8 \\

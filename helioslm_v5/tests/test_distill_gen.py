@@ -341,3 +341,12 @@ def test_openai_endpoint_thinking_off():
 def test_template_kwargs_switch_both_template_families():
     assert dg.template_kwargs(False) == {"thinking": False, "enable_thinking": False}
     assert dg.template_kwargs(True) == {"thinking": True, "enable_thinking": True}
+
+
+def test_llm_error_is_retried():
+    # v5.242: hosted 5xx / 429 arrive as LLMError from the adapter
+    from helioslm_v5.hsh.llm import LLMError
+    assert dg._retryable(LLMError("HTTP 502", status=502))
+    assert dg._retryable(LLMError("HTTP 429", status=429))
+    assert not dg._retryable(LLMError("HTTP 400", status=400))
+    assert dg._retryable(LLMError("cannot reach", transient=True))

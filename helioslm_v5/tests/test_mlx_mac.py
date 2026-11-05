@@ -1,4 +1,4 @@
-"""v5.242 — Mac (Apple Silicon) MLX download zips and page section.
+"""v5.245 — Mac (Apple Silicon) MLX download zips and page section.
 
 ``bundle_mlx`` zips an MLX model directory (config, safetensors,
 tokenizer, chat template) into one folder plus a README; ``mac_section``

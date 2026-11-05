@@ -1,6 +1,6 @@
 # HeliosLM v5 Changelog
 
-## v5.242 (2026-11-05) - Mac (Apple Silicon) MLX downloads
+## v5.245 (2026-11-05) - Mac (Apple Silicon) MLX downloads
 
 New `src/export/mlx.py`: `bundle_mlx` zips an MLX model directory
 (`mlx_lm.convert -q --q-bits N` output) as one folder plus a README with
@@ -16,6 +16,27 @@ already built site without re-bundling the GGUF tiers.
 `text_config.per_layer_config` before converting (our 26B-A4B checkpoints
 otherwise fail in mlx-lm 0.32 with a `k_proj` shape error). New tests
 `test_mlx_mac.py`.
+
+## v5.243 (2026-11-05) - Free system RAM note in the local-run guide
+
+A Windows test of the L8 package (RTX 4060 8 GB, 16 GB RAM, Ollama
+0.40.13): download, SHA-256 check, `tar -xf` and `ollama create` work
+as written, but loading failed with `unable to allocate CUDA_Host
+buffer` (and, at 8K context, `ptxas fatal: Memory allocation failure`)
+because only about 1 GB of system RAM was free; VRAM had 7 GB free.
+The guide now says to keep about 3-4 GB of system RAM free besides
+VRAM, and names both errors as a RAM problem that a smaller `-c` does
+not fix.
+
+## v5.242 (2026-11-05) - distill_gen retries hosted-API errors, --stream
+
+`distill_gen._retryable` now recognises the `LLMError` the OpenAI-compatible
+adapter raises: a 429 / 5xx (or a dropped connection) from a hosted teacher
+API is retried with backoff, where before it was recorded as an error on
+the first attempt. `distill_generate.py generate --stream` (GenConfig.stream)
+reads the answer as server-sent events, for hosted endpoints whose proxy
+answers long non-streamed requests with 502. Found on the Kimi K3.1 Pro
+pilot: 2,000 of 2,000 requests failed with an unretried 502.
 
 ## v5.241 (2026-11-05) - Best-of-n HDL answers without the answer key
 
