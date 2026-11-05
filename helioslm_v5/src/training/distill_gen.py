@@ -42,7 +42,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Callable, Dict, Optional
 
 from ...eval.teacher_license_audit import usable
-from ...hsh.llm import OpenAICompatAdapter
+from ...hsh.llm import LLMError, OpenAICompatAdapter
 
 # alias -> weights repo (the licence row) and the model name a vLLM server
 # started with ``vllm serve <repo>`` answers to.
@@ -133,6 +133,7 @@ class GenConfig:
     workers: int = 16
     retries: int = 4
     timeout: float = 600.0
+    stream: bool = False                  # SSE: keeps long answers under proxy timeouts
     keep_thinking: str = "none"
     max_cost: Optional[float] = None
     max_output_tokens: Optional[int] = None
@@ -282,6 +283,10 @@ def read_jsonl(path):
 
 
 def _retryable(exc):
+    # v5.242: the adapter wraps HTTP failures in LLMError, so before this a
+    # 429 / 5xx from a hosted API was never retried
+    if isinstance(exc, LLMError):
+        return exc.status in RETRY_HTTP or bool(exc.transient)
     if isinstance(exc, urllib.error.HTTPError):
         return exc.code in RETRY_HTTP
     return isinstance(exc, (urllib.error.URLError, TimeoutError, ConnectionError,
@@ -300,7 +305,7 @@ class Generator:
         self.teacher = check_teacher(cfg.teacher)
         if complete is None:
             complete = OpenAICompatAdapter(cfg.base_url, api_key_env=cfg.api_key_env,
-                                           timeout=cfg.timeout).complete
+                                           timeout=cfg.timeout, stream=cfg.stream).complete
         self.complete = complete
         self.sleep = sleep
         self.clock = clock

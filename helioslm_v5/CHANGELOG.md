@@ -1,5 +1,15 @@
 # HeliosLM v5 Changelog
 
+## v5.242 (2026-11-05) - distill_gen retries hosted-API errors, --stream
+
+`distill_gen._retryable` now recognises the `LLMError` the OpenAI-compatible
+adapter raises: a 429 / 5xx (or a dropped connection) from a hosted teacher
+API is retried with backoff, where before it was recorded as an error on
+the first attempt. `distill_generate.py generate --stream` (GenConfig.stream)
+reads the answer as server-sent events, for hosted endpoints whose proxy
+answers long non-streamed requests with 502. Found on the Kimi K3.1 Pro
+pilot: 2,000 of 2,000 requests failed with an unretried 502.
+
 ## v5.241 (2026-11-05) - Best-of-n HDL answers without the answer key
 
 `examples/hdl_eval_all.py --select consensus --n 8` submits one answer per

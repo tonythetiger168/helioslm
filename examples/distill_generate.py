@@ -108,6 +108,9 @@ def main(argv=None):
     g.add_argument("--max-cost", type=float, default=None)
     g.add_argument("--max-output-tokens", type=int, default=None)
     g.add_argument("--max-hours", type=float, default=None)
+    g.add_argument("--stream", action="store_true",
+                   help="v5.242: stream the answer (hosted APIs behind a proxy that "
+                        "drops long non-streamed requests with 502)")
     g.add_argument("--data-manifest", default=None,
                    help="v5.215: medical prompts need a manifest; never sent to an external API")
     g.add_argument("--medical", action="store_true",
@@ -154,7 +157,7 @@ def main(argv=None):
             top_p=a.top_p, max_tokens=a.max_tokens, thinking=not a.no_thinking,
             extra=extra, samples=a.samples, workers=a.workers,
             keep_thinking=a.keep_thinking, max_cost=a.max_cost,
-            max_output_tokens=a.max_output_tokens,
+            max_output_tokens=a.max_output_tokens, stream=a.stream,
             max_seconds=a.max_hours * 3600 if a.max_hours else None)
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
         summary = dg.Generator(cfg).run(prompts, a.out, pricing=pricing(a),
