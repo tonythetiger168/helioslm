@@ -1,5 +1,12 @@
 # HeliosLM v5 Changelog
 
+## v5.248 (2026-11-05) - HDL eval on several GPUs
+
+`examples/hdl_eval_all.py` now starts vLLM with `tensor_parallel_size`
+set to every visible GPU, or to `HDL_TP` when that is set. A
+single-GPU pod behaves as before. This is needed for models that only
+fit across several cards, for example a 550B MoE in NVFP4 on 4 B200s.
+
 ## v5.247 (2026-11-05) - Pick HDL answers with model-written testbenches
 
 `examples/hdl_eval_all.py --select tb --tb-n 2` asks the model for `--tb-n`
