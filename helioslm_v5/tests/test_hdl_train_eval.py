@@ -318,3 +318,27 @@ def test_consensus_pick_and_select():
         jobs, outs, check=None,
         bench_checks={"cvdp": lambda k, t: {"ok": t.startswith("good")}})
     assert picks == [1, 0] and got == [["good"], ["u0"]]
+
+
+def test_tb_pick_prefers_candidates_passing_model_testbenches():
+    import hdl_eval_all as ea
+    table = {("A", "t1"): (3, 10), ("A", "t2"): (0, 10),
+             ("B", "t1"): (0, 10), ("B", "t2"): (0, 10),
+             ("C", "t1"): (0, 10), ("C", "t2"): (0, 10),
+             ("D", "t1"): None, ("D", "t2"): None}
+    run = lambda c, t: table.get((c, t))                              # noqa: E731
+    same = lambda a, b: {a, b} == {"B", "C"} or a == b               # noqa: E731
+    pick, st = ea.tb_pick(["A", "B", "C", "D"], [True] * 4, ["t1", "t2", "t3"], run, same)
+    assert pick == 1 and st == {"valid_tbs": 2, "best_pass": 2}     # t3 runs nowhere
+    # no compiling candidate -> 0; no valid testbench -> falls back to votes
+    assert ea.tb_pick(["A"], [False], ["t1"], run, same)[0] == 0
+    pick, st = ea.tb_pick(["A", "B", "C"], [True] * 3, ["t3"], run, same)
+    assert pick == 1 and st["valid_tbs"] == 0
+    gen = lambda jobs, n, *a: [["```verilog\nmodule tb; endmodule\n```"] * n for _ in jobs]  # noqa: E731
+    jobs = [("verilog-eval", "p1", "", "spec"), ("cvdp", "c1", "", "p")]
+    outs = [["x", "y"], ["bad", "good"]]
+    got, picks, stats, tbs = ea.select_tb(
+        gen, jobs, outs, check=lambda c: {"ok": False}, n_tb=2,
+        bench_checks={"cvdp": lambda k, t: {"ok": t == "good"}})
+    assert picks == [0, 1] and got == [["x"], ["good"]] and stats["tb_jobs"] == 1
+    assert tbs["p1"][0].startswith("module tb")

@@ -27,6 +27,9 @@ messages, up to N times; the first-round generations are saved to
 without the answer key: the compiling sample that is random-simulation
 equivalent to the most other samples (CVDP: the first that passes its
 compile check); all samples go to ``<out>.all.samples.json``.
+``--select tb`` (v5.247) ranks the samples by ``--tb-n`` self-checking
+testbenches the model writes from the problem text alone (CodeT-style),
+then by the same simulation votes; the testbenches go to ``<out>.tbs.json``.
 The raw generations are written to ``<out>.samples.json`` before any
 scoring, so a scoring failure never costs the GPU time (v5.179).
 """
@@ -262,27 +265,140 @@ def consensus_pick(codes, ok, equiv=None):
     good = [i for i, o in enumerate(ok) if o]
     if len(good) <= 1:
         return good[0] if good else 0
-    if equiv is None:
-        from helioslm_v5.eval import hdl_reward as hr
+    votes = consensus_votes(codes, good, equiv)
+    return max(good, key=lambda i: (votes[i], -i))
 
-        def equiv(a, b):
-            try:
-                name = hr.top_module(a)
-                if hr.top_module(b) != name:
-                    return False
-                ports = hr.top_ports(a, name)
-                if hr.top_ports(b, name) != ports:
-                    return False
-                return hr.simulate(b, a, name, ports)["ok"]
-            except Exception:
-                return False
+
+def sim_equiv(a, b):
+    """True when two candidate designs agree under ``hdl_reward``'s
+    random-stimulus simulation (same top module and ports)."""
+    from helioslm_v5.eval import hdl_reward as hr
+    try:
+        name = hr.top_module(a)
+        if hr.top_module(b) != name:
+            return False
+        ports = hr.top_ports(a, name)
+        if hr.top_ports(b, name) != ports:
+            return False
+        return hr.simulate(b, a, name, ports)["ok"]
+    except Exception:
+        return False
+
+
+def consensus_votes(codes, good, equiv=None):
+    """{i: number of other ``good`` candidates equivalent to candidate i}."""
+    equiv = equiv or sim_equiv
     votes = {i: 0 for i in good}
     for x, i in enumerate(good):
         for j in good[x + 1:]:
             if equiv(codes[i], codes[j]):
                 votes[i] += 1
                 votes[j] += 1
-    return max(good, key=lambda i: (votes[i], -i))
+    return votes
+
+
+TB_ASK = """Write a self-checking testbench for the hardware design described below. Do not write the design itself.
+
+Requirements:
+- One Verilog module named `tb` with no ports. It instantiates the design module with the exact module name and port names given in the description.
+- Work out the expected output values yourself from the specification (for a clocked design, model the expected behaviour cycle by cycle inside the testbench). Apply directed corner cases and at least 50 random stimuli.
+- Count every comparison in an integer `checks` and every mismatch in an integer `errors`.
+- At the end print exactly: $display("ERRORS %0d CHECKS %0d", errors, checks); then call $finish.
+- Plain Verilog-2005 / SystemVerilog-2012 that Icarus Verilog (iverilog -g2012) compiles.
+
+Design description:
+
+{spec}
+
+Return only the testbench, in one ```verilog block."""
+
+_TB_RESULT = re.compile(r"ERRORS\s+(\d+)\s+CHECKS\s+(\d+)")
+
+
+def run_tb(code, tb, timeout=20):
+    """(errors, checks) of design ``code`` under the model-written
+    testbench ``tb`` (Icarus), or None when it does not compile, run or
+    report."""
+    import shutil
+    import subprocess
+    import tempfile
+    iverilog, vvp = shutil.which("iverilog"), shutil.which("vvp")
+    if not (iverilog and vvp and code.strip() and tb.strip()):
+        return None
+    with tempfile.TemporaryDirectory(prefix="hdltb_") as td:
+        Path(td, "dut.v").write_text(code, encoding="utf-8")
+        Path(td, "tb.v").write_text(tb, encoding="utf-8")
+        try:
+            c = subprocess.run([iverilog, "-g2012", "-s", "tb", "-o", "sim", "dut.v", "tb.v"],
+                               cwd=td, capture_output=True, text=True, timeout=60)
+            if c.returncode:
+                return None
+            r = subprocess.run([vvp, "-n", "sim"], cwd=td, capture_output=True, text=True,
+                               timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return None
+    m = _TB_RESULT.findall(r.stdout + r.stderr)
+    if not m:
+        return None
+    e, n = map(int, m[-1])
+    return (e, n) if n > 0 else None
+
+
+def tb_pick(codes, ok, tbs, run=run_tb, equiv=None):
+    """Index of the candidate to submit (v5.247, CodeT-style): candidates
+    that compile are ranked by the number of model-written testbenches
+    they pass with zero errors, then by the fraction of checks passed,
+    then by :func:`consensus_votes`. A testbench counts only if at least
+    one candidate runs under it. Returns (index, {"valid_tbs", "best_pass"})."""
+    good = [i for i, o in enumerate(ok) if o]
+    if not good:
+        return 0, {"valid_tbs": 0, "best_pass": 0}
+    res = {(i, t): run(codes[i], tb) for i in good for t, tb in enumerate(tbs)}
+    valid = [t for t in range(len(tbs)) if any(res[(i, t)] for i in good)]
+    def score(i):
+        rs = [res[(i, t)] for t in valid]
+        full = sum(1 for r in rs if r and r[0] == 0)
+        frac = sum(1 - r[0] / r[1] for r in rs if r)
+        return full, frac
+    sc = {i: score(i) for i in good}
+    top = max(sc.values())
+    tied = [i for i in good if sc[i] == top]
+    if len(tied) > 1:
+        votes = consensus_votes(codes, tied, equiv)
+        pick = max(tied, key=lambda i: (votes[i], -i))
+    else:
+        pick = tied[0]
+    return pick, {"valid_tbs": len(valid), "best_pass": top[0]}
+
+
+def select_tb(gen, jobs, outputs, check, n_tb=2, temperature=0.8, top_p=0.95,
+              max_new_tokens=4096, benches=REPAIR_BENCHES, bench_checks=None, workers=8):
+    """Like :func:`select_consensus`, but VerilogEval / RTLLM jobs are
+    picked with :func:`tb_pick` on ``n_tb`` testbenches the model writes
+    from the problem text alone (no golden design, no benchmark
+    testbench). Returns (outputs with one sample each, picks, stats)."""
+    from concurrent.futures import ThreadPoolExecutor
+    idx = [i for i, (b, _, _, u) in enumerate(jobs) if b in benches and isinstance(u, str)]
+    tb_jobs = [(jobs[i][0], jobs[i][1], "", TB_ASK.format(spec=jobs[i][3])) for i in idx]
+    from helioslm_v5.eval import hdl_reward as hr
+    tbs = {i: [hr.extract_answer(t) for t in o]
+           for i, o in zip(idx, gen(tb_jobs, n_tb, temperature, top_p, max_new_tokens))} \
+        if tb_jobs else {}
+    out, picks = select_consensus(jobs, outputs, check, benches=(), bench_checks=bench_checks,
+                                  workers=workers)
+    info = {}
+
+    def one(i):
+        codes = [hb.extract_code(o) for o in outputs[i]]
+        return i, tb_pick(codes, [check(c)["ok"] for c in codes], tbs[i])
+    with ThreadPoolExecutor(max(1, workers)) as ex:
+        for i, (j, st) in ex.map(one, idx):
+            picks[i] = j
+            out[i] = [outputs[i][j]]
+            info[i] = st
+    stats = {"tb_jobs": len(idx), "with_valid_tb": sum(1 for v in info.values() if v["valid_tbs"]),
+             "picked_full_pass": sum(1 for v in info.values() if v["best_pass"] > 0)}
+    return out, picks, stats, {jobs[i][1]: tbs[i] for i in idx}
 
 
 def select_consensus(jobs, outputs, check, benches=REPAIR_BENCHES, bench_checks=None,
@@ -404,7 +520,9 @@ def main(argv=None):
                          "compile (no testbench) with the tool messages, up "
                          "to N times (VerilogEval / RTLLM, v5.229; single-file "
                          "CVDP with its RTL context, v5.234)")
-    ap.add_argument("--select", choices=("none", "consensus"), default="none",
+    ap.add_argument("--tb-n", type=int, default=2,
+                    help="--select tb: testbenches the model writes per problem")
+    ap.add_argument("--select", choices=("none", "consensus", "tb"), default="none",
                     help="consensus: from the --n samples (after any repair) submit "
                          "one per problem, the compiling candidate simulation-"
                          "equivalent to the most other candidates (no answer "
@@ -449,18 +567,28 @@ def main(argv=None):
                     {r["id"]: r for r in data.get("cvdp", [])})}
                 if "cvdp" in benches else None)
             print("repair:", json.dumps(repair_stats), flush=True)
-    picks = None
-    if a.select == "consensus":
+    picks = select_stats = None
+    if a.select != "none":
         if a.n < 2:
-            ap.error("--select consensus needs --n >= 2")
+            ap.error("--select needs --n >= 2")
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
         Path(a.out).with_suffix(".all.samples.json").write_text(
             json.dumps([{"bench": b, "key": k, "outputs": o}
                         for (b, k, _, _), o in zip(jobs, outputs)]) + "\n", encoding="utf-8")
-        outputs, picks = select_consensus(
-            jobs, outputs, hb.tool_feedback, workers=a.workers,
-            bench_checks={"cvdp": cvdp_check({r["id"]: r for r in data.get("cvdp", [])})}
-            if "cvdp" in benches else None)
+        bc = {"cvdp": cvdp_check({r["id"]: r for r in data.get("cvdp", [])})} \
+            if "cvdp" in benches else None
+        if a.select == "tb":
+            if a.samples:
+                ap.error("--select tb needs the model (it writes the testbenches)")
+            outputs, picks, select_stats, tbs = select_tb(
+                gen, jobs, outputs, hb.tool_feedback, a.tb_n, a.temperature, a.top_p,
+                a.max_new_tokens, bench_checks=bc, workers=a.workers)
+            Path(a.out).with_suffix(".tbs.json").write_text(json.dumps(tbs) + "\n",
+                                                            encoding="utf-8")
+            print("select tb:", json.dumps(select_stats), flush=True)
+        else:
+            outputs, picks = select_consensus(jobs, outputs, hb.tool_feedback,
+                                              workers=a.workers, bench_checks=bc)
     n_scored = 1 if picks is not None else a.n
     gen_s = time.time() - t0
     samples = [{"bench": b, "key": k, "outputs": o}
@@ -470,7 +598,7 @@ def main(argv=None):
             json.dumps(samples) + "\n", encoding="utf-8")
     ks = tuple(k for k in (1, 5, 10) if k <= n_scored)
     res = score_all(jobs, outputs, data, n_scored, ks, exclude, a.workers, a.extra)
-    out = {"model": a.model, "n": a.n, "temperature": a.temperature, "select": a.select,
+    out = {"model": a.model, "n": a.n, "temperature": a.temperature, "select": a.select, "select_stats": select_stats,
            "generate_seconds": round(gen_s), "summary": summary(res),
            "thinking": a.thinking, "repair_rounds": a.repair_rounds, "repair": repair_stats,
            "results": res, "samples": samples}
