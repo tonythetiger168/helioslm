@@ -24,6 +24,7 @@ Pins:
 
 Run from repo root: python3 helioslm_v5/tests/test_pretrain_pilot.py
 """
+import gc
 import json
 import math
 import subprocess
@@ -91,6 +92,13 @@ def test_shards():
         assert torch.equal(a[0][:, 1:], a[1][:, :-1])     # y is x shifted
         w = list(big.eval_windows(16, 3))
         assert len(w) == 3 and w[1][0][0, 0].item() == 16
+        # Windows (v5.240): the shards and every tensor/view derived from
+        # them keep the np.memmap alive, and unlinking an mmapped file
+        # fails with WinError 32 when the TemporaryDirectory cleans up
+        # (Linux tolerates the unlink). Drop the references and collect
+        # before the with-block exits.
+        del sh, big, a, b, c, w
+        gc.collect()
     print("PASS test_shards")
 
 
@@ -180,6 +188,11 @@ def test_wsd_decay_data_switch():
                 pass
             else:
                 raise AssertionError(f"accepted {bad}")
+        # Windows (v5.240): TokenShard keeps the shards open through
+        # np.memmap; unlinking an mmapped file fails with WinError 32
+        # when the TemporaryDirectory cleans up (Linux tolerates it).
+        del tr, va, an
+        gc.collect()
     print("PASS test_wsd_decay_data_switch")
 
 
@@ -272,6 +285,13 @@ def test_nonfinite_stop_then_resume_is_bitwise():
         assert strip == [
             {k: v for k, v in json.loads(x).items() if k not in timing}
             for x in (resumed / "log.jsonl").read_text().splitlines()]
+        # Windows (v5.240): TokenShard keeps train.bin open through
+        # np.memmap, and unlinking an mmapped file fails with WinError
+        # 32 when the TemporaryDirectory cleans up (Linux tolerates the
+        # unlink, which is why only a Windows run sees this). Drop the
+        # shard references and collect before the with-block exits.
+        del tr, va
+        gc.collect()
     print("PASS test_nonfinite_stop_then_resume_is_bitwise")
 
 

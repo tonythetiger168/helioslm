@@ -1,5 +1,44 @@
 # HeliosLM v5 Changelog
 
+## v5.251 (2026-11-06) - Four more sidecars folded into the suite
+
+**Sidecar fold-in.** `case_upstream_suites.py` gains wrappers for
+`test_teacher_license_audit` (8 funcs; includes the v5.239 Kimi-K3.1-Pro
+row), `test_pretrain_pilot` (8 funcs), `test_review_regressions`
+(8 funcs, parametrize + monkeypatch shims) and `test_cloudflare_bundles`
+(7 funcs, fixture + parametrize + raises shims). `FOLDED_SIDECARS` goes
+14 -> 32 files in this round and the legacy EXEMPT list drops the same
+four (175 remain exempt; upstream's own folds of `test_mlx_mac` (v5.245)
+and `test_serving_monitoring` (v5.250) plus the `test_prune_kd_gemma4`
+exemption bring the merged map to 34 folded / 176 exempt).
+`test_distill_gen` stays exempt on purpose: its CLI tests bind
+127.0.0.1, the same class of exemption as `test_hsh_web` and
+`test_openai_stream_smoke`. (Drafted 2026-11-05 as v5.240; upstream
+landed v5.240-v5.250 first, so this release is v5.251.)
+
+**Harness import fix.** `case_harness_repair.test_harness_memory_sqlite_fs_repair`
+failed after v5.236 moved `harness/` into `helioslm_v5/harness/` because
+the test only put the agent directory on `sys.path`. It now inserts the
+package directory too.
+
+**Windows compatibility.** `src/export/cloudflare.py` adds
+`encoding="utf-8"` to four text I/O calls (`build_site`'s `write_text`
+crashed with UnicodeEncodeError on cp950 machines when writing '≤').
+`tests/test_cloudflare_bundles.py` and `tests/test_pretrain_pilot.py`
+get matching UTF-8 fixes, and the pilot test releases `np.memmap`
+handles (`del` + `gc.collect()`) before `TemporaryDirectory` cleanup,
+which Windows refuses while a mapping is open (WinError 32; Linux
+tolerates it, which is why upstream never saw it).
+
+**Upstream suite repair.** The v5.245 `test_mlx_mac` sidecar (folded by
+upstream into `test_mlx_mac_suite`) assumed pytest and a UTF-8 locale:
+it did a bare `import pytest` and wrote/read pages and `mac.json`
+without an encoding. On a Windows cp950 machine without pytest the
+suite failed at import, then on Big5/UTF-8 mismatches. The file now
+carries the in-file pytest shim (raises only — the one feature it
+uses), and `export/mlx.py`, `examples/package_mlx.py` and the test
+itself do their text I/O as UTF-8 explicitly.
+
 ## v5.250 (2026-11-06) - Production serving load test and monitoring stack
 
 New `serving/loadtest.py`: streaming load test for an OpenAI-compatible

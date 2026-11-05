@@ -101,11 +101,17 @@ def bundle_package(pkg_dir, out_dir, *, version, status="preview"):
     tier, and a chat model's Modelfile keeps the GGUF's chat template.
     """
     pkg = Path(pkg_dir)
-    m = json.loads((pkg / "manifest.json").read_text())
+    # Pin UTF-8 on every text read/write: the page and the package
+    # READMEs carry zh-TW copy (開發中, ≤, …), and Python's default
+    # text encoding is locale-dependent (cp950 on a zh-TW Windows
+    # machine), which crashed build_site with UnicodeEncodeError
+    # (found by the v5.240 daily-gate fold on Windows).
+    m = json.loads((pkg / "manifest.json").read_text(encoding="utf-8"))
     tier = TIERS[m["tier"]]
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    readme = (pkg / "README.md").read_text() if (pkg / "README.md").exists() else ""
+    readme = (pkg / "README.md").read_text(encoding="utf-8") \
+        if (pkg / "README.md").exists() else ""
     bundles = []
     for f in m["files"]:
         label = QUANT_LABEL[f["quant"]]
@@ -378,6 +384,8 @@ def build_site(tier_entries, out_dir, *, base_url, version, name="HeliosLM",
            "generations": generations}
     if mac:
         doc["mac"] = mac
-    (out / "packages.json").write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
-    (out / "index.html").write_text(_page(name, version, tiers, base, generations, mac))
+    (out / "packages.json").write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n",
+                                       encoding="utf-8")
+    (out / "index.html").write_text(_page(name, version, tiers, base, generations, mac),
+                                    encoding="utf-8")
     return doc

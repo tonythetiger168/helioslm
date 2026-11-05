@@ -287,6 +287,15 @@ TESTS = [
     # 127.0.0.1 through ThreadingHTTPServer (ephemeral port) and reads a
     # live SSE response, so it stays in EXEMPT_SIDECARS with test_hsh_web.
     # CI's pytest invocation collects the sidecar and runs it there.
+    # v5.240 (2026-11-05): daily-maintenance backlog triage — teacher
+    # licence audit (incl. the v5.239 Kimi-K3.1-Pro row), the T122
+    # pretrain pilot, the review P1/P2 regression oracles, and the
+    # Cloudflare bundle packager. test_distill_gen stays exempt: its
+    # CLI test binds 127.0.0.1 (same class as test_openai_stream_smoke).
+    case_upstream_suites.test_teacher_license_audit_suite,
+    case_upstream_suites.test_pretrain_pilot_suite,
+    case_upstream_suites.test_review_regressions_suite,
+    case_upstream_suites.test_cloudflare_bundles_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 

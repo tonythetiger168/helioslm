@@ -141,9 +141,17 @@ def test_harness_memory_sqlite_fs_repair():
         root prefix). Locked: reads and writes outside the root are
         rejected with "blocked".
     """
+    # v5.240: harness/ moved into helioslm_v5/harness/ in v5.236 and the
+    # repo root no longer carries a harness/ dir. Callers import it as
+    # top-level `harness.*` with helioslm_v5/ on sys.path (the mechanism
+    # test_import_smoke documents above), so insert the package dir —
+    # not just the agent dir — before the bare imports. Without this the
+    # test died with ModuleNotFoundError: harness.harness_core.
+    _pkg_dir = str(Path(__file__).resolve().parent.parent)
     _agent_dir = str(Path(__file__).resolve().parent.parent / "agent")
-    if _agent_dir not in sys.path:
-        sys.path.insert(0, _agent_dir)
+    for _d in (_pkg_dir, _agent_dir):
+        if _d not in sys.path:
+            sys.path.insert(0, _d)
     from harness.harness_core import Context
     from harness.harness_plugins import (FilesystemPlugin, MemoryPlugin,
                                          SQLitePlugin)

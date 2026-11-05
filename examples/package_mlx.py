@@ -91,7 +91,8 @@ def main():
                        status=args.status)
         entries = [x for x in entries if x["zip"] != e["zip"]] + [e]
         print(e["mac_ram"], e["zip"], e["bytes"], e["sha256"])
-    index.write_text(json.dumps(entries, indent=2, ensure_ascii=False) + "\n")
+    index.write_text(json.dumps(entries, indent=2, ensure_ascii=False) + "\n",
+                     encoding="utf-8")
     if args.site:
         add_mac_to_site(args.site, entries, base_url)
         print("site:", args.site)

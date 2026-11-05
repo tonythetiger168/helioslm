@@ -572,11 +572,11 @@ As of 2026-10-31:
 
 The last five releases; every earlier release is in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md).
 
-- **v5.227** — a single-GPU open-weight teacher (Apache 2.0, licence pinned from a live fetch) joins the distillation teacher whitelist
-- **v5.226** — Q3_K quant (`package_hf.py --quants L-Edge=q3_k`, imatrix-aware) for a smaller CPU-tier L-Edge file
-- **v5.225** — daily-maintenance round: six more pytest-only sidecar suites (handover-resume T87, rephrase v5.206, MCQ reward v5.207, grounded report v5.214, report abstain v5.216, PulmoGuard gate v5.218) folded into the mandated daily gate with drift-guarded wrappers, plus a sidecar coverage meta-guard that fails loudly the day any `tests/test_*.py` file is neither folded nor explicitly exempted; `model_name` recalibrated from the v5.201 drift to the changelog head
-- **v5.224** — tier packages for chat models that think before answering (`package_hf.py --reasoning`): llama.cpp commands default to `--reasoning-budget 0` (direct answers), with a note on turning thinking on
-- **v5.223** — hsh `clinical` preset (`hsh/clinical.py`): only the host's allow-listed tools, clinician approval on every call (an auto permission mode cannot skip it), egress deny, locked against patches, and an `audit/tool-call` log that `audit_export` rebuilds from the session
+- **v5.251** — four more sidecar suites folded into the daily gate (teacher licence audit, pretrain pilot, review regressions, cloudflare bundles; 34 folded / 176 exempt after merging upstream's mlx_mac and serving folds), plus the v5.236 harness-move import fix, Windows UTF-8 / memmap fixes, and a pytest-free/UTF-8 repair of the mlx_mac suite
+- **v5.250** — production serving load test and monitoring stack (`serving/loadtest.py` streaming concurrency sweep + Prometheus/Grafana/Alertmanager compose)
+- **v5.249** — prune and distil a Gemma 4 student (`examples/prune_kd_gemma4.py`: block-influence layer prune, channel importance, chunked forward-KL distillation)
+- **v5.248** — HDL eval on several GPUs
+- **v5.247** — pick HDL answers with model-written testbenches
 
 ## License
 

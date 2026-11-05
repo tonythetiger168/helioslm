@@ -1,5 +1,12 @@
-# HeliosLM v5.225 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.251 - DeepSeek/K3-Style Architecture
 
+v5.251 (2026-11-06): four more sidecar suites folded into the mandated
+daily gate (teacher licence audit, pretrain pilot, review regressions,
+cloudflare bundles; 34 folded / 176 exempt after merging upstream's
+mlx_mac and serving folds), the v5.236 harness-move
+import fix in `case_harness_repair`, Windows UTF-8 / memmap fixes
+in the cloudflare and pilot tests, and a pytest-free / UTF-8 repair
+of the upstream mlx_mac suite.
 v5.225 (2026-11-02): six more pytest-only sidecar suites folded into
 the mandated daily gate (drift-guarded wrappers in
 `tests/case_upstream_suites.py`), plus a coverage meta-guard that fails

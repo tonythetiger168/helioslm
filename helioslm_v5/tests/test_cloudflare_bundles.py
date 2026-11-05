@@ -15,7 +15,47 @@ import sys
 import zipfile
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    # v5.240: this file is also executed directly by the daily TESTS
+    # suite (case_upstream_suites), where pytest is not installed. The
+    # shim covers exactly the three pytest features used below: fixture
+    # (a no-op in both spellings — bare @fixture and @fixture(...);
+    # the wrapper calls the function directly), mark.parametrize
+    # (collection-time only; a no-op when called with explicit
+    # arguments) and raises (pytest semantics: re.search on
+    # str(exception) when match is given).
+    import contextlib as _contextlib
+    import re as _re
+
+    class _Mark:
+        @staticmethod
+        def parametrize(*_args, **_kwargs):
+            return lambda f: f
+
+    class _PytestShim:
+        mark = _Mark()
+
+        @staticmethod
+        def fixture(func=None, **_kwargs):
+            return (lambda f: f) if func is None else func
+
+        @staticmethod
+        @_contextlib.contextmanager
+        def raises(exc, match=None):
+            try:
+                yield
+            except exc as e:
+                if match is not None and not _re.search(match, str(e)):
+                    raise AssertionError(
+                        f"raised {e!r}, which does not match /{match}/"
+                    ) from None
+                return
+            raise AssertionError(f"{exc.__name__} was not raised")
+
+    pytest = _PytestShim()
+
 import torch
 
 from helioslm_v5.configs.config_v5 import HeliosLMv5Config
@@ -43,7 +83,7 @@ def test_bundle_per_quant(dist, tmp_path):
     e = bundle_package(dist / "L8", tmp_path, version="v0-test")
     assert e["tier"] == "L8" and e["status"] == "preview"
     assert [b["quant"] for b in e["bundles"]] == ["Q4_K", "Q8_0"]
-    m = json.loads((dist / "L8" / "manifest.json").read_text())
+    m = json.loads((dist / "L8" / "manifest.json").read_text(encoding="utf-8"))
     for b, f in zip(e["bundles"], m["files"]):
         z = tmp_path / b["zip"]
         assert b["key"] == f"v0-test/{b['zip']}" and b["zip"].endswith("-v0-test.zip")
@@ -61,9 +101,9 @@ def test_modelfile_points_at_its_own_gguf(dist, tmp_path):
     pkg.mkdir()
     for p in (dist / "L8").iterdir():
         (pkg / p.name).write_bytes(p.read_bytes())
-    m = json.loads((pkg / "manifest.json").read_text())
+    m = json.loads((pkg / "manifest.json").read_text(encoding="utf-8"))
     m["tokenizer"] = True
-    (pkg / "manifest.json").write_text(json.dumps(m))
+    (pkg / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
     e = bundle_package(pkg, tmp_path / "out", version="v1")
     for b in e["bundles"]:
         with zipfile.ZipFile(tmp_path / "out" / b["zip"]) as zf:
@@ -77,14 +117,14 @@ def test_site_lists_every_tier_and_links_r2(dist, tmp_path):
     l8 = next(t for t in doc["tiers"] if t["tier"] == "L8")
     assert l8["bundles"][0]["url"] == f"{BASE}/v1/{e['bundles'][0]['zip']}"
     assert all(not t["bundles"] for t in doc["tiers"] if t["tier"] != "L8")
-    page = (tmp_path / "site" / "index.html").read_text()
+    page = (tmp_path / "site" / "index.html").read_text(encoding="utf-8")
     assert f'href="{BASE}/v1/' in page and "github" not in page.lower()
     assert page.count("開發中") == len(TIERS) - 1 + len(GENERATIONS)
     assert [g["version"] for g in doc["generations"]] == [
         "v1.0", "v2.0", "v3.0", "v4.0", "v5.0", "v6.0", "HDL"]
     assert all(g["status"] == "開發中" and g["features"] for g in doc["generations"])
     assert {t["tier"]: t["source"] for t in doc["tiers"]}["L-Edge"] == "v1.0"
-    assert json.loads((tmp_path / "site" / "packages.json").read_text()) == doc
+    assert json.loads((tmp_path / "site" / "packages.json").read_text(encoding="utf-8")) == doc
 
 
 @pytest.mark.parametrize("url", [
@@ -97,9 +137,14 @@ def test_base_url_refusals(url):
 
 def test_cli_and_dry_run_upload(dist, tmp_path):
     out = tmp_path / "cf"
+    # encoding="utf-8" (v5.240): with bare text=True the subprocess
+    # pipes are decoded in the locale encoding (cp950 on zh-TW Windows),
+    # which dies on the UTF-8 zh-TW the CLI prints and leaves stdout
+    # None. Pin UTF-8 on both sides.
     r = subprocess.run([sys.executable, str(_REPO / "examples" / "publish_cloudflare.py"),
                         "--packages", str(dist), "--out", str(out), "--base-url", BASE,
-                        "--version", "v1"], capture_output=True, text=True)
+                        "--version", "v1"], capture_output=True, text=True,
+                       encoding="utf-8")
     assert r.returncode == 0, r.stderr
     zips = sorted(p.name for p in (out / "r2" / "v1").iterdir())
     assert len(zips) == 4 and all(z.endswith("-v1.zip") for z in zips)
@@ -107,7 +152,7 @@ def test_cli_and_dry_run_upload(dist, tmp_path):
     env = dict(os.environ, DRY_RUN="1", CLOUDFLARE_ACCOUNT_ID="acct", R2_BUCKET="bkt",
                CLOUDFLARE_API_TOKEN="x")
     r = subprocess.run(["bash", str(_REPO / "scripts" / "cloudflare_publish.sh"), str(out)],
-                       capture_output=True, text=True, env=env)
+                       capture_output=True, text=True, encoding="utf-8", env=env)
     assert r.returncode == 0, r.stderr
     assert "s3://bkt/" in r.stdout and "acct.r2.cloudflarestorage.com" in r.stdout
     assert "pages deploy" in r.stdout and "github" not in r.stdout.lower()
@@ -121,7 +166,7 @@ def test_site_has_local_run_guide(dist, tmp_path):
     assert e["chat"] is False and e["reasoning"] is None
     chat = dict(e, tier="L24", chat=True, reasoning="off")
     build_site([e, chat], tmp_path / "site", base_url=BASE, version="v1")
-    page = (tmp_path / "site" / "index.html").read_text()
+    page = (tmp_path / "site" / "index.html").read_text(encoding="utf-8")
     gguf = e["bundles"][0]["gguf"]
     assert "如何下載並在本機執行" in page
     for s in ("Get-FileHash", "sha256sum", "shasum -a 256", "LM Studio",
@@ -139,7 +184,7 @@ def test_site_has_measured_speed_and_mtp_tip(dist, tmp_path):
     from helioslm_v5.src.export.cloudflare import SPEED
     e = bundle_package(dist / "L8", tmp_path / "r2", version="v1")
     build_site([e], tmp_path / "site", base_url=BASE, version="v1")
-    page = (tmp_path / "site" / "index.html").read_text()
+    page = (tmp_path / "site" / "index.html").read_text(encoding="utf-8")
     assert "速度參考" in page and "--spec-type draft-mtp --spec-draft-n-max 3" in page
     assert "--draft-max" not in page and "-t &lt;" in page
     assert "CUDA_Host buffer" in page  # v5.243: free system RAM note

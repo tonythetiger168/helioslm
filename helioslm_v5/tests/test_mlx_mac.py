@@ -11,7 +11,32 @@ import sys
 import zipfile
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    # v5.250: this file is also executed directly by the daily TESTS
+    # suite (case_upstream_suites.test_mlx_mac_suite), where pytest is
+    # not installed. The shim covers the only pytest feature used
+    # below: raises (pytest semantics: re.search on str(exception)
+    # when match is given).
+    import contextlib as _contextlib
+    import re as _re
+
+    class _PytestShim:
+        @staticmethod
+        @_contextlib.contextmanager
+        def raises(exc, match=None):
+            try:
+                yield
+            except exc as e:
+                if match is not None and not _re.search(match, str(e)):
+                    raise AssertionError(
+                        f"raised {e!r}, which does not match /{match}/"
+                    ) from None
+                return
+            raise AssertionError(f"{exc.__name__} was not raised")
+
+    pytest = _PytestShim()
 
 from helioslm_v5.src.export.cloudflare import build_site
 from helioslm_v5.src.export.mlx import (
@@ -93,12 +118,12 @@ def test_mac_section_order_and_commands(tmp_path):
 def test_build_site_with_mac(tmp_path):
     doc = build_site([], tmp_path / "site", base_url=BASE, version="v",
                      mac_entries=_entries(tmp_path))
-    page = (tmp_path / "site" / "index.html").read_text()
+    page = (tmp_path / "site" / "index.html").read_text(encoding="utf-8")
     assert "Mac（Apple Silicon）· MLX" in page
     assert len(doc["mac"]) == 2 and doc["mac"][0]["url"].startswith(BASE + "/mac-1/")
     plain = build_site([], tmp_path / "plain", base_url=BASE, version="v")
     assert "mac" not in plain
-    assert "MLX" not in (tmp_path / "plain" / "index.html").read_text()
+    assert "MLX" not in (tmp_path / "plain" / "index.html").read_text(encoding="utf-8")
 
 
 def test_add_mac_to_built_site_replaces_earlier_section(tmp_path):
@@ -106,16 +131,16 @@ def test_add_mac_to_built_site_replaces_earlier_section(tmp_path):
     site.mkdir()
     (site / "index.html").write_text(
         "<main><h2>Downloads</h2><table></table>\n<h2>如何下載並在本機執行 · Run</h2>"
-        "<p>guide</p><h2>版本與功能</h2></main>")
-    (site / "packages.json").write_text('{"tiers": []}')
+        "<p>guide</p><h2>版本與功能</h2></main>", encoding="utf-8")
+    (site / "packages.json").write_text('{"tiers": []}', encoding="utf-8")
     es = _entries(tmp_path)
     add_mac_to_site(tmp_path / "site", es[:1], BASE)
     doc = add_mac_to_site(tmp_path / "site", es, BASE + "/")
-    page = (tmp_path / "site" / "index.html").read_text()
+    page = (tmp_path / "site" / "index.html").read_text(encoding="utf-8")
     assert page.count("<h2>Mac（Apple Silicon）") == 1
     assert page.index("<h2>Mac（Apple Silicon）") < page.index("<h2>如何下載並在本機執行")
     assert "helioslm-tw-e4b-mlx-4bit" in page and len(doc["mac"]) == 2
-    assert json.loads((tmp_path / "site" / "packages.json").read_text())["mac"][1]["url"] \
+    assert json.loads((tmp_path / "site" / "packages.json").read_text(encoding="utf-8"))["mac"][1]["url"] \
         == f"{BASE}/mac-1/helioslm-tw-e4b-mlx-4bit-mac-1.zip"
 
 
@@ -126,12 +151,13 @@ def test_package_mlx_cli_with_ready_dirs(tmp_path):
                         "--mlx", f"4={d4}", f"8={d8}", "--model", "e4b",
                         "--name", "helioslm-tw-e4b", "--version", "mac-1",
                         "--out", str(tmp_path / "cf"), "--site", str(tmp_path / "site"),
-                        "--base-url", BASE], capture_output=True, text=True)
+                        "--base-url", BASE], capture_output=True, text=True,
+                       encoding="utf-8")
     assert r.returncode == 0, r.stderr
-    mac = json.loads((tmp_path / "cf" / "mac.json").read_text())
+    mac = json.loads((tmp_path / "cf" / "mac.json").read_text(encoding="utf-8"))
     assert [m["bits"] for m in mac] == [4, 8]
     assert (tmp_path / "cf" / "r2" / "mac-1" / "helioslm-tw-e4b-mlx-8bit-mac-1.zip").exists()
-    assert "16–24 GB" in (tmp_path / "site" / "index.html").read_text()
+    assert "16–24 GB" in (tmp_path / "site" / "index.html").read_text(encoding="utf-8")
 
 
 def _g26_config():
@@ -149,7 +175,7 @@ def test_mlx_config_fixes_from_per_layer_config(tmp_path):
     (tmp_path / "config.json").write_text(json.dumps(cfg))
     assert fix_mlx_config(tmp_path) == {"global_head_dim": 512,
                                         "num_global_key_value_heads": 2}
-    tc = json.loads((tmp_path / "config.json").read_text())["text_config"]
+    tc = json.loads((tmp_path / "config.json").read_text(encoding="utf-8"))["text_config"]
     assert tc["global_head_dim"] == 512 and tc["num_global_key_value_heads"] == 2
     assert fix_mlx_config(tmp_path) == {}  # already there
     assert mlx_config_fixes({"text_config": {"head_dim": 256}}) == {}

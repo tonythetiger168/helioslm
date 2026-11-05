@@ -103,7 +103,7 @@ def bundle_mlx(model_dir, out_dir, *, version, name, model, bits, chat=False,
     src = Path(model_dir)
     if not (src / "config.json").exists():
         raise FileNotFoundError(f"{src} has no config.json (not an MLX model directory)")
-    cfg = json.loads((src / "config.json").read_text())
+    cfg = json.loads((src / "config.json").read_text(encoding="utf-8"))
     q = cfg.get("quantization") or cfg.get("quantization_config") or {}
     if q.get("bits") not in (None, bits):
         raise ValueError(f"{src} is {q.get('bits')}-bit, not {bits}-bit")
@@ -199,7 +199,7 @@ def add_mac_to_site(site_dir, entries, base):
     updated ``packages.json`` dict."""
     site = Path(site_dir)
     base = base.rstrip("/")
-    page = (site / "index.html").read_text()
+    page = (site / "index.html").read_text(encoding="utf-8")
     start = page.find("<h2>Mac（Apple Silicon）")
     if start >= 0:
         end = page.find("<h2>", start + 4)
@@ -213,10 +213,10 @@ def add_mac_to_site(site_dir, entries, base):
     if at < 0:
         raise ValueError(f"{site / 'index.html'}: no run guide or </main> to insert at")
     page = page[:at] + sec + page[at:]
-    (site / "index.html").write_text(page)
-    doc = json.loads((site / "packages.json").read_text())
+    (site / "index.html").write_text(page, encoding="utf-8")
+    doc = json.loads((site / "packages.json").read_text(encoding="utf-8"))
     doc["mac"] = [dict(m, url=f"{base}/{m['key']}") for m in entries]
-    (site / "packages.json").write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
+    (site / "packages.json").write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return doc
 
 
@@ -248,11 +248,11 @@ def fix_mlx_config(hf_dir):
     """Apply :func:`mlx_config_fixes` to ``hf_dir/config.json`` in place
     (into ``text_config`` when there is one); returns the keys added."""
     p = Path(hf_dir) / "config.json"
-    cfg = json.loads(p.read_text())
+    cfg = json.loads(p.read_text(encoding="utf-8"))
     fixes = mlx_config_fixes(cfg)
     if fixes:
         cfg.get("text_config", cfg).update(fixes)
-        p.write_text(json.dumps(cfg, indent=2) + "\n")
+        p.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
     return fixes
 
 

@@ -1099,6 +1099,11 @@ FOLDED_SIDECARS = {
     "test_mlx_mac": "test_mlx_mac_suite",
     # serving load test + monitoring stack (v5.249): file parse + pure math
     "test_serving_monitoring": "test_serving_monitoring_suite",
+    # v5.251 (2026-11-06): daily-maintenance backlog triage
+    "test_teacher_license_audit": "test_teacher_license_audit_suite",
+    "test_pretrain_pilot": "test_pretrain_pilot_suite",
+    "test_review_regressions": "test_review_regressions_suite",
+    "test_cloudflare_bundles": "test_cloudflare_bundles_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1109,7 +1114,7 @@ EXEMPT_SIDECARS = {
     'test_artifact_tiers', 'test_async_grpo', 'test_attn_res', 'test_base_gap',
     'test_bench_quant', 'test_benchmark', 'test_bpe', 'test_calibrated_prefetcher',
     'test_calibrated_router', 'test_calibration_board', 'test_chat', 'test_chat_tuned',
-    'test_chunked_ce', 'test_clamped_swiglu', 'test_cloudflare_bundles', 'test_copy_curriculum',
+    'test_chunked_ce', 'test_clamped_swiglu', 'test_copy_curriculum',
     'test_cost_per_task', 'test_cpt_chunked_ce', 'test_cpt_pilot', 'test_cpt_plan',
     'test_csa', 'test_csa_learned', 'test_csa_learned_16x', 'test_csa_learned_h64',
     'test_csa_learned_r3', 'test_cuda_device_paths', 'test_cuda_smoke', 'test_custom_attention_notebook',
@@ -1138,12 +1143,12 @@ EXEMPT_SIDECARS = {
     # Binds 127.0.0.1 (ephemeral port); same exemption as test_hsh_web.
     'test_openai_stream_smoke',
     'test_option_matrix', 'test_oracle_guard', 'test_package_tiers', 'test_ple',
-    'test_pool_ledger', 'test_prefix_pool_chained', 'test_prereg', 'test_pretrain_pilot',
+    'test_pool_ledger', 'test_prefix_pool_chained', 'test_prereg',
     'test_probe_api', 'test_prune_kd_gemma4', 'test_quant_calib', 'test_quantile_balancing', 'test_qwen_next',
-    'test_repo_longctx', 'test_review_fixes', 'test_review_regressions', 'test_rlcd_head',
+    'test_repo_longctx', 'test_review_fixes', 'test_rlcd_head',
     'test_rtllm_bench', 'test_ruler_lite', 'test_selfgen_meta', 'test_skill_docs',
     'test_smebu_sandwich', 'test_std_bench', 'test_stop_calibration', 'test_swarm_parallel',
-    'test_swe_agent_rl', 'test_swe_bench', 'test_task_grammar', 'test_teacher_license_audit',
+    'test_swe_agent_rl', 'test_swe_bench', 'test_task_grammar',
     'test_term_bench', 'test_think', 'test_thinking_budget', 'test_three_modes',
     'test_tool_recovery', 'test_toy_bpe', 'test_trust_gate', 'test_trust_gate_clarify',
     'test_trust_gate_v2', 'test_tw_bench', 'test_uvm_bench', 'test_v110_github_pg',
@@ -1211,11 +1216,175 @@ def test_mlx_mac_suite():
             getattr(m, n)(Path(t))
     _pass("test_mlx_mac_suite",
           "MLX zip layout, Mac rows by memory, site section, CLI, config fix")
+# ---------------------------------------------------------------------------
+# v5.240 (2026-11-05): daily-maintenance fold — four more exempt-backlog
+# sidecars whose subsystems moved in the last three days (teacher licence
+# audit gained the Kimi-K3.1-Pro row in v5.239; the pretrain pilot's WSD
+# schedule and the review-regression oracles were touched in the same
+# window; Cloudflare bundles gained the local-run guide and measured-speed
+# sections in v5.238). Same wrapper pattern as v5.225: drift-guarded
+# function sets, parametrized cases called with their full lists,
+# tmp_path as real TemporaryDirectory, monkeypatch via the stand-in.
+# test_distill_gen stays exempt for now: its CLI test binds 127.0.0.1
+# (same exemption class as test_hsh_web / test_openai_stream_smoke).
+# ---------------------------------------------------------------------------
+
+
+def test_teacher_license_audit_suite():
+    """T120 distillation teacher licence audit (v5.82 + the v5.239
+    Kimi-K3.1-Pro row) under the daily gate. Pins: every teacher has a
+    reviewed reading with a verdict and conditions; a changed or
+    unreviewed licence is refused; PENDING rows are unusable until
+    pinned; the committed live audits (2026-10-20/23/24, OS4 rows, MIT
+    rows) and the dated Kimi/Qwen rows. Offline: no pytest import, no
+    network."""
+    from helioslm_v5.tests import test_teacher_license_audit as m
+    expected = {"test_reviews_complete",
+                "test_changed_or_unreviewed_licence_is_refused",
+                "test_pending_rows_are_not_usable_until_pinned",
+                "test_committed_audit", "test_2026_10_24_rows",
+                "test_2026_10_30_kimi_rows", "test_2026_11_03_qwen_row",
+                "test_2026_11_05_kimi_k31_row"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_teacher_license_audit_suite",
+          "T120 teacher licence audit: all 8 sidecar tests (incl. the "
+          "v5.239 Kimi-K3.1-Pro row) under the daily gate")
+
+
+def test_pretrain_pilot_suite():
+    """T122 100M pilot pretraining loop (v5.83) under the daily gate —
+    tiny and on CPU. Pins: every architecture builds with the routed
+    arms within 25% of the dense active parameters; shard round-trip
+    and uint16 overflow refusal; LR warmup/cosine and the WSD decay
+    shapes; exact resume (bitwise) and a non-finite stop that resumes
+    bitwise; the prepare-data script."""
+    from helioslm_v5.tests import test_pretrain_pilot as m
+    expected = {"test_configs", "test_shards", "test_lr_schedule",
+                "test_wsd_schedule", "test_wsd_decay_data_switch",
+                "test_exact_resume_and_learning",
+                "test_nonfinite_stop_then_resume_is_bitwise",
+                "test_prepare_data_script"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_pretrain_pilot_suite",
+          "T122 pretrain pilot: all 8 sidecar tests (tiny CPU loops, "
+          "bitwise resume) under the daily gate")
+
+
+def test_review_regressions_suite():
+    """Project-review P1/P2 regression oracles under the daily gate.
+    Parametrized cases run with their full lists; tmp_path gets a real
+    TemporaryDirectory; monkeypatch gets the _MonkeyPatch stand-in
+    (undo in finally, so a failure cannot leak patched modules)."""
+    from helioslm_v5.tests import test_review_regressions as m
+    expected = {"test_cpt_rejects_batch_before_optimizer",
+                "test_pretrain_rejects_non_finite_before_step",
+                "test_prefix_eviction_does_not_break_generation",
+                "test_mixed_kd_preserves_unaligned_and_masked_tokens",
+                "test_pretrain_without_teacher_targets_matches_plain_ce",
+                "test_session_store_concurrent_updates_are_atomic",
+                "test_session_append_and_each_listener_receive_detached_events",
+                "test_release_selection_imports"}
+    _drift_guard(m, expected)
+    for fault in ["loss", "nan_grad", "inf_grad", "remote"]:
+        mp = _MonkeyPatch()
+        try:
+            m.test_cpt_rejects_batch_before_optimizer(fault, mp)
+        finally:
+            mp.undo()
+    for fault in ["loss", "nan_grad", "inf_grad"]:
+        mp = _MonkeyPatch()
+        try:
+            with tempfile.TemporaryDirectory() as t:
+                m.test_pretrain_rejects_non_finite_before_step(
+                    fault, Path(t), mp)
+        finally:
+            mp.undo()
+    for capacity in [0, 1, 2]:
+        for length in [6, 7]:
+            m.test_prefix_eviction_does_not_break_generation(capacity,
+                                                             length)
+    for alpha in [0.0, 0.5, 1.0]:
+        m.test_mixed_kd_preserves_unaligned_and_masked_tokens(alpha)
+    mp = _MonkeyPatch()
+    try:
+        with tempfile.TemporaryDirectory() as t:
+            m.test_pretrain_without_teacher_targets_matches_plain_ce(
+                Path(t), mp)
+    finally:
+        mp.undo()
+    for second in ["append", "rename", "params"]:
+        with tempfile.TemporaryDirectory() as t:
+            m.test_session_store_concurrent_updates_are_atomic(
+                Path(t), second)
+    m.test_session_append_and_each_listener_receive_detached_events()
+    with tempfile.TemporaryDirectory() as t:
+        m.test_release_selection_imports(Path(t))
+    _pass("test_review_regressions_suite",
+          "review P1/P2 regressions: all 8 sidecar tests (incl. 4+3 "
+          "fault rows, 3x2 eviction matrix, 3 KD alphas, 3 concurrency "
+          "modes) under the daily gate")
+
+
+class _TmpPathFactory:
+    """Subset of pytest's tmp_path_factory used by the wrapped sidecar
+    suites (v5.240): ``mktemp(name)`` makes and returns a subdirectory
+    of one TemporaryDirectory owned by the caller."""
+
+    def __init__(self, root):
+        self._root = Path(root)
+
+    def mktemp(self, name):
+        p = self._root / name
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+
+def test_cloudflare_bundles_suite():
+    """T163 Cloudflare download bundles (v5.188 + the v5.238 local-run
+    guide / measured-speed sections) under the daily gate. The
+    module-scoped `dist` fixture (a lite model packaged into two tiers)
+    is built once through a _TmpPathFactory stand-in and shared across
+    the six tests that take it, matching pytest's module scope. No
+    network: uploads are dry runs and every URL is a string check."""
+    from helioslm_v5.tests import test_cloudflare_bundles as m
+    expected = {"test_bundle_per_quant",
+                "test_modelfile_points_at_its_own_gguf",
+                "test_site_lists_every_tier_and_links_r2",
+                "test_base_url_refusals", "test_cli_and_dry_run_upload",
+                "test_site_has_local_run_guide",
+                "test_site_has_measured_speed_and_mtp_tip"}
+    _drift_guard(m, expected)
+    # Real pytest wraps fixture functions so direct calls fail; unwrap
+    # (_fixture_function) in that case. Under the shim the decorator is
+    # the identity and there is nothing to unwrap.
+    dist_fn = getattr(m.dist, "_fixture_function", m.dist)
+    with tempfile.TemporaryDirectory() as dist_root:
+        dist = dist_fn(_TmpPathFactory(dist_root))
+        for fn in (m.test_bundle_per_quant,
+                   m.test_modelfile_points_at_its_own_gguf,
+                   m.test_site_lists_every_tier_and_links_r2,
+                   m.test_cli_and_dry_run_upload,
+                   m.test_site_has_local_run_guide,
+                   m.test_site_has_measured_speed_and_mtp_tip):
+            with tempfile.TemporaryDirectory() as t:
+                fn(dist, Path(t))
+    for url in ["https://github.com/x/y/releases",
+                "https://objects.githubusercontent.com/a",
+                "https://x.github.io/dl", "http://dl.example.com",
+                "dl.example.com"]:
+        m.test_base_url_refusals(url)
+    _pass("test_cloudflare_bundles_suite",
+          "T163 Cloudflare bundles: all 7 sidecar tests (two packaged "
+          "tiers, 5 base-url refusals, dry-run upload) under the daily "
+          "gate")
 
 
 def test_sidecar_coverage_guard():
     """Every helioslm_v5/tests/test_*.py sidecar is accounted for: either
-    FOLDED into the daily gate through a wrapper in this module, or
     explicitly EXEMPT (pre-guard legacy backlog, 2026-11-02 snapshot).
     Loud both ways: a NEW sidecar upstream lands must be folded or
     exempted the same day; a deleted/renamed file must be dropped from

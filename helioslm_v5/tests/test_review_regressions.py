@@ -10,7 +10,24 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    # v5.240: this file is also executed directly by the daily TESTS
+    # suite (case_upstream_suites), where pytest is not installed. The
+    # shim covers exactly the one pytest feature used below:
+    # mark.parametrize (collection-time only; a no-op when the functions
+    # are called directly with explicit arguments).
+    class _Mark:
+        @staticmethod
+        def parametrize(*_args, **_kwargs):
+            return lambda f: f
+
+    class _PytestShim:
+        mark = _Mark()
+
+    pytest = _PytestShim()
+
 import torch
 import torch.nn.functional as F
 
