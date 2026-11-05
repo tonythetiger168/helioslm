@@ -1,5 +1,17 @@
 # HeliosLM v5 Changelog
 
+## v5.241 (2026-11-05) - Best-of-n HDL answers without the answer key
+
+`examples/hdl_eval_all.py --select consensus --n 8` submits one answer per
+problem from the samples (after any `--repair-rounds`): for VerilogEval and
+RTLLM, the sample whose code compiles and is random-simulation equivalent
+(`hdl_reward.simulate` of one candidate against another) to the most other
+samples; for CVDP, the first sample that passes its compile check. No
+golden design or benchmark testbench is used to choose; the result is
+scored as pass@1 of the picked answer, and every sample goes to
+`<out>.all.samples.json`. New `consensus_pick` / `select_consensus` and test
+`test_consensus_pick_and_select`.
+
 ## v5.240 (2026-11-05) - LoRA merge folds in place
 
 `training/lora.merge_lora` used to build a new `nn.Linear` for every
