@@ -1,5 +1,22 @@
 # HeliosLM v5 Changelog
 
+## v5.245 (2026-11-05) - Mac (Apple Silicon) MLX downloads
+
+New `src/export/mlx.py`: `bundle_mlx` zips an MLX model directory
+(`mlx_lm.convert -q --q-bits N` output) as one folder plus a README with
+the mlx-lm and LM Studio steps; `mac_section` writes the download page's
+"Mac（Apple Silicon）· MLX" table by unified memory (8 GB → E4B 4-bit,
+16–24 GB → E4B 8-bit, 32–48 GB → 26B-A4B 4-bit, 64 GB+ → 26B-A4B 8-bit;
+Intel Mac → L-Edge GGUF on CPU); `build_site(mac_entries=...)` adds it and
+a `mac` list to `packages.json`, and `add_mac_to_site` adds it to an
+already built site without re-bundling the GGUF tiers.
+`examples/package_mlx.py` converts, zips and updates the site;
+`docs/LOCAL_RUN.md` gains a Mac MLX section. `fix_mlx_config` adds
+`global_head_dim` / `num_global_key_value_heads` from
+`text_config.per_layer_config` before converting (our 26B-A4B checkpoints
+otherwise fail in mlx-lm 0.32 with a `k_proj` shape error). New tests
+`test_mlx_mac.py`.
+
 ## v5.244 (2026-11-05) - Empty teacher answers are errors; non-SSE streams
 
 The second Kimi K3.1 Pro pilot (`--stream`) wrote 1,100 records with no

@@ -279,6 +279,8 @@ TESTS = [
     # Worker launch env: pure file parse, folded the day it landed.
     # test_openai_stream_smoke stays exempt (binds a port).
     case_upstream_suites.test_worker_launch_env_suite,
+    # Mac MLX download zips (v5.245), folded the day it landed.
+    case_upstream_suites.test_mlx_mac_suite,
     # test_openai_stream_smoke is not registered here. It binds
     # 127.0.0.1 through ThreadingHTTPServer (ephemeral port) and reads a
     # live SSE response, so it stays in EXEMPT_SIDECARS with test_hsh_web.

@@ -1095,6 +1095,8 @@ FOLDED_SIDECARS = {
     "test_kv_cache_analytic": "test_kv_cache_analytic_suite",
     # worker launch env: file parse, folded the day it landed
     "test_worker_launch_env": "test_worker_launch_env_suite",
+    # Mac MLX zips + page section (v5.245): tmp dirs and one CLI subprocess
+    "test_mlx_mac": "test_mlx_mac_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1169,6 +1171,29 @@ def test_worker_launch_env_suite():
     _pass("test_worker_launch_env_suite",
           "worker.env.example: helioslm, MTP x4, len 16384, "
           "16 seqs, no quant, no secret")
+
+
+def test_mlx_mac_suite():
+    """Mac (Apple Silicon) MLX download zips and page section (v5.245).
+
+    Folded the day it landed: plain functions; the tmp_path ones get a
+    real TemporaryDirectory each. No mlx install needed (the CLI test
+    uses ready MLX directories)."""
+    from helioslm_v5.tests import test_mlx_mac as m
+    plain = ["test_mac_rows_cover_both_models"]
+    with_tmp = ["test_bundle_mlx_zip", "test_bundle_mlx_checks_bits_and_weights",
+                "test_mac_section_order_and_commands", "test_build_site_with_mac",
+                "test_add_mac_to_built_site_replaces_earlier_section",
+                "test_package_mlx_cli_with_ready_dirs",
+                "test_mlx_config_fixes_from_per_layer_config"]
+    _drift_guard(m, set(plain + with_tmp))
+    for n in plain:
+        getattr(m, n)()
+    for n in with_tmp:
+        with tempfile.TemporaryDirectory() as t:
+            getattr(m, n)(Path(t))
+    _pass("test_mlx_mac_suite",
+          "MLX zip layout, Mac rows by memory, site section, CLI, config fix")
 
 
 def test_sidecar_coverage_guard():

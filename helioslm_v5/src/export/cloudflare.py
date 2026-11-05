@@ -26,6 +26,7 @@ import zipfile
 from pathlib import Path
 from urllib.parse import urlparse
 
+from .mlx import mac_section
 from .package import QUANT_LABEL, TIERS, _slug, modelfile
 
 # memory ranges of the README Product roadmap table (TIERS keeps the floor)
@@ -281,7 +282,7 @@ AMD / Intel 顯示卡選 Vulkan 版，Mac 已內建 Metal）。</li>
 {_speed_html()}"""
 
 
-def _page(name, version, tiers, base, generations):
+def _page(name, version, tiers, base, generations, mac=()):
     rows = []
     for t in tiers:
         mem = _MEMORY.get(t["tier"], f"{t['memory_gb']:g} GB VRAM")
@@ -339,7 +340,7 @@ Modelfile, a README and the manifest. Full SHA-256 sums are in
 <tr><th>Tier</th><th>Memory</th><th>Hardware</th><th>Download</th><th>Context</th><th>SHA-256</th></tr>
 {chr(10).join(rows)}
 </table></div>
-{run_guide(tiers)}<h2>版本與功能 · Versions</h2>
+{mac_section(list(mac), base)}{run_guide(tiers)}<h2>版本與功能 · Versions</h2>
 <div class=wrap><table>
 <tr><th>版本</th><th>模型</th><th>功能</th><th>狀態</th></tr>
 {gens}
@@ -348,14 +349,16 @@ Modelfile, a README and the manifest. Full SHA-256 sums are in
 """
 
 
-def build_site(tier_entries, out_dir, *, base_url, version, name="HeliosLM"):
+def build_site(tier_entries, out_dir, *, base_url, version, name="HeliosLM",
+               mac_entries=()):
     """Write ``index.html`` and ``packages.json`` into ``out_dir``.
 
     ``tier_entries`` are :func:`bundle_package` results; every local tier
     of :data:`TIERS` is listed, the ones without an entry as in development
 (開發中), followed by the product generations and their features.
-    Links are ``base_url/<key>`` (the R2 download domain). Returns the
-    ``packages.json`` dict.
+    Links are ``base_url/<key>`` (the R2 download domain). ``mac_entries``
+    (:func:`.mlx.bundle_mlx` results, v5.245) add the Mac MLX section and a
+    ``mac`` list to ``packages.json``. Returns the ``packages.json`` dict.
     """
     base = check_base_url(base_url)
     by_tier = {e["tier"]: e for e in tier_entries}
@@ -370,8 +373,11 @@ def build_site(tier_entries, out_dir, *, base_url, version, name="HeliosLM"):
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     generations = [dict(g, status=STATUS) for g in GENERATIONS]
+    mac = [dict(m, url=f"{base}/{m['key']}") for m in mac_entries]
     doc = {"name": name, "version": version, "base_url": base, "tiers": tiers,
            "generations": generations}
+    if mac:
+        doc["mac"] = mac
     (out / "packages.json").write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
-    (out / "index.html").write_text(_page(name, version, tiers, base, generations))
+    (out / "index.html").write_text(_page(name, version, tiers, base, generations, mac))
     return doc
