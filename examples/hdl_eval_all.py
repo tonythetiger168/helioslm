@@ -163,8 +163,13 @@ class VllmGen:
     def __init__(self, model, max_model_len, gpu_mem, thinking=None):
         self.thinking = thinking
         from vllm import LLM
+        import os
+        import torch
+        # all visible GPUs by default (v5.248: a 550B model needs 4 B200s)
+        tp = int(os.environ.get("HDL_TP") or max(1, torch.cuda.device_count()))
         self.llm = LLM(model=model, dtype="bfloat16", max_model_len=max_model_len,
-                       gpu_memory_utilization=gpu_mem, trust_remote_code=False)
+                       gpu_memory_utilization=gpu_mem, trust_remote_code=False,
+                       tensor_parallel_size=tp)
         self.tok = self.llm.get_tokenizer()
         self.max_model_len = max_model_len
 
