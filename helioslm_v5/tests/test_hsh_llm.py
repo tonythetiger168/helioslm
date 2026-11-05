@@ -93,6 +93,20 @@ def test_sse_fold():
     assert [c["text"] for c in seen] == ["Let me ", "think.", "Hello", " world"]
 
 
+def test_sse_without_events():
+    # v5.244: a server that ignores "stream" sends one JSON body
+    body = [b'{"choices": [{"message": {"content": "2"}, "finish_reason": "stop"}],',
+            b' "usage": {"prompt_tokens": 3, "completion_tokens": 1}}']
+    out = OpenAICompatAdapter.from_sse(body)
+    assert out["content"] == "2" and out["usage"]["output_tokens"] == 1
+    try:
+        OpenAICompatAdapter.from_sse([b'{"status": "IN_QUEUE"}'])
+    except LLMError as e:
+        assert "IN_QUEUE" in str(e) and not e.transient
+    else:
+        raise AssertionError("expected LLMError")
+
+
 class Resp(io.BytesIO):
     def __enter__(self):
         return self

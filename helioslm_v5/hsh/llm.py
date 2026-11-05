@@ -323,6 +323,7 @@ class OpenAICompatAdapter:
         """Fold an OpenAI-style SSE stream into one adapter message."""
         content, reasoning, calls, stream = [], [], {}, []
         usage, finish, model = {}, None, None
+        events, other = 0, []
 
         def emit(kind, text):
             if not text:
@@ -338,7 +339,10 @@ class OpenAICompatAdapter:
             line = raw.decode("utf-8") if isinstance(raw, bytes) else raw
             line = line.strip()
             if not line.startswith("data:"):
+                if line and len(other) < 200:
+                    other.append(line)
                 continue
+            events += 1
             data = line[5:].strip()
             if data == "[DONE]":
                 break
@@ -365,6 +369,18 @@ class OpenAICompatAdapter:
                     slot["name"] += fn.get("name") or ""
                     slot["arguments"] += fn.get("arguments") or ""
                 finish = ch.get("finish_reason") or finish
+        if not events:
+            # v5.244: a server that ignores "stream" answers with one JSON body
+            # (or a job-status object); before, that folded into an empty answer
+            body = "\n".join(other)
+            try:
+                wire = json.loads(body)
+            except ValueError:
+                wire = None
+            if isinstance(wire, dict) and wire.get("choices"):
+                return OpenAICompatAdapter.from_wire(wire)
+            raise LLMError(f"no server-sent events in the stream: {body[:300]}",
+                           transient=False)
         details = usage.get("completion_tokens_details") or {}
         return {"content": "".join(content), "reasoning": "".join(reasoning) or None,
                 "tool_calls": [{"id": c["id"] or f"call_{i}", "name": c["name"],

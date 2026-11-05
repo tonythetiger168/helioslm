@@ -1,5 +1,16 @@
 # HeliosLM v5 Changelog
 
+## v5.244 (2026-11-05) - Empty teacher answers are errors; non-SSE streams
+
+The second Kimi K3.1 Pro pilot (`--stream`) wrote 1,100 records with no
+text and 0 tokens in 15 minutes: the hosted endpoint did not answer with
+server-sent events, `OpenAICompatAdapter.from_sse` skipped every line,
+and `distill_gen` stored the empty result as an answer. Now `from_sse`
+reads a body with no `data:` events as one ordinary JSON completion, or
+raises `LLMError` with the first 300 characters of what came back, and
+`distill_gen` treats an answer with no content, reasoning or tool call as
+a transient failure (retried, then logged to `.errors.jsonl`).
+
 ## v5.243 (2026-11-05) - Free system RAM note in the local-run guide
 
 A Windows test of the L8 package (RTX 4060 8 GB, 16 GB RAM, Ollama
