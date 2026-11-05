@@ -145,7 +145,8 @@ def mac_section(entries, base):
     entries = sorted(entries, key=lambda x: order.get((x["model"], x["bits"]), 99))
     rows = []
     for x in entries:
-        kind = "對話模型" if x["chat"] else "基底模型（文字續寫）"
+        kind = ("基底模型（文字續寫）" if not x["chat"] else
+                "對話模型" if x.get("reasoning") == "off" else "對話模型（會先思考再回答）")
         tag = " <span class=tag>preview</span>" if x.get("status") == "preview" else ""
         cmd = "<br>".join(f"<code>{e(c)}</code>" for c in _commands(x["dir"], x["chat"]))
         rows.append(
@@ -156,6 +157,11 @@ def mac_section(entries, base):
             f" · {_size(x['bytes'])}<br><code>{x['sha256'][:16]}…</code></td>"
             f"<td>{cmd}</td></tr>")
     first = entries[0]
+    think = ""
+    if any(x["chat"] and x.get("reasoning") != "off" for x in entries):
+        think = ("<li><b>先思考再回答</b>：MLX 沒有 llama.cpp 的 <code>--reasoning-budget 0</code>，"
+                 "對話模型會先輸出一段思考（<code>&lt;|channel&gt;thought</code> 開頭），再給答案；"
+                 "LM Studio 會把思考摺疊起來。想要直接回答，請用上表的 GGUF 版。</li>\n")
     return f"""<h2>Mac（Apple Silicon）· MLX</h2>
 <p>Apple M 系列 Mac（M1 起）建議用這裡的 MLX 版：Apple 自家的 MLX 執行環境，
 在 Mac 上通常比 GGUF 快。上面的 GGUF 套件在 Mac 上也能用（llama.cpp、Ollama、LM Studio 都內建 Metal）。
@@ -177,7 +183,7 @@ unzip {e(first['zip'])}</code></pre>
 <li><b>LM Studio</b>：把解壓出來的資料夾放進 <code>~/.lmstudio/models/helioslm/</code>，
 在 LM Studio 選它（MLX 引擎）載入。</li>
 <li>記憶體剛好卡在邊界時，先關掉其他大型程式；E4B 4-bit 在 8 GB Mac 上只適合短對話。</li>
-<li><b>Intel Mac</b> 沒有 MLX：用上表的 L-Edge GGUF，llama.cpp 只用 CPU。</li>
+{think}<li><b>Intel Mac</b> 沒有 MLX：用上表的 L-Edge GGUF，llama.cpp 只用 CPU。</li>
 </ul>
 """
 

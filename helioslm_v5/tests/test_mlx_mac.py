@@ -77,12 +77,16 @@ def _entries(tmp_path):
 
 
 def test_mac_section_order_and_commands(tmp_path):
-    s = mac_section(_entries(tmp_path), BASE)
+    es = _entries(tmp_path)
+    s = mac_section(es, BASE)
     assert s.index("8 GB") < s.index("64 GB 以上")  # MAC_ROWS order
     assert f'{BASE}/mac-1/helioslm-tw-e4b-mlx-4bit-mac-1.zip' in s
     assert "mlx_lm.chat --model ./helioslm-tw-26b-a4b-mlx-8bit" in s
     assert "mlx_lm.generate --model ./helioslm-tw-e4b-mlx-4bit --ignore-chat-template" in s
     assert "Intel Mac" in s
+    assert "會先思考再回答" in s  # chat entry without reasoning="off"
+    off = [dict(x, reasoning="off") for x in es]
+    assert "會先思考再回答" not in mac_section(off, BASE)
     assert mac_section([], BASE) == ""
 
 
