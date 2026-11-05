@@ -66,13 +66,14 @@ class LoRALinear(nn.Module):
         return (self.lora_B.weight.float() @ self.lora_A.weight.float()) * self.scale
 
     def merged(self) -> nn.Linear:
-        lin = nn.Linear(self.base.in_features, self.base.out_features,
-                        bias=self.base.bias is not None,
-                        device=self.base.weight.device, dtype=self.base.weight.dtype)
+        """The base ``nn.Linear`` with ``B A`` folded into its weight in place
+        (no second copy of the weight: merging a 31B model on a 96 GB card
+        that also holds the trained adapters must not double the memory)."""
+        lin = self.base
         with torch.no_grad():
-            lin.weight.copy_((self.base.weight.float() + self.delta()).to(lin.weight.dtype))
-            if self.base.bias is not None:
-                lin.bias.copy_(self.base.bias)
+            w = lin.weight
+            w.copy_((w.float() + self.delta()).to(w.dtype))
+        lin.weight.requires_grad_(False)
         return lin
 
 
@@ -112,9 +113,13 @@ def lora_modules(model):
 def merge_lora(model):
     """Fold every adapter into its base weight (in place); returns the
     number of merged modules."""
-    mods = lora_modules(model)
-    for n, m in mods:
+    names = [n for n, _ in lora_modules(model)]
+    for n in names:
+        m = model.get_submodule(n)
+        m.lora_A.weight.grad = m.lora_B.weight.grad = None
         _set(model, n, m.merged())
+        del m                       # free the adapter before the next module
+    mods = names
     if hasattr(model, "_helios_lora"):
         del model._helios_lora
     return len(mods)

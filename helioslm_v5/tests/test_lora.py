@@ -232,3 +232,21 @@ def test_tiny_hf_models(arch):
         merge_lora(model)
         b = model(input_ids=x).logits
     assert torch.allclose(a, b, atol=1e-4, rtol=1e-4)
+
+
+def test_merge_lora_folds_in_place_without_copying_the_weight():
+    lin = nn.Linear(8, 6)
+    m = nn.Sequential()
+    m.add_module("q_proj", lin)
+    apply_lora(m, r=2, alpha=4.0, targets=("q_proj",))
+    m.eval()
+    with torch.no_grad():
+        m.q_proj.lora_B.weight.fill_(0.1)
+    x = torch.randn(3, 8)
+    with torch.no_grad():
+        want = m(x)
+    ptr = lin.weight.data_ptr()
+    assert merge_lora(m) == 1
+    assert m.q_proj is lin and lin.weight.data_ptr() == ptr
+    with torch.no_grad():
+        assert torch.allclose(m(x), want, atol=1e-5)
