@@ -1,7 +1,7 @@
 """package_mlx.py — Mac (Apple Silicon) MLX download zips (v5.245).
 
   pip install mlx-lm            # on Linux: pip install "mlx[cpu]" mlx-lm
-  python examples/package_mlx.py --hf ckpt/e4b --model e4b --bits 4 8 \\
+  python examples/package_mlx.py --hf ckpt/e4b --model e4b --bits 4 8 --recipe 4=e4b-small \\
       --name helioslm-tw-e4b --base google/gemma-4-E4B \\
       --version mac-preview-1 --out cf/
   python examples/package_mlx.py --hf ckpt/g26 --model 26b-a4b --bits 4 8 \\
@@ -26,11 +26,18 @@ sys.path.insert(0, str(_REPO))
 
 from helioslm_v5.src.export.cloudflare import check_base_url  # noqa: E402
 from helioslm_v5.src.export.mlx import (  # noqa: E402
-    add_mac_to_site, bundle_mlx, fix_mlx_config, mac_ram)
+    RECIPES, add_mac_to_site, bundle_mlx, fix_mlx_config, mac_ram, quant_predicate)
 
 
-def convert(hf, out, bits, group=64):
-    """``mlx_lm.convert`` of ``hf`` to ``out`` at ``bits``."""
+def convert(hf, out, bits, group=64, recipe="plain"):
+    """``mlx_lm.convert`` of ``hf`` to ``out`` at ``bits`` (``recipe``: see
+    ``mlx.RECIPES``; non-plain recipes go through the Python API)."""
+    if recipe != "plain":
+        from mlx_lm.convert import convert as mlx_convert
+        print("mlx_lm.convert", hf, out, bits, recipe, flush=True)
+        mlx_convert(str(hf), str(out), quantize=True, q_bits=bits, q_group_size=group,
+                    quant_predicate=quant_predicate(recipe), dtype="bfloat16")
+        return out
     cmd = [sys.executable, "-m", "mlx_lm", "convert", "--hf-path", str(hf),
            "--mlx-path", str(out), "-q", "--q-bits", str(bits),
            "--q-group-size", str(group)]
@@ -47,6 +54,8 @@ def main():
                      help="ready MLX directories, e.g. 4=mlx4 8=mlx8")
     ap.add_argument("--model", required=True, choices=["e4b", "26b-a4b"])
     ap.add_argument("--bits", nargs="+", type=int, default=[4, 8])
+    ap.add_argument("--recipe", nargs="+", metavar="BITS=RECIPE", default=[],
+                    help=f"quantization recipe per bits, e.g. 4=e4b-small; one of {RECIPES}")
     ap.add_argument("--name", required=True)
     ap.add_argument("--base", default="", help="upstream base model id, for the README")
     ap.add_argument("--chat", action="store_true", help="instruction-tuned (chat) model")
@@ -70,7 +79,9 @@ def main():
                 print("config.json: added for mlx-lm", fixes)
         for b in args.bits:
             mac_ram(args.model, b)  # fail before a long conversion
-            dirs[b] = convert(args.hf, out / "mlx" / f"{args.model}-{b}bit", b)
+            recipes = dict(x.split("=", 1) for x in args.recipe)
+            dirs[b] = convert(args.hf, out / "mlx" / f"{args.model}-{b}bit", b,
+                              recipe=recipes.get(str(b), "plain"))
     index = out / "mac.json"
     entries = json.loads(index.read_text()) if index.exists() else []
     for b, d in sorted(dirs.items()):

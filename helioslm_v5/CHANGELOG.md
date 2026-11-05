@@ -1,5 +1,16 @@
 # HeliosLM v5 Changelog
 
+## v5.246 (2026-11-05) - MLX quantization recipes for the Mac builds
+
+Plain MLX 4-bit breaks Gemma 4 E4B (held zh-TW PPL 23.2 vs 5.71 for bf16
+and 8-bit; it repeats the prompt): the per-layer embedding projections do
+not survive 4-bit or even 8-bit. `mlx.quant_predicate(recipe)` and
+`package_mlx.py --recipe 4=e4b-small` keep those projections in bf16,
+embeddings at 4-bit and the other layers at 6-bit: PPL 5.87 at 5.29 GB,
+small enough for an 8 GB Mac (now the 8 GB row, `mac-preview-2`).
+`emb8` (embeddings 8-bit) is the 26B-A4B 4-bit recipe. New test
+`test_quant_recipes`.
+
 ## v5.245 (2026-11-05) - Mac (Apple Silicon) MLX downloads
 
 New `src/export/mlx.py`: `bundle_mlx` zips an MLX model directory
