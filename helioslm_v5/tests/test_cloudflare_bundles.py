@@ -142,5 +142,6 @@ def test_site_has_measured_speed_and_mtp_tip(dist, tmp_path):
     page = (tmp_path / "site" / "index.html").read_text()
     assert "速度參考" in page and "--spec-type draft-mtp --spec-draft-n-max 3" in page
     assert "--draft-max" not in page and "-t &lt;" in page
+    assert "CUDA_Host buffer" in page  # v5.243: free system RAM note
     assert all(str(row[3]) in page for row in SPEED)
     assert all(row[4] is None or row[4] > row[3] for row in SPEED)  # MTP only where it helps
