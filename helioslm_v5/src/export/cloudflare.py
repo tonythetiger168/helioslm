@@ -227,6 +227,8 @@ def run_guide(tiers):
 Windows：工作管理員 → 效能 → GPU →「專用 GPU 記憶體」；Linux：<code>nvidia-smi</code>。</li>
 <li><b>Mac（Apple M 系列）</b>：看「關於這台 Mac」的記憶體：{e(mac)}。</li>
 <li><b>Intel Mac、沒有獨立顯示卡的電腦</b>：L-Edge，只用 CPU（至少 8 GB RAM）。</li>
+<li><b>系統記憶體</b>：用顯示卡跑時，除了 VRAM，載入時還要約 3–4 GB 可用的系統記憶體（RAM）。
+16 GB RAM 的電腦請先關掉瀏覽器、Docker / WSL 等程式，否則會出現 <code>unable to allocate CUDA_Host buffer</code>。</li>
 </ul>
 {kinds}
 <div class=wrap><table>
@@ -267,6 +269,8 @@ AMD / Intel 顯示卡選 Vulkan 版，Mac 已內建 Metal）。</li>
 <code>ollama run &lt;名稱&gt;</code>（名稱同 create 那一行）。</p>
 <h3>5. 記憶體不夠時</h3>
 <ul>
+<li>出現 <code>unable to allocate CUDA_Host buffer</code> 或 <code>ptxas fatal: Memory allocation failure</code>：
+是系統記憶體（RAM）不夠，不是顯示卡；關掉其他程式再試，調小 <code>-c</code> 沒有用。</li>
 <li>把 <code>-c</code> 調小（例如 <code>-c 8192</code>），上下文越長越吃記憶體。</li>
 <li>KV 快取量化：加 <code>-fa on -ctk q8_0 -ctv q8_0</code>（Ollama：啟動前設
 <code>OLLAMA_FLASH_ATTENTION=1</code> 和 <code>OLLAMA_KV_CACHE_TYPE=q8_0</code>）。</li>

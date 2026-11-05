@@ -15,6 +15,9 @@
   Windows：工作管理員 → 效能 → GPU →「專用 GPU 記憶體」；Linux：`nvidia-smi`。
 - **Mac（Apple M 系列）**：看「關於這台 Mac」的記憶體。GPU 約可用其中 2/3 到 3/4。
 - **Intel Mac、沒有獨立顯示卡的電腦**：用 L-Edge，只用 CPU（至少 8 GB RAM）。
+- **系統記憶體**：用顯示卡跑時，除了 VRAM，載入時還要約 3–4 GB 可用的系統記憶體（RAM）。
+  16 GB RAM 的電腦請先關掉瀏覽器、Docker / WSL 等程式（2026-11-05 在 RTX 4060 8 GB、16 GB RAM 的
+  Windows 桌機上實測：只剩約 1 GB 可用 RAM 時，Ollama 載入 L8 失敗）。
 
 | 層級 | 顯示卡記憶體 | Mac 統一記憶體 | 類型 | zip 內的模型檔 | 檔案大小 | 上下文 |
 |---|---|---|---|---|---:|---|
@@ -128,6 +131,8 @@ L-Edge 只用 CPU，不加 `-ngl`。舊版 llama.cpp 沒有 `llama-completion` �
 
 ## 5. 記憶體不夠時
 
+- **`unable to allocate CUDA_Host buffer` 或 `ptxas fatal: Memory allocation failure`**：
+  是系統記憶體（RAM）不夠，不是顯示卡。關掉其他程式再試；這塊約 2.9 GB 的緩衝區跟上下文長度無關，調小 `-c` 沒有用。
 - **把 `-c` 調小**（例如 `-c 8192`）：上下文越長，KV 快取越吃記憶體。
 - **KV 快取量化**：加 `-fa on -ctk q8_0 -ctv q8_0`，幾乎不影響品質，KV 快取減半。
   Ollama 則在啟動 `ollama serve` 前設 `OLLAMA_FLASH_ATTENTION=1` 和 `OLLAMA_KV_CACHE_TYPE=q8_0`。
