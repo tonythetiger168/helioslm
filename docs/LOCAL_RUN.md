@@ -175,3 +175,31 @@ E4B 層級（L-Edge、L8、L16）開 MTP 沒有幫助（接受率 6–11%），L
 ### CPU 執行緒
 
 加 `-t <實體核心數>`。在核心很多或虛擬化的機器上，預設的執行緒數可能讓速度掉到個位數 token/秒。
+
+## Mac（Apple Silicon）MLX 版
+
+Apple M 系列 Mac（M1 起）建議用下載頁「Mac（Apple Silicon）· MLX」一節的 MLX 版：
+Apple 自家的 MLX 執行環境在 Mac 上通常比 GGUF 快，LM Studio 的 MLX 引擎也能直接載入。
+上面的 GGUF 套件在 Mac 上一樣能用（Metal）。
+
+| Mac 統一記憶體 | MLX 版 | 類型 |
+|---|---|---|
+| 8 GB | E4B 4-bit | 基底模型（只適合短文字） |
+| 16–24 GB | E4B 8-bit | 基底模型 |
+| 32–48 GB | 26B-A4B 4-bit | 對話模型 |
+| 64 GB 以上 | 26B-A4B 8-bit | 對話模型 |
+
+```bash
+python3 -m venv ~/mlx && source ~/mlx/bin/activate   # 需要 Python 3.10 以上（brew install python）
+pip install -U mlx-lm
+curl -L -O <下載連結> && shasum -a 256 <zip 檔> && unzip <zip 檔>
+# 對話模型
+mlx_lm.chat --model ./helioslm-tw-26b-a4b-mlx-4bit --max-tokens 1024
+mlx_lm.server --model ./helioslm-tw-26b-a4b-mlx-4bit --port 8080   # OpenAI 相容 API
+# 基底模型（接著寫）
+mlx_lm.generate --model ./helioslm-tw-e4b-mlx-8bit --ignore-chat-template --max-tokens 256 --prompt "台灣的夜市文化"
+```
+
+LM Studio：把解壓出來的資料夾放進 `~/.lmstudio/models/helioslm/`，選它載入。
+Intel Mac 沒有 MLX，請用 L-Edge GGUF（llama.cpp 只用 CPU）。
+打包工具：`examples/package_mlx.py`（`mlx_lm.convert` 轉檔 + zip + 下載頁 Mac 區）。

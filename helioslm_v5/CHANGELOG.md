@@ -1,5 +1,19 @@
 # HeliosLM v5 Changelog
 
+## v5.242 (2026-11-05) - Mac (Apple Silicon) MLX downloads
+
+New `src/export/mlx.py`: `bundle_mlx` zips an MLX model directory
+(`mlx_lm.convert -q --q-bits N` output) as one folder plus a README with
+the mlx-lm and LM Studio steps; `mac_section` writes the download page's
+"Mac（Apple Silicon）· MLX" table by unified memory (8 GB → E4B 4-bit,
+16–24 GB → E4B 8-bit, 32–48 GB → 26B-A4B 4-bit, 64 GB+ → 26B-A4B 8-bit;
+Intel Mac → L-Edge GGUF on CPU); `build_site(mac_entries=...)` adds it and
+a `mac` list to `packages.json`, and `add_mac_to_site` adds it to an
+already built site without re-bundling the GGUF tiers.
+`examples/package_mlx.py` converts, zips and updates the site;
+`docs/LOCAL_RUN.md` gains a Mac MLX section. New tests
+`test_mlx_mac.py`.
+
 ## v5.241 (2026-11-05) - Best-of-n HDL answers without the answer key
 
 `examples/hdl_eval_all.py --select consensus --n 8` submits one answer per
