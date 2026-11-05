@@ -1,5 +1,18 @@
 # HeliosLM v5 Changelog
 
+## v5.240 (2026-11-05) - LoRA merge folds in place
+
+`training/lora.merge_lora` used to build a new `nn.Linear` for every
+adapted module while the list of wrappers kept every original weight
+alive, so the merge needed a second full copy of the model. A 31B LoRA
+run on a 96 GB card finished training and then died with CUDA OOM in the
+merge, before `final/` was written. `LoRALinear.merged()` now adds
+`B A` into the base weight in place and returns the base module; the
+merge drops each adapter and its gradients as it goes, and `sft_hf.py`
+clears gradients and the CUDA cache first. New test
+`test_merge_lora_folds_in_place_without_copying_the_weight` (in the daily
+gate's `test_lora_suite`).
+
 ## v5.239 (2026-11-05) - Kimi K3.1 Pro teacher row
 
 `eval/teacher_license_audit.py` adds `moonshotai/Kimi-K3.1-Pro` (released

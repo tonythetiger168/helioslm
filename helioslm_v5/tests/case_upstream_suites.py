@@ -611,9 +611,11 @@ def test_lora_suite():
     expected = {"test_apply_targets_and_identity",
                 "test_two_steps_only_adapter_changes_and_merge_oracle",
                 "test_peft_key_names", "test_rank_must_be_positive",
-                "test_tiny_hf_models"}
+                "test_tiny_hf_models",
+                "test_merge_lora_folds_in_place_without_copying_the_weight"}
     _drift_guard(m, expected)
     m.test_apply_targets_and_identity()
+    m.test_merge_lora_folds_in_place_without_copying_the_weight()
     with tempfile.TemporaryDirectory() as t:
         m.test_two_steps_only_adapter_changes_and_merge_oracle(Path(t))
     m.test_peft_key_names()
@@ -625,7 +627,7 @@ def test_lora_suite():
     else:
         skipped = " (transformers not installed: 2 tiny-HF cases skipped)"
     _pass("test_lora_suite",
-          f"v5.217 LoRA: all 5 sidecar tests under the daily gate{skipped}")
+          f"v5.217 LoRA: all 6 sidecar tests under the daily gate{skipped}")
 
 
 def test_hsh_clinical_suite():

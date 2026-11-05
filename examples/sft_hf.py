@@ -307,6 +307,9 @@ def cmd_train(a):
             (out / "result.json").write_text(json.dumps(res, indent=2))
             print(json.dumps(res))
             return res
+        model.zero_grad(set_to_none=True)
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         res["merged_modules"] = merge_lora(model)
     # 5 GB shards: the Hub rejects single files over 50 GB (a 26B model in bf16)
     model.to(torch.bfloat16).save_pretrained(out / "final", safe_serialization=True,
