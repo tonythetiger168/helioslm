@@ -301,3 +301,20 @@ def test_cvdp_check_and_repair():
                            None, workers=1, bench_checks={"cvdp": check})
     assert out == [["module top; endmodule"]]
     assert stats[0] == {"round": 1, "failing": 1, "fixed": 1}
+
+
+def test_consensus_pick_and_select():
+    import hdl_eval_all as ea
+    same = lambda a, b: a.strip() == b.strip()        # noqa: E731
+    # the majority behaviour wins; a non-compiling candidate never votes
+    assert ea.consensus_pick(["A", "B", "B", "C"], [True, True, True, True], same) == 1
+    assert ea.consensus_pick(["B", "A", "A", "A"], [True, False, True, True], same) == 2
+    assert ea.consensus_pick(["x", "y"], [False, False], same) == 0
+    assert ea.consensus_pick(["x", "y"], [False, True], same) == 1
+    assert ea.consensus_pick(["A", "B"], [True, True], same) == 0     # tie -> first
+    jobs = [("cvdp", "c1", "", "p"), ("uvm", "u1", "", "p")]
+    outs = [["bad", "good", "good2"], ["u0", "u1"]]
+    got, picks = ea.select_consensus(
+        jobs, outs, check=None,
+        bench_checks={"cvdp": lambda k, t: {"ok": t.startswith("good")}})
+    assert picks == [1, 0] and got == [["good"], ["u0"]]

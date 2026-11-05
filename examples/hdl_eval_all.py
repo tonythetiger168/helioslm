@@ -23,6 +23,10 @@ answer that fails an iverilog compile of the answer alone (no testbench,
 so no expected outputs leak) goes back to the model with the tool
 messages, up to N times; the first-round generations are saved to
 ``<out>.round0.samples.json`` and the per-round stats under ``repair``.
+``--select consensus --n 8`` (v5.241) submits one answer per problem
+without the answer key: the compiling sample that is random-simulation
+equivalent to the most other samples (CVDP: the first that passes its
+compile check); all samples go to ``<out>.all.samples.json``.
 The raw generations are written to ``<out>.samples.json`` before any
 scoring, so a scoring failure never costs the GPU time (v5.179).
 """
@@ -249,6 +253,66 @@ def repair(gen, jobs, outputs, rounds, check, benches=REPAIR_BENCHES,
     return outputs, stats
 
 
+def consensus_pick(codes, ok, equiv=None):
+    """Index of the candidate to submit (v5.241): among the ``codes`` whose
+    compile check passed (``ok``), the one random-simulation equivalent
+    (``hdl_reward.simulate`` of one candidate against another, no golden
+    design or benchmark testbench) to the most other candidates; the
+    first such on a tie. Without any compiling candidate, 0."""
+    good = [i for i, o in enumerate(ok) if o]
+    if len(good) <= 1:
+        return good[0] if good else 0
+    if equiv is None:
+        from helioslm_v5.eval import hdl_reward as hr
+
+        def equiv(a, b):
+            try:
+                name = hr.top_module(a)
+                if hr.top_module(b) != name:
+                    return False
+                ports = hr.top_ports(a, name)
+                if hr.top_ports(b, name) != ports:
+                    return False
+                return hr.simulate(b, a, name, ports)["ok"]
+            except Exception:
+                return False
+    votes = {i: 0 for i in good}
+    for x, i in enumerate(good):
+        for j in good[x + 1:]:
+            if equiv(codes[i], codes[j]):
+                votes[i] += 1
+                votes[j] += 1
+    return max(good, key=lambda i: (votes[i], -i))
+
+
+def select_consensus(jobs, outputs, check, benches=REPAIR_BENCHES, bench_checks=None,
+                     workers=8):
+    """Best-of-n without the answer key (v5.241): one output per job. A
+    ``benches`` job keeps :func:`consensus_pick` of its samples' extracted
+    code (``check`` = ``hb.tool_feedback`` compile); a ``bench_checks``
+    job (CVDP) keeps its first sample that passes its own check; any
+    other job keeps sample 0. Returns (outputs with one sample each,
+    picked indices)."""
+    from concurrent.futures import ThreadPoolExecutor
+    bench_checks = bench_checks or {}
+
+    def one(i):
+        b, k = jobs[i][:2]
+        outs = outputs[i]
+        if b in bench_checks:
+            for j, o in enumerate(outs):
+                if bench_checks[b](k, o)["ok"]:
+                    return j
+            return 0
+        if b not in benches:
+            return 0
+        codes = [hb.extract_code(o) for o in outs]
+        return consensus_pick(codes, [check(c)["ok"] for c in codes])
+    with ThreadPoolExecutor(max(1, workers)) as ex:
+        picks = list(ex.map(one, range(len(jobs))))
+    return [[o[j]] for o, j in zip(outputs, picks)], picks
+
+
 HDL_SUFFIXES = (".sv", ".v", ".svh", ".vh")
 
 
@@ -340,6 +404,11 @@ def main(argv=None):
                          "compile (no testbench) with the tool messages, up "
                          "to N times (VerilogEval / RTLLM, v5.229; single-file "
                          "CVDP with its RTL context, v5.234)")
+    ap.add_argument("--select", choices=("none", "consensus"), default="none",
+                    help="consensus: from the --n samples (after any repair) submit "
+                         "one per problem, the compiling candidate simulation-"
+                         "equivalent to the most other candidates (no answer "
+                         "key; scored as pass@1 of the picked answer, v5.241)")
     ap.add_argument("--workers", type=int, default=ub.cpu_limit(),
                     help="simulation jobs (default: the container's CPU limit)")
     a = ap.parse_args(argv)
@@ -380,15 +449,28 @@ def main(argv=None):
                     {r["id"]: r for r in data.get("cvdp", [])})}
                 if "cvdp" in benches else None)
             print("repair:", json.dumps(repair_stats), flush=True)
+    picks = None
+    if a.select == "consensus":
+        if a.n < 2:
+            ap.error("--select consensus needs --n >= 2")
+        Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(a.out).with_suffix(".all.samples.json").write_text(
+            json.dumps([{"bench": b, "key": k, "outputs": o}
+                        for (b, k, _, _), o in zip(jobs, outputs)]) + "\n", encoding="utf-8")
+        outputs, picks = select_consensus(
+            jobs, outputs, hb.tool_feedback, workers=a.workers,
+            bench_checks={"cvdp": cvdp_check({r["id"]: r for r in data.get("cvdp", [])})}
+            if "cvdp" in benches else None)
+    n_scored = 1 if picks is not None else a.n
     gen_s = time.time() - t0
     samples = [{"bench": b, "key": k, "outputs": o}
                for (b, k, _, _), o in zip(jobs, outputs)]
     if not a.samples:
         Path(a.out).with_suffix(".samples.json").write_text(   # before scoring
             json.dumps(samples) + "\n", encoding="utf-8")
-    ks = tuple(k for k in (1, 5, 10) if k <= a.n)
-    res = score_all(jobs, outputs, data, a.n, ks, exclude, a.workers, a.extra)
-    out = {"model": a.model, "n": a.n, "temperature": a.temperature,
+    ks = tuple(k for k in (1, 5, 10) if k <= n_scored)
+    res = score_all(jobs, outputs, data, n_scored, ks, exclude, a.workers, a.extra)
+    out = {"model": a.model, "n": a.n, "temperature": a.temperature, "select": a.select,
            "generate_seconds": round(gen_s), "summary": summary(res),
            "thinking": a.thinking, "repair_rounds": a.repair_rounds, "repair": repair_stats,
            "results": res, "samples": samples}
