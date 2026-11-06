@@ -81,7 +81,7 @@ def calibrate(model, windows, device):
     L = len(layers)
     H = tm.config.hidden_size
     bi = torch.zeros(L, dtype=torch.float64)
-    hid = torch.zeros(H, dtype=torch.float64)
+    hid = torch.zeros(H, dtype=torch.float64, device=device)
     ffn = [None] * L
     count = [0]
     hooks = []
@@ -116,8 +116,8 @@ def calibrate(model, windows, device):
         for h in hooks:
             h.remove()
     n = max(1, count[0])
-    return {"bi": (bi / n).tolist(), "hidden": (hid / n).tolist(),
-            "ffn": [(f / n).tolist() for f in ffn], "tokens": n}
+    return {"bi": (bi / n).tolist(), "hidden": (hid / n).cpu().tolist(),
+            "ffn": [(f / n).cpu().tolist() for f in ffn], "tokens": n}
 
 
 def choose_layers(cfg, bi, n_kv, n_shared):
@@ -360,7 +360,9 @@ def cmd_kd(a):
     teacher.to(device).eval().requires_grad_(False)
     cap_s = getattr(text_config(student), "final_logit_softcapping", None)
     cap_t = getattr(text_config(teacher), "final_logit_softcapping", None)
-    phases = load_phases(a.data, a.seq, decay_frac=a.decay_frac)
+    # cap repeats of small sources (rephrases, Taigi) over the planned tokens
+    plan = a.tokens or a.plan_tokens
+    phases = load_phases(a.data, a.seq, plan, a.max_repeat, decay_frac=a.decay_frac)
     x0, _ = phases["main"].batch(1, min(64, a.seq), 0, a.seed)
     amp = dict(device_type="cuda", dtype=torch.bfloat16, enabled=device == "cuda")
     with torch.autocast(**amp):
@@ -487,6 +489,9 @@ def main(argv=None):
     k.add_argument("--tokens", type=float, default=0, help="cap on training tokens")
     k.add_argument("--hours", type=float, default=0,
                    help="size the run to this many hours from the measured step time")
+    k.add_argument("--plan-tokens", type=float, default=1e9,
+                   help="token estimate for --max-repeat when --tokens is 0")
+    k.add_argument("--max-repeat", type=float, default=4.0)
     k.add_argument("--size-after", type=int, default=12)
     k.add_argument("--max-hours", type=float, default=0, help="hard stop")
     k.add_argument("--lr", type=float, default=3e-4)
