@@ -342,3 +342,20 @@ def test_tb_pick_prefers_candidates_passing_model_testbenches():
         bench_checks={"cvdp": lambda k, t: {"ok": t == "good"}})
     assert picks == [0, 1] and got == [["x"], ["good"]] and stats["tb_jobs"] == 1
     assert tbs["p1"][0].startswith("module tb")
+
+
+def test_select_consensus_votes_cvdp_when_asked(monkeypatch):
+    import hdl_eval_all as ea
+    seen = {}
+
+    def fake_pick(codes, ok, equiv=None):
+        seen["ok"] = ok
+        return 2
+    monkeypatch.setattr(ea, "consensus_pick", fake_pick)
+    jobs = [("cvdp", "c1", "", "p")]
+    outs = [["bad", "good", "good2"]]
+    chk = {"cvdp": lambda k, t: {"ok": t.startswith("good")}}
+    got, picks = ea.select_consensus(jobs, outs, None, bench_checks=chk, vote_checked=("cvdp",))
+    assert picks == [2] and got == [["good2"]] and seen["ok"] == [False, True, True]
+    got, picks = ea.select_consensus(jobs, outs, None, bench_checks=chk)
+    assert picks == [1]

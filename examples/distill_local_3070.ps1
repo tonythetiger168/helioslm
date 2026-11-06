@@ -1,6 +1,6 @@
 <#
 distill_local_3070.ps1 - Qwen3.6-35B-A3B as a local distillation teacher on
-an 8 GB laptop GPU (RTX 3070 Laptop, 40 GB RAM, Windows). v5.252.
+an 8 GB laptop GPU (RTX 3070 Laptop, 40 GB RAM, Windows). v5.253.
 
 llama-server serves the 4-bit GGUF with the MoE experts in system RAM and
 everything else on the GPU; examples/distill_generate.py talks to it as a

@@ -1,6 +1,6 @@
 # HeliosLM v5 Changelog
 
-## v5.253 (2026-11-06) - Gemma 4 E2B / E4B and Grok 2 teacher rows
+## v5.254 (2026-11-06) - Gemma 4 E2B / E4B and Grok 2 teacher rows
 
 The four big US vendors checked as teacher sources. Their closed models
 (Gemini, GPT, Grok, Claude) stay out of `eval/teacher_license_audit.py`:
@@ -19,7 +19,7 @@ their API terms forbid training competing models.
 - Test `test_2026_11_06_vendor_rows` (also in the daily gate's
   `test_teacher_license_audit_suite`).
 
-## v5.252 (2026-11-06) - Qwen3.6-35B-A3B as a local teacher on an 8 GB laptop GPU
+## v5.253 (2026-11-06) - Qwen3.6-35B-A3B as a local teacher on an 8 GB laptop GPU
 
 `examples/distill_local_3070.ps1` (Windows PowerShell) runs D1 teacher
 generation on an RTX 3070 Laptop (8 GB VRAM, 40 GB RAM). Kimi K2.6 does not
@@ -52,6 +52,16 @@ fit there: its smallest practical GGUF is about 340 GB.
   - a medical manifest is accepted for the local endpoint.
   It binds 127.0.0.1, so it is listed in `EXEMPT_SIDECARS` like
   `test_openai_stream_smoke`.
+## v5.252 (2026-11-06) - Simulation votes for CVDP answers too
+
+`examples/hdl_eval_all.py --select consensus --vote-cvdp` also picks CVDP
+answers by simulation votes. Among the samples that pass the CVDP compile
+check, it keeps the one that is random-simulation equivalent to the most
+others; the vote runs on each sample's `hdl_reward.extract_answer` code.
+Without the flag, CVDP keeps the first sample that passes the check, as
+before. `select_consensus` gains a `vote_checked` argument. New test:
+`test_select_consensus_votes_cvdp_when_asked`.
+
 
 ## v5.251 (2026-11-06) - Four more sidecars folded into the suite
 

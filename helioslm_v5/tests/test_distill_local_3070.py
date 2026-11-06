@@ -1,4 +1,4 @@
-"""v5.252: examples/distill_local_3070.ps1, Qwen3.6-35B-A3B as a local
+"""v5.253: examples/distill_local_3070.ps1, Qwen3.6-35B-A3B as a local
 teacher behind llama-server on an 8 GB laptop GPU.
 
 PowerShell and llama.cpp are not in CI, so the script is checked

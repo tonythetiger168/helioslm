@@ -191,7 +191,7 @@ def test_wsd_decay_data_switch():
         # Windows (v5.240): TokenShard keeps the shards open through
         # np.memmap; unlinking an mmapped file fails with WinError 32
         # when the TemporaryDirectory cleans up (Linux tolerates it).
-        del tr, va, an
+        tr = va = an = None  # drop the refs (a `del` trips F821 in run())
         gc.collect()
     print("PASS test_wsd_decay_data_switch")
 

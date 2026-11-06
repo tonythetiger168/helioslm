@@ -407,13 +407,15 @@ def select_tb(gen, jobs, outputs, check, n_tb=2, temperature=0.8, top_p=0.95,
 
 
 def select_consensus(jobs, outputs, check, benches=REPAIR_BENCHES, bench_checks=None,
-                     workers=8):
+                     workers=8, vote_checked=()):
     """Best-of-n without the answer key (v5.241): one output per job. A
     ``benches`` job keeps :func:`consensus_pick` of its samples' extracted
     code (``check`` = ``hb.tool_feedback`` compile); a ``bench_checks``
     job (CVDP) keeps its first sample that passes its own check; any
-    other job keeps sample 0. Returns (outputs with one sample each,
-    picked indices)."""
+    other job keeps sample 0. A ``vote_checked`` bench (v5.252, e.g.
+    ``("cvdp",)``) instead keeps :func:`consensus_pick` among the samples
+    that pass its check, on their ``hdl_reward.extract_answer`` code.
+    Returns (outputs with one sample each, picked indices)."""
     from concurrent.futures import ThreadPoolExecutor
     bench_checks = bench_checks or {}
 
@@ -421,6 +423,10 @@ def select_consensus(jobs, outputs, check, benches=REPAIR_BENCHES, bench_checks=
         b, k = jobs[i][:2]
         outs = outputs[i]
         if b in bench_checks:
+            if b in vote_checked:
+                from helioslm_v5.eval import hdl_reward as hr
+                ok = [bench_checks[b](k, o)["ok"] for o in outs]
+                return consensus_pick([hr.extract_answer(o) for o in outs], ok)
             for j, o in enumerate(outs):
                 if bench_checks[b](k, o)["ok"]:
                     return j
@@ -525,6 +531,9 @@ def main(argv=None):
                          "compile (no testbench) with the tool messages, up "
                          "to N times (VerilogEval / RTLLM, v5.229; single-file "
                          "CVDP with its RTL context, v5.234)")
+    ap.add_argument("--vote-cvdp", action="store_true",
+                    help="--select consensus: CVDP also picks by simulation votes "
+                         "among the samples that pass its compile check (v5.252)")
     ap.add_argument("--tb-n", type=int, default=2,
                     help="--select tb: testbenches the model writes per problem")
     ap.add_argument("--select", choices=("none", "consensus", "tb"), default="none",
@@ -593,7 +602,8 @@ def main(argv=None):
             print("select tb:", json.dumps(select_stats), flush=True)
         else:
             outputs, picks = select_consensus(jobs, outputs, hb.tool_feedback,
-                                              workers=a.workers, bench_checks=bc)
+                                              workers=a.workers, bench_checks=bc,
+                                              vote_checked=("cvdp",) if a.vote_cvdp else ())
     n_scored = 1 if picks is not None else a.n
     gen_s = time.time() - t0
     samples = [{"bench": b, "key": k, "outputs": o}

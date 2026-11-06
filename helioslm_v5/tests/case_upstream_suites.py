@@ -1150,7 +1150,7 @@ EXEMPT_SIDECARS = {
     'test_multiseed', 'test_nope_temperature',     'test_noul_continuous', 'test_nvfp4_qat_e2e',
     # Binds 127.0.0.1 (ephemeral port); same exemption as test_hsh_web.
     'test_openai_stream_smoke',
-    # v5.252: one case binds 127.0.0.1 (a llama-server stand-in); same
+    # v5.253: one case binds 127.0.0.1 (a llama-server stand-in); same
     # exemption as test_openai_stream_smoke. pytest still runs it in CI.
     'test_distill_local_3070',
     'test_option_matrix', 'test_oracle_guard', 'test_package_tiers', 'test_ple',
@@ -1261,7 +1261,7 @@ def test_teacher_license_audit_suite():
         getattr(m, name)()
     _pass("test_teacher_license_audit_suite",
           "T120 teacher licence audit: all 9 sidecar tests (incl. the "
-          "v5.239 Kimi-K3.1-Pro row and the v5.253 Gemma 4 / Grok 2 "
+          "v5.239 Kimi-K3.1-Pro row and the v5.254 Gemma 4 / Grok 2 "
           "rows) under the daily gate")
 
 

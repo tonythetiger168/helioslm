@@ -211,7 +211,7 @@ Intel Mac 沒有 MLX，請用 L-Edge GGUF（llama.cpp 只用 CPU）。
 
 ## 7. 筆電當蒸餾老師（Qwen3.6-35B-A3B，8 GB 顯示卡）
 
-`examples/distill_local_3070.ps1`（v5.252）在 RTX 3070 Laptop（8 GB VRAM、40 GB RAM、Windows）上，
+`examples/distill_local_3070.ps1`（v5.253）在 RTX 3070 Laptop（8 GB VRAM、40 GB RAM、Windows）上，
 用 llama-server 跑 Qwen3.6-35B-A3B 當老師，產生蒸餾資料。
 Kimi K2.6 放不進這台：最小的實用 GGUF 約 340 GB。
 
