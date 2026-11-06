@@ -2,7 +2,7 @@
 
 What one GPU server running `helioslm-chat-g26b-short` (26B-A4B) and
 `helioslm-chat-e4b` on vLLM can carry, and the monitoring stack that goes
-with it. Scripts: `serving/loadtest.py`, `serving/monitoring/`.
+with it. Scripts: `serving/loadtest.py`, `serving/monitoring/` (see its README).
 
 ## Setup
 
