@@ -1,5 +1,15 @@
 # HeliosLM v5 Changelog
 
+## v5.252 (2026-11-06) - Simulation votes for CVDP answers too
+
+`examples/hdl_eval_all.py --select consensus --vote-cvdp` also picks CVDP
+answers by simulation votes. Among the samples that pass the CVDP compile
+check, it keeps the one that is random-simulation equivalent to the most
+others; the vote runs on each sample's `hdl_reward.extract_answer` code.
+Without the flag, CVDP keeps the first sample that passes the check, as
+before. `select_consensus` gains a `vote_checked` argument. New test:
+`test_select_consensus_votes_cvdp_when_asked`.
+
 ## v5.251 (2026-11-06) - Four more sidecars folded into the suite
 
 **Sidecar fold-in.** `case_upstream_suites.py` gains wrappers for
