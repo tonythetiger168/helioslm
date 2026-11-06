@@ -208,3 +208,33 @@ mlx_lm.generate --model ./helioslm-tw-e4b-mlx-8bit --ignore-chat-template --max-
 LM Studio：把解壓出來的資料夾放進 `~/.lmstudio/models/helioslm/`，選它載入。
 Intel Mac 沒有 MLX，請用 L-Edge GGUF（llama.cpp 只用 CPU）。
 打包工具：`examples/package_mlx.py`（`mlx_lm.convert` 轉檔 + zip + 下載頁 Mac 區）。
+
+## 7. 筆電當蒸餾老師（Qwen3.6-35B-A3B，8 GB 顯示卡）
+
+`examples/distill_local_3070.ps1`（v5.252）在 RTX 3070 Laptop（8 GB VRAM、40 GB RAM、Windows）上，
+用 llama-server 跑 Qwen3.6-35B-A3B 當老師，產生蒸餾資料。
+Kimi K2.6 放不進這台：最小的實用 GGUF 約 340 GB。
+
+- **模型檔**：`unsloth/Qwen3.6-35B-A3B-GGUF` 的 `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`，22.1 GB，Apache-2.0。
+  加 `-Download` 由腳本用 `hf` CLI 下載（固定版本），或自己下載後放在 `models\qwen3.6-35b-a3b\`。
+- **需要**：llama.cpp 的 CUDA 版（`llama-server` 在 PATH 上，或用 `-LlamaServer` 指定路徑）、Python 3。
+- **記憶體配置**：專家權重放系統記憶體（`--cpu-moe`），其他放顯示卡；KV 快取用 q8_0。
+
+```powershell
+# 1. 冒煙測試：5 題，最後印出每秒 token 數
+powershell -ExecutionPolicy Bypass -File examples\distill_local_3070.ps1 `
+    -Prompts runs\distill\prompts.jsonl -Out runs\distill\qwen36_smoke.jsonl -Limit 5
+# 2. 正式跑，8 小時後停；中斷後重跑會接續
+powershell -ExecutionPolicy Bypass -File examples\distill_local_3070.ps1 `
+    -Prompts runs\distill\prompts.jsonl -Out runs\distill\qwen36_answers.jsonl -MaxHours 8
+```
+
+調整：
+
+- **`-NCpuMoe N`**：只把前 N 層的專家放系統記憶體，其餘放顯示卡。N 越小越快，但要放得進 8 GB。
+  從預設（全部放系統記憶體）開始，冒煙測試成功後再試較小的 N，看工作管理員的「專用 GPU 記憶體」。
+- **`-Parallel`**：同時處理幾個請求（預設 2）；每個請求有 `-CtxPerSlot`（預設 8192）個 token 的上下文。
+- **`-NoThinking`**：關掉思考（例如讓老師出題時）。
+- **醫療資料**：加 `-DataManifest <manifest> -Medical`。老師在 127.0.0.1，資料不會離開這台電腦。
+
+速度還沒在 3070 Laptop 上實測。跑完冒煙測試後，請把印出的 token/秒補進上面第 6 節。

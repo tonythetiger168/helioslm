@@ -1,5 +1,39 @@
 # HeliosLM v5 Changelog
 
+## v5.252 (2026-11-06) - Qwen3.6-35B-A3B as a local teacher on an 8 GB laptop GPU
+
+`examples/distill_local_3070.ps1` (Windows PowerShell) runs D1 teacher
+generation on an RTX 3070 Laptop (8 GB VRAM, 40 GB RAM). Kimi K2.6 does not
+fit there: its smallest practical GGUF is about 340 GB.
+- llama-server serves `unsloth/Qwen3.6-35B-A3B-GGUF` `UD-Q4_K_M` (22.1 GB,
+  Apache-2.0, base model `Qwen/Qwen3.6-35B-A3B`; revision `a483e9e6` pinned).
+  `--cpu-moe` keeps the experts in system RAM and the rest on the GPU;
+  `-NCpuMoe N` moves the experts of later layers back to the GPU while
+  they fit. KV cache in q8_0, flash attention on, `--jinja` for the Qwen
+  chat template, `--reasoning-format deepseek` so the reasoning comes back
+  as `reasoning_content`, `--alias Qwen/Qwen3.6-35B-A3B` so the served name
+  matches `distill_gen.TEACHERS["qwen3.6-35b-a3b"]`.
+- `distill_generate.py generate` then talks to it as a self-hosted
+  (`vllm`) endpoint on 127.0.0.1: licence gate, thinking switch, resume,
+  limits and token stats as on a pod. A local endpoint also passes the
+  v5.215 medical-data guard.
+- The model is not downloaded unless `-Download` is given (then with the
+  `hf` CLI at the pinned revision); the server is stopped on exit, and
+  the script prints output tokens per second of wall time.
+- Not run on the laptop yet: speed and the best `-NCpuMoe` are still to be
+  measured there (docs/LOCAL_RUN.md section 7).
+- `tests/test_distill_local_3070.py` (4 tests):
+  - the script's alias, served name and GGUF repo match the teacher table,
+    and the licence row allows the teacher;
+  - the server flags are present, and every `distill_generate.py` flag the
+    script passes exists;
+  - against a stand-in answering in llama-server's shape, records carry
+    the reasoning, token counts and served name, and requests carry the
+    Qwen thinking switch;
+  - a medical manifest is accepted for the local endpoint.
+  It binds 127.0.0.1, so it is listed in `EXEMPT_SIDECARS` like
+  `test_openai_stream_smoke`.
+
 ## v5.251 (2026-11-06) - Four more sidecars folded into the suite
 
 **Sidecar fold-in.** `case_upstream_suites.py` gains wrappers for
@@ -88,11 +122,11 @@ self-checking testbenches per VerilogEval / RTLLM problem, written from the
 problem text alone (the prompt asks for expected values worked out from the
 spec and an `ERRORS <n> CHECKS <m>` line). Each compiling sample runs under
 each testbench (Icarus). The pick is the sample with the most zero-error
-testbenches, then the highest fraction of checks passed, then the v5.241
+testbenches, then the highest fraction of checks passed, then the v5.252
 simulation votes (CodeT-style). A testbench under which no sample runs is
 ignored. CVDP keeps the first sample that passes its compile check. The
 testbenches go to `<out>.tbs.json`, and the counts to `select_stats`.
-Background: on gpt-oss-120b, 8 samples with v5.241 consensus scored
+Background: on gpt-oss-120b, 8 samples with v5.252 consensus scored
 VerilogEval 0.789, against a per-sample mean of 0.785 and a pass@5 of 0.877,
 so the votes alone did not find the right answer. New `tb_pick`,
 `select_tb`, `run_tb` and test
@@ -158,7 +192,7 @@ reads the answer as server-sent events, for hosted endpoints whose proxy
 answers long non-streamed requests with 502. Found on the Kimi K3.1 Pro
 pilot: 2,000 of 2,000 requests failed with an unretried 502.
 
-## v5.241 (2026-11-05) - Best-of-n HDL answers without the answer key
+## v5.252 (2026-11-06) - Best-of-n HDL answers without the answer key
 
 `examples/hdl_eval_all.py --select consensus --n 8` submits one answer per
 problem from the samples (after any `--repair-rounds`): for VerilogEval and

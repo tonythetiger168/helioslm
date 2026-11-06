@@ -1150,6 +1150,9 @@ EXEMPT_SIDECARS = {
     'test_multiseed', 'test_nope_temperature',     'test_noul_continuous', 'test_nvfp4_qat_e2e',
     # Binds 127.0.0.1 (ephemeral port); same exemption as test_hsh_web.
     'test_openai_stream_smoke',
+    # v5.252: one case binds 127.0.0.1 (a llama-server stand-in); same
+    # exemption as test_openai_stream_smoke. pytest still runs it in CI.
+    'test_distill_local_3070',
     'test_option_matrix', 'test_oracle_guard', 'test_package_tiers', 'test_ple',
     'test_pool_ledger', 'test_prefix_pool_chained', 'test_prereg',
     'test_probe_api', 'test_prune_kd_gemma4', 'test_quant_calib', 'test_quantile_balancing', 'test_qwen_next',
