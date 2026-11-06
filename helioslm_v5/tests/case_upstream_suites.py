@@ -1097,6 +1097,8 @@ FOLDED_SIDECARS = {
     "test_worker_launch_env": "test_worker_launch_env_suite",
     # Mac MLX zips + page section (v5.245): tmp dirs and one CLI subprocess
     "test_mlx_mac": "test_mlx_mac_suite",
+    # serving load test + monitoring stack (v5.249): file parse + pure math
+    "test_serving_monitoring": "test_serving_monitoring_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1171,6 +1173,21 @@ def test_worker_launch_env_suite():
     _pass("test_worker_launch_env_suite",
           "worker.env.example: helioslm, MTP x4, len 16384, "
           "16 seqs, no quant, no secret")
+
+
+def test_serving_monitoring_suite():
+    """Serving load-test summary math and monitoring config wiring (v5.249).
+
+    Folded the day it landed: plain functions that read checked-in text,
+    no socket, no sleep. Pins alert / dashboard metric names to vLLM 0.33.0.
+    """
+    from helioslm_v5.tests import test_serving_monitoring as m
+    expected = {"test_summarize_math", "test_alert_and_dashboard_metrics_exist",
+                "test_stack_wiring", "test_serving_monitoring"}
+    _drift_guard(m, expected)
+    m.test_serving_monitoring()
+    _pass("test_serving_monitoring_suite",
+          "loadtest summary, alerts/dashboard metrics in vLLM 0.33.0, stack wiring")
 
 
 def test_mlx_mac_suite():

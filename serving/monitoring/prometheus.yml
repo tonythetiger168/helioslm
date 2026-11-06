@@ -1,0 +1,12 @@
+# Prometheus for HeliosLM serving: scrapes vLLM (/metrics) and nvidia_gpu_exporter.
+global:
+  scrape_interval: 10s
+  evaluation_interval: 15s
+rule_files: [alerts.yml]
+alerting:
+  alertmanagers: [{static_configs: [{targets: ["alertmanager:9093"]}]}]
+scrape_configs:
+  - job_name: vllm
+    static_configs: [{targets: ["vllm:8000"], labels: {model: "helioslm-chat"}}]
+  - job_name: gpu
+    static_configs: [{targets: ["gpu-exporter:9835"]}]

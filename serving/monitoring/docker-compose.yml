@@ -1,0 +1,40 @@
+# HeliosLM serving stack for one GPU server: vLLM + GPU exporter + Prometheus + Alertmanager + Grafana.
+# Needs Docker with the NVIDIA Container Toolkit. Start: docker compose up -d
+# Grafana http://<host>:3000 (admin / GRAFANA_PASSWORD), Prometheus :9090, API :8000/v1.
+# Ports 3000/9090/9093 should stay on the internal network; only expose :8000 through your gateway.
+services:
+  vllm:
+    image: vllm/vllm-openai:${VLLM_TAG:-v0.33.0}
+    command: >
+      --model ${MODEL:-chienhsinlin/helioslm-chat-g26b-short} --served-model-name helioslm
+      --max-model-len ${MAX_LEN:-8192} --max-num-seqs ${MAX_SEQS:-64} --gpu-memory-utilization 0.90
+      ${VLLM_EXTRA:-}
+    environment: [HF_TOKEN]
+    volumes: ["${HF_CACHE:-./hf-cache}:/root/.cache/huggingface"]
+    ports: ["8000:8000"]
+    ipc: host
+    deploy: {resources: {reservations: {devices: [{driver: nvidia, count: all, capabilities: [gpu]}]}}}
+    restart: unless-stopped
+  gpu-exporter:
+    image: utkuozdemir/nvidia_gpu_exporter:1.3.2
+    devices: ["/dev/nvidiactl:/dev/nvidiactl", "/dev/nvidia0:/dev/nvidia0"]
+    volumes: ["/usr/lib/x86_64-linux-gnu/libnvidia-ml.so:/usr/lib/x86_64-linux-gnu/libnvidia-ml.so", "/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1:/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1", "/usr/bin/nvidia-smi:/usr/bin/nvidia-smi"]
+    restart: unless-stopped
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command: [--config.file=/etc/prometheus/prometheus.yml, --storage.tsdb.retention.time=30d]
+    volumes: ["./prometheus.yml:/etc/prometheus/prometheus.yml:ro", "./alerts.yml:/etc/prometheus/alerts.yml:ro", "prom-data:/prometheus"]
+    ports: ["127.0.0.1:9090:9090"]
+    restart: unless-stopped
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    volumes: ["./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro", "./secrets:/etc/alertmanager/secrets:ro"]
+    ports: ["127.0.0.1:9093:9093"]
+    restart: unless-stopped
+  grafana:
+    image: grafana/grafana:12.2.0
+    environment: ["GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?set GRAFANA_PASSWORD}"]
+    volumes: ["./grafana/provisioning:/etc/grafana/provisioning:ro", "./grafana/dashboards:/var/lib/grafana/dashboards:ro", "grafana-data:/var/lib/grafana"]
+    ports: ["3000:3000"]
+    restart: unless-stopped
+volumes: {prom-data: {}, grafana-data: {}}

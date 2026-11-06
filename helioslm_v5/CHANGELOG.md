@@ -1,5 +1,22 @@
 # HeliosLM v5 Changelog
 
+## v5.250 (2026-11-06) - Production serving load test and monitoring stack
+
+New `serving/loadtest.py`: streaming load test for an OpenAI-compatible
+vLLM server (chat and ~3k-token RAG scenarios, concurrency sweep, soak
+mode); prints TTFT / inter-token / end-to-end p50-p99, per-user and
+aggregate tok/s and errors per level. New `serving/monitoring/`:
+docker-compose stack for one GPU server (vLLM, nvidia_gpu_exporter,
+Prometheus, Alertmanager, Grafana with a provisioned dashboard) and 11
+alert rules. Measured on L40S, A100 80GB and RTX PRO 6000 with vLLM
+0.33.0 (`docs/SERVING_GPU_TEST.md`): RTX PRO 6000 with FP8 + MTP carried
+64 concurrent chat users at ~83 tok/s each (4,492 tok/s total, TTFT p95
+0.10 s), 15-minute soaks ran with zero errors, and FP8 matched BF16 on a
+1,675-question TMMLU+ sample (70.6% vs 70.9%, within noise). The monitoring stack was
+run against the live servers (all alert queries returned data; stopping
+vLLM fired VLLMDown). New test `test_serving_monitoring` pins the alert
+and dashboard metric names to vLLM 0.33.0.
+
 ## v5.249 (2026-11-06) - Prune and distil a Gemma 4 student (v1.0 L-Edge pilot)
 
 New `examples/prune_kd_gemma4.py`. `prune` scores layers by block influence
