@@ -296,6 +296,11 @@ TESTS = [
     case_upstream_suites.test_pretrain_pilot_suite,
     case_upstream_suites.test_review_regressions_suite,
     case_upstream_suites.test_cloudflare_bundles_suite,
+    # limitations round (2026-11-06): HF Hub offline round-trip,
+    # RULER-lite tasks + probe arms, and the T87 review-fix pins.
+    case_upstream_suites.test_hub_suite,
+    case_upstream_suites.test_ruler_lite_suite,
+    case_upstream_suites.test_review_fixes_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 

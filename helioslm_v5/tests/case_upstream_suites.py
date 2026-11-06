@@ -1045,6 +1045,10 @@ def test_kv_cache_analytic_suite():
 # the backlog is now 178 files. test_hsh_web stays exempt: its cases bind
 # 127.0.0.1 through ThreadingHTTPServer (ephemeral port), run the turn on
 # a background thread and sleep on the SSE / cancel path.
+# 2026-11-06 limitations round: test_hub (HF Hub offline round-trip),
+# test_ruler_lite (OS7 RULER-lite tasks + probe arms) and
+# test_review_fixes (T87 repo-review fix pins) moved from EXEMPT to
+# FOLDED — the backlog is now 173 files.
 # OpenAI-compatible stream smoke (serving/openai_stream_smoke.py):
 # test_openai_stream_smoke is exempt for the same reason as test_hsh_web.
 # It binds 127.0.0.1 through ThreadingHTTPServer on an ephemeral port and
@@ -1104,6 +1108,10 @@ FOLDED_SIDECARS = {
     "test_pretrain_pilot": "test_pretrain_pilot_suite",
     "test_review_regressions": "test_review_regressions_suite",
     "test_cloudflare_bundles": "test_cloudflare_bundles_suite",
+    # limitations round 2026-11-06 (hub / ruler-lite / review fixes)
+    "test_hub": "test_hub_suite",
+    "test_ruler_lite": "test_ruler_lite_suite",
+    "test_review_fixes": "test_review_fixes_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1131,7 +1139,7 @@ EXEMPT_SIDECARS = {
     'test_hsh_egress', 'test_hsh_extras', 'test_hsh_interaction',
     'test_hsh_mcp',
     'test_hsh_skills',
-    'test_hsh_web', 'test_hub', 'test_indexer_share', 'test_k3_block',
+    'test_hsh_web', 'test_indexer_share', 'test_k3_block',
     'test_k3_llamacpp_parts', 'test_kda_chunked', 'test_kda_k3_style', 'test_kda_subchunk',
     'test_kv_compress', 'test_kv_share', 'test_llamacpp_export', 'test_llamacpp_kimi_k3',
     'test_llamacpp_tokenizer', 'test_lm_decision_head', 'test_lm_harness', 'test_logit_kd',
@@ -1145,8 +1153,8 @@ EXEMPT_SIDECARS = {
     'test_option_matrix', 'test_oracle_guard', 'test_package_tiers', 'test_ple',
     'test_pool_ledger', 'test_prefix_pool_chained', 'test_prereg',
     'test_probe_api', 'test_prune_kd_gemma4', 'test_quant_calib', 'test_quantile_balancing', 'test_qwen_next',
-    'test_repo_longctx', 'test_review_fixes', 'test_rlcd_head',
-    'test_rtllm_bench', 'test_ruler_lite', 'test_selfgen_meta', 'test_skill_docs',
+    'test_repo_longctx', 'test_rlcd_head',
+    'test_rtllm_bench', 'test_selfgen_meta', 'test_skill_docs',
     'test_smebu_sandwich', 'test_std_bench', 'test_stop_calibration', 'test_swarm_parallel',
     'test_swe_agent_rl', 'test_swe_bench', 'test_task_grammar',
     'test_term_bench', 'test_think', 'test_thinking_budget', 'test_three_modes',
@@ -1381,6 +1389,91 @@ def test_cloudflare_bundles_suite():
           "T163 Cloudflare bundles: all 7 sidecar tests (two packaged "
           "tiers, 5 base-url refusals, dry-run upload) under the daily "
           "gate")
+
+
+# ---------------------------------------------------------------------------
+# limitations round (2026-11-06): fold three more exempt-backlog sidecars
+# into the daily gate — the HF Hub offline round-trip, the RULER-lite
+# tasks + probe arms, and the T87 repo-review fix pins. Same wrapper
+# pattern as v5.225: drift-guarded function sets, parametrized cases
+# called with their full lists, tmp_path as a real TemporaryDirectory,
+# monkeypatch via the _MonkeyPatch stand-in (undo in finally, so a
+# failure cannot leak the patched hub backend). test_hub and
+# test_ruler_lite gained the in-file pytest shim (raises /
+# mark.parametrize only); test_review_fixes needs no shim — plain
+# asserts, and it inserts helioslm_v5/ on sys.path itself for the
+# harness package.
+# ---------------------------------------------------------------------------
+
+
+def test_hub_suite():
+    """HF Hub integration (hub.py) under the daily gate — fully offline.
+    Pins: the local save/load round-trip is bitwise (weights AND forward
+    output); from_hub refuses an untrusted remote unless
+    trust_checkpoint=True; push_to_hub/from_hub against a mock backend
+    (the _MonkeyPatch stand-in rewrites hub._hub; no network, no token);
+    config.json rebuilds every preset exactly (nested dataclasses, tuples
+    that JSON turns into lists)."""
+    from helioslm_v5.tests import test_hub as m
+    expected = {"test_hub_local_roundtrip",
+                "test_hub_remote_requires_explicit_trust",
+                "test_hub_upload_download_with_mock_backend",
+                "test_hub_config_roundtrip_every_preset"}
+    _drift_guard(m, expected)
+    with tempfile.TemporaryDirectory() as t:
+        m.test_hub_local_roundtrip(Path(t))
+    m.test_hub_remote_requires_explicit_trust()
+    mp = _MonkeyPatch()
+    try:
+        with tempfile.TemporaryDirectory() as t:
+            m.test_hub_upload_download_with_mock_backend(Path(t), mp)
+    finally:
+        mp.undo()
+    m.test_hub_config_roundtrip_every_preset()
+    _pass("test_hub_suite",
+          "HF Hub offline round-trip: all 4 sidecar tests (bitwise local "
+          "round-trip, trust gate, mock-backend upload/download, config "
+          "presets) under the daily gate")
+
+
+def test_ruler_lite_suite():
+    """OS7 RULER-lite (eval/ruler_lite.py) under the daily gate. The
+    parametrized task test is called once per task with its full length
+    list (32/100/257 plus the determinism and too-short-refusal probes);
+    the probe-arms test builds all four longctx arms at hidden=64 and
+    runs one forward/backward each on CPU."""
+    from helioslm_v5.tests import test_ruler_lite as m
+    expected = {"test_tasks", "test_probe_arms_run"}
+    _drift_guard(m, expected)
+    for task in m.rl.TASKS:
+        m.test_tasks(task)
+    m.test_probe_arms_run()
+    _pass("test_ruler_lite_suite",
+          "RULER-lite: both sidecar tests (3 tasks x 3 lengths, seed "
+          "determinism, too-short refusal, 4 probe arms fwd/bwd) under "
+          "the daily gate")
+
+
+def test_review_fixes_suite():
+    """T87 repo-review fixes under the daily gate. No pytest and no
+    fixtures: plain functions, tempfile only. Pins: defer_validation with
+    a plain gate records TOOL_ERROR instead of crashing and a malformed
+    finish does not end the run (AgentLoop and ChatSession); missing +
+    wrong-typed args inspect as invalid -> ESCALATE (not CLARIFY); calc
+    overflow / 0**-1 are ToolCallError; harness side-effect plugins fail
+    closed without a TrustGate and only run on Route.DIRECT."""
+    from helioslm_v5.tests import test_review_fixes as m
+    expected = {"test_deferred_validation_with_plain_gate_does_not_crash",
+                "test_missing_plus_invalid_escalates",
+                "test_calc_arithmetic_faults_are_tool_errors",
+                "test_harness_gates_fail_closed_and_block_clarify"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_review_fixes_suite",
+          "T87 review fixes: all 4 sidecar tests (deferred validation, "
+          "invalid-vs-missing routing, calc faults, fail-closed harness "
+          "gates) under the daily gate")
 
 
 def test_sidecar_coverage_guard():

@@ -1,4 +1,30 @@
 """Offline Hub round-trip tests; never use the network or require an HF token."""
+try:
+    import pytest
+except ImportError:
+    # This file is also executed directly by the daily TESTS suite
+    # (case_upstream_suites), where pytest is not installed. The shim
+    # covers the only pytest feature used below: raises with match=
+    # (re.search on str(exc)). Same pattern as test_hsh_tools.py.
+    import contextlib as _contextlib
+    import re as _re
+
+    class _PytestShim:
+        @staticmethod
+        @_contextlib.contextmanager
+        def raises(exc, match=None):
+            try:
+                yield
+            except exc as e:
+                if match is not None and not _re.search(match, str(e)):
+                    raise AssertionError(
+                        f"raised {e!r}, which does not match /{match}/"
+                    ) from None
+                return
+            raise AssertionError(f"{exc.__name__} was not raised")
+
+    pytest = _PytestShim()
+
 import torch
 
 from helioslm_v5.configs.config_v5 import HeliosLMv5Config
@@ -21,7 +47,6 @@ def test_hub_local_roundtrip(tmp_path):
 
 
 def test_hub_remote_requires_explicit_trust():
-    import pytest
     with pytest.raises(ValueError, match="trust_checkpoint"):
         from_hub("someone/untrusted-checkpoint")
 
