@@ -1,5 +1,23 @@
 # HeliosLM v5 Changelog
 
+## v5.249 (2026-11-06) - Prune and distil a Gemma 4 student (v1.0 L-Edge pilot)
+
+New `examples/prune_kd_gemma4.py`. `prune` scores layers by block influence
+(1 - cos(in, out)), hidden channels by mean |x| after the pre-attention and
+pre-FFN norms, and FFN channels by mean |x| into `down_proj`, on calibration
+windows from a fetch_mixture.py directory. It then writes a smaller
+`Gemma4ForCausalLM` (default: 8 non-shared + 8 KV-shared layers, hidden
+1024, FFN 4096, about 0.55B parameters without the per-layer embedding
+table) whose every tensor is a slice of the source. The last non-shared
+layer of each attention type is always kept, so the KV-shared layers read
+the same source as before, and the scales tied to `hidden_size` are
+compensated. `kd` trains the student on the forward KL to a teacher with the
+same tokenizer (soft cap on both), a chunk of rows at a time with
+recomputation, AdamW and a WSD schedule sized from the measured step time
+(`--hours`). Test `helioslm_v5/tests/test_prune_kd_gemma4.py` (tiny E2B-shaped
+model: identity prune is exact, the pruned model loads and generates,
+chunked KL equals the full KL and its gradient, KD lowers the KL).
+
 ## v5.248 (2026-11-05) - HDL eval on several GPUs
 
 `examples/hdl_eval_all.py` now starts vLLM with `tensor_parallel_size`

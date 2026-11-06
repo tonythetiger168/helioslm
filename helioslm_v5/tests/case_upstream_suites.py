@@ -1137,7 +1137,7 @@ EXEMPT_SIDECARS = {
     'test_openai_stream_smoke',
     'test_option_matrix', 'test_oracle_guard', 'test_package_tiers', 'test_ple',
     'test_pool_ledger', 'test_prefix_pool_chained', 'test_prereg', 'test_pretrain_pilot',
-    'test_probe_api', 'test_quant_calib', 'test_quantile_balancing', 'test_qwen_next',
+    'test_probe_api', 'test_prune_kd_gemma4', 'test_quant_calib', 'test_quantile_balancing', 'test_qwen_next',
     'test_repo_longctx', 'test_review_fixes', 'test_review_regressions', 'test_rlcd_head',
     'test_rtllm_bench', 'test_ruler_lite', 'test_selfgen_meta', 'test_skill_docs',
     'test_smebu_sandwich', 'test_std_bench', 'test_stop_calibration', 'test_swarm_parallel',
