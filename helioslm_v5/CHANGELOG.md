@@ -1,5 +1,24 @@
 # HeliosLM v5 Changelog
 
+## v5.253 (2026-11-06) - Gemma 4 E2B / E4B and Grok 2 teacher rows
+
+The four big US vendors checked as teacher sources. Their closed models
+(Gemini, GPT, Grok, Claude) stay out of `eval/teacher_license_audit.py`:
+their API terms forbid training competing models.
+- `google/gemma-4-E2B`, `google/gemma-4-E4B`: allowed. They are the
+  route B student base and the KD teacher of the v1.0 L-Edge pilot, but had
+  no row. Hub cards say apache-2.0; the repositories have no LICENSE file to
+  hash, and Google's Open Source Blog (2026-04-02) states Gemma 4 is the first
+  Gemma under Apache 2.0. The `gemma-4-31B-it` row's "confirm" note is
+  updated accordingly. Earlier Gemma (Terms of Use) is not covered.
+- `xai-org/grok-2`: not allowed. The xAI Community License (hash pinned
+  from a live fetch) forbids using the materials, derivatives or outputs,
+  including generated data, to train or improve any large language or
+  general-purpose model (s.2(b)).
+- OpenAI's `gpt-oss-120b` (Apache-2.0) was already a pinned, allowed row.
+- Test `test_2026_11_06_vendor_rows` (also in the daily gate's
+  `test_teacher_license_audit_suite`).
+
 ## v5.252 (2026-11-06) - Qwen3.6-35B-A3B as a local teacher on an 8 GB laptop GPU
 
 `examples/distill_local_3070.ps1` (Windows PowerShell) runs D1 teacher

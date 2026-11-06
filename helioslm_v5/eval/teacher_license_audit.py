@@ -125,10 +125,10 @@ REVIEWS = {
         "license": "Apache-2.0 (model card; no LICENSE file in the repository)",
         "verdict": "allowed",
         "conditions": ["keep the licence notice",
-                       "confirm on Google's Gemma 4 licence page: Gemma 1-3n "
+                       "Gemma 4 is plain Apache 2.0 (Google Open Source "
+                       "Blog, 2026-04-02; confirmed 2026-11-06); Gemma 1-3n "
                        "used the Gemma Terms of Use, which constrained "
-                       "derivatives; Gemma 4 is reported to be plain "
-                       "Apache 2.0"],
+                       "derivatives, so do not carry this verdict to them"],
     },
 }
 # OS4 (v5.99): the five models of the 2026-10-22 open-model review. Read
@@ -252,6 +252,47 @@ REVIEWS.update({
             "needs a separate agreement before commercial use (s.2)",
             "internal use (nothing made available to third parties) is "
             "exempt from s.2 and s.3 (s.4)",
+        ],
+    },
+})
+# 2026-11-06: Google, OpenAI, xAI and Anthropic checked as teacher sources.
+# Closed models (Gemini, GPT, Grok, Claude) stay out of this table: their
+# API terms forbid training competing models. Gemma 4 E2B / E4B are the
+# route B student base and the v1.0 L-Edge pilot's KD teacher; their Hub
+# cards say apache-2.0 (license_link ai.google.dev/gemma/docs/gemma_4_license,
+# not reachable from the build container) and the repositories have no
+# LICENSE file to hash; Google's Open Source Blog (2026-04-02) states
+# Gemma 4 is the first Gemma under Apache 2.0. Grok 2's LICENSE was read
+# and hashed from a live fetch (revision daf4395a): the xAI Community
+# License forbids using the materials, derivatives or outputs (including
+# generated data) to train or improve any large language or
+# general-purpose model (s.2(b)), so it is recorded as not allowed.
+REVIEWS.update({
+    "google/gemma-4-E2B": {
+        "reviewed_sha256": None,   # no LICENSE file in the repository
+        "license": "Apache-2.0 (model card; no LICENSE file in the repository)",
+        "verdict": "allowed",
+        "conditions": ["keep the licence notice",
+                       "Gemma 4 only: earlier Gemma used the Gemma Terms of Use"],
+    },
+    "google/gemma-4-E4B": {
+        "reviewed_sha256": None,   # no LICENSE file in the repository
+        "license": "Apache-2.0 (model card; no LICENSE file in the repository)",
+        "verdict": "allowed",
+        "conditions": ["keep the licence notice",
+                       "Gemma 4 only: earlier Gemma used the Gemma Terms of Use"],
+    },
+    "xai-org/grok-2": {
+        "reviewed_sha256": "2576e2a47e576d18b3f86a9216083c2966bc19391207a80f9cd8faced69542d5",
+        "license": "xAI Community License Agreement (last updated 2025-11-04)",
+        "verdict": "not_allowed",
+        "conditions": [
+            "s.2(b): the materials, derivatives or outputs (including "
+            "generated data) may not be used to train, create or improve "
+            "any foundational, large language or general-purpose AI model, "
+            "except fine-tuning Grok 2 itself",
+            "commercial use also requires xAI's Acceptable Use Policy and a "
+            "'Powered by xAI' notice (s.2(a), s.3)",
         ],
     },
 })

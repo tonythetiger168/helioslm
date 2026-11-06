@@ -1255,13 +1255,14 @@ def test_teacher_license_audit_suite():
                 "test_pending_rows_are_not_usable_until_pinned",
                 "test_committed_audit", "test_2026_10_24_rows",
                 "test_2026_10_30_kimi_rows", "test_2026_11_03_qwen_row",
-                "test_2026_11_05_kimi_k31_row"}
+                "test_2026_11_05_kimi_k31_row", "test_2026_11_06_vendor_rows"}
     _drift_guard(m, expected)
     for name in sorted(expected):
         getattr(m, name)()
     _pass("test_teacher_license_audit_suite",
-          "T120 teacher licence audit: all 8 sidecar tests (incl. the "
-          "v5.239 Kimi-K3.1-Pro row) under the daily gate")
+          "T120 teacher licence audit: all 9 sidecar tests (incl. the "
+          "v5.239 Kimi-K3.1-Pro row and the v5.253 Gemma 4 / Grok 2 "
+          "rows) under the daily gate")
 
 
 def test_pretrain_pilot_suite():

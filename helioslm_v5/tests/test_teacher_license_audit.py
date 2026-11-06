@@ -30,10 +30,11 @@ NEW_1024 = ("deepseek-ai/DeepSeek-V4.1-Flash-1017",
 NEW_1030 = ("moonshotai/Kimi-K2.6",)   # hash pinned from a live fetch
 NEW_1103 = ("Qwen/Qwen3.6-35B-A3B",)   # hash pinned from a live fetch
 NEW_1105 = ("moonshotai/Kimi-K3.1-Pro",)   # hash pinned from a live fetch
+NEW_1106 = ("google/gemma-4-E2B", "google/gemma-4-E4B", "xai-org/grok-2")
 
 
 def test_reviews_complete():
-    assert len(ta.TEACHERS) == 20 and len(ta.REVIEWS) == 20
+    assert len(ta.TEACHERS) == 23 and len(ta.REVIEWS) == 23
     for rid, r in ta.REVIEWS.items():
         assert r["verdict"] in ta.VERDICTS, rid
         assert r["conditions"] and r["license"], rid
@@ -109,7 +110,8 @@ def test_committed_audit():
     art = json.loads(_ART.read_text())
     rows = art["rows"]
     assert [r["id"] for r in rows] == [t for t in ta.TEACHERS
-                                       if t not in OS4 + NEW_1024 + NEW_1030 + NEW_1103 + NEW_1105]
+                                       if t not in OS4 + NEW_1024 + NEW_1030 + NEW_1103 + NEW_1105
+                                       + NEW_1106]
     for r in rows:
         assert r["license_sha256"] == ta.REVIEWS[r["id"]]["reviewed_sha256"]
         assert r["verdict"] in ta.VERDICTS
@@ -189,6 +191,24 @@ def test_2026_11_05_kimi_k31_row():
     print("PASS test_2026_11_05_kimi_k31_row")
 
 
+def test_2026_11_06_vendor_rows():
+    # Gemma 4 E2B / E4B (route B base, v1.0 pilot KD teacher) are usable;
+    # Grok 2's licence forbids training other models on its outputs
+    e2b, e4b, grok = NEW_1106
+    for rid in (e2b, e4b):
+        r = ta.REVIEWS[rid]
+        assert ta.usable(rid) and r["verdict"] == "allowed"
+        assert r["reviewed_sha256"] is None and "Apache-2.0" in r["license"]
+    g = ta.REVIEWS[grok]
+    assert g["verdict"] == "not_allowed" and not ta.usable(grok)
+    assert len(g["reviewed_sha256"]) == 64
+    assert any("s.2(b)" in c for c in g["conditions"])
+    # closed models are still not in the table at all
+    closed = ("claude", "gemini", "gpt-5", "gpt-6", "grok-3", "grok-4")
+    assert not any(c in rid.lower() for rid in ta.REVIEWS for c in closed)
+    print("PASS test_2026_11_06_vendor_rows")
+
+
 if __name__ == "__main__":
     test_reviews_complete()
     test_changed_or_unreviewed_licence_is_refused()
@@ -198,4 +218,5 @@ if __name__ == "__main__":
     test_2026_10_30_kimi_rows()
     test_2026_11_03_qwen_row()
     test_2026_11_05_kimi_k31_row()
+    test_2026_11_06_vendor_rows()
 
