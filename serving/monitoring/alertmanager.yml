@@ -1,0 +1,20 @@
+# Alertmanager: where alerts go. Fill in one receiver before starting the stack.
+# Telegram: create a bot with @BotFather, put its token in ./secrets/telegram_token, set chat_id.
+# Email: fill the smtp_* fields and the address.
+route:
+  receiver: ops
+  group_by: [alertname]
+  group_wait: 30s
+  repeat_interval: 4h
+receivers:
+  - name: ops
+    telegram_configs:
+      - bot_token_file: /etc/alertmanager/secrets/telegram_token
+        chat_id: 0   # replace with your chat id
+        send_resolved: true
+    # email_configs:
+    #   - to: ops@example.com
+    #     from: alerts@example.com
+    #     smarthost: smtp.example.com:587
+    #     auth_username: alerts@example.com
+    #     auth_password_file: /etc/alertmanager/secrets/smtp_password

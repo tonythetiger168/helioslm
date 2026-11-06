@@ -1,0 +1,60 @@
+# Alert rules for HeliosLM vLLM serving. Thresholds come from the GPU load test (servetest RESULTS.md):
+# set the latency limits a bit above the p95 you measured at your planned concurrency.
+groups:
+- name: helioslm-serving
+  rules:
+  - alert: VLLMDown
+    expr: up{job="vllm"} == 0
+    for: 1m
+    labels: {severity: critical}
+    annotations: {summary: "vLLM server {{ $labels.instance }} is not answering /metrics"}
+  - alert: GPUExporterDown
+    expr: up{job="gpu"} == 0
+    for: 2m
+    labels: {severity: warning}
+    annotations: {summary: "GPU exporter {{ $labels.instance }} is down (no GPU metrics)"}
+  - alert: EngineStuck
+    expr: sum(vllm:num_requests_running) > 0 and sum(rate(vllm:generation_tokens_total[2m])) == 0
+    for: 2m
+    labels: {severity: critical}
+    annotations: {summary: "Requests are running but no tokens were generated for 2 minutes"}
+  - alert: HighTTFT
+    expr: histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket[5m]))) > 3
+    for: 5m
+    labels: {severity: warning}
+    annotations: {summary: "p95 time to first token is {{ $value | humanize }}s (limit 3s)"}
+  - alert: SlowTokens
+    expr: histogram_quantile(0.95, sum by (le) (rate(vllm:inter_token_latency_seconds_bucket[5m]))) > 0.15
+    for: 5m
+    labels: {severity: warning}
+    annotations: {summary: "p95 inter-token latency is {{ $value | humanize }}s (limit 0.15s, about 7 tok/s per user)"}
+  - alert: QueueBacklog
+    expr: sum(vllm:num_requests_waiting) > 8
+    for: 2m
+    labels: {severity: warning}
+    annotations: {summary: "{{ $value }} requests waiting in the queue: capacity is full, add a GPU or lower max load"}
+  - alert: KVCacheFull
+    expr: max(vllm:kv_cache_usage_perc) > 0.95
+    for: 5m
+    labels: {severity: warning}
+    annotations: {summary: "KV cache {{ $value | humanizePercentage }} full, requests will be preempted"}
+  - alert: Preemptions
+    expr: sum(rate(vllm:num_preemptions_total[5m])) > 0.1
+    for: 5m
+    labels: {severity: warning}
+    annotations: {summary: "vLLM is preempting requests ({{ $value | humanize }}/s): KV cache too small for the load"}
+  - alert: HTTPErrors
+    expr: sum(rate(http_requests_total{job="vllm",status=~"5.."}[5m])) / clamp_min(sum(rate(http_requests_total{job="vllm"}[5m])), 1e-9) > 0.02
+    for: 5m
+    labels: {severity: critical}
+    annotations: {summary: "{{ $value | humanizePercentage }} of API requests return 5xx"}
+  - alert: GPUHot
+    expr: max by (uuid) (nvidia_smi_temperature_gpu) > 85
+    for: 5m
+    labels: {severity: warning}
+    annotations: {summary: "GPU {{ $labels.uuid }} at {{ $value }}°C"}
+  - alert: GPUMemoryNearFull
+    expr: max by (uuid) (nvidia_smi_memory_used_bytes / nvidia_smi_memory_total_bytes) > 0.98
+    for: 10m
+    labels: {severity: warning}
+    annotations: {summary: "GPU {{ $labels.uuid }} memory {{ $value | humanizePercentage }} used"}
