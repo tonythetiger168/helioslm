@@ -67,14 +67,25 @@ includes torch.compile): L40S 131-150 s, RTX PRO 6000 120-170 s, A100 pod
 - E4B is cheap (US$0.077 per 1M on L40S) but slow per user at low load
   (69 tok/s single stream); it suits high-concurrency, short-answer
   traffic better than interactive chat.
-- FP8 quality: see "FP8 vs BF16 quality" below before switching
-  production to FP8.
+- FP8 costs no measurable quality (TMMLU+ 70.6% vs 70.9%, within
+  noise; see below), so FP8 + MTP is the production setting on Ada /
+  Blackwell cards. On A100 FP8 is weight-only and not faster: keep BF16.
 
 ## FP8 vs BF16 quality
 
-TMMLU+ sample (25 questions per subject, 66 subjects), same prompts,
-greedy, letter-only answer. Results: pending (pod running), filled in
-when it finishes.
+TMMLU+ sample (25 questions per subject, 67 subjects, 1,675 questions),
+same prompts, greedy, letter-only answer, RTX PRO 6000, vLLM 0.33.0:
+
+| Weights | Accuracy | Unparsed |
+|---|---|---|
+| BF16 | 70.9% | 6 |
+| FP8 (online W8A8) | 70.6% | 4 |
+
+Difference -0.3 points, standard error 0.5 (paired): within noise. The
+two runs give the same answer on 93.7% of questions (42 right only in
+BF16, 37 right only in FP8). FP8 is fine for production on Ada /
+Blackwell; MTP is lossless by construction, so FP8 + MTP keeps this
+quality.
 
 ## Monitoring (verified on the test pods)
 
@@ -103,6 +114,6 @@ internal network, and expose only the API through the gateway.
 ## Cost of this test
 
 Three pods (L40S secure US$1.09/h, A100 80GB community US$1.19/h, RTX PRO
-6000 secure US$2.49/h), about 40-50 minutes each: about US$3.3. All pods
-removed themselves. Raw data: `helios-pod-logs/{y7elumuczsv4je,
-36y0yq7qu67pa5,cazeb56d34xw5x}/servetest/`.
+6000 secure US$2.49/h), about 40-50 minutes each, plus the FP8 quality
+pod (RTX PRO 6000, ~10 min): about US$3.8. All pods removed themselves. Raw data: `helios-pod-logs/{y7elumuczsv4je,
+36y0yq7qu67pa5,cazeb56d34xw5x,uc2h8f1e1xqnwn}/servetest/`.
