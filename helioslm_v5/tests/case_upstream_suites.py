@@ -1150,6 +1150,9 @@ EXEMPT_SIDECARS = {
     'test_multiseed', 'test_nope_temperature',     'test_noul_continuous', 'test_nvfp4_qat_e2e',
     # Binds 127.0.0.1 (ephemeral port); same exemption as test_hsh_web.
     'test_openai_stream_smoke',
+    # v5.253: one case binds 127.0.0.1 (a llama-server stand-in); same
+    # exemption as test_openai_stream_smoke. pytest still runs it in CI.
+    'test_distill_local_3070',
     'test_option_matrix', 'test_oracle_guard', 'test_package_tiers', 'test_ple',
     'test_pool_ledger', 'test_prefix_pool_chained', 'test_prereg',
     'test_probe_api', 'test_prune_kd_gemma4', 'test_quant_calib', 'test_quantile_balancing', 'test_qwen_next',
@@ -1252,13 +1255,14 @@ def test_teacher_license_audit_suite():
                 "test_pending_rows_are_not_usable_until_pinned",
                 "test_committed_audit", "test_2026_10_24_rows",
                 "test_2026_10_30_kimi_rows", "test_2026_11_03_qwen_row",
-                "test_2026_11_05_kimi_k31_row"}
+                "test_2026_11_05_kimi_k31_row", "test_2026_11_06_vendor_rows"}
     _drift_guard(m, expected)
     for name in sorted(expected):
         getattr(m, name)()
     _pass("test_teacher_license_audit_suite",
-          "T120 teacher licence audit: all 8 sidecar tests (incl. the "
-          "v5.239 Kimi-K3.1-Pro row) under the daily gate")
+          "T120 teacher licence audit: all 9 sidecar tests (incl. the "
+          "v5.239 Kimi-K3.1-Pro row and the v5.254 Gemma 4 / Grok 2 "
+          "rows) under the daily gate")
 
 
 def test_pretrain_pilot_suite():
