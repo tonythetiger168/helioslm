@@ -1,0 +1,164 @@
+{
+ "name": "v1-prune-kd-pilot",
+ "note": "v1.0 L-Edge pilot: zh-TW 50% (wiki, FineWeb-2, rephrases, Taigi), EN 25%, zh-CN 15%, math 10%. No past-exam MCQs, so TMMLU+ (built from old exams) stays a clean gate.",
+ "sources": [
+  {
+   "name": "tw2-zhwiki",
+   "source": "hf:chienhsinlin/helioslm-twdata",
+   "phase": "main",
+   "weight": 0.17,
+   "data_files": "tw2/zhwiki/*.jsonl",
+   "license": "CC-BY-SA-4.0",
+   "license_verified": false,
+   "zh_variants": [
+    "tw"
+   ]
+  },
+  {
+   "name": "tw2-fineweb2",
+   "source": "hf:chienhsinlin/helioslm-twdata",
+   "phase": "main",
+   "weight": 0.17,
+   "data_files": "tw2/fineweb2/*.jsonl",
+   "license": "CC-BY-SA-4.0",
+   "license_verified": false,
+   "zh_variants": [
+    "tw"
+   ]
+  },
+  {
+   "name": "zhwiki-rephrase",
+   "source": "hf:chienhsinlin/helioslm-rephrase-a1",
+   "phase": "main",
+   "weight": 0.12,
+   "license": "CC-BY-SA-4.0",
+   "license_verified": false,
+   "zh_variants": [
+    "tw",
+    "mixed"
+   ]
+  },
+  {
+   "name": "taigi-literature",
+   "source": "hf:chienhsinlin/helioslm-twdata",
+   "phase": "main",
+   "weight": 0.02,
+   "data_files": "taigi/trueming_sentences.jsonl",
+   "heuristics": false,
+   "license": "CC-BY-SA-4.0",
+   "license_verified": false
+  },
+  {
+   "name": "taigi-wiki",
+   "source": "hf:wikimedia/wikipedia:20231101.zh-min-nan",
+   "phase": "main",
+   "weight": 0.02,
+   "heuristics": false,
+   "license": "CC-BY-SA-4.0",
+   "license_verified": false
+  },
+  {
+   "name": "fineweb-edu",
+   "source": "hf:HuggingFaceFW/fineweb-edu",
+   "phase": "main",
+   "weight": 0.25,
+   "license": "ODC-BY-1.0",
+   "license_verified": false
+  },
+  {
+   "name": "chinese-fineweb-edu",
+   "source": "hf:opencsg/chinese-fineweb-edu-v2",
+   "phase": "main",
+   "weight": 0.15,
+   "license": "Apache-2.0",
+   "license_verified": false
+  },
+  {
+   "name": "finemath",
+   "source": "hf:HuggingFaceTB/finemath:finemath-3plus",
+   "phase": "main",
+   "weight": 0.1,
+   "license": "ODC-BY-1.0",
+   "license_verified": false
+  },
+  {
+   "name": "tw2-zhwiki-decay",
+   "source": "hf:chienhsinlin/helioslm-twdata",
+   "phase": "decay",
+   "weight": 0.17,
+   "data_files": "tw2/zhwiki/*.jsonl",
+   "license": "CC-BY-SA-4.0",
+   "license_verified": false,
+   "zh_variants": [
+    "tw"
+   ]
+  },
+  {
+   "name": "tw2-fineweb2-decay",
+   "source": "hf:chienhsinlin/helioslm-twdata",
+   "phase": "decay",
+   "weight": 0.17,
+   "data_files": "tw2/fineweb2/*.jsonl",
+   "license": "CC-BY-SA-4.0",
+   "license_verified": false,
+   "zh_variants": [
+    "tw"
+   ]
+  },
+  {
+   "name": "zhwiki-rephrase-decay",
+   "source": "hf:chienhsinlin/helioslm-rephrase-a1",
+   "phase": "decay",
+   "weight": 0.12,
+   "license": "CC-BY-SA-4.0",
+   "license_verified": false,
+   "zh_variants": [
+    "tw",
+    "mixed"
+   ]
+  },
+  {
+   "name": "taigi-literature-decay",
+   "source": "hf:chienhsinlin/helioslm-twdata",
+   "phase": "decay",
+   "weight": 0.02,
+   "data_files": "taigi/trueming_sentences.jsonl",
+   "heuristics": false,
+   "license": "CC-BY-SA-4.0",
+   "license_verified": false
+  },
+  {
+   "name": "taigi-wiki-decay",
+   "source": "hf:wikimedia/wikipedia:20231101.zh-min-nan",
+   "phase": "decay",
+   "weight": 0.02,
+   "heuristics": false,
+   "license": "CC-BY-SA-4.0",
+   "license_verified": false
+  },
+  {
+   "name": "fineweb-edu-decay",
+   "source": "hf:HuggingFaceFW/fineweb-edu",
+   "phase": "decay",
+   "weight": 0.25,
+   "license": "ODC-BY-1.0",
+   "license_verified": false
+  },
+  {
+   "name": "chinese-fineweb-edu-decay",
+   "source": "hf:opencsg/chinese-fineweb-edu-v2",
+   "phase": "decay",
+   "weight": 0.15,
+   "license": "Apache-2.0",
+   "license_verified": false
+  },
+  {
+   "name": "finemath-decay",
+   "source": "hf:HuggingFaceTB/finemath:finemath-4plus",
+   "phase": "decay",
+   "weight": 0.1,
+   "license": "ODC-BY-1.0",
+   "license_verified": false
+  }
+ ]
+}

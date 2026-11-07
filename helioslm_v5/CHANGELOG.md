@@ -1,5 +1,29 @@
 # HeliosLM v5 Changelog
 
+## v5.255 (2026-11-07) - v1.0 prune ladder: E2B / E4B ceiling and four pruned sizes
+
+The 2026-11-06 prune + KD pilot (E2B pruned to 0.58B effective, 238M KD
+tokens from E4B) scored at chance: TMMLU+ 24.8, tw_justice 21.7, C-Eval 27.0,
+CMMLU 25.2, against Qwen3.5-0.8B's 35.7 / 38.5 / 51.7 / 50.8. Its pruned
+start was already at chance, and KD moved nothing significantly (tw_justice
+fell 1.3 points). Before paying for a longer KD run (about $80 per 1B tokens on
+one A100):
+- `examples/v1_prune_ladder_pod.sh` runs plan stages 0 and 1 on one pod:
+  - scores the untouched `gemma-4-E2B` and `gemma-4-E4B` (the ceiling of the
+    prune route);
+  - prunes E2B to four sizes with no training (8+8 layers at 1024/4096, the
+    pilot; 10+12 at 1280/5120; 12+16 at 1536/6144; 15+20 at 1024/4096);
+  - scores them all with the pilot's scorer: TMMLU+ and C-Eval 5-shot, and
+    the 2026 held-out tw_justice. Qwen3.5-0.8B is reused from 2026-11-06.
+  - Results go to the Hub log dataset; the pod is removed on every exit.
+    About 3-4 h on one A100 80 GB (about $5).
+- `data/mixtures/v1_prune_kd_pilot.json`: the pilot's mixture, now in the
+  repo; the ladder uses 2e7 tokens of it as calibration text.
+- Test `test_v1_prune_ladder_pod` (folded into the daily gate): bash
+  parses the script; its flags exist in the three tools; the ladder fits
+  E2B; the mixture weights sum to 1; results are uploaded before the pod is
+  removed; no token appears in the script.
+
 ## v5.254 (2026-11-06) - Gemma 4 E2B / E4B and Grok 2 teacher rows
 
 The four big US vendors checked as teacher sources. Their closed models

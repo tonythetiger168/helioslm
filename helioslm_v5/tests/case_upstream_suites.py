@@ -1099,6 +1099,8 @@ FOLDED_SIDECARS = {
     "test_kv_cache_analytic": "test_kv_cache_analytic_suite",
     # worker launch env: file parse, folded the day it landed
     "test_worker_launch_env": "test_worker_launch_env_suite",
+    # v1.0 prune-ladder pod script (v5.255): file parse only, folded the day it landed
+    "test_v1_prune_ladder_pod": "test_v1_prune_ladder_pod_suite",
     # Mac MLX zips + page section (v5.245): tmp dirs and one CLI subprocess
     "test_mlx_mac": "test_mlx_mac_suite",
     # serving load test + monitoring stack (v5.249): file parse + pure math
@@ -1190,6 +1192,20 @@ def test_worker_launch_env_suite():
           "worker.env.example: helioslm, MTP x4, len 16384, "
           "16 seqs, no quant, no secret")
 
+
+def test_v1_prune_ladder_pod_suite():
+    """v1.0 plan stages 0 + 1 pod script (v5.255). Pins: bash parses it;
+    every flag it passes to prune_kd_gemma4.py prune, fetch_mixture.py and
+    base_gap_eval.py exists; each ladder row fits gemma-4-E2B; the mixture's
+    phase weights sum to 1; results are uploaded before the pod is removed
+    on every exit; no token in the script. File reads only, no socket."""
+    from helioslm_v5.tests import test_v1_prune_ladder_pod as m
+    expected = {"test_v1_prune_ladder_pod"}
+    _drift_guard(m, expected)
+    m.test_v1_prune_ladder_pod()
+    _pass("test_v1_prune_ladder_pod_suite",
+          "v1 prune ladder pod script: flags, E2B limits, mixture, "
+          "upload-then-remove")
 
 def test_serving_monitoring_suite():
     """Serving load-test summary math and monitoring config wiring (v5.249).

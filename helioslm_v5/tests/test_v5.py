@@ -279,6 +279,8 @@ TESTS = [
     # Worker launch env: pure file parse, folded the day it landed.
     # test_openai_stream_smoke stays exempt (binds a port).
     case_upstream_suites.test_worker_launch_env_suite,
+    # v1.0 prune-ladder pod script (v5.255), folded the day it landed.
+    case_upstream_suites.test_v1_prune_ladder_pod_suite,
     # Mac MLX download zips (v5.245), folded the day it landed.
     case_upstream_suites.test_mlx_mac_suite,
     # Serving load test + monitoring stack (v5.249), folded the day it landed.
