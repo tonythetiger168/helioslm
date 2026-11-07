@@ -1,5 +1,16 @@
 # HeliosLM v5 Changelog
 
+## v5.257 (2026-11-07) - UVM bench: closing fence glued to [DONE]
+
+`uvm_bench.extract_tb` now treats a `[DONE]` line with a closing code
+fence glued to it (`[DONE]` followed by three backticks, as Nemotron 3
+Ultra writes it) as the end tag. Before, the line stayed in the
+testbench and every such answer failed to build with "syntax error,
+unexpected '['". Re-scoring the 24 saved Nemotron UVM answers locally
+(Verilator 5.052): build 2/24 either way; the remaining build failures are
+the model's (missing `import uvm_pkg::*`, clocking-block modports) or
+Verilator gaps (interface declared inside a module).
+
 ## v5.256 (2026-11-07) - CVDP harness: services run in working_dir, commented OSS Dockerfiles run
 
 `cvdp_bench.run` now runs each compose service in its `working_dir`

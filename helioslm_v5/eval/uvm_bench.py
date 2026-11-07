@@ -370,10 +370,12 @@ def extract_tb(text):
         body = lines[fences[0] + 1:fences[1]] if len(fences) >= 2 else lines
     out = []
     for ln in body:
-        if _END_MARK.match(ln) or ln.strip() == "[DONE]":
+        # a closing fence glued to the tag ("[DONE]```", Nemotron) is the same tag
+        bare = ln.rstrip().rstrip("`").rstrip()
+        if _END_MARK.match(bare) or bare.strip() == "[DONE]":
             break
-        if ln.rstrip().endswith("[DONE]"):
-            out.append(ln.rstrip()[:-len("[DONE]")])
+        if bare.endswith("[DONE]"):
+            out.append(bare[:-len("[DONE]")])
             break
         out.append(ln)
     return "\n".join(ln for ln in out if not ln.lstrip().startswith("```")) + "\n"
