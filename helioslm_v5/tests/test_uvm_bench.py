@@ -179,6 +179,9 @@ def test_extract_tb_end_markers():
         == "module tb;\nendmodule\n"
     assert ub.extract_tb("[BEGIN]\n```sv\nmodule tb; endmodule\n```\n[DONE]") \
         == "module tb; endmodule\n"
+    # v5.257: Nemotron glues the closing fence to the tag ("[DONE]```")
+    assert ub.extract_tb("[BEGIN]\n```systemverilog\nmodule tb;\nendmodule\n\n[DONE]```") \
+        == "module tb;\nendmodule\n\n"
 
 
 def test_compat_macros_cover_uvm12_sequence_macros():

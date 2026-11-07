@@ -443,6 +443,35 @@ def select_consensus(jobs, outputs, check, benches=REPAIR_BENCHES, bench_checks=
 HDL_SUFFIXES = (".sv", ".v", ".svh", ".vh")
 
 
+def uvm_check(tasks, uvm, run_fn=None, max_lines=15):
+    """Open-tool check for UVM answers (v5.258): the testbench is built
+    with Verilator against the design given in the prompt and run on that
+    design only. Feedback is the build errors, or the UVM errors it reports
+    on the design it was given; mutant results are never shown.
+    ``run_fn(tb, task, uvm) -> run_tb result`` replaces Verilator in tests."""
+    run_fn = run_fn or ub.run_tb
+
+    def check(key, text):
+        task = tasks.get(key)
+        if task is None:
+            return {"ok": True, "feedback": ""}
+        r = run_fn(ub.extract_tb(text), dict(task, mutants=[]), uvm)
+        if r["build"] and r["golden"]:
+            return {"ok": True, "feedback": ""}
+        log = r.get("log") or ""
+        if not r["build"]:
+            lines = [ln.replace("tb.sv:", "line ") for ln in log.splitlines()
+                     if ln.startswith("%Error") and "tb.sv:" in ln]
+            head = "The testbench does not compile with Verilator 5.052:\n"
+        else:
+            lines = [ln for ln in log.splitlines()
+                     if ("UVM_ERROR" in ln or "UVM_FATAL" in ln) and "@" in ln]
+            head = ("On the design under test given in the prompt (which is correct), "
+                    "the testbench reports errors or does not finish cleanly:\n")
+        return {"ok": False, "feedback": head + "\n".join(lines[:max_lines] or [log[-1500:]])}
+    return check
+
+
 def cvdp_check(rows, compile_fn=None, max_lines=12):
     """Open-tool check for single-file CVDP answers (v5.234): the file the
     upstream harness would write (``cb.parse_response``) is compiled with
@@ -577,9 +606,11 @@ def main(argv=None):
                 gen, jobs, outputs, a.repair_rounds, hb.tool_feedback,
                 temperature=a.temperature, top_p=a.top_p,
                 max_new_tokens=a.max_new_tokens, workers=a.workers,
-                bench_checks={"cvdp": cvdp_check(
-                    {r["id"]: r for r in data.get("cvdp", [])})}
-                if "cvdp" in benches else None)
+                bench_checks={**({"cvdp": cvdp_check(
+                    {r["id"]: r for r in data.get("cvdp", [])})} if "cvdp" in benches else {}),
+                    **({"uvm": uvm_check({t["name"]: t for t in data["uvm"]},
+                                         data["uvm_dir"])} if "uvm" in benches else {})}
+                or None)
             print("repair:", json.dumps(repair_stats), flush=True)
     picks = select_stats = None
     if a.select != "none":

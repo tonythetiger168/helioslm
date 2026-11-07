@@ -359,3 +359,27 @@ def test_select_consensus_votes_cvdp_when_asked(monkeypatch):
     assert picks == [2] and got == [["good2"]] and seen["ok"] == [False, True, True]
     got, picks = ea.select_consensus(jobs, outs, None, bench_checks=chk)
     assert picks == [1]
+
+
+def test_uvm_check_feedback_hides_mutants():
+    """v5.257: the UVM repair check builds and runs the testbench on the
+    design given in the prompt only; feedback is Verilator / UVM errors."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "hdl_eval_all", Path(__file__).resolve().parents[2] / "examples" / "hdl_eval_all.py")
+    h = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(h)
+    seen = []
+
+    def fake(tb, task, uvm):
+        seen.append(task["mutants"])
+        if "bad" in tb:
+            return {"build": False, "golden": False,
+                    "log": "%Error: tb.sv:3:1: syntax error\nother"}
+        return {"build": True, "golden": True, "log": ""}
+    chk = h.uvm_check({"P": {"name": "P", "mutants": ["m1", "m2"]}}, "u", run_fn=fake)
+    assert chk("P", "[BEGIN]\nmodule tb; endmodule\n[DONE]") == {"ok": True, "feedback": ""}
+    v = chk("P", "[BEGIN]\nbad\n[DONE]")
+    assert not v["ok"] and "line 3:1: syntax error" in v["feedback"]
+    assert seen == [[], []]
+    assert chk("unknown", "x")["ok"]

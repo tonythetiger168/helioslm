@@ -89,6 +89,10 @@ reference model and report every mismatch with `uvm_error`. Do not read signals 
 the DUT; use only its ports.
 - Drive enough stimulus (directed and random) to expose any bug in TopModule, then end \
 the test (raise/drop an objection) so the simulation finishes.
+- It is compiled with Verilator 5.052 (`--binary --timing`, UVM 2017-1.0 without DPI): \
+put `import uvm_pkg::*;` and `include "uvm_macros.svh"` at the top of the file, declare \
+interfaces at file scope (not inside a module), do not use clocking blocks or modports, \
+declare local variables at the start of a block, and do not redeclare TopModule.
 Enclose your code with [BEGIN] and [DONE]. Only output the code snippet and do NOT \
 output anything else."""
 
@@ -370,10 +374,12 @@ def extract_tb(text):
         body = lines[fences[0] + 1:fences[1]] if len(fences) >= 2 else lines
     out = []
     for ln in body:
-        if _END_MARK.match(ln) or ln.strip() == "[DONE]":
+        # a closing fence glued to the tag ("[DONE]```", Nemotron) is the same tag
+        bare = ln.rstrip().rstrip("`").rstrip()
+        if _END_MARK.match(bare) or bare.strip() == "[DONE]":
             break
-        if ln.rstrip().endswith("[DONE]"):
-            out.append(ln.rstrip()[:-len("[DONE]")])
+        if bare.endswith("[DONE]"):
+            out.append(bare[:-len("[DONE]")])
             break
         out.append(ln)
     return "\n".join(ln for ln in out if not ln.lstrip().startswith("```")) + "\n"
