@@ -1,5 +1,18 @@
 # HeliosLM v5 Changelog
 
+## v5.256 (2026-11-07) - CVDP harness: services run in working_dir, commented OSS Dockerfiles run
+
+`cvdp_bench.run` now runs each compose service in its `working_dir`
+(upstream `/code/rundir`) instead of `/code`. The cid007 lint / area
+datapoints write `synth.log` and `lint_results.log` there, so every one of
+them failed with "No such file" and the category scored 0/40. `unsupported`
+now accepts a Dockerfile that is `FROM __OSS_SIM_IMAGE__` plus comment
+lines; 19 v1.1.0 datapoints were skipped for that alone (283 -> 302
+runnable). Re-scoring the saved Nemotron best-of-8 consensus samples with
+no new generation: cid007 0/40 -> 20/40, CVDP 123/283 (43.5%) -> 144/283
+(50.9%); no datapoint that passed before fails now. Pod job note: CVDP
+needs Verilator on PATH (cid007 lint), not only the UVM bench.
+
 ## v5.255 (2026-11-07) - Merge, MHC and BPE sidecars folded into the suite
 
 `case_upstream_suites.py` gains wrappers for `test_merge` (7 funcs;

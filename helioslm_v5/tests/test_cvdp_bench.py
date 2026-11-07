@@ -152,3 +152,31 @@ def test_run_shell_timeout_kills_grandchildren(tmp_path):
     assert not (tmp_path / "late").exists()      # the background child died
     rc, so, _ = cb.run_shell("echo ok", tmp_path, dict(os.environ), 10)
     assert rc == 0 and so.strip() == "ok"
+
+
+def _row_with(files):
+    row = json.loads(OSS.read_text(encoding="utf-8").splitlines()[0])
+    row["harness"]["files"] = {**row["harness"]["files"], **files}
+    return row
+
+
+def test_dockerfile_comments_only_is_oss():
+    """v5.253: a Dockerfile that is FROM the OSS image plus comments runs
+    (19 v1.1.0 datapoints were skipped for this); a real build step does not."""
+    plain = "FROM __OSS_SIM_IMAGE__\n\n# ----\n# - Install dependencies\n# ----\n"
+    assert cb.unsupported(_row_with({"Dockerfile": plain})) is None
+    custom = "FROM __OSS_SIM_IMAGE__\nRUN pip install foo\n"
+    assert cb.unsupported(_row_with({"Dockerfile": custom})) == "custom Dockerfile"
+
+
+def test_service_runs_in_working_dir():
+    """v5.253: each compose service runs in its working_dir (/code/rundir
+    upstream). The cid007 synth/lint scripts write logs there; running in
+    /code made all of them fail."""
+    compose = ("services:\n  wd:\n    image: __OSS_SIM_IMAGE__\n"
+               "    working_dir : /code/rundir\n"
+               "    command     : sh -c 'pwd > /code/rundir/where.txt && test -f where.txt'\n")
+    row = _row_with({"docker-compose.yml": compose})
+    out = cb.run(row, {}, timeout=30) if shutil.which("iverilog") else None
+    if out is not None:
+        assert out["passed"], out["log"]
