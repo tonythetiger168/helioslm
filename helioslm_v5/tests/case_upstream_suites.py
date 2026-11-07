@@ -1049,6 +1049,10 @@ def test_kv_cache_analytic_suite():
 # test_ruler_lite (OS7 RULER-lite tasks + probe arms) and
 # test_review_fixes (T87 repo-review fix pins) moved from EXEMPT to
 # FOLDED — the backlog is now 173 files.
+# 2026-11-07 limitations round: test_prefix_pool_chained (chained block
+# keys), test_pool_ledger (Phase 3.1 ledger oracles) and
+# test_stop_calibration (T98 AC5 stop-decision metrics) moved from
+# EXEMPT to FOLDED — the backlog is now 167 files.
 # OpenAI-compatible stream smoke (serving/openai_stream_smoke.py):
 # test_openai_stream_smoke is exempt for the same reason as test_hsh_web.
 # It binds 127.0.0.1 through ThreadingHTTPServer on an ephemeral port and
@@ -1117,6 +1121,10 @@ FOLDED_SIDECARS = {
     "test_mhc": "test_mhc_suite",
     "test_mhc_sinkhorn": "test_mhc_sinkhorn_suite",
     "test_bpe": "test_bpe_suite",
+    # limitations round 2026-11-07 (prefix pool / ledger / stop metrics)
+    "test_prefix_pool_chained": "test_prefix_pool_chained_suite",
+    "test_pool_ledger": "test_pool_ledger_suite",
+    "test_stop_calibration": "test_stop_calibration_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1159,11 +1167,11 @@ EXEMPT_SIDECARS = {
     # exemption as test_openai_stream_smoke. pytest still runs it in CI.
     'test_distill_local_3070',
     'test_option_matrix', 'test_oracle_guard', 'test_package_tiers', 'test_ple',
-    'test_pool_ledger', 'test_prefix_pool_chained', 'test_prereg',
+    'test_prereg',
     'test_probe_api', 'test_prune_kd_gemma4', 'test_quant_calib', 'test_quantile_balancing', 'test_qwen_next',
     'test_repo_longctx', 'test_rlcd_head',
     'test_rtllm_bench', 'test_selfgen_meta', 'test_skill_docs',
-    'test_smebu_sandwich', 'test_std_bench', 'test_stop_calibration', 'test_swarm_parallel',
+    'test_smebu_sandwich', 'test_std_bench', 'test_swarm_parallel',
     'test_swe_agent_rl', 'test_swe_bench', 'test_task_grammar',
     'test_term_bench', 'test_think', 'test_thinking_budget', 'test_three_modes',
     'test_tool_recovery', 'test_toy_bpe', 'test_trust_gate', 'test_trust_gate_clarify',
@@ -1564,6 +1572,71 @@ def test_bpe_suite():
         getattr(m, name)()
     _pass("test_bpe_suite",
           "BPE tokenizer: all 7 sidecar tests under the daily gate")
+
+
+# ---------------------------------------------------------------------------
+# limitations round (2026-11-07): fold three more exempt-backlog sidecars
+# into the daily gate — the prefix-pool chained-keys regression, the
+# pool-ledger oracles, and the stop-decision calibration metrics. All
+# three are plain functions with no pytest, no fixtures, no sockets and
+# no CUDA (the pool tests build a lite model on CPU and generate a few
+# tokens; stop_calibration is pure eval logic over scripted agents).
+# Same drift-guarded wrapper pattern as v5.225.
+# ---------------------------------------------------------------------------
+
+
+def test_prefix_pool_chained_suite():
+    """PrefixPool chained block keys (src/inference/prefix_pool.py) under
+    the daily gate. Pins the regression where two prompts sharing a
+    middle block collided on the un-chained key: with chaining the
+    shared block stores 6 distinct entries, A's exact prefix still hits
+    after C was stored, and pooled generate stays bit-exact with
+    from-scratch generate after cross-prompt block reuse."""
+    from helioslm_v5.tests import test_prefix_pool_chained as m
+    expected = {"test_prefix_pool_chained_keys"}
+    _drift_guard(m, expected)
+    m.test_prefix_pool_chained_keys()
+    _pass("test_prefix_pool_chained_suite",
+          "prefix pool chained keys: 1 sidecar test (6 distinct keys, "
+          "prefix hit, bit-exact pooled generate) under the daily gate")
+
+
+def test_pool_ledger_suite():
+    """v5.42 prefix-pool ledger oracles (src/inference/pool_ledger.py,
+    Phase 3.1) under the daily gate. Pins: cold-miss/warm-hit reuse
+    counts and the 0.5 effective discount over two identical requests;
+    partial-prefix reuse counts (4 reused / 2 computed); the empty
+    ledger reports discount 0.0 with its scope recorded (no claim
+    without requests)."""
+    from helioslm_v5.tests import test_pool_ledger as m
+    expected = {"test_ledger_counts_reuse", "test_ledger_partial_prefix",
+                "test_report_scopes_and_loud_empty"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_pool_ledger_suite",
+          "pool ledger: all 3 sidecar tests (reuse counts, partial "
+          "prefix, loud empty report) under the daily gate")
+
+
+def test_stop_calibration_suite():
+    """T98 stop-decision metrics (eval/stop_calibration.py, roadmap
+    Phase AC / AC5 知止) under the daily gate. Pins: hand-built rows
+    with known answers (false_done, confident subset, ran_out,
+    tested-before-done share, accuracy split, AUROC); the test-command
+    detector; the defining SWE case — a trap patch whose visible tests
+    pass is still a FALSE DONE while the careful agent has none; rows
+    missing the episode fields are refused, not guessed."""
+    from helioslm_v5.tests import test_stop_calibration as m
+    expected = {"test_known_rows", "test_test_command_detector",
+                "test_trap_is_false_done", "test_refuses_old_rows"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_stop_calibration_suite",
+          "stop calibration: all 4 sidecar tests (known rows, command "
+          "detector, trap-is-false-done, old-row refusal) under the "
+          "daily gate")
 
 
 def test_sidecar_coverage_guard():

@@ -309,6 +309,11 @@ TESTS = [
     case_upstream_suites.test_mhc_suite,
     case_upstream_suites.test_mhc_sinkhorn_suite,
     case_upstream_suites.test_bpe_suite,
+    # limitations round (2026-11-07): prefix-pool chained keys, the
+    # pool-ledger oracles, and the stop-decision calibration metrics.
+    case_upstream_suites.test_prefix_pool_chained_suite,
+    case_upstream_suites.test_pool_ledger_suite,
+    case_upstream_suites.test_stop_calibration_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 
