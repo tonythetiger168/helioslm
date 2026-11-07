@@ -148,7 +148,11 @@ def unsupported(row):
         return f"category {cat} is not code generation"
     files = row["harness"]["files"]
     docker = files.get("Dockerfile")
-    if docker is not None and docker.strip() != f"FROM {OSS_IMAGE}":
+    # 19 datapoints add only comment lines after the FROM; those are the
+    # plain OSS image and run like the rest (v1.1.0 no_commercial: 283 -> 302).
+    body = [l.strip() for l in (docker or "").splitlines()
+            if l.strip() and not l.strip().startswith("#")]
+    if docker is not None and body != [f"FROM {OSS_IMAGE}"]:
         return "custom Dockerfile"
     compose = files.get("docker-compose.yml")
     if not compose:
@@ -297,7 +301,7 @@ def run(row, outputs, timeout=RUN_TIMEOUT_S):
     services = parse_compose(harness["docker-compose.yml"])
     with tempfile.TemporaryDirectory(prefix="cvdp_") as td:
         root = Path(td)
-        for sub in ("code", "src", "rundir/harness"):
+        for sub in ("code/rundir", "src", "rundir/harness"):
             (root / sub).mkdir(parents=True)
         for name, text in {**row["input"]["context"], **outputs}.items():
             if not safe_name(name):
@@ -326,7 +330,11 @@ def run(row, outputs, timeout=RUN_TIMEOUT_S):
             if not cmd:
                 continue
             cmd = _rewrite(" ".join(cmd) if isinstance(cmd, list) else cmd, root)
-            rc, so, se = run_shell(cmd, root / "code", env, timeout)
+            # Upstream runs each service in its compose working_dir
+            # (usually /code/rundir); synth/lint scripts write logs there.
+            wd = Path(_rewrite(str(svc.get("working_dir", "/code")).strip(), root))
+            wd.mkdir(parents=True, exist_ok=True)
+            rc, so, se = run_shell(cmd, wd, env, timeout)
             if rc is None:
                 log.append(f"[{name}] TIMEOUT")
                 ok = False
