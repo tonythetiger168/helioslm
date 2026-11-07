@@ -646,7 +646,7 @@ Context sizes assume the default MLA cache (latent 512 + RoPE 64, about 37 KB pe
 
 | Series | Package tooling | Runtime check | Weights |
 | --- | --- | --- | --- |
-| **L-Edge** | `package_tier(..., "L-Edge")`: Q4_K + Q8_0, CPU only, 8K | pilot files load and run in llama.cpp f5027fb | v1.0 0.5B not trained yet |
+| **L-Edge** | `package_tier(..., "L-Edge")`: Q4_K + Q8_0, CPU only, 8K | pilot files load and run in llama.cpp f5027fb | v1.0 0.5B paused (2026-11-07): a pruned and distilled Gemma 4 E2B pilot scored at chance on TMMLU+; L-Edge ships the HeliosLM TW E4B Q4_K preview instead |
 | **L8** | Q4_K + Q8_0, `-ngl 99`, 32K | same | v2.0 3B not trained yet |
 | **L16** | F16 + Q4_K, 32K | same | v2.0 / v3.0 not trained yet |
 | **L24** | Q4_K, 32K | same | v3.0 not trained yet |
