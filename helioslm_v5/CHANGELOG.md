@@ -1,6 +1,6 @@
 # HeliosLM v5 Changelog
 
-## v5.257 (2026-11-07) - UVM bench: closing fence glued to [DONE]
+## v5.257 (2026-11-07) - UVM bench: [DONE] fence fix, Verilator rules, repair check
 
 `uvm_bench.extract_tb` now treats a `[DONE]` line with a closing code
 fence glued to it (`[DONE]` followed by three backticks, as Nemotron 3
@@ -10,6 +10,15 @@ unexpected '['". Re-scoring the 24 saved Nemotron UVM answers locally
 (Verilator 5.052): build 2/24 either way; the remaining build failures are
 the model's (missing `import uvm_pkg::*`, clocking-block modports) or
 Verilator gaps (interface declared inside a module).
+
+The UVM prompt rules now say what Verilator 5.052 needs (`import uvm_pkg::*`
+and the macros include at the top, interfaces at file scope, no clocking
+blocks or modports, locals at the start of a block, no TopModule
+redeclaration): 13 of the 24 Nemotron answers lacked the import and 14
+redeclared TopModule. `hdl_eval_all.uvm_check` lets `--repair-rounds`
+resend a failing UVM answer with its Verilator build errors, or the UVM
+errors it reports on the design given in the prompt; mutant results are
+never shown.
 
 ## v5.256 (2026-11-07) - CVDP harness: services run in working_dir, commented OSS Dockerfiles run
 

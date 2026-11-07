@@ -89,6 +89,10 @@ reference model and report every mismatch with `uvm_error`. Do not read signals 
 the DUT; use only its ports.
 - Drive enough stimulus (directed and random) to expose any bug in TopModule, then end \
 the test (raise/drop an objection) so the simulation finishes.
+- It is compiled with Verilator 5.052 (`--binary --timing`, UVM 2017-1.0 without DPI): \
+put `import uvm_pkg::*;` and `include "uvm_macros.svh"` at the top of the file, declare \
+interfaces at file scope (not inside a module), do not use clocking blocks or modports, \
+declare local variables at the start of a block, and do not redeclare TopModule.
 Enclose your code with [BEGIN] and [DONE]. Only output the code snippet and do NOT \
 output anything else."""
 
