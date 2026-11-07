@@ -14,7 +14,7 @@ Verilator gaps (interface declared inside a module).
 The UVM prompt rules now say what Verilator 5.052 needs (`import uvm_pkg::*`
 and the macros include at the top, interfaces at file scope, no clocking
 blocks or modports, locals at the start of a block, no TopModule
-redeclaration): 13 of the 24 Nemotron answers lacked the import and 14
+redeclaration): 9 of the 24 Nemotron answers lacked the import and 15
 redeclared TopModule. `hdl_eval_all.uvm_check` lets `--repair-rounds`
 resend a failing UVM answer with its Verilator build errors, or the UVM
 errors it reports on the design given in the prompt; mutant results are
