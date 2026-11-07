@@ -301,6 +301,14 @@ TESTS = [
     case_upstream_suites.test_hub_suite,
     case_upstream_suites.test_ruler_lite_suite,
     case_upstream_suites.test_review_fixes_suite,
+    # daily-maintenance round (2026-11-07, v5.255): checkpoint merging
+    # (incl. the merge_checkpoints CLI), the MHC stack and its Sinkhorn
+    # variant, and the byte-level BPE tokenizer. All plain functions:
+    # no pytest import, no fixtures, no sockets, no CUDA.
+    case_upstream_suites.test_merge_suite,
+    case_upstream_suites.test_mhc_suite,
+    case_upstream_suites.test_mhc_sinkhorn_suite,
+    case_upstream_suites.test_bpe_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 

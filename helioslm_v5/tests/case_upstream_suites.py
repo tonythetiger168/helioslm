@@ -1112,6 +1112,11 @@ FOLDED_SIDECARS = {
     "test_hub": "test_hub_suite",
     "test_ruler_lite": "test_ruler_lite_suite",
     "test_review_fixes": "test_review_fixes_suite",
+    # daily-maintenance round 2026-11-07 (v5.255): merge / MHC / BPE
+    "test_merge": "test_merge_suite",
+    "test_mhc": "test_mhc_suite",
+    "test_mhc_sinkhorn": "test_mhc_sinkhorn_suite",
+    "test_bpe": "test_bpe_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1120,7 +1125,7 @@ FOLDED_SIDECARS = {
 EXEMPT_SIDECARS = {
     'test_abstain', 'test_agent', 'test_agent_workflow', 'test_api_distill',
     'test_artifact_tiers', 'test_async_grpo', 'test_attn_res', 'test_base_gap',
-    'test_bench_quant', 'test_benchmark', 'test_bpe', 'test_calibrated_prefetcher',
+    'test_bench_quant', 'test_benchmark', 'test_calibrated_prefetcher',
     'test_calibrated_router', 'test_calibration_board', 'test_chat', 'test_chat_tuned',
     'test_chunked_ce', 'test_clamped_swiglu', 'test_copy_curriculum',
     'test_cost_per_task', 'test_cpt_chunked_ce', 'test_cpt_pilot', 'test_cpt_plan',
@@ -1144,7 +1149,7 @@ EXEMPT_SIDECARS = {
     'test_kv_compress', 'test_kv_share', 'test_llamacpp_export', 'test_llamacpp_kimi_k3',
     'test_llamacpp_tokenizer', 'test_lm_decision_head', 'test_lm_harness', 'test_logit_kd',
     'test_longctx', 'test_longctx_harness',
-    'test_merge', 'test_mhc', 'test_mhc_sinkhorn', 'test_midtrain',
+    'test_midtrain',
     'test_mimo_hybrid', 'test_mini_bench', 'test_mla_every', 'test_mla_expanded_training',
     'test_moe_config_table', 'test_mopd', 'test_mtp_light', 'test_mtp_rollout',
     'test_multiseed', 'test_nope_temperature',     'test_noul_continuous', 'test_nvfp4_qat_e2e',
@@ -1478,6 +1483,87 @@ def test_review_fixes_suite():
           "T87 review fixes: all 4 sidecar tests (deferred validation, "
           "invalid-vs-missing routing, calc faults, fail-closed harness "
           "gates) under the daily gate")
+
+
+# ---------------------------------------------------------------------------
+# daily-maintenance round (2026-11-07, v5.255): fold four more
+# exempt-backlog sidecars into the daily gate — checkpoint merging
+# (linear/task-arithmetic/TIES + the merge_checkpoints CLI), the MHC
+# residual stack and its Sinkhorn-constrained variant, and the byte-level
+# BPE tokenizer. All four are plain functions: no pytest import, no
+# fixtures, no sockets, no CUDA. test_merge.test_merge_script shells out
+# to examples/merge_checkpoints.py with capture_output in BYTES (no
+# text=), so there is no locale decode path to pin.
+# ---------------------------------------------------------------------------
+
+
+def test_merge_suite():
+    """Checkpoint merging (src/training/merge.py) under the daily gate.
+    Pins: linear/task-arithmetic/TIES oracles, validation refusals, the
+    merge_checkpoints.py CLI round-trip (run.json carried across), and
+    the top-k union KL / MOPD selectors."""
+    from helioslm_v5.tests import test_merge as m
+    expected = {"test_linear", "test_task_arithmetic", "test_ties",
+                "test_validation", "test_merge_script",
+                "test_topk_union_kl", "test_mopd_topk_union"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_merge_suite",
+          "checkpoint merging: all 7 sidecar tests (3 oracle methods, "
+          "validation, CLI round-trip, 2 selectors) under the daily gate")
+
+
+def test_mhc_suite():
+    """Manifold-constrained hyper-connections (src/blocks/mhc.py) under
+    the daily gate. Pins: residual-equivalent init, gradient flow to all
+    paths, manifold non-expansion, and per-T capacity differences."""
+    from helioslm_v5.tests import test_mhc as m
+    expected = {"test_residual_equivalent_init",
+                "test_gradient_flows_to_all_paths",
+                "test_manifold_non_expansion", "test_t_capacity_differs"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_mhc_suite",
+          "MHC stack: all 4 sidecar tests under the daily gate")
+
+
+def test_mhc_sinkhorn_suite():
+    """Sinkhorn-constrained MHC wiring in the full model under the daily
+    gate. Pins: off-by-default identity at init, constraint under random
+    and extreme inputs and after training steps, decode == full forward,
+    the static-HC fold regression, and validation refusals."""
+    from helioslm_v5.tests import test_mhc_sinkhorn as m
+    expected = {"test_off_by_default_and_identity_at_init",
+                "test_constraint_random_and_extreme",
+                "test_constraint_survives_training",
+                "test_decode_equals_full",
+                "test_static_hc_fold_regression", "test_validation"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_mhc_sinkhorn_suite",
+          "Sinkhorn MHC: all 6 sidecar tests under the daily gate")
+
+
+def test_bpe_suite():
+    """Byte-level BPE tokenizer (src/tokenizer/bpe.py) under the daily
+    gate. Pins: round-trip fidelity on domain strings, separator/space
+    fidelity, OOV byte robustness, specials/BOS handling, save/load
+    exactness, determinism + vocab cap, and corpus-builder protocol
+    coverage."""
+    from helioslm_v5.tests import test_bpe as m
+    expected = {"test_roundtrip_domain_strings",
+                "test_separator_and_space_fidelity",
+                "test_oov_bytes_robust", "test_specials_and_bos",
+                "test_save_load_exact", "test_determinism_and_vocab_cap",
+                "test_corpus_builder_covers_protocol"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_bpe_suite",
+          "BPE tokenizer: all 7 sidecar tests under the daily gate")
 
 
 def test_sidecar_coverage_guard():

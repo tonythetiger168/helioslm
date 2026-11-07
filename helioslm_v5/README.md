@@ -1,5 +1,9 @@
-# HeliosLM v5.251 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.255 - DeepSeek/K3-Style Architecture
 
+v5.255 (2026-11-07): four more sidecar suites folded into the mandated
+daily gate (checkpoint merging incl. the merge_checkpoints CLI, the MHC
+stack and its Sinkhorn variant, byte-level BPE; 41 folded / 170
+exempt).
 v5.251 (2026-11-06): four more sidecar suites folded into the mandated
 daily gate (teacher licence audit, pretrain pilot, review regressions,
 cloudflare bundles; 34 folded / 176 exempt after merging upstream's

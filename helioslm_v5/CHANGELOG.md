@@ -1,5 +1,21 @@
 # HeliosLM v5 Changelog
 
+## v5.255 (2026-11-07) - Merge, MHC and BPE sidecars folded into the suite
+
+`case_upstream_suites.py` gains wrappers for `test_merge` (7 funcs;
+linear / task-arithmetic / TIES oracles, validation refusals, the
+`merge_checkpoints.py` CLI round-trip, top-k union KL and MOPD
+selectors), `test_mhc` (4 funcs; residual-equivalent init, gradient
+flow, manifold non-expansion, per-T capacity), `test_mhc_sinkhorn`
+(6 funcs; off-by-default identity, constraint stability under extreme
+inputs and training, decode == full forward, the static-HC fold
+regression) and `test_bpe` (7 funcs; round-trip fidelity, OOV bytes,
+specials, save/load, determinism + vocab cap). All four are plain
+functions — no pytest import, no fixtures, no sockets, no CUDA — so no
+shims were needed. `FOLDED_SIDECARS` goes 37 -> 41 files and the legacy
+EXEMPT list drops the same four (170 remain exempt; 211 sidecar files
+on disk, all accounted for by the coverage guard).
+
 ## v5.254 (2026-11-06) - Gemma 4 E2B / E4B and Grok 2 teacher rows
 
 The four big US vendors checked as teacher sources. Their closed models
