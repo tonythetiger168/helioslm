@@ -314,6 +314,15 @@ TESTS = [
     case_upstream_suites.test_prefix_pool_chained_suite,
     case_upstream_suites.test_pool_ledger_suite,
     case_upstream_suites.test_stop_calibration_suite,
+    # daily-maintenance round (2026-11-08, v5.258): oracle-answer guard,
+    # tri-mode think parser + experience store, thinking-budget state
+    # machine, three-modes report oracles, skill-docs validator. All
+    # plain functions: no pytest, no fixtures, no sockets, no CUDA.
+    case_upstream_suites.test_oracle_guard_suite,
+    case_upstream_suites.test_think_suite,
+    case_upstream_suites.test_thinking_budget_suite,
+    case_upstream_suites.test_three_modes_suite,
+    case_upstream_suites.test_skill_docs_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 

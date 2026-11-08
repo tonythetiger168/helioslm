@@ -1,5 +1,9 @@
-# HeliosLM v5.255 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.258 - DeepSeek/K3-Style Architecture
 
+v5.258 (2026-11-08): five more sidecar suites folded into the mandated
+daily gate (oracle-answer guard, tri-mode think + experience store,
+thinking budget, three-modes oracles, skill-docs validator; 49 folded /
+162 exempt).
 v5.255 (2026-11-07): four more sidecar suites folded into the mandated
 daily gate (checkpoint merging incl. the merge_checkpoints CLI, the MHC
 stack and its Sinkhorn variant, byte-level BPE; 41 folded / 170

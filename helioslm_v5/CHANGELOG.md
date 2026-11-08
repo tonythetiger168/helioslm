@@ -1,5 +1,19 @@
 # HeliosLM v5 Changelog
 
+## v5.258 (2026-11-08) - Oracle guard, think and docs sidecars folded into the suite
+
+`case_upstream_suites.py` gains wrappers for `test_oracle_guard`
+(5 funcs; answer-key write/read blocks, prefix-sibling escape, no
+self-grading, empty protected set is loud), `test_think` (5; tri-mode
+parse, session flow, experience recall/reuse, replay compat),
+`test_thinking_budget` (5; default unchanged, budget oracle, state
+machine, truncation helpers, A/B artifact), `test_three_modes`
+(1; T19 report oracles) and `test_skill_docs` (1; validator). All five
+are plain functions — no pytest import, no fixtures, no sockets, no
+CUDA — so no shims were needed. `FOLDED_SIDECARS` goes 44 -> 49 files
+and the legacy EXEMPT list drops the same five (162 remain exempt; 211
+sidecar files on disk, all accounted for by the coverage guard).
+
 ## v5.257 (2026-11-07) - UVM bench: [DONE] fence fix, Verilator rules, repair check
 
 `uvm_bench.extract_tb` now treats a `[DONE]` line with a closing code
