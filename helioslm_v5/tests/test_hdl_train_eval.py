@@ -344,6 +344,21 @@ def test_tb_pick_prefers_candidates_passing_model_testbenches():
     assert tbs["p1"][0].startswith("module tb")
 
 
+def test_gen_tbs_covers_cvdp_and_skips_chat_prompts():
+    import hdl_eval_all as ea
+    seen = []
+
+    def gen(jobs, n, *a):
+        seen.extend(jobs)
+        return [["```verilog\nmodule tb; endmodule\n```"] * n for _ in jobs]
+    jobs = [("cvdp", "c1", "", "spec c1"), ("verilog-eval", "p1", "", "spec p1"),
+            ("cvdp", "c2", "", [{"role": "user", "content": "x"}]), ("rtllm", "r1", "", "s")]
+    tbs = ea.gen_tbs(gen, jobs, n_tb=3, benches=("cvdp",))
+    assert list(tbs) == [0] and len(tbs[0]) == 3 and tbs[0][0].startswith("module tb")
+    assert len(seen) == 1 and "spec c1" in seen[0][3] and "self-checking testbench" in seen[0][3]
+    assert ea.gen_tbs(gen, jobs, benches=("uvm",)) == {}
+
+
 def test_select_consensus_votes_cvdp_when_asked(monkeypatch):
     import hdl_eval_all as ea
     seen = {}

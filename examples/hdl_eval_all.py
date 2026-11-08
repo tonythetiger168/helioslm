@@ -376,6 +376,21 @@ def tb_pick(codes, ok, tbs, run=run_tb, equiv=None):
     return pick, {"valid_tbs": len(valid), "best_pass": top[0]}
 
 
+def gen_tbs(gen, jobs, n_tb=2, temperature=0.8, top_p=0.95, max_new_tokens=4096,
+            benches=REPAIR_BENCHES):
+    """``n_tb`` self-checking testbenches (:data:`TB_ASK`) per ``benches``
+    job with a plain-text prompt, written by the model from the problem
+    text alone (no golden design, no benchmark testbench). Returns
+    {job index: [testbench code, ...]}."""
+    from helioslm_v5.eval import hdl_reward as hr
+    idx = [i for i, (b, _, _, u) in enumerate(jobs) if b in benches and isinstance(u, str)]
+    if not idx:
+        return {}
+    tb_jobs = [(jobs[i][0], jobs[i][1], "", TB_ASK.format(spec=jobs[i][3])) for i in idx]
+    return {i: [hr.extract_answer(t) for t in o]
+            for i, o in zip(idx, gen(tb_jobs, n_tb, temperature, top_p, max_new_tokens))}
+
+
 def select_tb(gen, jobs, outputs, check, n_tb=2, temperature=0.8, top_p=0.95,
               max_new_tokens=4096, benches=REPAIR_BENCHES, bench_checks=None, workers=8):
     """Like :func:`select_consensus`, but VerilogEval / RTLLM jobs are
@@ -383,12 +398,8 @@ def select_tb(gen, jobs, outputs, check, n_tb=2, temperature=0.8, top_p=0.95,
     from the problem text alone (no golden design, no benchmark
     testbench). Returns (outputs with one sample each, picks, stats)."""
     from concurrent.futures import ThreadPoolExecutor
-    idx = [i for i, (b, _, _, u) in enumerate(jobs) if b in benches and isinstance(u, str)]
-    tb_jobs = [(jobs[i][0], jobs[i][1], "", TB_ASK.format(spec=jobs[i][3])) for i in idx]
-    from helioslm_v5.eval import hdl_reward as hr
-    tbs = {i: [hr.extract_answer(t) for t in o]
-           for i, o in zip(idx, gen(tb_jobs, n_tb, temperature, top_p, max_new_tokens))} \
-        if tb_jobs else {}
+    tbs = gen_tbs(gen, jobs, n_tb, temperature, top_p, max_new_tokens, benches)
+    idx = list(tbs)
     out, picks = select_consensus(jobs, outputs, check, benches=(), bench_checks=bench_checks,
                                   workers=workers)
     info = {}
@@ -563,6 +574,10 @@ def main(argv=None):
     ap.add_argument("--vote-cvdp", action="store_true",
                     help="--select consensus: CVDP also picks by simulation votes "
                          "among the samples that pass its compile check (v5.252)")
+    ap.add_argument("--gen-tbs", default=None, metavar="OUT",
+                    help="only write --tb-n model-written testbenches per problem of "
+                         "--benches (CVDP included) to OUT as {bench: {key: [tb, ...]}} "
+                         "and exit; pick among saved --samples with them offline (v5.259)")
     ap.add_argument("--tb-n", type=int, default=2,
                     help="--select tb: testbenches the model writes per problem")
     ap.add_argument("--select", choices=("none", "consensus", "tb"), default="none",
@@ -584,6 +599,20 @@ def main(argv=None):
                          a.uvm_cache)
     t0 = time.time()
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+    if a.gen_tbs:
+        if a.tb_n > 1 and a.temperature == 0:
+            ap.error("--gen-tbs with --tb-n > 1 needs --temperature > 0")
+        gen = VllmGen(a.model, a.max_model_len, a.gpu_mem,
+                      None if a.thinking is None else a.thinking == "on")
+        tbs = gen_tbs(gen, jobs, a.tb_n, a.temperature, a.top_p, a.max_new_tokens,
+                      tuple(benches))
+        out = {}
+        for i, t in tbs.items():
+            out.setdefault(jobs[i][0], {})[jobs[i][1]] = t
+        Path(a.gen_tbs).parent.mkdir(parents=True, exist_ok=True)
+        Path(a.gen_tbs).write_text(json.dumps(out) + "\n", encoding="utf-8")
+        print("gen tbs:", json.dumps({b: len(v) for b, v in out.items()}), flush=True)
+        return 0
     if a.repair_rounds and a.samples:
         ap.error("--repair-rounds needs the model (not --samples)")
     repair_stats = None
