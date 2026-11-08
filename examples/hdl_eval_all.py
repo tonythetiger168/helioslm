@@ -577,7 +577,7 @@ def main(argv=None):
     ap.add_argument("--gen-tbs", default=None, metavar="OUT",
                     help="only write --tb-n model-written testbenches per problem of "
                          "--benches (CVDP included) to OUT as {bench: {key: [tb, ...]}} "
-                         "and exit; pick among saved --samples with them offline (v5.258)")
+                         "and exit; pick among saved --samples with them offline (v5.259)")
     ap.add_argument("--tb-n", type=int, default=2,
                     help="--select tb: testbenches the model writes per problem")
     ap.add_argument("--select", choices=("none", "consensus", "tb"), default="none",

@@ -1125,6 +1125,12 @@ FOLDED_SIDECARS = {
     "test_prefix_pool_chained": "test_prefix_pool_chained_suite",
     "test_pool_ledger": "test_pool_ledger_suite",
     "test_stop_calibration": "test_stop_calibration_suite",
+    # daily-maintenance round 2026-11-08 (v5.258): guard / think / docs
+    "test_oracle_guard": "test_oracle_guard_suite",
+    "test_think": "test_think_suite",
+    "test_thinking_budget": "test_thinking_budget_suite",
+    "test_three_modes": "test_three_modes_suite",
+    "test_skill_docs": "test_skill_docs_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1166,14 +1172,14 @@ EXEMPT_SIDECARS = {
     # v5.253: one case binds 127.0.0.1 (a llama-server stand-in); same
     # exemption as test_openai_stream_smoke. pytest still runs it in CI.
     'test_distill_local_3070',
-    'test_option_matrix', 'test_oracle_guard', 'test_package_tiers', 'test_ple',
+    'test_option_matrix', 'test_package_tiers', 'test_ple',
     'test_prereg',
     'test_probe_api', 'test_prune_kd_gemma4', 'test_quant_calib', 'test_quantile_balancing', 'test_qwen_next',
     'test_repo_longctx', 'test_rlcd_head',
-    'test_rtllm_bench', 'test_selfgen_meta', 'test_skill_docs',
+    'test_rtllm_bench', 'test_selfgen_meta',
     'test_smebu_sandwich', 'test_std_bench', 'test_swarm_parallel',
     'test_swe_agent_rl', 'test_swe_bench', 'test_task_grammar',
-    'test_term_bench', 'test_think', 'test_thinking_budget', 'test_three_modes',
+    'test_term_bench',
     'test_tool_recovery', 'test_toy_bpe', 'test_trust_gate', 'test_trust_gate_clarify',
     'test_trust_gate_v2', 'test_tw_bench', 'test_uvm_bench', 'test_v110_github_pg',
     'test_v111_office', 'test_v112_niche', 'test_v113_media', 'test_v114_blender_omi',
@@ -1637,6 +1643,88 @@ def test_stop_calibration_suite():
           "stop calibration: all 4 sidecar tests (known rows, command "
           "detector, trap-is-false-done, old-row refusal) under the "
           "daily gate")
+
+
+# ---------------------------------------------------------------------------
+# daily-maintenance round (2026-11-08, v5.258): fold five more
+# exempt-backlog sidecars into the daily gate — the oracle-answer guard
+# (answer-key isolation), the tri-mode think parser + experience store,
+# the thinking-budget state machine, the three-modes report oracles and
+# the skill-docs validator. All five are plain functions: no pytest
+# import, no fixtures, no sockets, no CUDA.
+# ---------------------------------------------------------------------------
+
+
+def test_oracle_guard_suite():
+    """Oracle answer-key guard under the daily gate. Pins: writes and
+    answer-key reads are blocked, prefix-sibling escapes are blocked,
+    an agent loop cannot self-grade, and an empty protected set fails
+    loudly."""
+    from helioslm_v5.tests import test_oracle_guard as m
+    expected = {"test_guard_blocks_write_and_preserves_oracle",
+                "test_guard_blocks_answer_key_read",
+                "test_prefix_sibling_escape_blocked",
+                "test_agent_loop_self_grading_attempt",
+                "test_empty_protected_set_is_loud"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_oracle_guard_suite",
+          "oracle guard: all 5 sidecar tests under the daily gate")
+
+
+def test_think_suite():
+    """Tri-mode think parsing and experience store under the daily gate.
+    Pins: parse tri-mode, the think session flow, experience recall and
+    cross-turn reuse, and replay compatibility."""
+    from helioslm_v5.tests import test_think as m
+    expected = {"test_parse_tri_mode", "test_think_session_flow",
+                "test_experience_store_recall",
+                "test_experience_reuse_across_turns",
+                "test_replay_compatible"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_think_suite",
+          "think/experience store: all 5 sidecar tests under the daily "
+          "gate")
+
+
+def test_thinking_budget_suite():
+    """Thinking-budget control under the daily gate. Pins: default
+    behaviour unchanged, the budget oracle, the state machine,
+    truncation helpers and the A/B artifact."""
+    from helioslm_v5.tests import test_thinking_budget as m
+    expected = {"test_default_unchanged", "test_budget_oracle",
+                "test_state_machine", "test_truncation_helpers",
+                "test_ab_artifact"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_thinking_budget_suite",
+          "thinking budget: all 5 sidecar tests under the daily gate")
+
+
+def test_three_modes_suite():
+    """Three-modes report oracles (T19) under the daily gate: one plain
+    function, folded as-is."""
+    from helioslm_v5.tests import test_three_modes as m
+    expected = {"test_t19_report_oracles"}
+    _drift_guard(m, expected)
+    m.test_t19_report_oracles()
+    _pass("test_three_modes_suite",
+          "T19 three-modes report oracles under the daily gate")
+
+
+def test_skill_docs_suite():
+    """Skill-docs validator under the daily gate: one plain function,
+    folded as-is."""
+    from helioslm_v5.tests import test_skill_docs as m
+    expected = {"test_skill_docs_validate"}
+    _drift_guard(m, expected)
+    m.test_skill_docs_validate()
+    _pass("test_skill_docs_suite",
+          "skill docs validator under the daily gate")
 
 
 def test_sidecar_coverage_guard():

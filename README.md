@@ -572,11 +572,11 @@ As of 2026-10-31:
 
 The last five releases; every earlier release is in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md).
 
+- **v5.258** — five more sidecar suites folded into the daily gate (oracle-answer guard, think + experience store, thinking budget, three-modes oracles, skill docs; 49 folded / 162 exempt)
+- **v5.257** — UVM bench: `[DONE]` fence fix, Verilator 5.052 rules in the prompt, repair check
+- **v5.256** — CVDP harness runs each compose service in its `working_dir`; commented OSS Dockerfiles run
 - **v5.255** — four more sidecar suites folded into the daily gate (checkpoint merging incl. the merge CLI, MHC + Sinkhorn-MHC, byte-level BPE; 41 folded / 170 exempt)
-- **v5.251** — four more sidecar suites folded into the daily gate (teacher licence audit, pretrain pilot, review regressions, cloudflare bundles; 34 folded / 176 exempt after merging upstream's mlx_mac and serving folds), plus the v5.236 harness-move import fix, Windows UTF-8 / memmap fixes, and a pytest-free/UTF-8 repair of the mlx_mac suite
-- **v5.250** — production serving load test and monitoring stack (`serving/loadtest.py` streaming concurrency sweep + Prometheus/Grafana/Alertmanager compose)
-- **v5.249** — prune and distil a Gemma 4 student (`examples/prune_kd_gemma4.py`: block-influence layer prune, channel importance, chunked forward-KL distillation)
-- **v5.248** — HDL eval on several GPUs
+- **v5.251** — four more sidecar suites folded into the daily gate (teacher licence audit, pretrain pilot, review regressions, cloudflare bundles), plus the v5.236 harness-move import fix, Windows UTF-8 / memmap fixes, and a pytest-free/UTF-8 repair of the mlx_mac suite
 
 ## License
 
