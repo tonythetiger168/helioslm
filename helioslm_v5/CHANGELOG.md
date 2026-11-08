@@ -1,5 +1,17 @@
 # HeliosLM v5 Changelog
 
+## v5.260 (2026-11-08) - Scene prompt pairs from World Labs Marble (T170)
+
+`data/scene_prompts/`: the eight pano2world showcase sentences (input) and
+the world descriptions World Labs Marble (`marble-1.1`) wrote for the
+worlds it generated from them (output), plus a second library world as a
+`variant`; 9 pairs, MANIFEST.json with sha256, README with provenance.
+For few-shot examples or evaluation of short-sentence -> world-description
+expansion; far too few to fine-tune on. The outputs are Marble service
+output: World Labs' terms may restrict training on them (see the README).
+T170 (`test_scene_prompts.py`, folded into the daily gate) pins the digest,
+one main pair per sentence and the provenance fields.
+
 ## v5.259 (2026-11-08) - HDL eval: model-written testbenches for CVDP (--gen-tbs)
 
 `examples/hdl_eval_all.py --gen-tbs OUT` loads the model, writes `--tb-n`

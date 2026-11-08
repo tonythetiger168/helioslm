@@ -1,0 +1,14 @@
+{
+  "schema": "scene-prompts-manifest/1",
+  "file": "scene_prompts.jsonl",
+  "records": 9,
+  "sha256": "e16d106c95d9bd5a77f4e95c50afbe7ab6146cd629e3a07890b57889adc44d62",
+  "fields": [
+    "id",
+    "input",
+    "output",
+    "split",
+    "generator",
+    "world_id_prefix"
+  ]
+}

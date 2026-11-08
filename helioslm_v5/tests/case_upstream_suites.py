@@ -1137,6 +1137,8 @@ FOLDED_SIDECARS = {
     # limitations round 2026-11-08 (package tiers / prereg plans)
     "test_package_tiers": "test_package_tiers_suite",
     "test_prereg": "test_prereg_suite",
+    # 2026-11-08: scene prompt pairs (data/scene_prompts)
+    "test_scene_prompts": "test_scene_prompts_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1831,6 +1833,21 @@ def test_prereg_suite():
     _pass("test_prereg_suite",
           "prereg plans: all 9 sidecar tests (13+4 mutation rows, 2 "
           "committed plans, paired bootstrap) under the daily gate")
+
+
+def test_scene_prompts_suite():
+    """T170 scene prompt pairs (data/scene_prompts: the eight pano2world
+    showcase sentences and the world descriptions World Labs Marble wrote
+    for them) under the daily gate: manifest sha256 and record count, one
+    main pair per sentence, the provenance fields."""
+    from helioslm_v5.tests import test_scene_prompts as m
+    expected = {"test_scene_prompts_manifest", "test_scene_prompts_schema"}
+    _drift_guard(m, expected)
+    m.test_scene_prompts_manifest()
+    m.test_scene_prompts_schema()
+    _pass("test_scene_prompts_suite",
+          "scene prompts: both sidecar tests (digest, schema) under the "
+          "daily gate")
 
 
 def test_sidecar_coverage_guard():

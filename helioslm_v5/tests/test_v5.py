@@ -328,6 +328,8 @@ TESTS = [
     # and the Plan E5 pre-registered evaluation oracles.
     case_upstream_suites.test_package_tiers_suite,
     case_upstream_suites.test_prereg_suite,
+    # 2026-11-08: T170 scene prompt pairs (data/scene_prompts).
+    case_upstream_suites.test_scene_prompts_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 
