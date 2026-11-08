@@ -1,5 +1,15 @@
 # HeliosLM v5 Changelog
 
+## v5.258 (2026-11-08) - HDL eval: model-written testbenches for CVDP (--gen-tbs)
+
+`examples/hdl_eval_all.py --gen-tbs OUT` loads the model, writes `--tb-n`
+self-checking testbenches per problem of `--benches` (CVDP included) from
+the problem text alone, saves them as `{bench: {key: [tb, ...]}}` and
+exits. The testbenches are then run offline on CPU against saved
+`--samples` to pick one answer per problem, so the selector can be
+measured before any more GPU time. No golden design or benchmark harness
+is shown to the model. `select_tb` now shares the new `gen_tbs` helper.
+
 ## v5.257 (2026-11-07) - UVM bench: [DONE] fence fix, Verilator rules, repair check
 
 `uvm_bench.extract_tb` now treats a `[DONE]` line with a closing code
