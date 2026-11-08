@@ -323,6 +323,11 @@ TESTS = [
     case_upstream_suites.test_thinking_budget_suite,
     case_upstream_suites.test_three_modes_suite,
     case_upstream_suites.test_skill_docs_suite,
+    # limitations round (2026-11-08): T142/T166 tier packaging (incl.
+    # GGUF exports, CLI subprocesses, imatrix / draft / KV-cache pins)
+    # and the Plan E5 pre-registered evaluation oracles.
+    case_upstream_suites.test_package_tiers_suite,
+    case_upstream_suites.test_prereg_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 

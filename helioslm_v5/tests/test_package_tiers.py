@@ -13,7 +13,47 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    # This file is also executed directly by the daily TESTS suite
+    # (case_upstream_suites), where pytest is not installed. The shim
+    # covers exactly the two pytest features used below: raises (match=
+    # is re.search on str(exc)) and importorskip. importorskip fails
+    # LOUDLY under the shim: the daily-gate wrapper checks
+    # importlib.util.find_spec itself and never calls a test whose
+    # optional dependency is absent (mirroring CI, where importorskip
+    # skips it). Same raises pattern as test_hsh_tools.py.
+    import contextlib as _contextlib
+    import importlib as _importlib
+    import re as _re
+
+    class _PytestShim:
+        @staticmethod
+        @_contextlib.contextmanager
+        def raises(exc, match=None):
+            try:
+                yield
+            except exc as e:
+                if match is not None and not _re.search(match, str(e)):
+                    raise AssertionError(
+                        f"raised {e!r}, which does not match /{match}/"
+                    ) from None
+                return
+            raise AssertionError(f"{exc.__name__} was not raised")
+
+        @staticmethod
+        def importorskip(module):
+            try:
+                return _importlib.import_module(module)
+            except ImportError as e:
+                raise AssertionError(
+                    f"importorskip: optional dependency {module!r} is "
+                    f"absent; the daily-gate wrapper must skip this "
+                    f"test instead of calling it") from e
+
+    pytest = _PytestShim()
+
 import torch
 
 from helioslm_v5.configs.config_v5 import HeliosLMv5Config

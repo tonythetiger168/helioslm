@@ -16,7 +16,55 @@ import copy
 import sys
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    # This file is also executed directly by the daily TESTS suite
+    # (case_upstream_suites), where pytest is not installed. The shim
+    # covers exactly the three pytest features used below: raises
+    # (match= is re.search on str(exc)), mark.parametrize
+    # (collection-time only; the wrapper iterates the hoisted module-
+    # level lists itself) and approx (default rel=1e-6 / abs=1e-12).
+    # Same pattern as test_hsh_tools.py.
+    import contextlib as _contextlib
+    import re as _re
+
+    class _Mark:
+        @staticmethod
+        def parametrize(*_args, **_kwargs):
+            return lambda f: f
+
+    class _Approx:
+        def __init__(self, expected, rel=None, abs=None):
+            self.expected = expected
+            self.rel = 1e-6 if rel is None else rel
+            self.abs = 1e-12 if abs is None else abs
+
+        def __eq__(self, other):
+            return abs(other - self.expected) <= max(
+                self.rel * abs(self.expected), self.abs)
+
+    class _PytestShim:
+        mark = _Mark()
+
+        @staticmethod
+        @_contextlib.contextmanager
+        def raises(exc, match=None):
+            try:
+                yield
+            except exc as e:
+                if match is not None and not _re.search(match, str(e)):
+                    raise AssertionError(
+                        f"raised {e!r}, which does not match /{match}/"
+                    ) from None
+                return
+            raise AssertionError(f"{exc.__name__} was not raised")
+
+        @staticmethod
+        def approx(expected, rel=None, abs=None):
+            return _Approx(expected, rel=rel, abs=abs)
+
+    pytest = _PytestShim()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -60,7 +108,7 @@ def test_lock_is_canonical_and_edit_sensitive():
     assert len(lock(PLAN)) == 64
 
 
-@pytest.mark.parametrize("mutate", [
+_VALIDATION_MUTATIONS = [
     lambda p: p.pop("gates"),
     lambda p: p["harness"].pop("version"),
     lambda p: p.__setitem__("seeds", [0, 0]),
@@ -75,7 +123,12 @@ def test_lock_is_canonical_and_edit_sensitive():
     lambda p: p["gates"][0].__setitem__("threshold", "0.4"),
     lambda p: p["gates"][0].__setitem__("threshold", True),
     lambda p: p.__setitem__("gates", []),
-])
+]
+
+
+# The parametrize lists are module-level so the daily-gate wrapper
+# (case_upstream_suites, no pytest) can iterate the same rows.
+@pytest.mark.parametrize("mutate", _VALIDATION_MUTATIONS)
 def test_validation_rejects(mutate):
     bad = copy.deepcopy(PLAN)
     mutate(bad)
@@ -120,12 +173,15 @@ def _rel_results(low):
     return r
 
 
-@pytest.mark.parametrize("mutate", [
+_REL_GATE_MUTATIONS = [
     lambda g: g.__setitem__("vs", "taide-8b"),
     lambda g: g.__setitem__("margin", "0"),
     lambda g: g.pop("margin"),
     lambda g: g.__setitem__("metric", "acc_norm"),
-])
+]
+
+
+@pytest.mark.parametrize("mutate", _REL_GATE_MUTATIONS)
 def test_relative_gate_validation(mutate):
     bad = copy.deepcopy(REL)
     mutate(bad["gates"][-1])
@@ -172,11 +228,14 @@ def test_paired_bootstrap():
         paired_bootstrap([base[:10]], base)
 
 
-@pytest.mark.parametrize("release,ref,gated_tasks", [
+_COMMITTED_PLANS = [
     ("v1.0", "Qwen3.5-0.8B", {"tmmluplus", "tw_justice"}),
     ("v2.0", "MediaTek-Research/Llama-Breeze2-3B-Instruct",
      {"tmmluplus", "tw_justice", "ceval", "cmmlu"}),
-])
+]
+
+
+@pytest.mark.parametrize("release,ref,gated_tasks", _COMMITTED_PLANS)
 def test_committed_plans(release, ref, gated_tasks):
     """Split gate: the 0.5B is gated against the same-size Qwen3.5-0.8B,
     the 3B (#41) against Breeze 2 3B on every task the repo can score."""

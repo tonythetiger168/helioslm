@@ -1053,6 +1053,9 @@ def test_kv_cache_analytic_suite():
 # keys), test_pool_ledger (Phase 3.1 ledger oracles) and
 # test_stop_calibration (T98 AC5 stop-decision metrics) moved from
 # EXEMPT to FOLDED — the backlog is now 167 files.
+# 2026-11-08 limitations round: test_package_tiers (T142/T166 packaging)
+# and test_prereg (Plan E5 pre-registered evaluation) moved from EXEMPT
+# to FOLDED — the backlog is now 160 files.
 # OpenAI-compatible stream smoke (serving/openai_stream_smoke.py):
 # test_openai_stream_smoke is exempt for the same reason as test_hsh_web.
 # It binds 127.0.0.1 through ThreadingHTTPServer on an ephemeral port and
@@ -1131,6 +1134,9 @@ FOLDED_SIDECARS = {
     "test_thinking_budget": "test_thinking_budget_suite",
     "test_three_modes": "test_three_modes_suite",
     "test_skill_docs": "test_skill_docs_suite",
+    # limitations round 2026-11-08 (package tiers / prereg plans)
+    "test_package_tiers": "test_package_tiers_suite",
+    "test_prereg": "test_prereg_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1172,8 +1178,7 @@ EXEMPT_SIDECARS = {
     # v5.253: one case binds 127.0.0.1 (a llama-server stand-in); same
     # exemption as test_openai_stream_smoke. pytest still runs it in CI.
     'test_distill_local_3070',
-    'test_option_matrix', 'test_package_tiers', 'test_ple',
-    'test_prereg',
+    'test_option_matrix', 'test_ple',
     'test_probe_api', 'test_prune_kd_gemma4', 'test_quant_calib', 'test_quantile_balancing', 'test_qwen_next',
     'test_repo_longctx', 'test_rlcd_head',
     'test_rtllm_bench', 'test_selfgen_meta',
@@ -1725,6 +1730,107 @@ def test_skill_docs_suite():
     m.test_skill_docs_validate()
     _pass("test_skill_docs_suite",
           "skill docs validator under the daily gate")
+
+
+# ---------------------------------------------------------------------------
+# limitations round (2026-11-08): fold test_package_tiers (T142/T166
+# packaging) and test_prereg (Plan E5 pre-registered evaluation) into the
+# daily gate. Both files gained the in-file pytest shim. test_prereg's
+# three parametrize lists were hoisted to module level
+# (_VALIDATION_MUTATIONS / _REL_GATE_MUTATIONS / _COMMITTED_PLANS) so the
+# wrapper can iterate the same rows pytest would collect; the shim adds
+# approx (default rel=1e-6 / abs=1e-12) for the paired-bootstrap pin.
+# test_package_tiers' tokenizer test self-skips under the gate because
+# the optional 'tokenizers' package is absent from the managed runtime —
+# the wrapper checks importlib.util.find_spec, mirroring pytest's
+# importorskip on CI; the shim's importorskip fails loudly if reached.
+# tmp_path gets a real TemporaryDirectory; monkeypatch (test_fit_flag)
+# gets the _MonkeyPatch stand-in with undo in finally.
+# ---------------------------------------------------------------------------
+
+
+def test_package_tiers_suite():
+    """T142/T166 tier packaging (src/export/package.py + examples/
+    package_tiers.py / package_hf.py) under the daily gate. 16 of 17
+    sidecar tests run unconditionally (lite-model GGUF exports on CPU,
+    refusals, CLI subprocesses, imatrix / speculative-draft / KV-cache /
+    MoE-offload / reasoning-off / Q3_K pins); the tokenizer-embedding
+    test self-skips when the optional 'tokenizers' package is absent
+    (same skip as pytest's importorskip on CI)."""
+    import importlib.util
+    from helioslm_v5.tests import test_package_tiers as m
+    expected = {"test_tiers_follow_the_readme_table",
+                "test_package_without_tokenizer",
+                "test_package_with_tokenizer_writes_modelfile",
+                "test_fit_flag", "test_kimi_k3_package", "test_refusals",
+                "test_cli_packages_a_pilot_run", "test_unified_memory_tiers",
+                "test_package_gguf_external_files",
+                "test_package_gguf_quant_override",
+                "test_package_hf_imatrix", "test_speculative_draft",
+                "test_kv_cache_options", "test_moe_expert_offload_note",
+                "test_unified_memory_laptops_on_tiers",
+                "test_package_gguf_reasoning_off", "test_q3k_edge_package"}
+    _drift_guard(m, expected)
+    for name in ("test_tiers_follow_the_readme_table",
+                 "test_unified_memory_tiers",
+                 "test_unified_memory_laptops_on_tiers"):
+        getattr(m, name)()
+    for name in sorted(expected - {"test_tiers_follow_the_readme_table",
+                                   "test_unified_memory_tiers",
+                                   "test_unified_memory_laptops_on_tiers",
+                                   "test_fit_flag"}):
+        if name == "test_package_with_tokenizer_writes_modelfile" and \
+                importlib.util.find_spec("tokenizers") is None:
+            print("SKIP test_package_with_tokenizer_writes_modelfile: "
+                  "'tokenizers' not installed (importorskip semantics)")
+            continue
+        with tempfile.TemporaryDirectory() as t:
+            getattr(m, name)(Path(t))
+    mp = _MonkeyPatch()
+    try:
+        with tempfile.TemporaryDirectory() as t:
+            m.test_fit_flag(Path(t), mp)
+    finally:
+        mp.undo()
+    _pass("test_package_tiers_suite",
+          "tier packaging: 16/17 sidecar tests under the daily gate "
+          "(tokenizer-embedding test self-skips without the optional "
+          "'tokenizers' package, as importorskip does on CI)")
+
+
+def test_prereg_suite():
+    """Plan E5 pre-registered evaluation (eval/prereg.py) under the
+    daily gate. All 9 sidecar tests; the parametrized ones iterate the
+    hoisted module-level lists (13 plan mutations, 4 relative-gate
+    mutations, 2 committed plans) so the gate runs every row pytest
+    would collect. Pins: canonical lock hash, validation refusals, gate
+    verdicts, plan-citation and completeness refusals, relative gates
+    (CI above margin), PENDING revisions, paired bootstrap, and the
+    committed v1.0 / v2.0 plans."""
+    from helioslm_v5.tests import test_prereg as m
+    expected = {"test_lock_is_canonical_and_edit_sensitive",
+                "test_validation_rejects", "test_gate_verdicts",
+                "test_results_must_cite_this_plan_and_be_complete",
+                "test_relative_gate_validation",
+                "test_relative_gate_verdicts",
+                "test_pending_revisions_lock_but_do_not_check",
+                "test_paired_bootstrap", "test_committed_plans"}
+    _drift_guard(m, expected)
+    m.test_lock_is_canonical_and_edit_sensitive()
+    for mutate in m._VALIDATION_MUTATIONS:
+        m.test_validation_rejects(mutate)
+    m.test_gate_verdicts()
+    m.test_results_must_cite_this_plan_and_be_complete()
+    for mutate in m._REL_GATE_MUTATIONS:
+        m.test_relative_gate_validation(mutate)
+    m.test_relative_gate_verdicts()
+    m.test_pending_revisions_lock_but_do_not_check()
+    m.test_paired_bootstrap()
+    for release, ref, gated_tasks in m._COMMITTED_PLANS:
+        m.test_committed_plans(release, ref, gated_tasks)
+    _pass("test_prereg_suite",
+          "prereg plans: all 9 sidecar tests (13+4 mutation rows, 2 "
+          "committed plans, paired bootstrap) under the daily gate")
 
 
 def test_sidecar_coverage_guard():
