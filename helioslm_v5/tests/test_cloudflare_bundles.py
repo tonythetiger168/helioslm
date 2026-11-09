@@ -190,3 +190,18 @@ def test_site_has_measured_speed_and_mtp_tip(dist, tmp_path):
     assert "CUDA_Host buffer" in page  # v5.243: free system RAM note
     assert all(str(row[3]) in page for row in SPEED)
     assert all(row[4] is None or row[4] > row[3] for row in SPEED)  # MTP only where it helps
+
+
+def test_site_offers_26b_on_8gb(dist, tmp_path):
+    """v5.261: with an L24 chat bundle, the L8 row also links the 26B file
+    and the guide gives the --n-cpu-moe command for 8 GB cards."""
+    from helioslm_v5.src.export.cloudflare import OFFLOAD_8GB
+    e = bundle_package(dist / "L8", tmp_path / "r2", version="v1")
+    chat = dict(e, tier="L24", chat=True, reasoning="off")
+    build_site([e, chat], tmp_path / "site", base_url=BASE, version="v1")
+    page = (tmp_path / "site" / "index.html").read_text(encoding="utf-8")
+    assert "26B 對話" in page and f"--n-cpu-moe {OFFLOAD_8GB[2]}" in page
+    assert "8 GB 顯示卡也想用對話模型" in page
+    build_site([e], tmp_path / "site2", base_url=BASE, version="v1")
+    page = (tmp_path / "site2" / "index.html").read_text(encoding="utf-8")
+    assert "26B 對話" not in page and "8 GB 顯示卡也想用對話模型" not in page

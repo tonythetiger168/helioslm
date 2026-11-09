@@ -36,6 +36,8 @@
   它是混合專家模型，每個 token 約 4B 參數啟用。
 - 只有 12–16 GB 顯示卡也想對話：可以跑 L24，加上 `--cpu-moe`，把專家權重放在系統記憶體
   （建議 32 GB RAM 以上，速度較慢，見第 5 節）。
+- 只有 8 GB 顯示卡（RTX 4060、3060 Ti、3070 等）也想對話：下載 L24 的 26B 檔，加上 `--n-cpu-moe 24`，
+  顯示卡只用約 5.7 GB，實測每秒約 34 個 token；系統記憶體要 32 GB 以上（見第 5 節）。
 
 ## 2. 下載、驗證、解壓
 
@@ -142,6 +144,15 @@ L-Edge 只用 CPU，不加 `-ngl`。舊版 llama.cpp 沒有 `llama-completion` �
 
   ```bash
   llama-server -m helioslm-tw-26b-a4b-l24-Q4_K.gguf -c 32768 -ngl 99 --cpu-moe --reasoning-budget 0 --port 8080
+  ```
+
+  8 GB 顯示卡（2026-11-09 實測，16K 上下文、KV 快取 q8_0）：`--n-cpu-moe 24` 用約 5.7 GB 顯示卡記憶體
+  （32K 上下文約 5.9 GB），每秒約 34 個 token；`--cpu-moe` 約 2.7 GB、每秒約 30 個。
+  速度主要看 CPU 和系統記憶體頻寬。開 MTP 只快約 4%，這種用法不建議。Ollama 不能這樣分配，請用 llama.cpp
+  或 LM Studio（載入設定裡把 MoE 專家權重放到 CPU）。
+
+  ```bash
+  llama-server -m helioslm-tw-26b-a4b-l24-Q4_K.gguf -c 16384 -ngl 99 --n-cpu-moe 24 -fa on -ctk q8_0 -ctv q8_0 --reasoning-budget 0 --port 8080
   ```
 
 - **Windows 上變得很慢**：關掉其他吃顯示卡記憶體的程式（瀏覽器硬體加速、遊戲、Docker / WSL）。

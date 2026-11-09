@@ -96,7 +96,12 @@ def _expert_offload(first, t):
             "experts in RAM), then try `--n-cpu-moe N` (experts of the first N layers "
             "only) and lower N while it still fits. Unified-memory machines (DGX "
             "Spark, RTX Spark, Ryzen AI Max, Mac) need neither.", "", "```",
-            f"llama-server -m {first} -c {t.ctx} -ngl 99 --cpu-moe --port 8080", "```", ""]
+            f"llama-server -m {first} -c {t.ctx} -ngl 99 --cpu-moe --port 8080", "```", "",
+            "8 GB GPU (v5.261, measured on the 26B-A4B Q4_K file): `--n-cpu-moe 24` "
+            "uses about 5.7 GB VRAM at 16K context (q8_0 KV cache) and needs 32 GB "
+            "system RAM; about 34 tok/s on a 7-core server CPU.", "", "```",
+            f"llama-server -m {first} -c 16384 -ngl 99 --n-cpu-moe 24 -fa on -ctk q8_0 -ctv q8_0 --port 8080",
+            "```", ""]
 
 
 def gguf_expert_count(path):
