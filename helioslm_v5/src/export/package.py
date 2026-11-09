@@ -202,6 +202,14 @@ def package_tier(model, config, tier, out_dir, *, name="helioslm", tokenizer=Non
     return _write_package(out, name, t, arch, files, tokenizer is not None)
 
 
+# v5.262: llama-server's --reasoning-budget 0 alone does not render the chat
+# template with enable_thinking=false; the HeliosLM 26B chat weights then
+# sometimes open with a literal "<|turn>" / "<|turn>thought" (2 of 15 short
+# prompts, measured 2026-11-09) and run to the token limit. Passing the
+# template kwarg explicitly removed it (0 of 15).
+NO_THINK_SERVER = "--reasoning-budget 0 --chat-template-kwargs '{\"enable_thinking\":false}'"
+
+
 def _reasoning_note(first, t):
     """README lines for a model that can think before it answers (v5.224):
     the commands above turn thinking off, and this says how to turn it on."""
@@ -221,7 +229,7 @@ def _write_package(out, name, t, arch, files, has_tokenizer, extra=None, chat=Fa
     if (extra or {}).get("reasoning"):
         first = files[0]["file"]
         readme = readme.replace(f"llama-cli -m {first} ", f"llama-cli -m {first} --reasoning-budget 0 ", 1)
-        readme = readme.replace(f"llama-server -m {first} ", f"llama-server -m {first} --reasoning-budget 0 ", 1)
+        readme = readme.replace(f"llama-server -m {first} ", f"llama-server -m {first} {NO_THINK_SERVER} ", 1)
         readme = readme.rstrip("\n") + "\n" + "\n".join(_reasoning_note(first, t))
     dr = (extra or {}).get("draft")
     if dr:

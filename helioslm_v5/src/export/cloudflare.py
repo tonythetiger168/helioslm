@@ -27,7 +27,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .mlx import mac_section
-from .package import QUANT_LABEL, TIERS, _slug, modelfile
+from .package import NO_THINK_SERVER, QUANT_LABEL, TIERS, _slug, modelfile
 
 # memory ranges of the README Product roadmap table (TIERS keeps the floor)
 _MEMORY = {"L-Edge": "CPU, ≤ 8 GB RAM", "L8": "8 GB VRAM", "L16": "12–16 GB VRAM",
@@ -205,7 +205,7 @@ def _offload_html(tiers):
     e = html.escape
     tier, src, n, vram, ram, tps = OFFLOAD_8GB
     b = big["bundles"][0]
-    rb = " --reasoning-budget 0" if big.get("reasoning") == "off" else ""
+    rb = " " + NO_THINK_SERVER if big.get("reasoning") == "off" else ""
     return f"""<p><b>8 GB 顯示卡也想用對話模型</b>（RTX 4060、3060 Ti、3070 等）：下載 {e(src)} 的 26B 檔，
 把前 {n} 層的專家權重放在系統記憶體，顯示卡只用約 {e(vram)}，實測每秒約 {tps} 個 token。
 系統記憶體要 {e(ram)} 以上。顯示卡記憶體還有空間時，把 N 調小會比較快；
@@ -221,7 +221,7 @@ def _cmd(t, b):
     if not t.get("chat"):
         return (f'llama-completion -m {b["gguf"]} -c {t["ctx"]}{ngl} -n 256 '
                 f'-p "台灣的夜市文化"')
-    rb = " --reasoning-budget 0" if t.get("reasoning") == "off" else ""
+    rb = " " + NO_THINK_SERVER if t.get("reasoning") == "off" else ""
     return f'llama-server -m {b["gguf"]} -c {t["ctx"]}{ngl}{rb} --port 8080'
 
 
