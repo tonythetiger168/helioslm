@@ -153,7 +153,14 @@ SPEED = (("L8", "E4B Q4_K", "RTX 5090", 241, None, "3.7 GB"),
          ("L24", "26B-A4B Q4_K", "RTX 5090", 254, 349, "17.2 GB"),
          ("L24", "26B-A4B Q4_K", "L40S 48 GB", 161, None, "17.1 GB"),
          ("L48+", "26B-A4B Q8_0", "L40S 48 GB", 121, None, "26.7 GB"),
-         ("L48+", "26B-A4B Q8_0", "A40 48 GB", 85, 119, "26.5 GB"))
+         ("L48+", "26B-A4B Q8_0", "A40 48 GB", 85, 119, "26.5 GB"),
+         ("L8", "26B-A4B Q4_K + --n-cpu-moe 24", "A40 限 5.7 GB + 7 核 Xeon", 34, None, "5.7 GB"))
+# 8 GB cards (v5.261, measured 2026-11-09 on llama.cpp full-cuda, -c 16384, q8_0 KV):
+# the L24 26B-A4B Q4_K file with the experts of the first N of 30 layers in
+# system RAM. --n-cpu-moe 24 -> 5.7 GB VRAM (5.9 GB at 32K), 34 tok/s;
+# --cpu-moe -> 2.7 GB, 30 tok/s; MTP +4% only, so not suggested here.
+# (tier, source tier, N, VRAM, system RAM, tok/s)
+OFFLOAD_8GB = ("L8", "L24", 24, "5.7 GB", "32 GB", 34)
 # Gemma 4 26B-A4B assistant (MTP) head used for the measurement above
 MTP_HEAD_26B = "AtomicChat/gemma-4-26B-A4B-it-assistant-GGUF"
 
@@ -165,7 +172,8 @@ def _speed_html():
         f"<td>{m if m else '—'}</td><td>{e(v)}</td></tr>"
         for t, f, g, d, m, v in SPEED)
     return f"""<h3>6. 速度參考（實測）</h3>
-<p>llama.cpp、單一請求、產生 512 個 token 的中位數（2026-11-04 實測）。
+<p>llama.cpp、單一請求、產生 512 個 token 的中位數（2026-11-04 實測；L8 的 26B 列為 2026-11-09 實測，
+專家權重在系統記憶體，速度主要看 CPU 和記憶體頻寬）。
 單位 token/秒，越高越快；首字延遲約 0.04 秒（E4B）到 0.2 秒（26B）。
 其他顯示卡沒有實測，請自行比較。</p>
 <div class=wrap><table>
@@ -179,6 +187,31 @@ def _speed_html():
 實測快 37–40%，多用約 0.5 GB VRAM。E4B 層級（L-Edge、L8、L16）開 MTP 沒有幫助，L8 反而變慢。</li>
 <li><b>CPU 執行緒</b>：加 <code>-t &lt;實體核心數&gt;</code>。在核心很多的機器上用預設值可能反而大幅變慢。</li>
 </ul>
+"""
+
+
+def _offload_source(tiers):
+    """(L8 tier, L24 tier) when both have bundles, for the 8 GB 26B option."""
+    by = {t["tier"]: t for t in tiers if t.get("bundles")}
+    small, big = by.get(OFFLOAD_8GB[0]), by.get(OFFLOAD_8GB[1])
+    return (small, big) if small and big and big.get("chat") else (None, None)
+
+
+def _offload_html(tiers):
+    """Run-guide paragraph for 8 GB cards: the 26B chat file with experts in RAM."""
+    _, big = _offload_source(tiers)
+    if not big:
+        return ""
+    e = html.escape
+    tier, src, n, vram, ram, tps = OFFLOAD_8GB
+    b = big["bundles"][0]
+    rb = " --reasoning-budget 0" if big.get("reasoning") == "off" else ""
+    return f"""<p><b>8 GB 顯示卡也想用對話模型</b>（RTX 4060、3060 Ti、3070 等）：下載 {e(src)} 的 26B 檔，
+把前 {n} 層的專家權重放在系統記憶體，顯示卡只用約 {e(vram)}，實測每秒約 {tps} 個 token。
+系統記憶體要 {e(ram)} 以上。顯示卡記憶體還有空間時，把 N 調小會比較快；
+不夠時改用 <code>--cpu-moe</code>（全部專家放系統記憶體，約 2.7 GB）。
+Ollama 不能這樣分配，請用 llama.cpp 或 LM Studio（載入設定裡把 MoE 專家權重放到 CPU）。</p>
+<pre><code>llama-server -m {e(b["gguf"])} -c 16384 -ngl 99 --n-cpu-moe {n} -fa on -ctk q8_0 -ctv q8_0{rb} --port 8080</code></pre>
 """
 
 
@@ -225,6 +258,7 @@ def run_guide(tiers):
                  f"想要對話請用標「對話模型」的層級（{e(chat['tier'])} 起）。"
                  "12–16 GB 顯示卡也能跑 L24，加上 <code>--cpu-moe</code>，"
                  "專家權重放在系統記憶體（建議 32 GB RAM 以上，速度較慢）。</p>")
+    kinds += _offload_html(tiers)
     return f"""<h2>如何下載並在本機執行 · Run it on your computer</h2>
 <p>三個步驟：選檔、下載解壓、用 llama.cpp、Ollama 或 LM Studio 執行。
 模型完全在你的電腦上跑，不需要網路，對話內容不會傳出去。</p>
@@ -304,6 +338,12 @@ def _page(name, version, tiers, base, generations, mac=()):
             f' · {_size(b["bytes"])}{"" if b["fits"] else " (exceeds tier)"}'
             for b in t["bundles"])
         sums = "<br>".join(f"<code>{b['sha256'][:16]}…</code>" for b in t["bundles"])
+        small, big = _offload_source(tiers)
+        if small is t:
+            ob = big["bundles"][0]
+            links += (f'<br><a href="{html.escape(base + "/" + ob["key"])}">26B 對話 {html.escape(ob["quant"])}</a>'
+                      f' · {_size(ob["bytes"])}（同 {html.escape(big["tier"])} 檔，專家放系統記憶體，'
+                      f'需 {OFFLOAD_8GB[4]} RAM，見下方說明）')
         tag = " <span class=tag>preview</span>" if t["status"] == "preview" else ""
         rows.append(f"<tr>{head}<td>{links}{tag}</td><td>{t['ctx'] // 1024}K</td>"
                     f"<td>{sums}</td></tr>")

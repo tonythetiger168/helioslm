@@ -1,5 +1,18 @@
 # HeliosLM v5 Changelog
 
+## v5.261 (2026-11-09) - 26B chat on 8 GB GPUs (expert offload)
+
+The download page offers the L24 26B-A4B Q4_K chat file in the L8 row too,
+run with llama.cpp `--n-cpu-moe 24`: the experts of the first 24 of 30
+layers stay in system RAM (32 GB needed). Measured with llama.cpp
+full-cuda, `-c 16384 -fa on -ctk q8_0 -ctv q8_0`: 5.7 GB VRAM (5.9 GB at
+32K), 34 tok/s decode on an A40 with 7 Xeon cores; `--cpu-moe` 2.7 GB /
+30 tok/s; MTP only +4% here, so the tip is not repeated for this mode.
+`cloudflare.OFFLOAD_8GB` holds the numbers, `_offload_html` adds the run
+guide paragraph and command, `SPEED` gets the L8 26B row, package READMEs
+of MoE files get the 8 GB command, and docs/LOCAL_RUN.md the same notes.
+Same weights and file as L24, so no new download is published.
+
 ## v5.260 (2026-11-09) - Grounding / decision / DPO sidecars folded into the suite
 
 `case_upstream_suites.py` gains wrappers for `test_grounding` (7 funcs;
