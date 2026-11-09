@@ -1056,6 +1056,10 @@ def test_kv_cache_analytic_suite():
 # 2026-11-08 limitations round: test_package_tiers (T142/T166 packaging)
 # and test_prereg (Plan E5 pre-registered evaluation) moved from EXEMPT
 # to FOLDED — the backlog is now 160 files.
+# 2026-11-09 daily-maintenance round: test_grounding, test_decision,
+# test_copy_curriculum, test_dpo, test_decision_head and
+# test_first_k_dense moved from EXEMPT to FOLDED — the backlog is now
+# 154 files.
 # OpenAI-compatible stream smoke (serving/openai_stream_smoke.py):
 # test_openai_stream_smoke is exempt for the same reason as test_hsh_web.
 # It binds 127.0.0.1 through ThreadingHTTPServer on an ephemeral port and
@@ -1137,6 +1141,14 @@ FOLDED_SIDECARS = {
     # limitations round 2026-11-08 (package tiers / prereg plans)
     "test_package_tiers": "test_package_tiers_suite",
     "test_prereg": "test_prereg_suite",
+    # daily-maintenance round 2026-11-09 (v5.260): grounding / decision /
+    # copy curriculum / DPO / decision head / first-k-dense
+    "test_grounding": "test_grounding_suite",
+    "test_decision": "test_decision_suite",
+    "test_copy_curriculum": "test_copy_curriculum_suite",
+    "test_dpo": "test_dpo_suite",
+    "test_decision_head": "test_decision_head_suite",
+    "test_first_k_dense": "test_first_k_dense_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1147,17 +1159,17 @@ EXEMPT_SIDECARS = {
     'test_artifact_tiers', 'test_async_grpo', 'test_attn_res', 'test_base_gap',
     'test_bench_quant', 'test_benchmark', 'test_calibrated_prefetcher',
     'test_calibrated_router', 'test_calibration_board', 'test_chat', 'test_chat_tuned',
-    'test_chunked_ce', 'test_clamped_swiglu', 'test_copy_curriculum',
+    'test_chunked_ce', 'test_clamped_swiglu',
     'test_cost_per_task', 'test_cpt_chunked_ce', 'test_cpt_pilot', 'test_cpt_plan',
     'test_csa', 'test_csa_learned', 'test_csa_learned_16x', 'test_csa_learned_h64',
     'test_csa_learned_r3', 'test_cuda_device_paths', 'test_cuda_smoke', 'test_custom_attention_notebook',
-    'test_cvdp_bench', 'test_data_quality', 'test_decision',
-    'test_decision_data', 'test_decision_head', 'test_decision_head_integration', 'test_decontam',
+    'test_cvdp_bench', 'test_data_quality',
+    'test_decision_data', 'test_decision_head_integration', 'test_decontam',
     'test_device_matrix', 'test_disagg', 'test_disagg_pareto', 'test_distill_agent',
-    'test_distill_filter', 'test_distill_gen', 'test_distill_sft', 'test_dpo',
+    'test_distill_filter', 'test_distill_gen', 'test_distill_sft',
     'test_dsa', 'test_envs', 'test_file_env',
-    'test_finetune_data', 'test_first_k_dense', 'test_gated_conv', 'test_gguf_quant',
-    'test_global_prope_kv', 'test_gpu_batch_run', 'test_grounded_replay', 'test_grounding',
+    'test_finetune_data', 'test_gated_conv', 'test_gguf_quant',
+    'test_global_prope_kv', 'test_gpu_batch_run', 'test_grounded_replay',
     'test_grpo_length', 'test_grpo_u1', 'test_harness', 'test_harness_deep',
     'test_hca_rescue', 'test_hdl_bench', 'test_hdl_data', 'test_hdl_git_sources',
     'test_hdl_projects', 'test_hdl_reward', 'test_hdl_train_eval', 'test_hf_license_audit',
@@ -1831,6 +1843,129 @@ def test_prereg_suite():
     _pass("test_prereg_suite",
           "prereg plans: all 9 sidecar tests (13+4 mutation rows, 2 "
           "committed plans, paired bootstrap) under the daily gate")
+
+
+# ---------------------------------------------------------------------------
+# daily-maintenance round (2026-11-09, v5.260): fold six more sidecars
+# into the daily gate — test_grounding (T33 grounding oracles),
+# test_decision (T27 typed decision primitives), test_copy_curriculum
+# (T36 echo/copy oracles), test_dpo (DPO trainer oracles),
+# test_decision_head (learned decision head) and test_first_k_dense
+# (dense-prefix MoE layout). All six are plain zero-argument functions —
+# no pytest import, no fixtures, no sockets, no CUDA — and each file
+# self-manages sys.path for its agent/ sibling imports, so the wrappers
+# are direct calls. Verified standalone on the managed runtime before
+# folding: 7/7, 5/5, 4/4, 6/6, 4/4 and 6/6 pass (32 functions total).
+# ---------------------------------------------------------------------------
+
+
+def test_grounding_suite():
+    """T33 grounding oracles under the daily gate: the confabulation
+    replay (grounded gate rescues a wrong-arg tool call), all env
+    families, determinism, escalate path untouched, unknown-task
+    pass-through, finish grounding and premature-finish escalation."""
+    from helioslm_v5.tests import test_grounding as m
+    expected = {"test_grounding_cures_confabulation",
+                "test_grounding_all_env_families",
+                "test_grounding_is_deterministic",
+                "test_escalate_path_untouched",
+                "test_unknown_task_passes_through",
+                "test_finish_grounds_to_family_semantics",
+                "test_premature_finish_escalates"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_grounding_suite",
+          "T33 grounding: all 7 sidecar tests under the daily gate")
+
+
+def test_decision_suite():
+    """T27 typed decision primitives under the daily gate: schema
+    enforcement, choice-from-route, gate.ask route + noul, pi-warden
+    serial default and the additive contract (T11-T19 unchanged)."""
+    from helioslm_v5.tests import test_decision as m
+    expected = {"test_primitives_schema_enforced",
+                "test_choice_from_route",
+                "test_gate_ask_route_and_noul",
+                "test_pi_warden_batch_serial_default",
+                "test_additive_contract_gate_unchanged"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_decision_suite",
+          "T27 decision primitives: all 5 sidecar tests under the daily "
+          "gate")
+
+
+def test_copy_curriculum_suite():
+    """T36 copy-curriculum oracles under the daily gate: echo env
+    sample/verify, echo through a real ChatSession, the dataset builder
+    (copy-exact replies, ord discipline, chat mixing) and episode
+    determinism."""
+    from helioslm_v5.tests import test_copy_curriculum as m
+    expected = {"test_echo_env_verify",
+                "test_echo_through_chat_session",
+                "test_copy_dataset_builder",
+                "test_echo_episode_deterministic"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_copy_curriculum_suite",
+          "T36 copy curriculum: all 4 sidecar tests under the daily gate")
+
+
+def test_dpo_suite():
+    """DPO trainer oracles under the daily gate: equal-policy log-2
+    loss, manual-computation match, training prefers the chosen
+    completion, frozen reference, loud errors and string-input
+    tokenizer path."""
+    from helioslm_v5.tests import test_dpo as m
+    expected = {"test_policy_equal_ref_gives_log2",
+                "test_loss_matches_manual_computation",
+                "test_training_prefers_chosen",
+                "test_reference_is_frozen",
+                "test_loud_errors",
+                "test_string_inputs_use_tokenizer"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_dpo_suite",
+          "DPO trainer: all 6 sidecar tests under the daily gate")
+
+
+def test_decision_head_suite():
+    """Learned decision head under the daily gate: single-pass
+    questions, learns separable states, Brier term binds and
+    batch-equals-single."""
+    from helioslm_v5.tests import test_decision_head as m
+    expected = {"test_questions_single_pass",
+                "test_learns_separable_states",
+                "test_brier_term_binds",
+                "test_batch_equals_single"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_decision_head_suite",
+          "decision head: all 4 sidecar tests under the daily gate")
+
+
+def test_first_k_dense_suite():
+    """First-k-dense MoE layout under the daily gate: default unchanged,
+    layout/parameter counts, decode equals full, routing stats exclude
+    dense prefix, composes with hybrid + hyper-connections, and config
+    validation."""
+    from helioslm_v5.tests import test_first_k_dense as m
+    expected = {"test_default_unchanged",
+                "test_layout_and_params",
+                "test_decode_equals_full",
+                "test_routing_stats_exclude_dense",
+                "test_composes_with_hybrid_and_hc",
+                "test_validation"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_first_k_dense_suite",
+          "first-k-dense MoE: all 6 sidecar tests under the daily gate")
 
 
 def test_sidecar_coverage_guard():

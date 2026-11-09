@@ -572,11 +572,11 @@ As of 2026-10-31:
 
 The last five releases; every earlier release is in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md).
 
+- **v5.260** — six more sidecar suites folded into the daily gate (T33 grounding, T27 decision primitives, T36 copy curriculum, DPO trainer, decision head, first-k-dense MoE; 57 folded / 154 exempt)
+- **v5.259** — HDL eval: `--gen-tbs` writes model testbenches for CVDP; offline CPU selection against saved samples
 - **v5.258** — five more sidecar suites folded into the daily gate (oracle-answer guard, think + experience store, thinking budget, three-modes oracles, skill docs; 49 folded / 162 exempt)
 - **v5.257** — UVM bench: `[DONE]` fence fix, Verilator 5.052 rules in the prompt, repair check
 - **v5.256** — CVDP harness runs each compose service in its `working_dir`; commented OSS Dockerfiles run
-- **v5.255** — four more sidecar suites folded into the daily gate (checkpoint merging incl. the merge CLI, MHC + Sinkhorn-MHC, byte-level BPE; 41 folded / 170 exempt)
-- **v5.251** — four more sidecar suites folded into the daily gate (teacher licence audit, pretrain pilot, review regressions, cloudflare bundles), plus the v5.236 harness-move import fix, Windows UTF-8 / memmap fixes, and a pytest-free/UTF-8 repair of the mlx_mac suite
 
 ## License
 

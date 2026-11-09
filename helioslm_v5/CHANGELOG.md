@@ -1,5 +1,25 @@
 # HeliosLM v5 Changelog
 
+## v5.260 (2026-11-09) - Grounding / decision / DPO sidecars folded into the suite
+
+`case_upstream_suites.py` gains wrappers for `test_grounding` (7 funcs;
+T33 confabulation replay, env families, determinism, escalate path,
+unknown-task pass-through, finish grounding, premature-finish
+escalation), `test_decision` (5; T27 schema enforcement, choice route,
+gate.ask, pi-warden serial default, additive contract),
+`test_copy_curriculum` (4; T36 echo env / ChatSession flow / dataset
+builder / determinism), `test_dpo` (6; log-2 equal-policy loss, manual
+computation, chosen-preference training, frozen reference, loud errors,
+tokenizer path), `test_decision_head` (4; single-pass questions,
+separable states, Brier binding, batch==single) and
+`test_first_k_dense` (6; default unchanged, layout/params, decode ==
+full, routing stats, hybrid + HC composition, validation). All six are
+plain zero-argument functions — no pytest import, no fixtures, no
+sockets, no CUDA — so no shims were needed; each was verified
+standalone on the managed runtime before folding. `FOLDED_SIDECARS`
+goes 51 -> 57 files and the legacy EXEMPT list drops the same six (154
+remain exempt; 211 sidecar files on disk, all accounted for by the
+coverage guard). The daily TESTS registry grows to 168 entries.
 ## v5.259 (2026-11-08) - HDL eval: model-written testbenches for CVDP (--gen-tbs)
 
 `examples/hdl_eval_all.py --gen-tbs OUT` loads the model, writes `--tb-n`

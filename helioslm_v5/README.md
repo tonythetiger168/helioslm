@@ -1,5 +1,9 @@
-# HeliosLM v5.258 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.260 - DeepSeek/K3-Style Architecture
 
+v5.260 (2026-11-09): six more sidecar suites folded into the mandated
+daily gate (T33 grounding oracles, T27 typed decision primitives, T36
+copy curriculum, DPO trainer oracles, learned decision head,
+first-k-dense MoE layout; 57 folded / 154 exempt).
 v5.258 (2026-11-08): five more sidecar suites folded into the mandated
 daily gate (oracle-answer guard, tri-mode think + experience store,
 thinking budget, three-modes oracles, skill-docs validator; 49 folded /

@@ -328,6 +328,17 @@ TESTS = [
     # and the Plan E5 pre-registered evaluation oracles.
     case_upstream_suites.test_package_tiers_suite,
     case_upstream_suites.test_prereg_suite,
+    # daily-maintenance round (2026-11-09, v5.260): T33 grounding
+    # oracles, T27 decision primitives, T36 copy curriculum, DPO
+    # trainer, decision head, first-k-dense MoE layout. All plain
+    # zero-argument functions: no pytest, no fixtures, no sockets, no
+    # CUDA (32 sidecar functions total).
+    case_upstream_suites.test_grounding_suite,
+    case_upstream_suites.test_decision_suite,
+    case_upstream_suites.test_copy_curriculum_suite,
+    case_upstream_suites.test_dpo_suite,
+    case_upstream_suites.test_decision_head_suite,
+    case_upstream_suites.test_first_k_dense_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 
