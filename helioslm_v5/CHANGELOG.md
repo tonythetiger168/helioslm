@@ -1,5 +1,15 @@
 # HeliosLM v5 Changelog
 
+## v5.262 (2026-11-09) - Chat commands pass enable_thinking=false explicitly
+
+The 26B chat tiers now ship the helioslm-chat-g26b-short weights
+(tw-preview-8). With llama-server `--reasoning-budget 0` alone, 2 of 15
+short prompts opened with a literal `<|turn>` / `<|turn>thought` and ran
+to the token limit; adding `--chat-template-kwargs
+'{"enable_thinking":false}'` gave 0 of 15 (same file, same prompts).
+`package.NO_THINK_SERVER` holds both flags; package READMEs, the download
+page commands (`_cmd`, `_offload_html`) and docs/LOCAL_RUN.md use it.
+
 ## v5.261 (2026-11-09) - 26B chat on 8 GB GPUs (expert offload)
 
 The download page offers the L24 26B-A4B Q4_K chat file in the L8 row too,

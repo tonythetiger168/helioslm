@@ -104,12 +104,14 @@ ollama run helioslm-tw-26b-a4b-l24
 對話模型（L24 起）：
 
 ```bash
-llama-server -m helioslm-tw-26b-a4b-l24-Q4_K.gguf -c 32768 -ngl 99 --reasoning-budget 0 --port 8080
+llama-server -m helioslm-tw-26b-a4b-l24-Q4_K.gguf -c 32768 -ngl 99 --reasoning-budget 0 --chat-template-kwargs '{"enable_thinking":false}' --port 8080
 ```
 
 啟動後用瀏覽器開 <http://127.0.0.1:8080> 就能對話；
 其他程式可以用 OpenAI 相容 API `http://127.0.0.1:8080/v1`。
 `--reasoning-budget 0` 是預設的直接回答；拿掉它模型會先思考再回答。
+`--chat-template-kwargs '{"enable_thinking":false}'` 要一起加：只加 `--reasoning-budget 0` 時，短問題偶爾會在開頭冒出 `<|turn>` 字樣或跑到字數上限（2026-11-09 實測 15 題中 2 題，加上後 0 題）。
+Windows PowerShell 5 會吃掉單引號裡的雙引號，請改用 PowerShell 7 或 cmd：`--chat-template-kwargs "{\"enable_thinking\":false}"`。
 
 基底模型（L-Edge、L8、L16），把 `-p` 換成你的開頭：
 
@@ -127,9 +129,9 @@ L-Edge 只用 CPU，不加 `-ngl`。舊版 llama.cpp 沒有 `llama-completion` �
 | L-Edge | `llama-completion -m helioslm-tw-e4b-l-edge-Q4_K.gguf -c 8192 -n 256 -p "…"` |
 | L8 | `llama-completion -m helioslm-tw-e4b-l8-Q4_K.gguf -c 32768 -ngl 99 -n 256 -p "…"` |
 | L16 | `llama-completion -m helioslm-tw-e4b-l16-Q8_0.gguf -c 32768 -ngl 99 -n 256 -p "…"` |
-| L24 | `llama-server -m helioslm-tw-26b-a4b-l24-Q4_K.gguf -c 32768 -ngl 99 --reasoning-budget 0 --port 8080` |
-| L48+ | `llama-server -m helioslm-tw-26b-a4b-l48plus-Q8_0.gguf -c 131072 -ngl 99 --reasoning-budget 0 --port 8080` |
-| L128 | `llama-server -m helioslm-tw-26b-a4b-l128-F16.gguf -c 131072 -ngl 99 --reasoning-budget 0 --port 8080` |
+| L24 | `llama-server -m helioslm-tw-26b-a4b-l24-Q4_K.gguf -c 32768 -ngl 99 --reasoning-budget 0 --chat-template-kwargs '{"enable_thinking":false}' --port 8080` |
+| L48+ | `llama-server -m helioslm-tw-26b-a4b-l48plus-Q8_0.gguf -c 131072 -ngl 99 --reasoning-budget 0 --chat-template-kwargs '{"enable_thinking":false}' --port 8080` |
+| L128 | `llama-server -m helioslm-tw-26b-a4b-l128-F16.gguf -c 131072 -ngl 99 --reasoning-budget 0 --chat-template-kwargs '{"enable_thinking":false}' --port 8080` |
 
 ## 5. 記憶體不夠時
 
@@ -143,7 +145,7 @@ L-Edge 只用 CPU，不加 `-ngl`。舊版 llama.cpp 沒有 `llama-completion` �
   統一記憶體的電腦（Mac、DGX Spark、Ryzen AI Max+ 395）不需要。
 
   ```bash
-  llama-server -m helioslm-tw-26b-a4b-l24-Q4_K.gguf -c 32768 -ngl 99 --cpu-moe --reasoning-budget 0 --port 8080
+  llama-server -m helioslm-tw-26b-a4b-l24-Q4_K.gguf -c 32768 -ngl 99 --cpu-moe --reasoning-budget 0 --chat-template-kwargs '{"enable_thinking":false}' --port 8080
   ```
 
   8 GB 顯示卡（2026-11-09 實測，16K 上下文、KV 快取 q8_0）：`--n-cpu-moe 24` 用約 5.7 GB 顯示卡記憶體
@@ -152,7 +154,7 @@ L-Edge 只用 CPU，不加 `-ngl`。舊版 llama.cpp 沒有 `llama-completion` �
   或 LM Studio（載入設定裡把 MoE 專家權重放到 CPU）。
 
   ```bash
-  llama-server -m helioslm-tw-26b-a4b-l24-Q4_K.gguf -c 16384 -ngl 99 --n-cpu-moe 24 -fa on -ctk q8_0 -ctv q8_0 --reasoning-budget 0 --port 8080
+  llama-server -m helioslm-tw-26b-a4b-l24-Q4_K.gguf -c 16384 -ngl 99 --n-cpu-moe 24 -fa on -ctk q8_0 -ctv q8_0 --reasoning-budget 0 --chat-template-kwargs '{"enable_thinking":false}' --port 8080
   ```
 
 - **Windows 上變得很慢**：關掉其他吃顯示卡記憶體的程式（瀏覽器硬體加速、遊戲、Docker / WSL）。
@@ -180,7 +182,7 @@ MTP 用 Gemma 4 26B-A4B 的 assistant 頭當草稿模型，一次猜幾個 token
 另外下載它的 GGUF（實測用的是 Hugging Face 上 `AtomicChat/gemma-4-26B-A4B-it-assistant-GGUF` 的 Q8_0），然後：
 
 ```bash
-llama-server -m helioslm-tw-26b-a4b-l24-Q4_K.gguf -c 32768 -ngl 99 --reasoning-budget 0 \
+llama-server -m helioslm-tw-26b-a4b-l24-Q4_K.gguf -c 32768 -ngl 99 --reasoning-budget 0 --chat-template-kwargs '{"enable_thinking":false}' \
   -md <assistant 檔>.gguf -ngld 99 --spec-type draft-mtp --spec-draft-n-max 3 --port 8080
 ```
 

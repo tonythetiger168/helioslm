@@ -1416,7 +1416,8 @@ def test_cloudflare_bundles_suite():
                 "test_base_url_refusals", "test_cli_and_dry_run_upload",
                 "test_site_has_local_run_guide",
                 "test_site_has_measured_speed_and_mtp_tip",
-                "test_site_offers_26b_on_8gb"}
+                "test_site_offers_26b_on_8gb",
+                "test_chat_commands_turn_thinking_off_in_template"}
     _drift_guard(m, expected)
     # Real pytest wraps fixture functions so direct calls fail; unwrap
     # (_fixture_function) in that case. Under the shim the decorator is
@@ -1430,7 +1431,8 @@ def test_cloudflare_bundles_suite():
                    m.test_cli_and_dry_run_upload,
                    m.test_site_has_local_run_guide,
                    m.test_site_has_measured_speed_and_mtp_tip,
-                   m.test_site_offers_26b_on_8gb):
+                   m.test_site_offers_26b_on_8gb,
+                   m.test_chat_commands_turn_thinking_off_in_template):
             with tempfile.TemporaryDirectory() as t:
                 fn(dist, Path(t))
     for url in ["https://github.com/x/y/releases",
@@ -1439,7 +1441,7 @@ def test_cloudflare_bundles_suite():
                 "dl.example.com"]:
         m.test_base_url_refusals(url)
     _pass("test_cloudflare_bundles_suite",
-          "T163 Cloudflare bundles: all 8 sidecar tests (two packaged "
+          "T163 Cloudflare bundles: all 9 sidecar tests (two packaged "
           "tiers, 5 base-url refusals, dry-run upload) under the daily "
           "gate")
 

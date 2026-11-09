@@ -205,3 +205,16 @@ def test_site_offers_26b_on_8gb(dist, tmp_path):
     build_site([e], tmp_path / "site2", base_url=BASE, version="v1")
     page = (tmp_path / "site2" / "index.html").read_text(encoding="utf-8")
     assert "26B 對話" not in page and "8 GB 顯示卡也想用對話模型" not in page
+
+
+def test_chat_commands_turn_thinking_off_in_template(dist, tmp_path):
+    """v5.262: chat llama-server commands pass enable_thinking=false to the
+    chat template, not only --reasoning-budget 0."""
+    from helioslm_v5.src.export.package import NO_THINK_SERVER
+    e = bundle_package(dist / "L8", tmp_path / "r2", version="v1")
+    chat = dict(e, tier="L24", chat=True, reasoning="off")
+    build_site([e, chat], tmp_path / "site", base_url=BASE, version="v1")
+    page = (tmp_path / "site" / "index.html").read_text(encoding="utf-8")
+    assert "enable_thinking" in NO_THINK_SERVER and "--reasoning-budget 0" in NO_THINK_SERVER
+    from html import escape
+    assert escape(NO_THINK_SERVER) in page
