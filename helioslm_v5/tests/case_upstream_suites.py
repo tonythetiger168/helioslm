@@ -1060,6 +1060,11 @@ def test_kv_cache_analytic_suite():
 # test_copy_curriculum, test_dpo, test_decision_head and
 # test_first_k_dense moved from EXEMPT to FOLDED — the backlog is now
 # 154 files.
+# 2026-11-09 limitations round: test_gated_conv (T129 LFM2 gated
+# short-conv), test_artifact_tiers (T83 verification-tier registry),
+# test_decision_data (T29 RLCD outcome loop) and test_finetune_data
+# (agent SFT data pipeline) moved from EXEMPT to FOLDED — the backlog
+# is now 150 files.
 # OpenAI-compatible stream smoke (serving/openai_stream_smoke.py):
 # test_openai_stream_smoke is exempt for the same reason as test_hsh_web.
 # It binds 127.0.0.1 through ThreadingHTTPServer on an ephemeral port and
@@ -1149,6 +1154,12 @@ FOLDED_SIDECARS = {
     "test_dpo": "test_dpo_suite",
     "test_decision_head": "test_decision_head_suite",
     "test_first_k_dense": "test_first_k_dense_suite",
+    # limitations round 2026-11-09 (gated conv / artifact tiers / RLCD
+    # outcome loop / SFT data pipeline)
+    "test_gated_conv": "test_gated_conv_suite",
+    "test_artifact_tiers": "test_artifact_tiers_suite",
+    "test_decision_data": "test_decision_data_suite",
+    "test_finetune_data": "test_finetune_data_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1156,7 +1167,7 @@ FOLDED_SIDECARS = {
 # stay out of the gate; it only means "known, pending triage".
 EXEMPT_SIDECARS = {
     'test_abstain', 'test_agent', 'test_agent_workflow', 'test_api_distill',
-    'test_artifact_tiers', 'test_async_grpo', 'test_attn_res', 'test_base_gap',
+    'test_async_grpo', 'test_attn_res', 'test_base_gap',
     'test_bench_quant', 'test_benchmark', 'test_calibrated_prefetcher',
     'test_calibrated_router', 'test_calibration_board', 'test_chat', 'test_chat_tuned',
     'test_chunked_ce', 'test_clamped_swiglu',
@@ -1164,11 +1175,11 @@ EXEMPT_SIDECARS = {
     'test_csa', 'test_csa_learned', 'test_csa_learned_16x', 'test_csa_learned_h64',
     'test_csa_learned_r3', 'test_cuda_device_paths', 'test_cuda_smoke', 'test_custom_attention_notebook',
     'test_cvdp_bench', 'test_data_quality',
-    'test_decision_data', 'test_decision_head_integration', 'test_decontam',
+    'test_decision_head_integration', 'test_decontam',
     'test_device_matrix', 'test_disagg', 'test_disagg_pareto', 'test_distill_agent',
     'test_distill_filter', 'test_distill_gen', 'test_distill_sft',
     'test_dsa', 'test_envs', 'test_file_env',
-    'test_finetune_data', 'test_gated_conv', 'test_gguf_quant',
+    'test_gguf_quant',
     'test_global_prope_kv', 'test_gpu_batch_run', 'test_grounded_replay',
     'test_grpo_length', 'test_grpo_u1', 'test_harness', 'test_harness_deep',
     'test_hca_rescue', 'test_hdl_bench', 'test_hdl_data', 'test_hdl_git_sources',
@@ -1966,6 +1977,95 @@ def test_first_k_dense_suite():
         getattr(m, name)()
     _pass("test_first_k_dense_suite",
           "first-k-dense MoE: all 6 sidecar tests under the daily gate")
+
+
+# ---------------------------------------------------------------------------
+# limitations round (2026-11-09): fold four more exempt-backlog sidecars
+# into the daily gate — the LFM2 gated short-conv pins, the benchmark
+# verification-tier registry oracles, the RLCD outcome loop, and the
+# agent SFT data pipeline. All four are plain functions: no pytest, no
+# fixtures, no sockets, no CUDA (gated_conv / decision_data build tiny
+# models or heads on CPU; decision_data's DecisionHead trains 700 epochs
+# on 40 records; finetune_data uses tempfile only). Same drift-guarded
+# wrapper pattern as v5.225.
+# ---------------------------------------------------------------------------
+
+
+def test_gated_conv_suite():
+    """T129 LFM2 gated short-conv (src/attention/gated_conv.py, v5.126)
+    under the daily gate. Pins: off by default and bad layer lists /
+    kernel < 2 / removing every MLA layer refused; the mixer equals an
+    F.conv1d reference (depthwise, causal left pad) with both gates;
+    cached decode equals the full forward with a fixed-size StateTensor
+    that past_seq_len skips; packed sequences restart at the document
+    boundary and padding writes nothing; the lfm_conv pilot arch keeps
+    MLA on every third layer and the last."""
+    from helioslm_v5.tests import test_gated_conv as m
+    expected = {"test_off_and_validation", "test_matches_conv1d",
+                "test_cached_decode", "test_packed_and_padding",
+                "test_pilot_arch"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_gated_conv_suite",
+          "gated short-conv: all 5 sidecar tests (validation, conv1d "
+          "reference, cached decode, packing/padding, pilot arch) under "
+          "the daily gate")
+
+
+def test_artifact_tiers_suite():
+    """T83 benchmark verification-tier registry (eval/artifact_tiers.py,
+    benchmarks/verification_tiers.json) under the daily gate. Pins:
+    validator accepts well-formed and loudly names offenders (unknown
+    tier / missing basis / tampered keys / tampered ladder); REAL
+    coverage — every benchmarks/*.json is registered and every entry
+    exists; the vacuity guard (a deleted entry and a phantom entry each
+    fail loudly); tier_of is loud on unknown artifacts."""
+    from helioslm_v5.tests import test_artifact_tiers as m
+    expected = {"test_validator_accepts_and_rejects",
+                "test_real_benchmarks_fully_covered",
+                "test_coverage_vacuity_guard"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_artifact_tiers_suite",
+          "artifact tiers: all 3 sidecar tests (validator, real-tree "
+          "coverage, vacuity guard) under the daily gate")
+
+
+def test_decision_data_suite():
+    """T29 RLCD outcome loop (agent/decision_data.py, v5.32 P2) under
+    the daily gate. Pins: the recording gate collects route records with
+    both outcomes observed; the Brier-trained DecisionHead lowers
+    confidence on the failure-bound state class (clean separation from
+    the lambda=0 twin pinned at 1.0; binary confidence floor 1/K=0.5
+    documented in the test); the reward adjustment skips None
+    confidence. Scripted policy, CPU, ~66 tiny agent-loop runs."""
+    from helioslm_v5.tests import test_decision_data as m
+    expected = {"test_recording_gate_and_records",
+                "test_rlcd_loop_lowers_overconfidence",
+                "test_rlcd_reward_adjustment"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_decision_data_suite",
+          "RLCD outcome loop: all 3 sidecar tests (records, Brier "
+          "separation, reward adjustment) under the daily gate")
+
+
+def test_finetune_data_suite():
+    """Agent SFT data pipeline (agent/finetune_data.py) under the daily
+    gate: 20 generated CalcEnv episodes each yield 2 parseable samples
+    ending in finish, and build_dataset writes 21 valid lines
+    (n_per_env=3 across the env set) that all parse against the default
+    registry. tempfile only, no model."""
+    from helioslm_v5.tests import test_finetune_data as m
+    expected = {"test_finetune_data_pipeline"}
+    _drift_guard(m, expected)
+    m.test_finetune_data_pipeline()
+    _pass("test_finetune_data_suite",
+          "SFT data pipeline: 1 sidecar test (20 episodes + 21-line "
+          "dataset, all responses parse) under the daily gate")
 
 
 def test_sidecar_coverage_guard():

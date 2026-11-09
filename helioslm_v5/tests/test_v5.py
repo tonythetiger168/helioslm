@@ -339,6 +339,13 @@ TESTS = [
     case_upstream_suites.test_dpo_suite,
     case_upstream_suites.test_decision_head_suite,
     case_upstream_suites.test_first_k_dense_suite,
+    # limitations round (2026-11-09): LFM2 gated short-conv pins,
+    # benchmark verification-tier registry, RLCD outcome loop, and the
+    # agent SFT data pipeline.
+    case_upstream_suites.test_gated_conv_suite,
+    case_upstream_suites.test_artifact_tiers_suite,
+    case_upstream_suites.test_decision_data_suite,
+    case_upstream_suites.test_finetune_data_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 
