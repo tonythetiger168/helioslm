@@ -346,6 +346,18 @@ TESTS = [
     case_upstream_suites.test_artifact_tiers_suite,
     case_upstream_suites.test_decision_data_suite,
     case_upstream_suites.test_finetune_data_suite,
+    # daily-maintenance round (2026-11-10, v5.263): T88 calibration
+    # board, T85 cost-per-task, zh-TW data quality, v5.30 chat session,
+    # agent-workflow plugin, decision-head integration (31 sidecar
+    # functions). The fold surfaced and fixed two Windows platform bugs:
+    # LF-pinned provenance digests vs CRLF worktrees (sha256_text_file)
+    # and backslash input keys in build_board (now as_posix).
+    case_upstream_suites.test_calibration_board_suite,
+    case_upstream_suites.test_cost_per_task_suite,
+    case_upstream_suites.test_data_quality_suite,
+    case_upstream_suites.test_chat_suite,
+    case_upstream_suites.test_agent_workflow_suite,
+    case_upstream_suites.test_decision_head_integration_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 

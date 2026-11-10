@@ -1,5 +1,37 @@
 # HeliosLM v5 Changelog
 
+## v5.263 (2026-11-10) - Calibration/cost sidecars folded; Windows CRLF-digest and path-separator fixes
+
+`case_upstream_suites.py` gains wrappers for `test_calibration_board`
+(4 funcs; T88 hand-computed auroc/brier oracles, loud validation,
+null-conf rows, committed board reproduces), `test_cost_per_task` (5;
+T85 loud record validation, cost-front math, score audit, committed
+artifact provenance, CLI regen), `test_data_quality` (7; zh variant,
+heuristics, classifier, filters, mixture, CLI — prepare_data_filters
+self-skips without the optional 'tokenizers' package), `test_chat`
+(10; v5.30 dual-mode parse, tool/compose tasks, error recovery,
+transcript memory, replay roundtrip), `test_agent_workflow` (2) and
+`test_decision_head_integration` (3). `FOLDED_SIDECARS` goes 61 -> 67
+files and the legacy EXEMPT list drops the same six (144 remain; 211
+sidecar files on disk, all accounted for by the coverage guard). The
+daily TESTS registry grows to 178 entries.
+
+Folding the two provenance suites surfaced two real Windows platform
+bugs, both fixed rather than exempted:
+
+1. The pinned provenance digests were computed on Linux (LF bytes). A
+   Windows worktree holds the same JSON with CRLF, and the byte-exact
+   `sha256_file` reported a false "input drifted". Quantified on
+   `benchmarks/api_probe_deepseek_2026-10-04.json`: worktree CRLF hash
+   `104978f55d2d…`, pinned LF hash `9bd4ae7d5b…` (identical after
+   `\r\n` → `\n` normalization). Both eval modules gain
+   `sha256_text_file` (LF-normalized hashing for text artifacts only;
+   the toy .pt checkpoint digest stays byte-exact), the two tests use
+   it for JSON inputs, and `examples/calibration_board.py --check`
+   compares content with line endings normalized.
+2. `build_board` keyed inputs with `str(p.relative_to(root))`, which
+   yields backslashes on Windows and made `--check` report a false
+   stale board. Now `.as_posix()`.
 ## v5.262 (2026-11-09) - Chat commands pass enable_thinking=false explicitly
 
 The 26B chat tiers now ship the helioslm-chat-g26b-short weights

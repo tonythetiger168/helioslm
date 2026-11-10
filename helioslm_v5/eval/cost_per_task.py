@@ -36,6 +36,27 @@ def sha256_file(path) -> str:
     return h.hexdigest()
 
 
+def sha256_text_file(path) -> str:
+    """SHA-256 of a text artifact with line endings normalized to LF.
+
+    The committed provenance digests were computed on Linux checkouts
+    (LF). A Windows checkout with ``core.autocrlf=true`` (or a tree
+    extracted from a zip on Windows) materialises the same JSON with
+    CRLF, and the byte-exact ``sha256_file`` then reports a false
+    provenance mismatch (found 2026-11-10: the completion_evidence and
+    disagg_pareto_reference pins failed on a CRLF worktree while the
+    content was unchanged). Normalizing ``\\r\\n`` -> ``\\n`` before
+    hashing keeps the guard meaningful on any checkout convention:
+    every content change still changes the digest; only the
+    line-ending representation is ignored.
+
+    Text artifacts only — binary inputs (the score checkpoint .pt)
+    must keep using ``sha256_file``, because normalizing could silently
+    change a binary digest."""
+    blob = Path(path).read_bytes().replace(b"\r\n", b"\n")
+    return hashlib.sha256(blob).hexdigest()
+
+
 def canonical_sha256(payload: dict) -> str:
     """Hash canonical JSON (used for results_sha256 provenance)."""
     blob = json.dumps(payload, sort_keys=True, separators=(",", ":"),

@@ -40,6 +40,27 @@ def sha256_file(path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def sha256_text_file(path) -> str:
+    """SHA-256 of a text artifact with line endings normalized to LF.
+
+    The committed provenance digests were computed on Linux checkouts
+    (LF). A Windows checkout with ``core.autocrlf=true`` (or a tree
+    extracted from a zip on Windows) materialises the same JSON with
+    CRLF, and the byte-exact ``sha256_file`` then reports a false
+    "input drifted" (found 2026-11-10 on
+    benchmarks/api_probe_deepseek_2026-10-04.json: worktree CRLF hash
+    104978f5… vs pinned LF hash 9bd4ae7d…). Normalizing ``\\r\\n`` ->
+    ``\\n`` before hashing keeps the drift guard meaningful on any
+    checkout convention: every content change still changes the digest;
+    only the line-ending representation is ignored.
+
+    Text artifacts only — running a binary file through this helper can
+    silently change its digest, so binary inputs (checkpoints, GGUF)
+    must keep using ``sha256_file``."""
+    blob = Path(path).read_bytes().replace(b"\r\n", b"\n")
+    return hashlib.sha256(blob).hexdigest()
+
+
 def canonical_sha256(payload) -> str:
     blob = json.dumps(payload, sort_keys=True, separators=(",", ":"),
                       ensure_ascii=False).encode("utf-8")
@@ -146,8 +167,15 @@ def build_board(paths, created, repo_root=None):
     inputs, seen = {}, {}
     for p in paths:
         p = Path(p)
-        key = str(p.relative_to(root)) if root else p.name
-        digest = sha256_file(p)
+        # as_posix: committed input keys use forward slashes; on
+        # Windows str(relative_to) produces backslashes and the --check
+        # comparison would report a false stale board (2026-11-10 find)
+        key = p.relative_to(root).as_posix() if root else p.name
+        # score artifacts are JSON text: hash LF-normalized bytes so a
+        # CRLF worktree (Windows autocrlf / zip extract) does not fake
+        # drift; two files differing only in line endings count as
+        # duplicates of each other (documented simplification).
+        digest = sha256_text_file(p)
         if digest in seen:
             # a byte-identical copy would count one run twice
             raise BoardSchemaError(

@@ -1,5 +1,14 @@
-# HeliosLM v5.260 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.263 - DeepSeek/K3-Style Architecture
 
+v5.263 (2026-11-10): six more sidecar suites folded into the mandated
+daily gate (T88 calibration board, T85 cost-per-completed-task, zh-TW
+data quality, v5.30 chat session, agent-workflow plugin, decision-head
+integration; 67 folded / 144 exempt). The fold surfaced and fixed two
+Windows platform bugs: the pinned provenance digests were LF-computed
+so CRLF worktrees faked "input drifted" (new sha256_text_file helper,
+LF-normalized, text artifacts only — the .pt checkpoint digest stays
+byte-exact), and build_board keyed inputs with platform path
+separators (now as_posix).
 v5.260 (2026-11-09): six more sidecar suites folded into the mandated
 daily gate (T33 grounding oracles, T27 typed decision primitives, T36
 copy curriculum, DPO trainer oracles, learned decision head,

@@ -1065,6 +1065,11 @@ def test_kv_cache_analytic_suite():
 # test_decision_data (T29 RLCD outcome loop) and test_finetune_data
 # (agent SFT data pipeline) moved from EXEMPT to FOLDED — the backlog
 # is now 150 files.
+# 2026-11-10 daily-maintenance round: test_calibration_board (T88),
+# test_cost_per_task (T85), test_data_quality (zh-TW pipeline),
+# test_chat (v5.30 session), test_agent_workflow (harness plugin) and
+# test_decision_head_integration moved from EXEMPT to FOLDED — the
+# backlog is now 144 files.
 # OpenAI-compatible stream smoke (serving/openai_stream_smoke.py):
 # test_openai_stream_smoke is exempt for the same reason as test_hsh_web.
 # It binds 127.0.0.1 through ThreadingHTTPServer on an ephemeral port and
@@ -1160,22 +1165,32 @@ FOLDED_SIDECARS = {
     "test_artifact_tiers": "test_artifact_tiers_suite",
     "test_decision_data": "test_decision_data_suite",
     "test_finetune_data": "test_finetune_data_suite",
+    # daily-maintenance round 2026-11-10 (v5.263): calibration board /
+    # cost-per-task / data quality / chat / agent workflow / decision
+    # head integration — the fold surfaced and fixed the CRLF-digest
+    # and Windows path-separator bugs (see module banner above)
+    "test_calibration_board": "test_calibration_board_suite",
+    "test_cost_per_task": "test_cost_per_task_suite",
+    "test_data_quality": "test_data_quality_suite",
+    "test_chat": "test_chat_suite",
+    "test_agent_workflow": "test_agent_workflow_suite",
+    "test_decision_head_integration": "test_decision_head_integration_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
 # folding. Being listed here is not an endorsement that a file should
 # stay out of the gate; it only means "known, pending triage".
 EXEMPT_SIDECARS = {
-    'test_abstain', 'test_agent', 'test_agent_workflow', 'test_api_distill',
+    'test_abstain', 'test_agent', 'test_api_distill',
     'test_async_grpo', 'test_attn_res', 'test_base_gap',
     'test_bench_quant', 'test_benchmark', 'test_calibrated_prefetcher',
-    'test_calibrated_router', 'test_calibration_board', 'test_chat', 'test_chat_tuned',
+    'test_calibrated_router', 'test_chat_tuned',
     'test_chunked_ce', 'test_clamped_swiglu',
-    'test_cost_per_task', 'test_cpt_chunked_ce', 'test_cpt_pilot', 'test_cpt_plan',
+    'test_cpt_chunked_ce', 'test_cpt_pilot', 'test_cpt_plan',
     'test_csa', 'test_csa_learned', 'test_csa_learned_16x', 'test_csa_learned_h64',
     'test_csa_learned_r3', 'test_cuda_device_paths', 'test_cuda_smoke', 'test_custom_attention_notebook',
-    'test_cvdp_bench', 'test_data_quality',
-    'test_decision_head_integration', 'test_decontam',
+    'test_cvdp_bench',
+    'test_decontam',
     'test_device_matrix', 'test_disagg', 'test_disagg_pareto', 'test_distill_agent',
     'test_distill_filter', 'test_distill_gen', 'test_distill_sft',
     'test_dsa', 'test_envs', 'test_file_env',
@@ -2070,6 +2085,135 @@ def test_finetune_data_suite():
     _pass("test_finetune_data_suite",
           "SFT data pipeline: 1 sidecar test (20 episodes + 21-line "
           "dataset, all responses parse) under the daily gate")
+
+
+# ---------------------------------------------------------------------------
+# daily-maintenance round (2026-11-10, v5.263): fold six more sidecars
+# into the daily gate — test_calibration_board (T88 calibration
+# leaderboard), test_cost_per_task (T85 cost-per-completed-task),
+# test_data_quality (zh-TW data pipeline), test_chat (v5.30 chat
+# session), test_agent_workflow (harness plugin) and
+# test_decision_head_integration (head wired into HeliosLMv5).
+# Folding surfaced two real Windows platform bugs, fixed in this
+# version: (1) the pinned provenance digests were LF-computed, so a
+# CRLF worktree (autocrlf / zip extract) faked "input drifted" — both
+# eval modules gained sha256_text_file (LF-normalized, text artifacts
+# only; the .pt checkpoint stays byte-exact) and the board --check now
+# compares content with line endings normalized; (2) build_board keyed
+# inputs with str(relative_to), producing backslashes on Windows —
+# now .as_posix(). test_data_quality's test_prepare_data_filters
+# self-skips when the optional 'tokenizers' package is absent (same
+# skip as on CI without the extra).
+# ---------------------------------------------------------------------------
+
+
+def test_calibration_board_suite():
+    """T88 calibration leaderboard under the daily gate: hand-computed
+    auroc/brier oracles (ties, undefined single-class stays None), loud
+    validation, null-conf rows count to accuracy only, Brier ranking
+    with deterministic tie-break, and the committed board reproduces
+    byte-for-byte (LF-normalized input digests, posix input keys, board
+    registered as measured)."""
+    from helioslm_v5.tests import test_calibration_board as m
+    expected = {"test_metric_oracles", "test_loud_validation",
+                "test_null_conf_rows_and_ranking",
+                "test_committed_board_reproduces"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_calibration_board_suite",
+          "T88 calibration board: all 4 sidecar tests (incl. committed "
+          "board rebuild + --check subprocess) under the daily gate")
+
+
+def test_cost_per_task_suite():
+    """T85 cost-per-completed-task under the daily gate: loud record
+    validation, cost-front math + zero-completion gate, score-audit
+    completeness, committed artifact provenance (LF-normalized JSON
+    digests, byte-exact checkpoint digest, registry tier) and CLI
+    regeneration matching the committed inputs."""
+    from helioslm_v5.tests import test_cost_per_task as m
+    expected = {"test_completion_records_loud_validation",
+                "test_cost_front_math_and_zero_completion_gate",
+                "test_score_audit_complete_and_loud",
+                "test_committed_artifact_provenance_and_registry",
+                "test_cli_smoke_regenerates_cost_side"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_cost_per_task_suite",
+          "T85 cost-per-task: all 5 sidecar tests (incl. CLI regen "
+          "subprocess) under the daily gate")
+
+
+def test_data_quality_suite():
+    """zh-TW data-quality pipeline under the daily gate: zh variant
+    handling, heuristics, classifier, doc filtering, mixture weights
+    and the CLI. test_prepare_data_filters self-skips (prints SKIP,
+    returns) when the optional 'tokenizers' package is absent from the
+    managed runtime — the same skip path CI takes without the extra."""
+    from helioslm_v5.tests import test_data_quality as m
+    expected = {"test_zh_variant", "test_heuristics", "test_classifier",
+                "test_filter_docs", "test_mixture", "test_cli",
+                "test_prepare_data_filters"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_data_quality_suite",
+          "data quality: 7 sidecar tests under the daily gate "
+          "(prepare_data_filters self-skips without 'tokenizers')")
+
+
+def test_chat_suite():
+    """v5.30 chat session under the daily gate: dual-mode turn parse,
+    marker preservation, tool/compose tasks, direct-reply bypass,
+    parse/tool error recovery, transcript memory on follow-up, replay
+    roundtrip and the v5.30 extension regression."""
+    from helioslm_v5.tests import test_chat as m
+    expected = {"test_parse_chat_turn_dual_mode",
+                "test_parse_chat_turn_never_swallows_markers",
+                "test_chat_session_tool_task",
+                "test_chat_session_compose_task",
+                "test_text_reply_bypasses_gate",
+                "test_parse_error_recovery",
+                "test_tool_error_recovery",
+                "test_followup_uses_transcript_memory",
+                "test_chat_replay_roundtrip",
+                "test_v530_extension_regression"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_chat_suite",
+          "v5.30 chat: all 10 sidecar tests under the daily gate")
+
+
+def test_agent_workflow_suite():
+    """Agent-workflow harness plugin under the daily gate: workflow runs
+    and audits, long-horizon variant."""
+    from helioslm_v5.tests import test_agent_workflow as m
+    expected = {"test_agent_workflow_runs_and_audits",
+                "test_agent_workflow_long_horizon"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_agent_workflow_suite",
+          "agent workflow: both sidecar tests under the daily gate")
+
+
+def test_decision_head_integration_suite():
+    """Decision head wired into HeliosLMv5 under the daily gate: hidden
+    states drive the head, gradients reach model parameters, routing
+    signal learns through the model."""
+    from helioslm_v5.tests import test_decision_head_integration as m
+    expected = {"test_hidden_states_drive_head",
+                "test_gradients_reach_model_parameters",
+                "test_routing_signal_learns_through_model"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_decision_head_integration_suite",
+          "decision-head integration: all 3 sidecar tests under the "
+          "daily gate")
 
 
 def test_sidecar_coverage_guard():

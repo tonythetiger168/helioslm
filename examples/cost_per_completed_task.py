@@ -33,7 +33,7 @@ from helioslm_v5.configs.config_v5 import HeliosLMv5Config  # noqa: E402
 from helioslm_v5.eval.artifact_tiers import load_registry, tier_of  # noqa: E402
 from helioslm_v5.eval.cost_per_task import (SCHEMA_ID, attach_score_audit,  # noqa: E402
                                             cost_front, load_completion_records,
-                                            sha256_file, canonical_sha256)
+                                            sha256_file, sha256_text_file, canonical_sha256)
 from helioslm_v5.eval.score_stream import score_record  # noqa: E402
 from helioslm_v5.src.model_v5 import HeliosLMv5  # noqa: E402
 
@@ -82,16 +82,19 @@ def build_report(eval_path: Path, pareto_path: Path, checkpoint_path: Path,
         "inputs": {
             "completion_evidence": {
                 "path": eval_path.relative_to(_REPO).as_posix(),
-                "sha256": sha256_file(eval_path),
+                # JSON text input: LF-normalized digest, stable across
+                # checkout conventions (see sha256_text_file docstring)
+                "sha256": sha256_text_file(eval_path),
                 "verification_tier": tier_of(eval_path.name, registry),
             },
             "disagg_pareto_reference": {
                 "path": pareto_path.relative_to(_REPO).as_posix(),
-                "sha256": sha256_file(pareto_path),
+                "sha256": sha256_text_file(pareto_path),
                 "verification_tier": tier_of(pareto_path.name, registry),
             },
             "score_checkpoint": {
                 "path": checkpoint_path.relative_to(_REPO).as_posix(),
+                # binary checkpoint: byte-exact digest, never normalized
                 "sha256": sha256_file(checkpoint_path),
                 "vocab_size": vocab,
             },

@@ -29,7 +29,7 @@ from helioslm_v5.eval.artifact_tiers import load_registry, tier_of  # noqa: E402
 from helioslm_v5.eval.cost_per_task import (  # noqa: E402
     SCHEMA_ID, CostSchemaError, attach_score_audit, canonical_sha256,
     cost_front, load_completion_records, requests_from_records,
-    sha256_file)
+    sha256_file, sha256_text_file)
 
 _ARTIFACT = _REPO / "benchmarks" / "cost_per_completed_task_2026-10-13.json"
 _SCRIPT = _REPO / "examples" / "cost_per_completed_task.py"
@@ -136,9 +136,13 @@ def test_committed_artifact_provenance_and_registry():
     assert artifact["assumptions"]["usd_is_unit_price_normalization"] is True
 
     inputs = artifact["inputs"]
-    assert sha256_file(_REPO / inputs["completion_evidence"]["path"]) == \
+    # JSON text inputs: LF-normalized digests (CRLF worktrees on
+    # Windows would otherwise fake a provenance mismatch — 2026-11-10
+    # find, see sha256_text_file); the binary checkpoint stays
+    # byte-exact via sha256_file.
+    assert sha256_text_file(_REPO / inputs["completion_evidence"]["path"]) == \
         inputs["completion_evidence"]["sha256"]
-    assert sha256_file(_REPO / inputs["disagg_pareto_reference"]["path"]) == \
+    assert sha256_text_file(_REPO / inputs["disagg_pareto_reference"]["path"]) == \
         inputs["disagg_pareto_reference"]["sha256"]
     assert sha256_file(_REPO / inputs["score_checkpoint"]["path"]) == \
         inputs["score_checkpoint"]["sha256"]

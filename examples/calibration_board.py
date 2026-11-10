@@ -50,8 +50,12 @@ def main():
     text = json.dumps(board, indent=2, ensure_ascii=False) + "\n"
     md = render_markdown(board)
     if args.check:
+        # compare content, not line-ending representation: a CRLF
+        # worktree (Windows autocrlf / zip extract) holds the same
+        # board with \r\n, which is not drift (2026-11-10 find)
         stale = [p for p, want in ((OUT_JSON, text), (OUT_MD, md))
-                 if (_REPO / p).read_text(encoding="utf-8") != want]
+                 if (_REPO / p).read_text(encoding="utf-8")
+                 .replace("\r\n", "\n") != want]
         if stale:
             sys.exit(f"stale calibration board: {', '.join(stale)}")
         print("calibration board up to date")

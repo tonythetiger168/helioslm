@@ -572,11 +572,11 @@ As of 2026-10-31:
 
 The last five releases; every earlier release is in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md).
 
+- **v5.263** — six more sidecar suites folded into the daily gate (T88 calibration board, T85 cost-per-task, zh-TW data quality, v5.30 chat, agent workflow, decision-head integration; 67 folded / 144 exempt); fixes two Windows platform bugs: LF-pinned provenance digests vs CRLF worktrees (`sha256_text_file`) and backslash input keys in `build_board` (now `as_posix`)
+- **v5.262** — chat commands pass `enable_thinking=false` explicitly (26B short tier)
+- **v5.261** — download page: 26B chat on 8 GB GPUs via llama.cpp expert offload
 - **v5.260** — six more sidecar suites folded into the daily gate (T33 grounding, T27 decision primitives, T36 copy curriculum, DPO trainer, decision head, first-k-dense MoE; 57 folded / 154 exempt)
 - **v5.259** — HDL eval: `--gen-tbs` writes model testbenches for CVDP; offline CPU selection against saved samples
-- **v5.258** — five more sidecar suites folded into the daily gate (oracle-answer guard, think + experience store, thinking budget, three-modes oracles, skill docs; 49 folded / 162 exempt)
-- **v5.257** — UVM bench: `[DONE]` fence fix, Verilator 5.052 rules in the prompt, repair check
-- **v5.256** — CVDP harness runs each compose service in its `working_dir`; commented OSS Dockerfiles run
 
 ## License
 

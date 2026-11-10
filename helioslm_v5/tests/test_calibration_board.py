@@ -26,7 +26,7 @@ sys.path.insert(0, str(_REPO))
 from helioslm_v5.eval.artifact_tiers import load_registry, tier_of  # noqa: E402
 from helioslm_v5.eval.calibration_board import (  # noqa: E402
     SCHEMA_ID, BoardSchemaError, auroc, brier, build_board,
-    canonical_sha256, score_artifact, sha256_file)
+    canonical_sha256, score_artifact, sha256_file, sha256_text_file)
 
 _BOARD = _REPO / "benchmarks" / "calibration_board_2026-10-15.json"
 _SCRIPT = _REPO / "examples" / "calibration_board.py"
@@ -116,7 +116,10 @@ def test_committed_board_reproduces():
     assert board["schema"] == SCHEMA_ID
     assert board["results_sha256"] == canonical_sha256(board["board"])
     for rel, digest in board["inputs"].items():
-        assert sha256_file(_REPO / rel) == digest, f"input drifted: {rel}"
+        # pinned digests are LF-computed; the inputs are JSON text, so
+        # hash LF-normalized bytes (CRLF worktrees on Windows would
+        # otherwise fake drift — 2026-11-10 find, see sha256_text_file)
+        assert sha256_text_file(_REPO / rel) == digest, f"input drifted: {rel}"
     reg = load_registry(_REPO / "benchmarks" / "verification_tiers.json")
     assert tier_of(_BOARD.name, reg) == "measured"
     r = subprocess.run([sys.executable, str(_SCRIPT), "--check"],
