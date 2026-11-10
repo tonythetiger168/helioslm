@@ -1070,6 +1070,10 @@ def test_kv_cache_analytic_suite():
 # test_chat (v5.30 session), test_agent_workflow (harness plugin) and
 # test_decision_head_integration moved from EXEMPT to FOLDED — the
 # backlog is now 144 files.
+# 2026-11-10 limitations round: test_abstain (OS3 abstention rewards),
+# test_base_gap (T132 base-gap eval), test_decontam (Plan E2 n-gram
+# overlap) and test_distill_filter (D2 teacher-answer filtering) moved
+# from EXEMPT to FOLDED — the backlog is now 140 files.
 # OpenAI-compatible stream smoke (serving/openai_stream_smoke.py):
 # test_openai_stream_smoke is exempt for the same reason as test_hsh_web.
 # It binds 127.0.0.1 through ThreadingHTTPServer on an ephemeral port and
@@ -1175,14 +1179,20 @@ FOLDED_SIDECARS = {
     "test_chat": "test_chat_suite",
     "test_agent_workflow": "test_agent_workflow_suite",
     "test_decision_head_integration": "test_decision_head_integration_suite",
+    # limitations round 2026-11-10 (abstain / base-gap / decontam /
+    # distill filter)
+    "test_abstain": "test_abstain_suite",
+    "test_base_gap": "test_base_gap_suite",
+    "test_decontam": "test_decontam_suite",
+    "test_distill_filter": "test_distill_filter_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
 # folding. Being listed here is not an endorsement that a file should
 # stay out of the gate; it only means "known, pending triage".
 EXEMPT_SIDECARS = {
-    'test_abstain', 'test_agent', 'test_api_distill',
-    'test_async_grpo', 'test_attn_res', 'test_base_gap',
+    'test_agent', 'test_api_distill',
+    'test_async_grpo', 'test_attn_res',
     'test_bench_quant', 'test_benchmark', 'test_calibrated_prefetcher',
     'test_calibrated_router', 'test_chat_tuned',
     'test_chunked_ce', 'test_clamped_swiglu',
@@ -1190,9 +1200,8 @@ EXEMPT_SIDECARS = {
     'test_csa', 'test_csa_learned', 'test_csa_learned_16x', 'test_csa_learned_h64',
     'test_csa_learned_r3', 'test_cuda_device_paths', 'test_cuda_smoke', 'test_custom_attention_notebook',
     'test_cvdp_bench',
-    'test_decontam',
     'test_device_matrix', 'test_disagg', 'test_disagg_pareto', 'test_distill_agent',
-    'test_distill_filter', 'test_distill_gen', 'test_distill_sft',
+    'test_distill_gen', 'test_distill_sft',
     'test_dsa', 'test_envs', 'test_file_env',
     'test_gguf_quant',
     'test_global_prope_kv', 'test_gpu_batch_run', 'test_grounded_replay',
@@ -2214,6 +2223,128 @@ def test_decision_head_integration_suite():
     _pass("test_decision_head_integration_suite",
           "decision-head integration: all 3 sidecar tests under the "
           "daily gate")
+
+
+# ---------------------------------------------------------------------------
+# limitations round (2026-11-10): fold four more exempt-backlog sidecars
+# into the daily gate — abstention rewards, the base-gap eval, n-gram
+# decontamination, and teacher-answer filtering. All four gained the
+# in-file pytest shim: test_abstain / test_distill_filter need raises
+# only; test_base_gap needs importorskip (torch — installed in the
+# gate's runtime, so it imports and returns) and approx (scalar AND
+# elementwise list compare; one call passes abs=1e-5); test_decontam
+# needs raises + importorskip, and its pilot_prepare_data test
+# self-skips under the gate because the optional 'tokenizers' package
+# is absent from the managed runtime (the wrapper checks
+# importlib.util.find_spec, mirroring pytest's importorskip on CI;
+# precedent: test_package_tiers, test_zhtw_corpus). test_base_gap's
+# monkeypatched case gets the _MonkeyPatch stand-in (undo in finally);
+# test_distill_filter's CLI case gets a real TemporaryDirectory.
+# ---------------------------------------------------------------------------
+
+
+def test_abstain_suite():
+    """OS3 abstention-aware rewards (src/training/abstain.py) under the
+    daily gate. Pins: detection (explicit ANSWER: UNKNOWN, en/zh
+    phrases, hedging with a number is an answer); payoffs (answerable
+    +1/0/-penalty, unanswerable abstain +1, penalty 0 = plain accuracy,
+    negative penalty refused); the break-even threshold rule;
+    AbstainMathEnv builds unanswerable tasks deterministically and
+    routes through MultiEnvBatch; abstain_metrics splits accuracy /
+    over-caution / hallucination; GRPOTrainer keeps old rewards at
+    abstain_penalty=None and uses the abstention payoffs (accepting
+    None answers) when set."""
+    from helioslm_v5.tests import test_abstain as m
+    expected = {"test_detection", "test_payoffs",
+                "test_threshold_is_the_break_even_confidence",
+                "test_env_and_batch", "test_metrics",
+                "test_grpo_trainer_rewards"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_abstain_suite",
+          "abstention rewards: all 6 sidecar tests (detection, payoffs, "
+          "threshold, env+batch, metrics, GRPO wiring) under the daily "
+          "gate")
+
+
+def test_base_gap_suite():
+    """T132 route-B base-gap eval (eval/tw_bench.py +
+    examples/base_gap_eval.py, v5.129) under the daily gate. Pins: the
+    one-pass single-token fast path triggers only on exact prefixes;
+    hf_score_fn fast == slow (the monkeypatched fallback) with a
+    merging tokenizer, and non-merging continuations fall back;
+    gap_table diffs base minus reference over shared task ids via
+    paired_bootstrap; load_tasks reads <subject>_<split> dirs with
+    --limit and dev-split shots; assign groups by size; the no-models
+    CLI run still writes a report."""
+    from helioslm_v5.tests import test_base_gap as m
+    expected = {"test_single_token_path", "test_hf_score_fast_equals_slow",
+                "test_gap_table", "test_load_tasks", "test_assign",
+                "test_main_without_models_writes_report"}
+    _drift_guard(m, expected)
+    for name in sorted(expected - {"test_hf_score_fast_equals_slow"}):
+        getattr(m, name)()
+    mp = _MonkeyPatch()
+    try:
+        m.test_hf_score_fast_equals_slow(mp)
+    finally:
+        mp.undo()
+    _pass("test_base_gap_suite",
+          "base-gap eval: all 6 sidecar tests (fast-path pins, fast==slow "
+          "via monkeypatch stand-in, gap table, task loading, assign, "
+          "report) under the daily gate")
+
+
+def test_decontam_suite():
+    """Plan E2 train/eval n-gram overlap (eval/decontam.py) under the
+    daily gate. 5 of 6 sidecar tests run unconditionally: word splitting
+    (CJK per char), planted-leak detection en/zh, short-item handling
+    and loud n=0 refusal, digests stable across PYTHONHASHSEED
+    processes (2 subprocesses), and report/decontaminate bookkeeping.
+    test_prepare_data_decontaminates self-skips when the optional
+    'tokenizers' package is absent (same as importorskip on CI)."""
+    import importlib.util
+    from helioslm_v5.tests import test_decontam as m
+    expected = {"test_words", "test_leaks_found_and_clean_text_passes",
+                "test_short_items", "test_digests_stable_across_processes",
+                "test_report_and_decontaminate",
+                "test_prepare_data_decontaminates"}
+    _drift_guard(m, expected)
+    for name in sorted(expected - {"test_prepare_data_decontaminates"}):
+        getattr(m, name)()
+    if importlib.util.find_spec("tokenizers") is not None:
+        m.test_prepare_data_decontaminates()
+    else:
+        print("SKIP test_prepare_data_decontaminates: 'tokenizers' not "
+              "installed (importorskip semantics)")
+    _pass("test_decontam_suite",
+          "decontamination: 5/6 sidecar tests under the daily gate "
+          "(pilot_prepare_data test self-skips without the optional "
+          "'tokenizers' package, as importorskip does on CI)")
+
+
+def test_distill_filter_suite():
+    """D2 teacher-answer filtering (src/training/distill_filter.py,
+    v5.112) under the daily gate. Pins: simplified-rate detection
+    (Traditional 台/着 excluded); every single-record drop reason
+    (truncated, empty/leaked think, token caps, simplified, eval
+    overlap, unparsable code) and loud max_tokens refusal; math
+    self-consistency keeps the majority; near-duplicate prompts dropped
+    but same-prompt samples kept; the CLI writes kept records plus the
+    report (real TemporaryDirectory)."""
+    from helioslm_v5.tests import test_distill_filter as m
+    expected = {"test_simplified_rate", "test_single_record_reasons",
+                "test_final_answer", "test_math_self_consistency",
+                "test_near_duplicate_prompts", "test_cli"}
+    _drift_guard(m, expected)
+    for name in sorted(expected - {"test_cli"}):
+        getattr(m, name)()
+    with tempfile.TemporaryDirectory() as t:
+        m.test_cli(Path(t))
+    _pass("test_distill_filter_suite",
+          "distill filter: all 6 sidecar tests (rates, drop reasons, "
+          "self-consistency, near-dup, CLI) under the daily gate")
 
 
 def test_sidecar_coverage_guard():

@@ -358,6 +358,12 @@ TESTS = [
     case_upstream_suites.test_chat_suite,
     case_upstream_suites.test_agent_workflow_suite,
     case_upstream_suites.test_decision_head_integration_suite,
+    # limitations round (2026-11-10): abstention rewards, base-gap eval,
+    # n-gram decontamination, teacher-answer filtering.
+    case_upstream_suites.test_abstain_suite,
+    case_upstream_suites.test_base_gap_suite,
+    case_upstream_suites.test_decontam_suite,
+    case_upstream_suites.test_distill_filter_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 

@@ -19,7 +19,54 @@ import sys
 import tempfile
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    # This file is also executed directly by the daily TESTS suite
+    # (case_upstream_suites), where pytest is not installed. The shim
+    # covers exactly the two pytest features used below: importorskip
+    # (torch IS installed in the gate's runtime, so this imports and
+    # returns it; it fails loudly otherwise) and approx (default
+    # rel=1e-6 / abs=1e-12; one call passes abs=1e-5). Same raises-free
+    # pattern as test_prereg.py's approx shim.
+    import importlib as _importlib
+
+    class _Approx:
+        """pytest.approx stand-in: default rel=1e-6 / abs=1e-12; compares
+        elementwise when the expected value is a list/tuple (as
+        test_hf_score_fast_equals_slow does with the score lists)."""
+
+        def __init__(self, expected, rel=None, abs=None):
+            self.expected = expected
+            self.rel = 1e-6 if rel is None else rel
+            self.abs = 1e-12 if abs is None else abs
+
+        def __eq__(self, other):
+            exp = self.expected
+            if isinstance(exp, (list, tuple)):
+                if not isinstance(other, (list, tuple)) or \
+                        len(other) != len(exp):
+                    return False
+                return all(abs(o - e) <= max(self.rel * abs(e), self.abs)
+                           for o, e in zip(other, exp))
+            return abs(other - exp) <= max(self.rel * abs(exp), self.abs)
+
+    class _PytestShim:
+        @staticmethod
+        def importorskip(module):
+            try:
+                return _importlib.import_module(module)
+            except ImportError as e:
+                raise AssertionError(
+                    f"importorskip: optional dependency {module!r} is "
+                    f"absent; the daily-gate wrapper must skip this "
+                    f"test instead of calling it") from e
+
+        @staticmethod
+        def approx(expected, rel=None, abs=None):
+            return _Approx(expected, rel=rel, abs=abs)
+
+    pytest = _PytestShim()
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
