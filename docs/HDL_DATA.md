@@ -147,3 +147,27 @@ Measured on 2026-10-28 (Yosys 0.33, sv2v v0.0.13, Verilator 5.052, 4 CPUs,
 Without sv2v, Yosys' own SystemVerilog reader stopped on the register
 package of nearly every IP, and no OpenTitan IP passed. The pod installs
 sv2v from its release (`zachjs/sv2v` v0.0.13, `sv2v-Linux.zip`).
+
+### Open IP and Open VIP APB integration
+
+The APB trial uses `open-ip-portfolio` at `10b281a4` and
+`open-vip-portfolio` at `f581062a`. The upstream VIP's standalone test
+uses its own 64-register DUT. The portfolio test connects the upstream
+APB interface, driver, monitor and protocol assertions to `APB_apb` and
+checks the wrapper's ID, scratch register and address errors. It rejects
+addresses outside the 12-bit aperture before they can alias a register.
+The separate Icarus test exercises partial writes, since the upstream
+driver drives all write strobes high.
+
+With Icarus, Verilator 5.052 and the combined UVM library used by
+`uvm_bench.py`, run from the repository root:
+
+```sh
+python examples/hdl_apb_portfolio/run.py --open-ip /path/to/open-ip-portfolio \
+  --vip /path/to/extracted/APB-VIP --uvm /path/to/uvm_pkg_all_v2017_1_0_nodpi.svh \
+  --out apb-portfolio-check
+```
+
+The output directory contains compilation and simulation logs. The UVM
+run also flips one ID response bit and requires the test to reject it.
+Corpus preparation is tracked in [#269](https://github.com/tonythetiger168/helioslm/issues/269).
