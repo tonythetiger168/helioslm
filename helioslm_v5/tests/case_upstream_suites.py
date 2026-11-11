@@ -1074,6 +1074,11 @@ def test_kv_cache_analytic_suite():
 # test_base_gap (T132 base-gap eval), test_decontam (Plan E2 n-gram
 # overlap) and test_distill_filter (D2 teacher-answer filtering) moved
 # from EXEMPT to FOLDED — the backlog is now 140 files.
+# 2026-11-11 daily-maintenance round: test_chat_tuned (T21 summary),
+# test_csa (compressed sparse attention), test_dsa (T11 oracle),
+# test_disagg (T13), test_disagg_pareto (T18), test_envs (multi-env)
+# and test_file_env (long-horizon file env) moved from EXEMPT to
+# FOLDED — the backlog is now 133 files.
 # OpenAI-compatible stream smoke (serving/openai_stream_smoke.py):
 # test_openai_stream_smoke is exempt for the same reason as test_hsh_web.
 # It binds 127.0.0.1 through ThreadingHTTPServer on an ephemeral port and
@@ -1185,6 +1190,15 @@ FOLDED_SIDECARS = {
     "test_base_gap": "test_base_gap_suite",
     "test_decontam": "test_decontam_suite",
     "test_distill_filter": "test_distill_filter_suite",
+    # daily-maintenance round 2026-11-11 (v5.264): chat-tuned summary /
+    # CSA / DSA oracle / disagg / disagg Pareto / multi-env / file env
+    "test_chat_tuned": "test_chat_tuned_suite",
+    "test_csa": "test_csa_suite",
+    "test_dsa": "test_dsa_suite",
+    "test_disagg": "test_disagg_suite",
+    "test_disagg_pareto": "test_disagg_pareto_suite",
+    "test_envs": "test_envs_suite",
+    "test_file_env": "test_file_env_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1194,15 +1208,14 @@ EXEMPT_SIDECARS = {
     'test_agent', 'test_api_distill',
     'test_async_grpo', 'test_attn_res',
     'test_bench_quant', 'test_benchmark', 'test_calibrated_prefetcher',
-    'test_calibrated_router', 'test_chat_tuned',
+    'test_calibrated_router',
     'test_chunked_ce', 'test_clamped_swiglu',
     'test_cpt_chunked_ce', 'test_cpt_pilot', 'test_cpt_plan',
-    'test_csa', 'test_csa_learned', 'test_csa_learned_16x', 'test_csa_learned_h64',
+    'test_csa_learned', 'test_csa_learned_16x', 'test_csa_learned_h64',
     'test_csa_learned_r3', 'test_cuda_device_paths', 'test_cuda_smoke', 'test_custom_attention_notebook',
     'test_cvdp_bench',
-    'test_device_matrix', 'test_disagg', 'test_disagg_pareto', 'test_distill_agent',
+    'test_device_matrix', 'test_distill_agent',
     'test_distill_gen', 'test_distill_sft',
-    'test_dsa', 'test_envs', 'test_file_env',
     'test_gguf_quant',
     'test_global_prope_kv', 'test_gpu_batch_run', 'test_grounded_replay',
     'test_grpo_length', 'test_grpo_u1', 'test_harness', 'test_harness_deep',
@@ -2345,6 +2358,120 @@ def test_distill_filter_suite():
     _pass("test_distill_filter_suite",
           "distill filter: all 6 sidecar tests (rates, drop reasons, "
           "self-consistency, near-dup, CLI) under the daily gate")
+
+
+# ---------------------------------------------------------------------------
+# daily-maintenance round (2026-11-11, v5.264): fold seven more
+# sidecars into the daily gate — test_chat_tuned (T21 tuned-artifact
+# summary), test_csa (7; CSA ratio-1 == dense, slow-reference match,
+# causality/selection, padding exclusion, no-grad through top-k, v4
+# stack preset, committed A/B slice), test_dsa (T11 two-layer DSA
+# oracle), test_disagg (T13 disagg module), test_disagg_pareto (3;
+# T18 Pareto front, RR gate + cache-aware finding, report
+# reproducible), test_envs (5; multi-env constructed truth, literal
+# code env, alignment audit, batch routing, loud errors) and
+# test_file_env (4; all families solved, budgets, deterministic
+# sampling, replay tamper detection). All seven are plain zero-argument
+# functions — no pytest import, no fixtures, no sockets, no CUDA — and
+# each was verified standalone on the managed runtime before folding
+# (1/1, 7/7, 1/1, 1/1, 3/3, 5/5, 4/4 = 22 functions).
+# ---------------------------------------------------------------------------
+
+
+def test_chat_tuned_suite():
+    """T21 tuned-artifact summary under the daily gate: one plain
+    function, folded as-is."""
+    from helioslm_v5.tests import test_chat_tuned as m
+    expected = {"test_t21_chat_tuned_summary"}
+    _drift_guard(m, expected)
+    m.test_t21_chat_tuned_summary()
+    _pass("test_chat_tuned_suite",
+          "T21 chat-tuned summary under the daily gate")
+
+
+def test_csa_suite():
+    """CSA (compressed sparse attention) under the daily gate: ratio-1
+    equals dense, matches the slow reference, causality + selection,
+    padding excluded, no gradient through top-k, v4 stack preset and
+    the committed A/B slice."""
+    from helioslm_v5.tests import test_csa as m
+    expected = {"test_ratio1_equals_dense", "test_matches_slow_reference",
+                "test_causality_and_selection", "test_padding_excluded",
+                "test_gradients", "test_v4_stack_preset",
+                "test_committed_ab_slice"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_csa_suite",
+          "CSA: all 7 sidecar tests under the daily gate")
+
+
+def test_dsa_suite():
+    """T11 DSA two-layer oracle under the daily gate: one plain
+    function, folded as-is."""
+    from helioslm_v5.tests import test_dsa as m
+    expected = {"test_t11_dsa_two_layer_oracle"}
+    _drift_guard(m, expected)
+    m.test_t11_dsa_two_layer_oracle()
+    _pass("test_dsa_suite", "T11 DSA oracle under the daily gate")
+
+
+def test_disagg_suite():
+    """T13 disaggregated serving module under the daily gate: one plain
+    function, folded as-is."""
+    from helioslm_v5.tests import test_disagg as m
+    expected = {"test_t13_disagg_module"}
+    _drift_guard(m, expected)
+    m.test_t13_disagg_module()
+    _pass("test_disagg_suite", "T13 disagg module under the daily gate")
+
+
+def test_disagg_pareto_suite():
+    """T18 disagg Pareto analysis under the daily gate: front logic,
+    round-robin gate + cache-aware finding, and the committed report
+    reproduces."""
+    from helioslm_v5.tests import test_disagg_pareto as m
+    expected = {"test_t18_pareto_front_logic",
+                "test_t18_rr_gate_and_cache_aware_finding",
+                "test_t18_report_reproducible"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_disagg_pareto_suite",
+          "T18 disagg Pareto: all 3 sidecar tests under the daily gate")
+
+
+def test_envs_suite():
+    """Multi-env oracles under the daily gate: constructed-truth math
+    env, literal-only code env, alignment audit env, batch routing and
+    loud batch errors."""
+    from helioslm_v5.tests import test_envs as m
+    expected = {"test_math_env_constructed_truth",
+                "test_code_env_literal_only",
+                "test_alignment_audit_env",
+                "test_multi_env_batch_routing",
+                "test_multi_env_batch_loud_errors"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_envs_suite",
+          "multi-env: all 5 sidecar tests under the daily gate")
+
+
+def test_file_env_suite():
+    """File long-horizon env under the daily gate: all families solved,
+    longer budgets than the toy env, deterministic sampling and replay
+    tamper detection."""
+    from helioslm_v5.tests import test_file_env as m
+    expected = {"test_all_families_solved",
+                "test_longer_budgets_than_toy",
+                "test_sampling_deterministic",
+                "test_replay_tamper_detected"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_file_env_suite",
+          "file env: all 4 sidecar tests under the daily gate")
 
 
 def test_sidecar_coverage_guard():

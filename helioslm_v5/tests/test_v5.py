@@ -364,6 +364,18 @@ TESTS = [
     case_upstream_suites.test_base_gap_suite,
     case_upstream_suites.test_decontam_suite,
     case_upstream_suites.test_distill_filter_suite,
+    # daily-maintenance round (2026-11-11, v5.264): T21 chat-tuned
+    # summary, CSA (7 pins incl. committed A/B slice), T11 DSA oracle,
+    # T13 disagg module, T18 disagg Pareto, multi-env oracles, file
+    # long-horizon env. All plain zero-argument functions: no pytest,
+    # no fixtures, no sockets, no CUDA (22 sidecar functions total).
+    case_upstream_suites.test_chat_tuned_suite,
+    case_upstream_suites.test_csa_suite,
+    case_upstream_suites.test_dsa_suite,
+    case_upstream_suites.test_disagg_suite,
+    case_upstream_suites.test_disagg_pareto_suite,
+    case_upstream_suites.test_envs_suite,
+    case_upstream_suites.test_file_env_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 

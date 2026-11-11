@@ -1,5 +1,10 @@
-# HeliosLM v5.263 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.264 - DeepSeek/K3-Style Architecture
 
+v5.264 (2026-11-11): seven more sidecar suites folded into the mandated
+daily gate (chat-tuned packaging, CSA, DSA, disaggregated serving and its
+Pareto sweep, training envs, file-env; 78 folded / 133 exempt, TESTS
+189). All seven folded suites were verified standalone before wrapping;
+none needed pytest shims.
 v5.263 (2026-11-10): six more sidecar suites folded into the mandated
 daily gate (T88 calibration board, T85 cost-per-completed-task, zh-TW
 data quality, v5.30 chat session, agent-workflow plugin, decision-head

@@ -1,5 +1,24 @@
 # HeliosLM v5 Changelog
 
+## v5.264 (2026-11-11) - Chat-tuned / CSA / DSA / disagg / env sidecars folded into the suite
+
+`case_upstream_suites.py` gains wrappers for `test_chat_tuned` (1 func;
+T21 tuned-artifact summary), `test_csa` (7; ratio-1 == dense,
+slow-reference match, causality + selection, padding exclusion, no
+gradient through top-k, v4 stack preset, committed A/B slice),
+`test_dsa` (1; T11 two-layer DSA oracle), `test_disagg` (1; T13
+disaggregated serving module), `test_disagg_pareto` (3; T18 Pareto
+front logic, round-robin gate + cache-aware finding, committed report
+reproduces), `test_envs` (5; constructed-truth math env, literal-only
+code env, alignment audit, batch routing, loud batch errors) and
+`test_file_env` (4; all families solved, longer budgets, deterministic
+sampling, replay tamper detection). All seven are plain zero-argument
+functions — no pytest import, no fixtures, no sockets, no CUDA — so no
+shims were needed; each was verified standalone on the managed runtime
+before folding. `FOLDED_SIDECARS` goes 71 -> 78 files and the legacy
+EXEMPT list drops the same seven (133 remain; 211 sidecar files on
+disk, all accounted for by the coverage guard). The daily TESTS
+registry grows to 189 entries.
 ## v5.263 (2026-11-10) - Calibration/cost sidecars folded; Windows CRLF-digest and path-separator fixes
 
 `case_upstream_suites.py` gains wrappers for `test_calibration_board`
