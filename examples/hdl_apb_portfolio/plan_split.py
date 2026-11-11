@@ -147,11 +147,32 @@ def assign(rows):
     return len(components)
 
 
+def write_partition(path, rows, ip, vip):
+    """Write one raw record per pair, preserving file boundaries and provenance."""
+    with path.open("x", encoding="utf-8", newline="\n") as handle:
+        for row in rows:
+            with zipfile.ZipFile(io.BytesIO(payload(vip, row["vip_archive"]))) as nested:
+                record = {"protocol": row["protocol"], "family_group": row["family_group"],
+                          "split": row["split"], "vip_archive": row["vip_archive"],
+                          "files": []}
+                for repo, source, files in ((RTL_REPO, ip, row["rtl"]),
+                                            (VIP_REPO, nested, row["vip"])):
+                    for file in files:
+                        raw = payload(source, file["path"])
+                        if digest(raw) != file["sha256"]:
+                            raise ValueError(f"Source changed: {file['path']}")
+                        record["files"].append({**file, "repo": repo,
+                                                "text": raw.decode("utf-8", errors="strict")})
+                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    raw = path.read_bytes()
+    return {"records": len(rows), "bytes": len(raw), "sha256": digest(raw)}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--snapshots", type=Path, required=True)
     parser.add_argument("--apb-receipt", type=Path, required=True)
-    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--out", type=Path, required=True, help="new output directory")
     args = parser.parse_args()
     receipt = json.loads(args.apb_receipt.read_text(encoding="utf-8"))
     if receipt.get("direct") != "passed" or receipt.get("uvm") != "passed":
@@ -164,14 +185,24 @@ def main():
     with zipfile.ZipFile(args.snapshots / f"{RTL_REPO}.zip") as ip, \
          zipfile.ZipFile(args.snapshots / f"{VIP_REPO}.zip") as vip:
         rows, excluded, tops = read_catalog(ip, vip)
-    groups = assign(rows)
+        groups = assign(rows)
+        args.out.mkdir(parents=True, exist_ok=False)
+        shards = {}
+        for name, label in (("train-candidates.jsonl", "train_candidate"), ("eval.jsonl", "eval")):
+            shards[name] = write_partition(args.out / name,
+                                           [row for row in rows if row["split"] == label], ip, vip)
+        for repo, archive in ((RTL_REPO, ip), (VIP_REPO, vip)):
+            for name in members(archive):
+                path = PurePosixPath(name)
+                if len(path.parts) == 2 and path.name in {"LICENSE", "NOTICE"}:
+                    (args.out / f"{repo}-{path.name}").write_bytes(payload(archive, name))
     paired = {file["path"] for row in rows for file in row["rtl"]}
     result = {"schema": "hdl-portfolio-family-intake/1", "snapshots": manifest,
               "apb_receipt_sha256": digest(args.apb_receipt.read_bytes()),
-              "family_groups": groups, "records": rows, "excluded_vip": excluded,
+              "family_groups": groups, "shards": shards, "records": rows, "excluded_vip": excluded,
               "unpaired_rtl": sorted(tops - paired), "training_ready": False,
               "pending": ["project synthesis", "benchmark overlap", "token shards"]}
-    with args.out.open("x", encoding="utf-8") as handle:
+    with (args.out / "manifest.json").open("x", encoding="utf-8") as handle:
         json.dump(result, handle, ensure_ascii=False, indent=2)
         handle.write("\n")
     print(json.dumps({"family_groups": groups, "eval": sum(row["split"] == "eval" for row in rows),

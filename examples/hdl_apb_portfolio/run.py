@@ -51,13 +51,25 @@ def uvm(rtl, out, args):
            "--timescale", "1ns/1ps", "--top-module", "apb_portfolio_uvm_tb",
            "-j", str(args.jobs), "-CFLAGS", "-O0", f"-I{out}",
            *(f"-I{vip / path}" for path in include_dirs), *sources]
+    for flag in args.ldflag:
+        cmd.extend(["-LDFLAGS", flag])
     code, _ = run_logged(cmd, out, "uvm_compile", args.build_timeout)
     require(code == 0, "UVM compile failed. See uvm_compile.log.")
-    exe = out / "obj_dir/Vapb_portfolio_uvm_tb"
+    verify_uvm(out / "obj_dir/Vapb_portfolio_uvm_tb", out)
+
+
+def verify_uvm(exe, out):
     code, log = run_logged([exe], out, "uvm_sim", 60)
+    # The combined no-DPI UVM library reports name-check warnings for ordinary
+    # component names, including uvm_test_top. Keep every protocol warning fatal.
+    warning_total = re.search(r"(?m)^\s*UVM_WARNING\s*:\s*(\d+)\s*$", log)
+    warning_lines = re.findall(r"(?m)^UVM_WARNING\s+(?!\s*:)[^\n]+$", log)
+    known_warnings = (warning_total is not None
+                      and int(warning_total.group(1)) == len(warning_lines)
+                      and all("[UVM/COMP/NAME]" in line for line in warning_lines))
     reports_clean = all(re.search(rf"(?m)^\s*UVM_{severity}\s*:\s*0\s*$", log)
-                        for severity in ("WARNING", "ERROR", "FATAL"))
-    require(code == 0 and UVM_PASS in log and reports_clean,
+                        for severity in ("ERROR", "FATAL"))
+    require(code == 0 and UVM_PASS in log and reports_clean and known_warnings,
             "UVM run failed or reported diagnostics. See uvm_sim.log.")
     _, log = run_logged([exe, "+INJECT_BAD_ID"], out, "uvm_negative", 60)
     require("[APB_DATA]" in log and "unexpected response at 00000000" in log
@@ -73,6 +85,8 @@ def main():
     parser.add_argument("--iverilog", default="iverilog")
     parser.add_argument("--vvp", default="vvp")
     parser.add_argument("--verilator", default="verilator")
+    parser.add_argument("--ldflag", action="append", default=[],
+                        help="extra linker flag, e.g. --ldflag=-fuse-ld=bfd")
     parser.add_argument("--jobs", type=int, default=2)
     parser.add_argument("--build-timeout", type=int, default=900)
     args = parser.parse_args()

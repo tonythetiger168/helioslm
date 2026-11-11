@@ -170,4 +170,28 @@ python examples/hdl_apb_portfolio/run.py --open-ip /path/to/open-ip-portfolio \
 
 The output directory contains compilation and simulation logs. The UVM
 run also flips one ID response bit and requires the test to reject it.
+Use a native Linux filesystem for the build output. If a prebuilt Verilator
+expects `mold` but only GNU `ld` is installed, add `--ldflag=-fuse-ld=bfd`.
+
+The pinned inputs passed 10 direct transactions and 7 UVM transactions
+on 2026-11-11. The injected ID bit was rejected. The combined no-DPI UVM
+library reported component-name warnings. The runner checks their exact
+report ID and fails on other warnings or any error or fatal report.
+
+After both checks pass, `plan_split.py --snapshots DIR --apb-receipt FILE
+--out NEW_DIR` verifies the two ZIP sizes and SHA-256 values from
+`DIR/manifest.json` and inventories the paired HDL. It reserves APB's
+connected protocol family for evaluation, puts identical RTL cores in the
+same partition, and removes exact held-out VIP copies from training
+candidates. Unmapped RTL and ambiguous VIP mappings stay out of the split.
+It writes the raw candidate and evaluation JSONL files, preserves the upstream
+license and notice files, and records source and shard hashes for the subsequent
+synthesis and benchmark-overlap gates.
+
+The pinned catalogs yielded 99 training candidates and 8 AMBA evaluation
+pairs across 13 groups. The two raw partitions have no identical normalized
+HDL files. The intake excluded 33 evaluation-file copies from training and
+held back 40 VIP entries with missing or ambiguous RTL mappings. I2C, SPI,
+UART and GPIO passed the training-side RTL gate in the initial sample.
+
 Corpus preparation is tracked in [#269](https://github.com/tonythetiger168/helioslm/issues/269).
