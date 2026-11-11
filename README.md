@@ -572,11 +572,11 @@ As of 2026-10-31:
 
 The last five releases; every earlier release is in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md).
 
+- **v5.265** — OpenTitan bug-fix bench records per-task timing and failure stage; new `report` CSV (H4 repair baseline)
 - **v5.264** — seven more sidecar suites folded into the daily gate (T21 chat-tuned summary, CSA, T11 DSA oracle, T13 disagg, T18 disagg Pareto, multi-env, file env; 78 folded / 133 exempt)
 - **v5.263** — six more sidecar suites folded into the daily gate (T88 calibration board, T85 cost-per-task, zh-TW data quality, v5.30 chat, agent workflow, decision-head integration; 67 folded / 144 exempt); fixes two Windows platform bugs: LF-pinned provenance digests vs CRLF worktrees (`sha256_text_file`) and backslash input keys in `build_board` (now `as_posix`)
 - **v5.262** — chat commands pass `enable_thinking=false` explicitly (26B short tier)
 - **v5.261** — download page: 26B chat on 8 GB GPUs via llama.cpp expert offload
-- **v5.260** — six more sidecar suites folded into the daily gate (T33 grounding, T27 decision primitives, T36 copy curriculum, DPO trainer, decision head, first-k-dense MoE; 57 folded / 154 exempt)
 
 ## License
 

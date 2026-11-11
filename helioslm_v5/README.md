@@ -1,5 +1,8 @@
-# HeliosLM v5.264 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.265 - DeepSeek/K3-Style Architecture
 
+v5.265 (2026-11-11): the OpenTitan bug-fix bench records each answer's
+failure stage and scoring time, and `ot_bugfix_run.py report` writes a
+per-task CSV (baseline for the H4 repair run).
 v5.264 (2026-11-11): seven more sidecar suites folded into the mandated
 daily gate (chat-tuned packaging, CSA, DSA, disaggregated serving and its
 Pareto sweep, training envs, file-env; 78 folded / 133 exempt, TESTS
