@@ -1079,6 +1079,9 @@ def test_kv_cache_analytic_suite():
 # test_disagg (T13), test_disagg_pareto (T18), test_envs (multi-env)
 # and test_file_env (long-horizon file env) moved from EXEMPT to
 # FOLDED — the backlog is now 133 files.
+# 2026-11-11 limitations round: test_cpt_chunked_ce (T145 chunked CE)
+# and test_cpt_plan (T130 CPT plan/cost/mixture/prereg) moved from
+# EXEMPT to FOLDED — the backlog is now 131 files.
 # OpenAI-compatible stream smoke (serving/openai_stream_smoke.py):
 # test_openai_stream_smoke is exempt for the same reason as test_hsh_web.
 # It binds 127.0.0.1 through ThreadingHTTPServer on an ephemeral port and
@@ -1199,6 +1202,10 @@ FOLDED_SIDECARS = {
     "test_disagg_pareto": "test_disagg_pareto_suite",
     "test_envs": "test_envs_suite",
     "test_file_env": "test_file_env_suite",
+    # limitations round 2026-11-11: T145 chunked-CE pins / T130 CPT
+    # plan-cost-mixture-prereg pins
+    "test_cpt_chunked_ce": "test_cpt_chunked_ce_suite",
+    "test_cpt_plan": "test_cpt_plan_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1210,7 +1217,7 @@ EXEMPT_SIDECARS = {
     'test_bench_quant', 'test_benchmark', 'test_calibrated_prefetcher',
     'test_calibrated_router',
     'test_chunked_ce', 'test_clamped_swiglu',
-    'test_cpt_chunked_ce', 'test_cpt_pilot', 'test_cpt_plan',
+    'test_cpt_pilot',
     'test_csa_learned', 'test_csa_learned_16x', 'test_csa_learned_h64',
     'test_csa_learned_r3', 'test_cuda_device_paths', 'test_cuda_smoke', 'test_custom_attention_notebook',
     'test_cvdp_bench',
@@ -2472,6 +2479,66 @@ def test_file_env_suite():
         getattr(m, name)()
     _pass("test_file_env_suite",
           "file env: all 4 sidecar tests under the daily gate")
+
+
+# ---------------------------------------------------------------------------
+# limitations round (2026-11-11): fold two CPT sidecars into the daily
+# gate — test_cpt_chunked_ce (T145: chunked cross-entropy equals the
+# full-logits loss/grads, head checks and refusals, frozen-bf16 autocast
+# check, DDP unwrap, same train() loss curve; 5 functions) and
+# test_cpt_plan (T130: base catalog, 6ND/MFU cost formula, validation
+# refusals, committed-plan cost bands, B1 Taiwanese-first mixture, B1.0
+# prereg gates, uint32 shards; 7 functions). Both files carry a pytest
+# shim (raises / mark.parametrize / approx / importorskip as needed);
+# the parametrized rows are iterated explicitly below — test_cpt_plan's
+# lists are hoisted to module level (_VALIDATION_KW, _COMMITTED_PLANS)
+# so this gate runs every row pytest would collect.
+
+
+def test_cpt_chunked_ce_suite():
+    """T145 ``cpt_hf.py --ce-chunk`` under the daily gate. The single
+    parametrized case carries its short inline list [None, 3.0] here;
+    _drift_guard still locks the function set."""
+    from helioslm_v5.tests import test_cpt_chunked_ce as m
+    expected = {"test_chunked_equals_full", "test_check_chunked_head",
+                "test_check_chunked_head_frozen_bf16",
+                "test_ddp_style_wrapper_is_unwrapped",
+                "test_train_with_ce_chunk"}
+    _drift_guard(m, expected)
+    for softcap in [None, 3.0]:
+        m.test_chunked_equals_full(softcap)
+    for name in sorted(expected - {"test_chunked_equals_full"}):
+        getattr(m, name)()
+    _pass("test_cpt_chunked_ce_suite",
+          "T145 chunked CE == full logits (softcap off/on), head checks "
+          "and refusals, frozen-bf16 autocast, DDP unwrap, train() curve "
+          "(5 sidecar tests under the daily gate)")
+
+
+def test_cpt_plan_suite():
+    """T130 CPT plan under the daily gate: parametrized rows iterate the
+    hoisted module-level lists (_VALIDATION_KW 13 rows,
+    _COMMITTED_PLANS 2 rows) so the gate runs every row pytest would
+    collect."""
+    from helioslm_v5.tests import test_cpt_plan as m
+    expected = {"test_bases", "test_cost_formula", "test_validation",
+                "test_committed_plans", "test_b1_mixture",
+                "test_b1_prereg", "test_uint32_shards"}
+    _drift_guard(m, expected)
+    m.test_bases()
+    m.test_cost_formula()
+    for kw in m._VALIDATION_KW:
+        m.test_validation(kw)
+    for name, lo, hi in m._COMMITTED_PLANS:
+        m.test_committed_plans(name, lo, hi)
+    m.test_b1_mixture()
+    m.test_b1_prereg()
+    m.test_uint32_shards()
+    _pass("test_cpt_plan_suite",
+          "T130 CPT plan: Apache-2.0 bases, 6ND/MFU cost formula with "
+          "contingency, 13 validation refusals, committed cost bands, "
+          "B1 Taiwanese-first mixture with replay, B1.0 prereg gates, "
+          "uint32 shards (7 sidecar tests under the daily gate)")
 
 
 def test_sidecar_coverage_guard():

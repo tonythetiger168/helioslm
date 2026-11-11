@@ -20,12 +20,79 @@ Pins:
 
 Run from repo root: python3 -m pytest helioslm_v5/tests/test_cpt_plan.py
 """
+import gc
 import json
 import sys
 import tempfile
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    # This file is also executed directly by the daily TESTS suite
+    # (case_upstream_suites), where pytest is not installed. The shim
+    # covers exactly the four pytest features used below: raises (no
+    # match= arguments), mark.parametrize (collection-time only; the
+    # daily-gate wrapper iterates the hoisted module-level lists
+    # itself), approx (scalar only; default rel=1e-6 / abs=1e-12, one
+    # call passes rel=1e-6 explicitly) and importorskip (torch IS
+    # installed in the gate's runtime, so this imports and returns it;
+    # it fails loudly otherwise). Patterns from test_hsh_tools.py and
+    # test_base_gap.py.
+    import contextlib as _contextlib
+    import importlib as _importlib
+    import re as _re
+
+    class _Mark:
+        @staticmethod
+        def parametrize(*_args, **_kwargs):
+            return lambda f: f
+
+    class _Approx:
+        """pytest.approx stand-in: scalar comparisons only, default
+        rel=1e-6 / abs=1e-12 (test_b1_mixture passes rel=1e-6
+        explicitly)."""
+
+        def __init__(self, expected, rel=None, abs=None):
+            self.expected = expected
+            self.rel = 1e-6 if rel is None else rel
+            self.abs = 1e-12 if abs is None else abs
+
+        def __eq__(self, other):
+            return abs(other - self.expected) <= max(
+                self.rel * abs(self.expected), self.abs)
+
+    class _PytestShim:
+        mark = _Mark()
+
+        @staticmethod
+        @_contextlib.contextmanager
+        def raises(exc, match=None):
+            try:
+                yield
+            except exc as e:
+                if match is not None and not _re.search(match, str(e)):
+                    raise AssertionError(
+                        f"raised {e!r}, which does not match /{match}/"
+                    ) from None
+                return
+            raise AssertionError(f"{exc.__name__} was not raised")
+
+        @staticmethod
+        def approx(expected, rel=None, abs=None):
+            return _Approx(expected, rel=rel, abs=abs)
+
+        @staticmethod
+        def importorskip(module):
+            try:
+                return _importlib.import_module(module)
+            except ImportError as e:
+                raise AssertionError(
+                    f"importorskip: optional dependency {module!r} is "
+                    f"absent; the daily-gate wrapper must skip this "
+                    f"test instead of calling it") from e
+
+    pytest = _PytestShim()
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
@@ -70,7 +137,9 @@ def test_cost_formula():
     assert c["usd_with_contingency"] == pytest.approx(1.5 * usd)
 
 
-@pytest.mark.parametrize("kw", [
+# The parametrize rows are module-level so the daily-gate wrapper in
+# case_upstream_suites can iterate exactly the rows pytest would collect.
+_VALIDATION_KW = [
     dict(base="llama-3.2-3b"), dict(gpu="tpu"),
     dict(mfu=0.0),
     dict(mfu=1.5), dict(stages=[]), dict(contingency=-0.1),
@@ -82,16 +151,22 @@ def test_cost_formula():
     dict(stages=[{"name": "a", "kind": "train", "tokens": 1, "params": 0}]),
     dict(stages=[{"name": "a", "kind": "train", "tokens": 1},
                  {"name": "a", "kind": "train", "tokens": 1}]),
-])
+]
+
+
+@pytest.mark.parametrize("kw", _VALIDATION_KW)
 def test_validation(kw):
     with pytest.raises(ValueError):
         validate_plan(_plan(**kw))
 
 
-@pytest.mark.parametrize("name,lo,hi", [
+_COMMITTED_PLANS = [
     ("b1_gemma4_e4b", 5_000, 25_000),
     ("b0_gemma4_e2b_pilot", 0, 1_000),
-])
+]
+
+
+@pytest.mark.parametrize("name,lo,hi", _COMMITTED_PLANS)
 def test_committed_plans(name, lo, hi):
     plan = load_plan(ROOT / "data" / "cpt" / f"{name}.json")
     load_mixture(ROOT / plan["mixture"])
@@ -146,3 +221,11 @@ def test_uint32_shards():
         assert len(sh) == len(ids)
         x, y = sh.batch(2, 8, 0, 0)
         assert int(x.max()) > 65535 and x.shape == (2, 8)
+        # Windows: TokenShard keeps wide.bin open through np.memmap (and
+        # the batch tensors share the mapping); unlinking an mmapped
+        # file fails with WinError 32 when the TemporaryDirectory cleans
+        # up (Linux tolerates it). Drop the references and collect
+        # before the with-block exits — same fix as
+        # test_pretrain_pilot.py (v5.240).
+        del sh, x, y
+        gc.collect()
