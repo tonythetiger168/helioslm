@@ -81,6 +81,10 @@ Maintainer priorities — comment on the issue (or open one) before starting:
 
 Open a [Discussion](https://github.com/tonythetiger168/helioslm/discussions) or comment on an issue. Maintainer aim: respond within 48 hours.
 
+## Contributor credits
+
+- OpenAI Codex assisted with the H4/H5 corpus safeguards and APB portfolio verification.
+
 ## Code of conduct
 
 Be kind, be technical, be honest about limitations. Review comments target code, never people. New contributors get extra patience — everyone was new once.
