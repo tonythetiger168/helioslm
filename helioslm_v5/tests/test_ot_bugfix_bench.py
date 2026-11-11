@@ -245,3 +245,39 @@ def test_edit_pairs_exclude_eval_ips():
         written = [json.loads(line) for line in output.read_text().splitlines()]
         assert any(row["path"].endswith("other/clean.sv") for row in written)
         assert not any(row["path"].endswith("fork/copied.sv") for row in written)
+
+
+def test_fail_type_v5265():
+    """v5.265: failure stage from new ``fail`` keys and from old score files."""
+    assert ob.fail_type({"pass": True, "synth": True, "error": None}) is None
+    assert ob.fail_type({"pass": False, "fail": "synth"}) == "synth"
+    old = [({"pass": False, "synth": False, "error": "no module in answer"}, "no_module"),
+           ({"pass": False, "synth": False, "error": "sv2v: error, called at src/Convert/Scoper.hs"}, "convert"),
+           ({"pass": False, "synth": False, "error": "lint: ERROR: syntax"}, "synth"),
+           ({"pass": False, "synth": True, "error": "ERROR: Found 3 unproven $equiv cells"}, "not_equivalent"),
+           ({"pass": False, "synth": False, "error": "gold conversion failed"}, "gold")]
+    for res, want in old:
+        assert ob.fail_type(res) == want, (res, want)
+    assert set(w for _, w in old) == set(ob.FAIL_TYPES)
+
+
+def test_report_csv_v5265():
+    """v5.265 ``report``: one CSV row per task, per-model pass/fail/seconds."""
+    sys.path.insert(0, str(ROOT / "examples"))
+    import ot_bugfix_run as run
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        tasks = [{"id": "a", "ip": "x", "kind": "bugfix", "split": "seen", "op": "reset"},
+                 {"id": "b", "ip": "y", "kind": "complete", "split": "unseen", "op": "assign"}]
+        (d / "t.jsonl").write_text("\n".join(json.dumps(t) for t in tasks))
+        (d / "m.json").write_text(json.dumps({"results": {
+            "a": [{"pass": True, "synth": True, "error": None, "seconds": 1.5}],
+            "b": [{"pass": False, "synth": False, "error": "sv2v: error"}]}}))
+        run.main(["report", "--tasks", str(d / "t.jsonl"), "--scores", str(d / "m.json"),
+                  "--out", str(d / "r.csv")])
+        rows = (d / "r.csv").read_text().splitlines()
+        assert rows[0].startswith("id,ip,kind,split,op,m:pass,m:fail,m:seconds")
+        assert rows[1].startswith("a,x,bugfix,seen,reset,1,,1.5")
+        assert rows[2].startswith("b,y,complete,unseen,assign,0,convert,")
+        assert run.fail_counts(tasks, {"b": [{"pass": False, "error": "sv2v: x"}]}) == \
+            {"all": {"convert": 1}, "complete": {"convert": 1}}

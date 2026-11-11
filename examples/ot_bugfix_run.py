@@ -18,7 +18,18 @@ every evaluation IP. ``build`` checks out the pinned OpenTitan commit when ``--o
 ``generate`` reuses ``hdl_eval_all.vllm_generate`` (chat template,
 greedy by default) and writes {task id: [answers]}. ``score`` writes the
 per-task results and the summary (by kind, seen/unseen split, operator).
+
+v5.265 (repair baseline): ``generate`` also writes ``<out>.meta.json``
+(wall seconds, answer characters per task); ``score`` adds each sample's
+``seconds`` and failure stage (``fail``: no_module / convert / synth /
+not_equivalent / gold) and a ``fail_types`` count; ``report`` joins the
+tasks with one or more score files into a per-task CSV and prints the
+failure-type table per model::
+
+  python examples/ot_bugfix_run.py report --tasks ot_tasks.jsonl \
+      --scores h4_rl.json e4b_it.json --out ot_per_task.csv
 """
+import csv
 import argparse
 import json
 import sys
@@ -89,10 +100,15 @@ def cmd_generate(a):
     from hdl_eval_all import vllm_generate
     tasks = read_tasks(a.tasks)
     jobs = [("ot_bugfix", t["id"], ob.SYSTEM, t["prompt"]) for t in tasks]
+    t0 = time.time()
     outs = vllm_generate(a.model, jobs, a.n, a.temperature, a.top_p,
                          a.max_new_tokens, a.max_model_len, a.gpu_mem)
+    secs = time.time() - t0
     Path(a.out).write_text(json.dumps(
         {t["id"]: o for t, o in zip(tasks, outs)}, ensure_ascii=False))
+    Path(a.out).with_suffix(".meta.json").write_text(json.dumps(
+        {"model": a.model, "generate_seconds": round(secs, 1), "tasks": len(tasks),
+         "n": a.n, "chars": {t["id"]: [len(x) for x in o] for t, o in zip(tasks, outs)}}))
     print(f"generate: {len(tasks)} tasks x {a.n} -> {a.out}")
 
 
@@ -103,18 +119,58 @@ def cmd_score(a):
     for t in tasks:          # fill the gold cache before threads share it
         scorer.gold(t)
     jobs = [(t, s) for t in tasks for s in samples.get(t["id"], [])]
+    def timed(ts):
+        t0 = time.time()
+        r = scorer.score(*ts)
+        r["seconds"] = round(time.time() - t0, 2)
+        return r
     with ThreadPoolExecutor(a.workers) as ex:
-        scored = list(ex.map(lambda ts: scorer.score(*ts), jobs))
+        scored = list(ex.map(timed, jobs))
     results = {}
     for (t, _), r in zip(jobs, scored):
         results.setdefault(t["id"], []).append(r)
     summary = ob.summarize(tasks, results)
     Path(a.out).write_text(json.dumps(
         {"benchmark": "ot-bugfix/1", "commit": ob.OT_COMMIT,
-         "samples": a.samples, "summary": summary, "results": results},
+         "samples": a.samples, "summary": summary,
+         "fail_types": fail_counts(tasks, results), "results": results},
         indent=1, ensure_ascii=False))
     print("score:", json.dumps(summary.get("all")),
           {k: v["pass"] for k, v in summary.items() if "/" in k})
+
+
+def fail_counts(tasks, results):
+    """{kind: {pass / failure stage: samples}} plus "all"."""
+    out = {}
+    for t in tasks:
+        for r in results.get(t["id"]) or []:
+            key = ob.fail_type(r) or "pass"
+            for k in ("all", t["kind"]):
+                d = out.setdefault(k, {})
+                d[key] = d.get(key, 0) + 1
+    return out
+
+
+def cmd_report(a):
+    tasks = read_tasks(a.tasks)
+    names, scores = [], []
+    for p in a.scores:
+        names.append(Path(p).name.removesuffix(".json"))
+        scores.append(json.loads(Path(p).read_text())["results"])
+    with open(a.out, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["id", "ip", "kind", "split", "op"]
+                   + [f"{n}:{c}" for n in names for c in ("pass", "fail", "seconds", "error")])
+        for t in tasks:
+            row = [t["id"], t.get("ip", ""), t["kind"], t["split"], t.get("op", "")]
+            for res in scores:
+                r = (res.get(t["id"]) or [{}])[0]
+                row += [int(bool(r.get("pass"))), ob.fail_type(r) if r else "missing",
+                        r.get("seconds", ""), (r.get("error") or "")[:160].replace("\n", " ")]
+            w.writerow(row)
+    for n, res in zip(names, scores):
+        print(n, json.dumps(fail_counts(tasks, res), sort_keys=True))
+    print(f"report: {len(tasks)} tasks x {len(names)} models -> {a.out}")
 
 
 def main(argv=None):
@@ -154,9 +210,13 @@ def main(argv=None):
     s.add_argument("--ot", default="data/opentitan")
     s.add_argument("--out", required=True)
     s.add_argument("--workers", type=int, default=8)
+    rp = sub.add_parser("report", help="per-task CSV + failure types (v5.265)")
+    rp.add_argument("--tasks", required=True)
+    rp.add_argument("--scores", nargs="+", required=True)
+    rp.add_argument("--out", required=True)
     a = ap.parse_args(argv)
     {"build": cmd_build, "pairs": cmd_pairs, "generate": cmd_generate,
-     "score": cmd_score}[a.cmd](a)
+     "score": cmd_score, "report": cmd_report}[a.cmd](a)
 
 
 if __name__ == "__main__":

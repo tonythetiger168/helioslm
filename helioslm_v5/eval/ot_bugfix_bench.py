@@ -529,6 +529,7 @@ class Scorer:
             spliced = splice(task, code)
             if spliced is None:
                 res["error"] = "no module in answer"
+                res["fail"] = "no_module"
                 return res
             code, res["spliced"] = spliced, True
         files, order = self._closure(task)
@@ -536,18 +537,47 @@ class Scorer:
                                self.info, self.texts, self.tool, replace=code)
         if gate is None:
             res["error"] = err
+            res["fail"] = "convert"
             return res
         ok, info = lint_synth(gate, task["top"], self.tool)
         res["synth"] = ok
         if not ok:
             res["error"] = info
+            res["fail"] = "synth"
             return res
         gold = self.gold(task)
         if gold is None:
             res["error"] = "gold conversion failed"
+            res["fail"] = "gold"
             return res
         res["pass"], res["error"] = equivalent(gold, gate, task["top"], self.tool)
+        res["fail"] = None if res["pass"] else "not_equivalent"
         return res
+
+
+FAIL_TYPES = ("no_module", "convert", "synth", "not_equivalent", "gold")
+
+
+def fail_type(res):
+    """Failure stage of one score dict (v5.265): None for a pass, else one
+    of FAIL_TYPES. ``convert`` = sv2v / file assembly rejected the answer,
+    ``synth`` = Yosys lint/synth failed, ``not_equivalent`` = it synthesised
+    but differs from the original. Older score files without ``fail`` are
+    classified from ``error``."""
+    if res.get("pass"):
+        return None
+    if "fail" in res:
+        return res["fail"]
+    err = res.get("error") or ""
+    if err == "no module in answer":
+        return "no_module"
+    if err == "gold conversion failed":
+        return "gold"
+    if res.get("synth"):
+        return "not_equivalent"
+    if err.startswith("sv2v") or "Sym_" in err or "Scoper" in err:
+        return "convert"
+    return "synth"
 
 
 def summarize(tasks, results):

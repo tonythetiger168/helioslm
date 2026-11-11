@@ -1,5 +1,18 @@
 # HeliosLM v5 Changelog
 
+## v5.265 (2026-11-11) - OT bug-fix bench: per-task timing and failure stage (H4 repair baseline)
+
+`OTScorer.score` now records the failure stage of every answer (`fail`:
+`no_module`, `convert` = sv2v / file assembly, `synth` = Yosys,
+`not_equivalent`, `gold`) and `ot_bugfix_bench.fail_type` classifies
+older score files from their error text. `examples/ot_bugfix_run.py`
+`generate` writes `<out>.meta.json` (wall seconds, answer length per
+task), `score` adds per-sample `seconds` and a `fail_types` table, and
+the new `report` subcommand joins tasks with several score files into a
+per-task CSV. Baseline on the 179 saved tasks: H4 RL passes 6 (no
+bug-fix task; 71 convert, 29 synth, 73 not equivalent), stock E4B-it 59.
+Two new plain-function tests in `test_ot_bugfix_bench.py`. Tracks #269.
+
 ## v5.264 (2026-11-11) - Chat-tuned / CSA / DSA / disagg / env sidecars folded into the suite
 
 `case_upstream_suites.py` gains wrappers for `test_chat_tuned` (1 func;
