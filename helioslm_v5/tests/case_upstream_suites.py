@@ -749,12 +749,13 @@ def test_ot_bugfix_bench_suite():
                 "test_complete_masks_one_block", "test_always_end_follows_else",
                 "test_prompt_asks_for_whole_file", "test_candidates_and_seen_ips",
                 "test_summarize_groups", "test_build_and_score_with_tools",
-                "test_splice_snippet_answers", "test_edit_pairs_exclude_eval_ips"}
+                "test_splice_snippet_answers", "test_edit_pairs_exclude_eval_ips",
+                "test_fail_type_v5265", "test_report_csv_v5265"}
     _drift_guard(m, expected)
     for name in sorted(expected):
         getattr(m, name)()
     _pass("test_ot_bugfix_bench_suite",
-          "v5.228 OpenTitan bug-fix bench: all 11 sidecar tests under the "
+          "v5.228 OpenTitan bug-fix bench: all 13 sidecar tests under the "
           "daily gate")
 
 
