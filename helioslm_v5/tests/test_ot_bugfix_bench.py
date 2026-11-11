@@ -220,3 +220,28 @@ def test_edit_pairs_exclude_eval_ips():
     assert files["a/x.v"].strip() == TOY.strip() and files["a/y.v"] == "// y\n"
     other = ob.edit_pairs(files, source="stack")
     assert other and "open-source `a` IP" in other[0]["prompt"]
+
+    # Exercise the CLI path that renames packed files before creating pairs.
+    from argparse import Namespace
+    from unittest.mock import patch
+    from examples import ot_bugfix_run
+
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        packed = root / "packed.jsonl"
+        output = root / "pairs.jsonl"
+        packed_files = {
+            "fork/copied.sv": TOY,
+            "other/clean.sv": TOY.replace("toy_cnt", "clean_cnt"),
+        }
+        packed.write_text(json.dumps({"text": hp.pack(
+            "fork", list(packed_files), packed_files)}), encoding="utf-8")
+        args = Namespace(tasks=None, ot=None, docs=[packed], out=output,
+                         per_file=2, seed=0, max_records=100)
+        with patch.object(ot_bugfix_run, "read_tasks", return_value=tasks), \
+             patch.object(ob, "checkout"), \
+             patch.object(ob, "repo_texts", return_value=texts):
+            ot_bugfix_run.cmd_pairs(args)
+        written = [json.loads(line) for line in output.read_text().splitlines()]
+        assert any(row["path"].endswith("other/clean.sv") for row in written)
+        assert not any(row["path"].endswith("fork/copied.sv") for row in written)

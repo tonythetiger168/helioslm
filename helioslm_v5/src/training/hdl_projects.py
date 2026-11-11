@@ -530,11 +530,10 @@ def project_docs(name, files, all_files, root, *, units=None, keep=(),
     for u, info, defined, g in results:
         paths = groups[u]
         row = {"project": f"{name}/{u}".rstrip("/"), "files": len(paths)}
+        gate_paths = ()
         if g is not None:
             g = dict(g)
-            if g["pass"]:
-                synthesised |= set(g["paths"])
-            del g["paths"]
+            gate_paths = g.pop("paths")
             row.update(g, gate_files=g["files"], files=len(paths))
             if not g["pass"]:
                 if report is not None:
@@ -549,6 +548,8 @@ def project_docs(name, files, all_files, root, *, units=None, keep=(),
         elif kept:
             out.append(doc)
             passed += 1
+            row["admitted"] = True
+            synthesised.update(gate_paths)
         if report is not None:
             report.append(row)
     # shared libraries: verification code once a unit passed, design
@@ -559,11 +560,12 @@ def project_docs(name, files, all_files, root, *, units=None, keep=(),
         info, defined = shared or index({p: all_files[p] for p in rest})
         rest = [p for p in rest
                 if not (decontam and decontam.hit(all_files[p]))]
-        out.append(pack(f"{name}/shared", dep_order(rest, info, defined),
-                        all_files))
-        if report is not None:
-            report.append({"project": f"{name}/shared", "files": len(rest),
-                           "pass": None})
+        if rest:
+            out.append(pack(f"{name}/shared", dep_order(rest, info, defined),
+                            all_files))
+            if report is not None:
+                report.append({"project": f"{name}/shared", "files": len(rest),
+                               "pass": None})
     return out
 
 
