@@ -1,0 +1,16 @@
+{
+ "name": "own-base-0p3b-v1",
+ "note": "Own from-scratch base demo (docs/OWN_BASE_0P3B.md): ~0.3B dense Llama-shaped model, own 32,768-token byte-level BPE, 6B tokens first (Chinchilla-sized), extendable to 20B. About 40% Taiwanese Traditional Chinese, 40% English, 8% Simplified Chinese, the rest maths. Only sources whose card licence is on the allow list; code (the-stack-v2) and Ultra-FineWeb stay out until their licences are reviewed. license_verified stays false until fetch_mixture.py reads each card at the downloaded revision. Gated zh-TW sets need approved access on the Hub; with --allow-blocked their share goes to the other main-phase sources.",
+ "sources": [
+  {"name": "fineweb-zhtw", "source": "hf:lianghsun/fineweb-zhtw", "license": "MIT", "license_verified": false, "phase": "main", "weight": 0.14, "zh_variants": ["tw", "mixed"]},
+  {"name": "fineweb2-zhtw", "source": "hf:lianghsun/fineweb-2-zhtw", "license": "ODC-BY-1.0", "license_verified": false, "phase": "main", "weight": 0.12, "zh_variants": ["tw", "mixed"]},
+  {"name": "fineweb-zhtw-filtered", "source": "hf:twinkle-ai/fineweb-zhtw-filtered", "license": "ODC-BY-1.0", "license_verified": false, "phase": "main", "weight": 0.1, "zh_variants": ["tw", "mixed"]},
+  {"name": "zhwiki", "source": "hf:wikimedia/wikipedia:20231101.zh", "license": "CC-BY-SA-4.0", "license_verified": false, "phase": "main", "weight": 0.04, "zh_variants": ["tw", "mixed"]},
+  {"name": "fineweb2-cmn", "source": "hf:HuggingFaceFW/fineweb-2:cmn_Hani", "license": "ODC-BY-1.0", "license_verified": false, "phase": "main", "weight": 0.08},
+  {"name": "fineweb-edu", "source": "hf:HuggingFaceFW/fineweb-edu", "license": "ODC-BY-1.0", "license_verified": false, "phase": "main", "weight": 0.42},
+  {"name": "finemath", "source": "hf:HuggingFaceTB/finemath:finemath-3plus", "license": "ODC-BY-1.0", "license_verified": false, "phase": "main", "weight": 0.1},
+  {"name": "zhtw-filtered-decay", "source": "hf:twinkle-ai/fineweb-zhtw-filtered", "license": "ODC-BY-1.0", "license_verified": false, "phase": "decay", "weight": 0.4, "zh_variants": ["tw"]},
+  {"name": "fineweb-edu-decay", "source": "hf:HuggingFaceFW/fineweb-edu", "license": "ODC-BY-1.0", "license_verified": false, "phase": "decay", "weight": 0.4},
+  {"name": "finemath-decay", "source": "hf:HuggingFaceTB/finemath:finemath-4plus", "license": "ODC-BY-1.0", "license_verified": false, "phase": "decay", "weight": 0.2}
+ ]
+}
