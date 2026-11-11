@@ -127,8 +127,11 @@ def git_texts(root, include, exclude=()):
         if any(fnmatch.fnmatch(rel, g) for g in exclude):
             continue
         data = p.read_bytes()
+        if len(data) > MAX_FILE_BYTES:
+            continue
+        data = data.replace(b"\r\n", b"\n")
         digest = hashlib.sha256(data).hexdigest()
-        if len(data) > MAX_FILE_BYTES or digest in seen:
+        if digest in seen:
             continue
         seen.add(digest)
         yield f"// file: {rel}\n" + data.decode("utf-8", errors="replace")
@@ -456,11 +459,14 @@ def main(argv=None):
         if not r["usable"]:
             save()
             continue
-        need = [n for n in s.get("requires", ())
-                if not manifest["sources"].get(n, {}).get("projects_passed")]
+        need = []
+        for dependency in s.get("requires", ()):
+            prepared = manifest["sources"].get(dependency, {})
+            if not (prepared.get("projects_admitted") and prepared.get("tokens")):
+                need.append(dependency)
         if need:
             r.update(usable=False, status="skipped",
-                     reason=f"needs a passing project in {', '.join(need)}")
+                     reason=f"needs a synthesised project admitted to the corpus in {', '.join(need)}")
             save()
             continue
         ps = parse_source(s["source"])
@@ -495,6 +501,8 @@ def main(argv=None):
             if report is not None:
                 r["projects"] = report
                 r["projects_passed"] = sum(1 for x in report if x.get("pass"))
+                r["projects_admitted"] = sum(
+                    1 for x in report if x.get("pass") and x.get("admitted"))
                 r["projects_gated"] = sum(1 for x in report
                                           if x.get("pass") is not None)
         except Exception as e:

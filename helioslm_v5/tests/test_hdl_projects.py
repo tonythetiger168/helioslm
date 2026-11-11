@@ -145,8 +145,12 @@ def test_near_dup_and_decontam(monkeypatch, tmp_path):
     assert len(docs) == 2
     assert "github/o1/r" in docs[0] and "github/o3/other" in docs[1]
     bench = hp.Decontam([f"module top;\n{body}endmodule\n"])
-    docs = list(hp.repo_docs(rows, decontam=bench, workdir=tmp_path))
+    report = []
+    docs = list(hp.repo_docs(rows, decontam=bench, workdir=tmp_path,
+                             report=report))
     assert docs == [d for d in docs if "o3/other" in d]
+    assert sum(bool(row.get("pass")) for row in report) == 3
+    assert [row["project"] for row in report if row.get("admitted")] == ["github/o3/other"]
 
 
 def test_minhash_and_decontam_units():

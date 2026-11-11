@@ -59,6 +59,11 @@ def cmd_pairs(a):
     texts = ob.repo_texts(ob.checkout(a.ot))
     recs = ob.edit_pairs(texts, exclude_ips=ips, exclude_paths=paths,
                          per_file=a.per_file, seed=a.seed)
+    # Packed repositories may contain copies of evaluation files under
+    # different paths. Check before adding the document namespace.
+    held_out = {text.replace("\r\n", "\n").strip() for path, text in texts.items()
+                if path in paths or any(path.startswith(f"hw/ip/{ip}/")
+                                        for ip in ips)}
     n_ot = len(recs)
     for path in a.docs or []:
         for i, line in enumerate(Path(path).read_text().splitlines()):
@@ -67,7 +72,8 @@ def cmd_pairs(a):
             files = ob.split_packed(json.loads(line).get("text", ""))
             # project files only; an OpenTitan path is already covered
             files = {f"{Path(path).stem}/{i}/{k}": v for k, v in files.items()
-                     if not k.startswith("hw/ip/")}
+                     if not k.startswith("hw/ip/") and k not in paths
+                     and v.replace("\r\n", "\n").strip() not in held_out}
             recs += ob.edit_pairs(files, per_file=a.per_file,
                                   seed=a.seed + i + 1, source=Path(path).stem)
     random.Random(a.seed).shuffle(recs)
