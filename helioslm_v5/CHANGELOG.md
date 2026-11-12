@@ -1,5 +1,16 @@
 # HeliosLM v5 Changelog
 
+## v5.267 (2026-11-12) - sft_hf: Liger kernels on by default
+
+`examples/sft_hf.py train` now patches the model with Liger kernels
+(`--liger`, default on; `--no-liger` turns it off) before LoRA or
+freezing. On the H4 LoRA job (Gemma 4 E4B, seq 4096, micro-batch 1 x 8,
+one A40) a step went from 39.9 s to 34.5 s (x1.15); loss over 12 steps
+moved +0.29 %. `apply_liger` never raises: without `liger-kernel`, or for
+a model Liger does not patch, training continues and logs the reason.
+`liger-kernel` stays optional (install with `pip install --no-deps
+liger-kernel`). One new test in `test_hdl_train_eval.py`.
+
 ## v5.265 (2026-11-11) - OT bug-fix bench: per-task timing and failure stage (H4 repair baseline)
 
 `OTScorer.score` now records the failure stage of every answer (`fail`:

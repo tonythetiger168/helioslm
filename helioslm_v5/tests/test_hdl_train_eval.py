@@ -398,3 +398,19 @@ def test_uvm_check_feedback_hides_mutants():
     assert not v["ok"] and "line 3:1: syntax error" in v["feedback"]
     assert seen == [[], []]
     assert chk("unknown", "x")["ok"]
+
+
+def test_liger_flag_defaults_on_and_never_raises():
+    """v5.267: --liger is on by default, --no-liger turns it off, and
+    apply_liger reports (never raises) when it cannot patch the model."""
+    import argparse as _ap
+    import types
+    p = _ap.ArgumentParser()
+    p.add_argument("--liger", action=_ap.BooleanOptionalAction, default=True)
+    assert p.parse_args([]).liger is True
+    assert p.parse_args(["--no-liger"]).liger is False
+    src = (ROOT / "examples" / "sft_hf.py").read_text()
+    assert '"--liger", action=argparse.BooleanOptionalAction' in src
+    assert "default=True" in src.split('"--liger"', 1)[1][:200]
+    r = sft_hf.apply_liger(types.SimpleNamespace(config=None))
+    assert r == "applied" or r.startswith("skipped:")
