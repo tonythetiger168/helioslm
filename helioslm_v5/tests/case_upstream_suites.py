@@ -1207,6 +1207,8 @@ FOLDED_SIDECARS = {
     # plan-cost-mixture-prereg pins
     "test_cpt_chunked_ce": "test_cpt_chunked_ce_suite",
     "test_cpt_plan": "test_cpt_plan_suite",
+    # v5.268 own 0.3B base (JAX/TPU pretraining path)
+    "test_jax_pretrain": "test_jax_pretrain_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -2570,3 +2572,44 @@ def test_sidecar_coverage_guard():
     _pass("test_sidecar_coverage_guard",
           f"sidecar coverage locked: {len(folded)} folded + "
           f"{len(exempt)} exempt legacy = {len(on_disk)} files on disk")
+
+
+# ---------------------------------------------------------------------------
+# v5.268 own 0.3B base: test_jax_pretrain (11 functions). The numpy-only
+# eight (mixture loader, checkpoints, LR, shards + upload fallback,
+# committed mixture, preset size) always run; the four that need jax
+# (chunked loss / causality, export vs numpy Llama, train + exact
+# resume) run only where jax is installed (not in CI).
+# ---------------------------------------------------------------------------
+
+
+def test_jax_pretrain_suite():
+    """Own-base JAX pretraining path under the daily gate."""
+    import importlib.util
+    from helioslm_v5.tests import test_jax_pretrain as m
+    needs_tmp = {"test_mixture_loader_weights_advance_and_resume",
+                 "test_mixture_loader_rejects_tiny_shard_and_empty_mix",
+                 "test_checkpoint_roundtrip", "test_own_base_shards",
+                 "test_shards_upload_uses_available_client_method"}
+    plain = {"test_lr_schedule", "test_committed_mixture_validates",
+             "test_preset_size"}
+    jax_only = {"test_chunked_loss_matches_full_logits_and_causal",
+                "test_export_hf_matches_reference_llama",
+                "test_train_learns_and_resume_is_exact"}
+    _drift_guard(m, needs_tmp | plain | jax_only)
+    for name in sorted(plain):
+        getattr(m, name)()
+    for name in sorted(needs_tmp):
+        with tempfile.TemporaryDirectory() as t:
+            getattr(m, name)(Path(t))
+    ran = len(plain) + len(needs_tmp)
+    if importlib.util.find_spec("jax") is not None:
+        m.test_chunked_loss_matches_full_logits_and_causal()
+        for name in ("test_export_hf_matches_reference_llama",
+                     "test_train_learns_and_resume_is_exact"):
+            with tempfile.TemporaryDirectory() as t:
+                getattr(m, name)(Path(t))
+        ran += len(jax_only)
+    _pass("test_jax_pretrain_suite",
+          f"own 0.3B base JAX path: {ran} of 11 sidecar tests under the "
+          "daily gate (jax-only ones need jax)")
