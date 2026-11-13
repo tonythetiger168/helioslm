@@ -1,5 +1,5 @@
 """own_base_shards.py — cut fetch_mixture.py output into TPU-sized token
-shards and write the mixture files for jax_pretrain_tpu.py (v5.266).
+shards and write the mixture files for jax_pretrain_tpu.py (v5.268).
 
   python examples/own_base_shards.py --data /workspace/own_data \\
       --out /workspace/own_shards --shard-tokens 2.5e8 \\

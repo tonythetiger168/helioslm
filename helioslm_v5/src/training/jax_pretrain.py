@@ -1,5 +1,5 @@
 """jax_pretrain.py — own small base model, pretrained from scratch in JAX
-on TPU (Kaggle TPU v5e-8 / TRC) or CPU (v5.266).
+on TPU (Kaggle TPU v5e-8 / TRC) or CPU (v5.268).
 
 Why JAX: the cheapest compute for an own from-scratch base is the free
 Kaggle TPU v5e-8 quota (about 20 h a week, 9 h per session), then TRC /

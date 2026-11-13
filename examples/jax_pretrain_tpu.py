@@ -1,4 +1,4 @@
-"""jax_pretrain_tpu.py — pretrain the own small base on TPU (v5.266).
+"""jax_pretrain_tpu.py — pretrain the own small base on TPU (v5.268).
 
 Data-parallel over every local device (Kaggle TPU v5e-8: 8 chips);
 parameters and AdamW states are replicated (the 0.3B preset needs about

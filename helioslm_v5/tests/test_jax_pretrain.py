@@ -1,4 +1,4 @@
-"""Own-base JAX pretraining path (v5.266): jax_pretrain.py,
+"""Own-base JAX pretraining path (v5.268): jax_pretrain.py,
 examples/jax_pretrain_tpu.py, examples/own_base_shards.py.
 
 Numpy-only parts (mixture loader, checkpoints, LR schedule, sharding,

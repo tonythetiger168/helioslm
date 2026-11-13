@@ -1,4 +1,4 @@
-# Own base model, 0.3B, from scratch on TPU (v5.266)
+# Own base model, 0.3B, from scratch on TPU (v5.268)
 
 A small base model trained from random initialisation with our own
 tokenizer and our own data mixture: a technology demonstration of the

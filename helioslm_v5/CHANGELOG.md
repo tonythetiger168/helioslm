@@ -1,6 +1,6 @@
 # HeliosLM v5 Changelog
 
-## v5.266 (2026-11-11) - Own 0.3B base: JAX/TPU pretraining path
+## v5.268 (2026-11-13) - Own 0.3B base: JAX/TPU pretraining path
 
 New `helioslm_v5/src/training/jax_pretrain.py`: a dense Llama-shaped
 decoder in plain JAX (RMSNorm, RoPE in the HF rotate_half layout, GQA,
@@ -22,6 +22,16 @@ mixture validation (numpy only); with jax installed also chunked loss
 == full loss, causality, export vs an independent numpy Llama forward,
 and a cut-and-resumed training run ending bit-identical to a straight
 one (CI has no jax, so those three skip there).
+## v5.267 (2026-11-12) - sft_hf: Liger kernels on by default
+
+`examples/sft_hf.py train` now patches the model with Liger kernels
+(`--liger`, default on; `--no-liger` turns it off) before LoRA or
+freezing. On the H4 LoRA job (Gemma 4 E4B, seq 4096, micro-batch 1 x 8,
+one A40) a step went from 39.9 s to 34.5 s (x1.15); loss over 12 steps
+moved +0.29 %. `apply_liger` never raises: without `liger-kernel`, or for
+a model Liger does not patch, training continues and logs the reason.
+`liger-kernel` stays optional (install with `pip install --no-deps
+liger-kernel`). One new test in `test_hdl_train_eval.py`.
 
 ## v5.265 (2026-11-11) - OT bug-fix bench: per-task timing and failure stage (H4 repair baseline)
 
