@@ -1,5 +1,29 @@
 # HeliosLM v5 Changelog
 
+## v5.268 (2026-11-13) - Own 0.3B base: JAX/TPU pretraining path
+
+New `helioslm_v5/src/training/jax_pretrain.py`: a dense Llama-shaped
+decoder in plain JAX (RMSNorm, RoPE in the HF rotate_half layout, GQA,
+SwiGLU, tied embeddings; layers under `lax.scan` + remat, chunked
+cross-entropy, optional Pallas flash attention on TPU), AdamW without
+optax, warmup + cosine LR, a resumable multi-source `MixtureLoader` that
+pulls token shards from a private HF dataset one at a time, `.npz`
+checkpoints and `export_hf` to a standard `LlamaForCausalLM`.
+`examples/jax_pretrain_tpu.py` trains data-parallel over all local
+devices with grad accumulation, a decay-phase mixture, `--max-hours`
+clean stop and HF checkpoint resume (Kaggle 9-hour sessions);
+`examples/own_base_shards.py` cuts `fetch_mixture.py` output into
+uint16 shards + val split + mixture files;
+`examples/notebooks/kaggle_tpu_own_base.ipynb` runs it on a free TPU
+v5e-8. Mixture `data/mixtures/own_base_0p3b_v1.json`, plan in
+`docs/OWN_BASE_0P3B.md`. `test_jax_pretrain.py`: loader weights /
+advance / exact resume, checkpoint round trip, LR schedule, sharding,
+mixture validation (numpy only); with jax installed also chunked loss
+== full loss, causality, export vs an independent numpy Llama forward,
+and a cut-and-resumed training run ending bit-identical to a straight
+one (CI has no jax, so those three skip there). The shard upload
+falls back to `upload_folder` on huggingface_hub 2.x, which dropped
+`upload_large_folder` (the first full data run lost its upload to it).
 ## v5.267 (2026-11-12) - sft_hf: Liger kernels on by default
 
 `examples/sft_hf.py train` now patches the model with Liger kernels

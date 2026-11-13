@@ -376,6 +376,9 @@ TESTS = [
     case_upstream_suites.test_disagg_pareto_suite,
     case_upstream_suites.test_envs_suite,
     case_upstream_suites.test_file_env_suite,
+    # v5.268 own 0.3B base: JAX pretraining path (numpy parts always,
+    # jax parts where jax is installed)
+    case_upstream_suites.test_jax_pretrain_suite,
     # limitations round (2026-11-11): T145 chunked-CE pins and T130 CPT
     # plan/cost/mixture/prereg pins. Pytest shims in the sidecars;
     # parametrized rows iterated by the wrappers (12 sidecar functions
