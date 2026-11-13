@@ -10,4 +10,4 @@ it equals the newest ``## vX.Y`` heading in ``helioslm_v5/CHANGELOG.md``.
 A PR that adds a CHANGELOG entry bumps this one line too.
 """
 
-__version__ = "5.265"
+__version__ = "5.267"
