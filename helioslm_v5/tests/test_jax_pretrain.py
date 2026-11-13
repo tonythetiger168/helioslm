@@ -268,3 +268,21 @@ def test_train_learns_and_resume_is_exact(tmp_path):
     np.testing.assert_array_equal(pa["embed"], pb["embed"])
     np.testing.assert_array_equal(pa["layers"]["w_down"],
                                   pb["layers"]["w_down"])
+
+
+def test_shards_upload_uses_available_client_method(tmp_path):
+    sys.path.insert(0, str(_REPO / "examples"))
+    import own_base_shards as obs
+    calls = []
+
+    class New:  # huggingface_hub 2.x: no upload_large_folder
+        def upload_folder(self, **kw):
+            calls.append(("folder", kw["repo_id"], kw["folder_path"]))
+
+    class Old(New):
+        def upload_large_folder(self, **kw):
+            calls.append(("large", kw["repo_id"], kw["folder_path"]))
+
+    obs.upload(New(), "u/t", str(tmp_path))
+    obs.upload(Old(), "u/t", str(tmp_path))
+    assert [c[0] for c in calls] == ["folder", "large"]

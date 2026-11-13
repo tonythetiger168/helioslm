@@ -21,7 +21,9 @@ advance / exact resume, checkpoint round trip, LR schedule, sharding,
 mixture validation (numpy only); with jax installed also chunked loss
 == full loss, causality, export vs an independent numpy Llama forward,
 and a cut-and-resumed training run ending bit-identical to a straight
-one (CI has no jax, so those three skip there).
+one (CI has no jax, so those three skip there). The shard upload
+falls back to `upload_folder` on huggingface_hub 2.x, which dropped
+`upload_large_folder` (the first full data run lost its upload to it).
 ## v5.267 (2026-11-12) - sft_hf: Liger kernels on by default
 
 `examples/sft_hf.py train` now patches the model with Liger kernels

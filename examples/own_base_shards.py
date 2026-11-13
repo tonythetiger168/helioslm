@@ -112,6 +112,17 @@ def build(data_dir, out_dir, shard_tokens, val_tokens, hf_repo=None):
     return mixes
 
 
+def upload(api, repo, folder):
+    """``upload_large_folder`` where the hub client has it (huggingface_hub
+    0.25-1.x, resumable); ``upload_folder`` otherwise (2.x removed it)."""
+    big = getattr(api, "upload_large_folder", None)
+    if big is not None:
+        return big(repo_id=repo, repo_type="dataset", folder_path=folder)
+    return api.upload_folder(repo_id=repo, repo_type="dataset",
+                             folder_path=folder,
+                             commit_message="own-base token shards")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--data", required=True)
@@ -131,8 +142,7 @@ def main(argv=None):
         api = HfApi()
         api.create_repo(a.upload, repo_type="dataset", private=True,
                         exist_ok=True)
-        api.upload_large_folder(repo_id=a.upload, repo_type="dataset",
-                                folder_path=a.out)
+        upload(api, a.upload, a.out)
         print(f"[upload] {a.out} -> datasets/{a.upload}")
 
 
