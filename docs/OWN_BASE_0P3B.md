@@ -18,9 +18,9 @@ building on open base checkpoints.
 ## Data
 
 `data/mixtures/own_base_0p3b_v1.json`: main phase about 40% Traditional
-Chinese web + Wikipedia, 42% English educational web, 8% Simplified
+Chinese (zh_TW C4, the Traditional part of FineWeb-2, Wikipedia), 42% English educational web, 8% Simplified
 Chinese web, 10% maths; the last 20% of steps anneal on the
-higher-quality subsets (filtered zh-TW web, FineWeb-Edu, FineMath 4+).
+higher-quality subsets (Traditional zh Wikipedia and C4, FineWeb-Edu, FineMath 4+).
 Allow-listed card licences only (MIT, ODC-BY-1.0, CC-BY-SA-4.0); code
 and unreviewed sources stay out. `fetch_mixture.py` re-reads every card
 at the downloaded revision and records it in `manifest.json`.
