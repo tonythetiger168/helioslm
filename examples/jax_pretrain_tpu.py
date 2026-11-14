@@ -284,21 +284,26 @@ def main(argv=None):
         xs = jax.device_put(np.stack(xs), data_sh)
         ys = jax.device_put(np.stack(ys), data_sh)
         lr = lr_at(step, a.lr, warmup, steps, a.min_lr_ratio)
-        params, opt, loss, gn = train_step(params, opt, xs, ys,
-                                           jnp.float32(lr))
+        next_params, next_opt, loss, gn = train_step(params, opt, xs, ys,
+                                                     jnp.float32(lr))
+        # Check every update before advancing the step or saving, even when
+        # this step does not emit a training log.
+        loss, gn = jax.device_get((loss, gn))
+        loss_f, gn_f = float(loss), float(gn)
+        if not (np.isfinite(loss_f) and np.isfinite(gn_f)):
+            raise SystemExit(f"non-finite training metrics at step {step + 1}: "
+                             f"loss={loss_f}, grad_norm={gn_f}")
+        params, opt = next_params, next_opt
         step += 1
         if step % a.log_every == 0 or step == steps:
-            loss_f = float(loss)
             dt = time.time() - t_last
             tps = (step - step_last) * tokens_per_step / max(dt, 1e-9)
             rec = {"step": step, "loss": round(loss_f, 4),
-                   "lr": lr, "grad_norm": round(float(gn), 4),
+                   "lr": lr, "grad_norm": round(gn_f, 4),
                    "tokens": step * tokens_per_step,
                    "tok_s": round(tps),
                    "mfu": round(tps * flops_tok / (a.peak_tflops * 1e12
                                                    * len(devs)), 4)}
-            if not np.isfinite(loss_f):
-                raise SystemExit(f"non-finite loss at step {step}: {rec}")
             if val is not None and (step % a.eval_every == 0
                                     or step == steps):
                 vl = [float(eval_loss(params, val[0][i:i + a.batch],
