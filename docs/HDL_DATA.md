@@ -147,3 +147,51 @@ Measured on 2026-10-28 (Yosys 0.33, sv2v v0.0.13, Verilator 5.052, 4 CPUs,
 Without sv2v, Yosys' own SystemVerilog reader stopped on the register
 package of nearly every IP, and no OpenTitan IP passed. The pod installs
 sv2v from its release (`zachjs/sv2v` v0.0.13, `sv2v-Linux.zip`).
+
+### Open IP and Open VIP APB integration
+
+The APB trial uses `open-ip-portfolio` at `10b281a4` and
+`open-vip-portfolio` at `f581062a`. The upstream VIP's standalone test
+uses its own 64-register DUT. The portfolio test connects the upstream
+APB interface, driver, monitor and protocol assertions to `APB_apb` and
+checks the wrapper's ID, scratch register and address errors. It rejects
+addresses outside the 12-bit aperture before they can alias a register.
+The separate Icarus test exercises partial writes, since the upstream
+driver drives all write strobes high.
+
+With Icarus, Verilator 5.052 and the combined UVM library used by
+`uvm_bench.py`, run from the repository root:
+
+```sh
+python examples/hdl_apb_portfolio/run.py --open-ip /path/to/open-ip-portfolio \
+  --vip /path/to/extracted/APB-VIP --uvm /path/to/uvm_pkg_all_v2017_1_0_nodpi.svh \
+  --out apb-portfolio-check
+```
+
+The output directory contains compilation and simulation logs. The UVM
+run also flips one ID response bit and requires the test to reject it.
+Use a native Linux filesystem for the build output. If a prebuilt Verilator
+expects `mold` but only GNU `ld` is installed, add `--ldflag=-fuse-ld=bfd`.
+
+The pinned inputs passed 10 direct transactions and 7 UVM transactions
+on 2026-11-11. The injected ID bit was rejected. The combined no-DPI UVM
+library reported component-name warnings. The runner checks their exact
+report ID and fails on other warnings or any error or fatal report.
+
+After both checks pass, `plan_split.py --snapshots DIR --apb-receipt FILE
+--out NEW_DIR` verifies the two ZIP sizes and SHA-256 values from
+`DIR/manifest.json` and inventories the paired HDL. It reserves APB's
+connected protocol family for evaluation, puts identical RTL cores in the
+same partition, and removes exact held-out VIP copies from training
+candidates. Unmapped RTL and ambiguous VIP mappings stay out of the split.
+It writes the raw candidate and evaluation JSONL files, preserves the upstream
+license and notice files, and records source and shard hashes for the subsequent
+synthesis and benchmark-overlap gates.
+
+The pinned catalogs yielded 99 training candidates and 8 AMBA evaluation
+pairs across 13 groups. The two raw partitions have no identical normalized
+HDL files. The intake excluded 33 evaluation-file copies from training and
+held back 40 VIP entries with missing or ambiguous RTL mappings. I2C, SPI,
+UART and GPIO passed the training-side RTL gate in the initial sample.
+
+Corpus preparation is tracked in [#269](https://github.com/tonythetiger168/helioslm/issues/269).
