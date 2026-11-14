@@ -385,6 +385,16 @@ TESTS = [
     # total).
     case_upstream_suites.test_cpt_chunked_ce_suite,
     case_upstream_suites.test_cpt_plan_suite,
+    # daily-maintenance round (2026-11-14): agent harness, three-modes
+    # benchmark, GRPO length penalty, GRPO U1 and D4 agent-trajectory
+    # distillation. The first four are plain zero-argument functions;
+    # test_distill_agent carries the in-file raises shim and explicit
+    # UTF-8 JSONL reads (23 sidecar functions total).
+    case_upstream_suites.test_harness_suite,
+    case_upstream_suites.test_benchmark_suite,
+    case_upstream_suites.test_grpo_length_suite,
+    case_upstream_suites.test_grpo_u1_suite,
+    case_upstream_suites.test_distill_agent_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 

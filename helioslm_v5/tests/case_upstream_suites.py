@@ -1083,6 +1083,10 @@ def test_kv_cache_analytic_suite():
 # 2026-11-11 limitations round: test_cpt_chunked_ce (T145 chunked CE)
 # and test_cpt_plan (T130 CPT plan/cost/mixture/prereg) moved from
 # EXEMPT to FOLDED — the backlog is now 131 files.
+# 2026-11-14 daily-maintenance round: test_harness (agent harness),
+# test_benchmark (three-modes), test_grpo_length, test_grpo_u1 and
+# test_distill_agent (D4; in-file raises shim + explicit UTF-8 JSONL
+# reads) moved from EXEMPT to FOLDED — the backlog is now 126 files.
 # OpenAI-compatible stream smoke (serving/openai_stream_smoke.py):
 # test_openai_stream_smoke is exempt for the same reason as test_hsh_web.
 # It binds 127.0.0.1 through ThreadingHTTPServer on an ephemeral port and
@@ -1209,6 +1213,13 @@ FOLDED_SIDECARS = {
     "test_cpt_plan": "test_cpt_plan_suite",
     # v5.268 own 0.3B base (JAX/TPU pretraining path)
     "test_jax_pretrain": "test_jax_pretrain_suite",
+    # daily-maintenance round 2026-11-14: agent harness / three-modes
+    # benchmark / GRPO length / GRPO U1 / D4 agent distillation
+    "test_harness": "test_harness_suite",
+    "test_benchmark": "test_benchmark_suite",
+    "test_grpo_length": "test_grpo_length_suite",
+    "test_grpo_u1": "test_grpo_u1_suite",
+    "test_distill_agent": "test_distill_agent_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1217,18 +1228,18 @@ FOLDED_SIDECARS = {
 EXEMPT_SIDECARS = {
     'test_agent', 'test_api_distill',
     'test_async_grpo', 'test_attn_res',
-    'test_bench_quant', 'test_benchmark', 'test_calibrated_prefetcher',
+    'test_bench_quant', 'test_calibrated_prefetcher',
     'test_calibrated_router',
     'test_chunked_ce', 'test_clamped_swiglu',
     'test_cpt_pilot',
     'test_csa_learned', 'test_csa_learned_16x', 'test_csa_learned_h64',
     'test_csa_learned_r3', 'test_cuda_device_paths', 'test_cuda_smoke', 'test_custom_attention_notebook',
     'test_cvdp_bench',
-    'test_device_matrix', 'test_distill_agent',
+    'test_device_matrix',
     'test_distill_gen', 'test_distill_sft',
     'test_gguf_quant',
     'test_global_prope_kv', 'test_gpu_batch_run', 'test_grounded_replay',
-    'test_grpo_length', 'test_grpo_u1', 'test_harness', 'test_harness_deep',
+    'test_harness_deep',
     'test_hca_rescue', 'test_hdl_bench', 'test_hdl_data', 'test_hdl_git_sources',
     'test_hdl_projects', 'test_hdl_reward', 'test_hdl_train_eval', 'test_hf_license_audit',
     'test_hsh_egress', 'test_hsh_extras', 'test_hsh_interaction',
@@ -2544,6 +2555,110 @@ def test_cpt_plan_suite():
           "uint32 shards (7 sidecar tests under the daily gate)")
 
 
+# ---------------------------------------------------------------------------
+# daily-maintenance round (2026-11-14): fold five more sidecars into the
+# daily gate — test_harness (agent harness: context dependency
+# injection, effect replay, plugin composition, grounded loop; 4
+# functions), test_benchmark (three-modes benchmark; 1 function),
+# test_grpo_length (GRPO length penalty stages / overlong buffer /
+# filtering; 6 functions), test_grpo_u1 (GRPO U1: token-level loss,
+# no-std normalization, zero-adv group filtering, TIS, clip-higher; 7
+# functions) and test_distill_agent (D4 agent-trajectory distillation
+# through hsh; 5 functions). The first four use no pytest features at
+# all; test_distill_agent now carries the in-file pytest shim (raises
+# only) and its two JSONL reads are explicitly UTF-8 (the zh-TW rows
+# crashed under the Windows cp950 default codec). tmp_path fixtures get
+# real TemporaryDirectory instances; the monkeypatch parameter of
+# test_run_tasks_resume_and_cli is accepted but unused, so it receives
+# the _MonkeyPatch stand-in.
+# ---------------------------------------------------------------------------
+
+
+def test_harness_suite():
+    """Agent harness (context injection, effect replay, plugin
+    composition, grounded loop) under the daily gate."""
+    from helioslm_v5.tests import test_harness as m
+    expected = {"test_context_dependency_injection",
+                "test_effect_replay_verification",
+                "test_grounded_loop_through_harness",
+                "test_plugins_compose"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_harness_suite",
+          "agent harness: all 4 sidecar tests under the daily gate")
+
+
+def test_benchmark_suite():
+    """Three-modes benchmark (strict-monotone tau routing curves) under
+    the daily gate."""
+    from helioslm_v5.tests import test_benchmark as m
+    expected = {"test_benchmark_three_modes"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_benchmark_suite",
+          "three-modes benchmark: 1 sidecar test under the daily gate")
+
+
+def test_grpo_length_suite():
+    """GRPO length penalty (stages, overlong buffer/filter, defaults,
+    validation refusals) under the daily gate."""
+    from helioslm_v5.tests import test_grpo_length as m
+    expected = {"test_defaults_unchanged", "test_overlong_buffer_rewards",
+                "test_overlong_filter", "test_penalty_and_helper",
+                "test_stages_follow_updates", "test_validation"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_grpo_length_suite",
+          "GRPO length penalty: all 6 sidecar tests under the daily gate")
+
+
+def test_grpo_u1_suite():
+    """GRPO U1 (hand-written update parity, token-level loss, no-std
+    normalization, zero-adv filtering, TIS, clip-higher, validation)
+    under the daily gate."""
+    from helioslm_v5.tests import test_grpo_u1 as m
+    expected = {"test_clip_higher", "test_defaults_match_hand_written_update",
+                "test_no_std_normalization", "test_tis",
+                "test_token_level_loss", "test_validation",
+                "test_zero_adv_group_filtering"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_grpo_u1_suite",
+          "GRPO U1: all 7 sidecar tests under the daily gate")
+
+
+def test_distill_agent_suite():
+    """D4 agent-trajectory distillation under the daily gate. The file
+    carries the in-file pytest shim (raises only); tmp_path fixtures get
+    real TemporaryDirectory instances; the monkeypatch parameter of
+    test_run_tasks_resume_and_cli is accepted-but-unused and receives
+    the _MonkeyPatch stand-in."""
+    from helioslm_v5.tests import test_distill_agent as m
+    needs_tmp = {"test_bash_tool_never_runs_stale_bytecode",
+                 "test_tasks_and_checks"}
+    plain = {"test_failures_not_verified",
+             "test_run_task_and_student_replay"}
+    _drift_guard(m, needs_tmp | plain | {"test_run_tasks_resume_and_cli"})
+    for name in sorted(plain):
+        getattr(m, name)()
+    for name in sorted(needs_tmp):
+        with tempfile.TemporaryDirectory() as t:
+            getattr(m, name)(Path(t))
+    with tempfile.TemporaryDirectory() as t:
+        mp = _MonkeyPatch()
+        try:
+            m.test_run_tasks_resume_and_cli(Path(t), mp)
+        finally:
+            mp.undo()
+    _pass("test_distill_agent_suite",
+          "D4 agent-trajectory distillation: all 5 sidecar tests under "
+          "the daily gate (raises shim; UTF-8 JSONL reads)")
+
+
 def test_sidecar_coverage_guard():
     """Every helioslm_v5/tests/test_*.py sidecar is accounted for: either
     explicitly EXEMPT (pre-guard legacy backlog, 2026-11-02 snapshot).
@@ -2597,11 +2712,20 @@ def test_jax_pretrain_suite():
                 "test_export_hf_matches_reference_llama",
                 "test_train_learns_and_resume_is_exact"}
     _drift_guard(m, needs_tmp | plain | jax_only)
+    import gc  # v5.269: see below
     for name in sorted(plain):
         getattr(m, name)()
     for name in sorted(needs_tmp):
         with tempfile.TemporaryDirectory() as t:
             getattr(m, name)(Path(t))
+            # Windows: MixtureLoader keeps np.memmap handles on shard
+            # files (self._mm), and a reference cycle delays their
+            # release past TemporaryDirectory cleanup (WinError 32 on
+            # s.bin). gc.collect() before __exit__ drops the cycle so
+            # the directory can be deleted. Loud either way: a shard
+            # still pinned after collection fails the cleanup, not a
+            # later test.
+            gc.collect()
     ran = len(plain) + len(needs_tmp)
     if importlib.util.find_spec("jax") is not None:
         m.test_chunked_loss_matches_full_logits_and_causal()
@@ -2609,6 +2733,7 @@ def test_jax_pretrain_suite():
                      "test_train_learns_and_resume_is_exact"):
             with tempfile.TemporaryDirectory() as t:
                 getattr(m, name)(Path(t))
+                gc.collect()
         ran += len(jax_only)
     _pass("test_jax_pretrain_suite",
           f"own 0.3B base JAX path: {ran} of 11 sidecar tests under the "

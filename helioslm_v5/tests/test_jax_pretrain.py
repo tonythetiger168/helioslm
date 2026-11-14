@@ -27,7 +27,58 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import pytest
+
+try:
+    import pytest
+except ImportError:
+    # This file is also executed directly by the daily TESTS suite
+    # (case_upstream_suites.test_jax_pretrain_suite), where pytest is
+    # not installed. The shim covers exactly the three pytest features
+    # used below: raises (no match= arguments), approx (scalar only;
+    # default rel=1e-6 / abs=1e-12, two calls pass rel=1e-5 / abs=1e-5
+    # explicitly) and importorskip (the daily-gate wrapper pre-checks
+    # find_spec("jax") so no skip crosses the shim boundary; it fails
+    # loudly otherwise). Pattern from test_cpt_plan.py.
+    import contextlib as _contextlib
+    import importlib as _importlib
+
+    class _Approx:
+        """pytest.approx stand-in: scalar comparisons only."""
+
+        def __init__(self, expected, rel=None, abs=None):
+            self.expected = expected
+            self.rel = 1e-6 if rel is None else rel
+            self.abs = 1e-12 if abs is None else abs
+
+        def __eq__(self, other):
+            return abs(other - self.expected) <= max(
+                self.rel * abs(self.expected), self.abs)
+
+    class _PytestShim:
+        @staticmethod
+        @_contextlib.contextmanager
+        def raises(exc):
+            try:
+                yield
+            except exc:
+                return
+            raise AssertionError(f"{exc.__name__} was not raised")
+
+        @staticmethod
+        def approx(expected, rel=None, abs=None):
+            return _Approx(expected, rel=rel, abs=abs)
+
+        @staticmethod
+        def importorskip(module):
+            try:
+                return _importlib.import_module(module)
+            except ImportError as e:
+                raise AssertionError(
+                    f"importorskip: optional dependency {module!r} is "
+                    f"absent; the daily-gate wrapper must skip this "
+                    f"test instead of calling it") from e
+
+    pytest = _PytestShim()
 
 _REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO))

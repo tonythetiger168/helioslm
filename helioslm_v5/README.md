@@ -1,5 +1,14 @@
-# HeliosLM v5.265 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.269 - DeepSeek/K3-Style Architecture
 
+v5.269 (2026-11-14): five more sidecar suites folded into the mandated
+daily gate (agent harness, three-modes benchmark, GRPO length penalty,
+GRPO U1, D4 agent-trajectory distillation; 86 folded / 126 exempt,
+TESTS 197). test_distill_agent gained the in-file pytest raises shim
+and explicit UTF-8 JSONL reads (Windows cp950 fix). Same-day repair of
+the upstream v5.268 fold: test_jax_pretrain.py carries the in-file
+pytest shim (raises/approx/importorskip) so the gate runs without
+pytest, and its wrapper gc.collect()s before temp-dir cleanup to
+release np.memmap shard handles (Windows WinError 32).
 v5.265 (2026-11-11): the OpenTitan bug-fix bench records each answer's
 failure stage and scoring time, and `ot_bugfix_run.py report` writes a
 per-task CSV (baseline for the H4 repair run).

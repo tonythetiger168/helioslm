@@ -1,5 +1,33 @@
 # HeliosLM v5 Changelog
 
+## v5.269 (2026-11-14) - Harness / benchmark / GRPO / distill-agent sidecars folded into the suite
+
+Daily-maintenance fold of five more sidecar suites into the mandated
+daily gate (TESTS 192 -> 197): test_harness (agent harness: context
+dependency injection, effect replay, plugin composition, grounded loop;
+4 functions), test_benchmark (three-modes benchmark; 1 function),
+test_grpo_length (length-penalty stages, overlong buffer/filter,
+defaults, validation refusals; 6 functions), test_grpo_u1 (hand-written
+update parity, token-level loss, no-std normalization, zero-adv group
+filtering, TIS, clip-higher; 7 functions) and test_distill_agent (D4
+agent-trajectory distillation through hsh; 5 functions). The first four
+needed no shim. test_distill_agent now carries the in-file pytest shim
+(raises only, pattern from test_cpt_plan.py) and its two JSONL reads are
+explicitly UTF-8 — the zh-TW task rows crashed under the Windows cp950
+default codec (UnicodeDecodeError at tf.read_text(); same fix class as
+the v5.263 distill-filter CLI read). FOLDED 81 -> 86, EXEMPT 131 ->
+126, coverage guard still locks 212 files.
+
+Same-day repair in the upstream v5.268 fold: test_jax_pretrain.py
+imported pytest bare, so test_jax_pretrain_suite crashed the daily gate
+with ModuleNotFoundError wherever pytest is absent (this repo's mandated
+runtime). The file now carries the in-file pytest shim (raises / approx
+scalar / importorskip — exactly the three features it uses). Its wrapper
+also gc.collect()s before each TemporaryDirectory cleanup: MixtureLoader
+keeps np.memmap handles on shard files and a reference cycle delayed
+their release past cleanup, failing with WinError 32 on s.bin under
+Windows. Both fixes verified by re-running the wrapper standalone.
+
 ## v5.268 (2026-11-13) - Own 0.3B base: JAX/TPU pretraining path
 
 New `helioslm_v5/src/training/jax_pretrain.py`: a dense Llama-shaped

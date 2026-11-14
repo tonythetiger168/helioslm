@@ -20,7 +20,26 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    # This file is also executed directly by the daily TESTS suite
+    # (case_upstream_suites), where pytest is not installed. The shim
+    # covers exactly the one pytest feature used below: raises (no
+    # match= argument). Pattern from test_cpt_plan.py.
+    import contextlib as _contextlib
+
+    class _PytestShim:
+        @staticmethod
+        @_contextlib.contextmanager
+        def raises(exc):
+            try:
+                yield
+            except exc:
+                return
+            raise AssertionError(f"{exc.__name__} was not raised")
+
+    pytest = _PytestShim()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -151,10 +170,13 @@ def test_run_tasks_resume_and_cli(tmp_path, monkeypatch):
     import distill_agent as cli
     tf = tmp_path / "tasks.jsonl"
     cli.main(["tasks", "--n", "5", "--seed", "4", "--out", str(tf)])
-    assert [json.loads(x)["id"] for x in tf.read_text().splitlines()] == [t["id"] for t in tasks]
+    # encoding="utf-8" is explicit: the JSONL rows carry zh-TW text and
+    # the Windows default codec (cp950) cannot decode them.
+    assert [json.loads(x)["id"] for x in
+            tf.read_text(encoding="utf-8").splitlines()] == [t["id"] for t in tasks]
     sft = tmp_path / "sft.jsonl"
     cli.main(["to-sft", "--trajectories", out, "--out", str(sft)])
-    rows = [json.loads(x) for x in sft.read_text().splitlines()]
+    rows = [json.loads(x) for x in sft.read_text(encoding="utf-8").splitlines()]
     assert len(rows) == 20 and {r["domain"] for r in rows} == {"agent"}
 
 
