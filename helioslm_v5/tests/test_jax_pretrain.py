@@ -25,6 +25,7 @@ and skip without it (CI installs no jax; run them with
 import json
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -268,6 +269,40 @@ def test_train_learns_and_resume_is_exact(tmp_path):
     np.testing.assert_array_equal(pa["embed"], pb["embed"])
     np.testing.assert_array_equal(pa["layers"]["w_down"],
                                   pb["layers"]["w_down"])
+
+
+def test_train_preserves_checkpoint_on_nonfinite_metrics(tmp_path):
+    _jax()
+    import jax.numpy as jnp
+
+    sys.path.insert(0, str(_REPO / "examples"))
+    import jax_pretrain_tpu as cli
+
+    common = ["--preset", "tiny", "--synthetic", "--batch", "1", "--seq", "8",
+              "--precision", "fp32", "--attn", "xla", "--steps", "3",
+              "--log-every", "10", "--save-every", "1"]
+    adamw_update = cli.adamw_update
+
+    def nan_loss(params, *args, **kwargs):
+        return jnp.sum(params["embed"]) * 0 + jnp.float32(jnp.nan)
+
+    def inf_grad_norm(*args, **kwargs):
+        params, opt, _ = adamw_update(*args, **kwargs)
+        return params, opt, jnp.float32(jnp.inf)
+
+    for symbol, faulty, expected in (("loss_fn", nan_loss, "loss=nan"),
+                                     ("adamw_update", inf_grad_norm, "grad_norm=inf")):
+        out = tmp_path / symbol
+        args = common + ["--out", str(out)]
+        assert cli.main(args + ["--max-hours", "1e-9"]) == 1
+        before = {name: (out / name).read_bytes() for name in ("ckpt.npz", "state.json")}
+        with patch.object(cli, symbol, faulty):
+            with pytest.raises(SystemExit, match=f"step 2: .*{expected}"):
+                cli.main(args)
+        for name, contents in before.items():
+            assert (out / name).read_bytes() == contents
+        assert jp.load_checkpoint(out)[2]["step"] == 1
+        assert cli.main(args) == 3
 
 
 def test_shards_upload_uses_available_client_method(tmp_path):
