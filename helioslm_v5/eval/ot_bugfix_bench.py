@@ -582,14 +582,13 @@ def fail_type(res):
 
 def summarize(tasks, results):
     """Pass / synth rates overall, by kind, by split and by kind x split.
-    ``results``: {task id: [score dicts, one per sample]}."""
+    ``results``: {task id: [score dicts, one per sample]}.
+    Each listed task counts once, with zero credit for missing results."""
     groups = {}
     for t in tasks:
         rs = results.get(t["id"]) or []
-        if not rs:
-            continue
-        p = sum(r["pass"] for r in rs) / len(rs)
-        s = sum(r["synth"] for r in rs) / len(rs)
+        p = sum(r["pass"] for r in rs) / len(rs) if rs else 0.0
+        s = sum(r["synth"] for r in rs) / len(rs) if rs else 0.0
         for key in ("all", t["kind"], t["split"], f"{t['kind']}/{t['split']}",
                     f"op:{t['op']}"):
             g = groups.setdefault(key, [0, 0.0, 0.0])
