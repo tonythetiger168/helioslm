@@ -1,5 +1,16 @@
 # HeliosLM v5 Changelog
 
+## v5.270 (2026-11-16) - cuDNN fused attention for the JAX pretrainer on GPU
+
+`examples/jax_pretrain_tpu.py --attn auto` now probes cuDNN fused
+attention (`jax.nn.dot_product_attention(implementation="cudnn")`,
+forward and backward, GQA without repeating K/V) when it runs on an
+NVIDIA GPU, and falls back to plain XLA attention if the probe fails;
+`--attn cudnn` forces it. The first 1 x H100 run of the own 0.3B base
+with XLA attention reached 52.5k tok/s (13% MFU), which puts 6B tokens
+at ~32 h; the T x T score tensor is no longer materialised. TPU
+behaviour (Pallas flash probe) is unchanged.
+
 ## v5.269 (2026-11-14) - Harness / benchmark / GRPO / distill-agent sidecars folded into the suite
 
 Daily-maintenance fold of five more sidecar suites into the mandated
