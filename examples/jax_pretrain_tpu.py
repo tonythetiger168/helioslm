@@ -68,9 +68,11 @@ def _args(argv=None):
                     help="warmup steps (default 1%% of steps, >= 100)")
     ap.add_argument("--wd", type=float, default=0.1)
     ap.add_argument("--ce-chunk", type=int, default=512)
-    ap.add_argument("--attn", default="auto", choices=["auto", "flash", "xla"],
-                    help="auto: the Pallas flash kernel on TPU when a probe "
-                         "call works, else plain XLA attention")
+    ap.add_argument("--attn", default="auto", choices=["auto", "flash", "cudnn",
+                                                   "xla"],
+                    help="auto: the Pallas flash kernel on TPU / cuDNN "
+                         "fused attention on GPU when a probe call works, "
+                         "else plain XLA attention")
     ap.add_argument("--precision", default="bf16", choices=["bf16", "fp32"])
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--log-every", type=int, default=10)
@@ -124,17 +126,24 @@ class _Synthetic:
 def _pick_attn(choice, platform, cfg):
     if choice != "auto":
         return choice
-    if platform != "tpu":
+    kernel = {"tpu": "flash", "gpu": "cudnn"}.get(platform)
+    if kernel is None:
         return "xla"
     import jax
     import jax.numpy as jnp
     try:
         q = jnp.zeros((1, 512, cfg.heads, cfg.head_dim), jnp.bfloat16)
-        _jp.ATTN_IMPL = "flash"
-        jax.block_until_ready(jax.jit(_jp._attention)(q, q, q))
-        return "flash"
-    except Exception as e:  # kernel missing in this jax build
-        print(f"[attn] flash probe failed ({type(e).__name__}: {e}); xla")
+        k = jnp.zeros((1, 512, cfg.kv_heads, cfg.head_dim), jnp.bfloat16)
+        _jp.ATTN_IMPL = kernel
+
+        def f(q, k):
+            return _jp._attention(q, k, k).astype(jnp.float32).sum()
+        jax.block_until_ready(jax.jit(jax.grad(f, argnums=(0, 1)))(q, k))
+        return kernel
+    except Exception as e:  # kernel missing in this jax / cuDNN build
+        print(f"[attn] {kernel} probe failed ({type(e).__name__}: {e}); "
+              "xla")
+        _jp.ATTN_IMPL = "xla"
         return "xla"
 
 

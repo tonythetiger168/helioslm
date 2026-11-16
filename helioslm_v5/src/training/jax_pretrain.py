@@ -173,8 +173,16 @@ def _attention_flash(q, k, v):
     return o.swapaxes(1, 2)
 
 
+def _attention_cudnn(q, k, v):
+    # cuDNN fused (flash) attention on NVIDIA GPUs; GQA handled natively
+    return jax.nn.dot_product_attention(q, k, v, is_causal=True,
+                                        implementation="cudnn")
+
+
 def _attention(q, k, v):
     # q [B,T,H,hd], k/v [B,T,KV,hd] -> [B,T,H,hd]; causal, GQA by repeat
+    if ATTN_IMPL == "cudnn":
+        return _attention_cudnn(q, k, v)
     rep = q.shape[2] // k.shape[2]
     if rep > 1:
         k = jnp.repeat(k, rep, axis=2)
