@@ -466,7 +466,7 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
     step = 0
     ckpt = out / "ckpt.pt"
     if ckpt.exists():
-        state = torch.load(ckpt, map_location=device, weights_only=False)
+        state = torch.load(ckpt, map_location=device, weights_only=True)
         model.load_state_dict(state["model"])
         opt.load_state_dict(state["opt"])
         step = state["step"]
@@ -478,7 +478,7 @@ def pretrain(cfg, train, val, out_dir, *, steps, batch, seq, grad_accum=1,
                     if ln and json.loads(ln)["step"] <= step]
             lp.write_text("".join(ln + "\n" for ln in keep))
     elif init_from is not None:
-        state = torch.load(init_from, map_location=device, weights_only=False)
+        state = torch.load(init_from, map_location=device, weights_only=True)
         model.load_state_dict(state["model"] if "model" in state else state)
         log(f"initialised from {init_from}")
     params = count_params(model)

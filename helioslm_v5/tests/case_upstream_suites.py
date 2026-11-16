@@ -1382,12 +1382,12 @@ def test_pretrain_pilot_suite():
                 "test_wsd_schedule", "test_wsd_decay_data_switch",
                 "test_exact_resume_and_learning",
                 "test_nonfinite_stop_then_resume_is_bitwise",
-                "test_prepare_data_script"}
+                "test_prepare_data_script", "test_restricted_checkpoint_loads"}
     _drift_guard(m, expected)
     for name in sorted(expected):
         getattr(m, name)()
     _pass("test_pretrain_pilot_suite",
-          "T122 pretrain pilot: all 8 sidecar tests (tiny CPU loops, "
+          "T122 pretrain pilot: all 9 sidecar tests (tiny CPU loops, "
           "bitwise resume) under the daily gate")
 
 
