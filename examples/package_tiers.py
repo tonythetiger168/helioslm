@@ -26,7 +26,7 @@ def load_run(run_dir):
     """(model, config, run) from a pilot_100m.py output directory."""
     run_dir = Path(run_dir)
     run = json.loads((run_dir / "run.json").read_text())
-    state = torch.load(run_dir / "ckpt.pt", map_location="cpu", weights_only=False)["model"]
+    state = torch.load(run_dir / "ckpt.pt", map_location="cpu", weights_only=True)["model"]
     cfg = pilot_config(run["arch"], vocab_size=state["embed_tokens.weight"].shape[0],
                        hidden_size=run["hidden"], num_layers=run["layers"],
                        intermediate_size=run["intermediate"], max_seq=run["seq"],

@@ -27,6 +27,7 @@ Run from repo root: python3 helioslm_v5/tests/test_pretrain_pilot.py
 import gc
 import json
 import math
+import pickle
 import subprocess
 import sys
 import tempfile
@@ -334,6 +335,73 @@ def test_prepare_data_script():
     print("PASS test_prepare_data_script")
 
 
+def _checkpoint_marker(path):
+    """Harmless canary: restricted loading must never invoke this global."""
+    Path(path).write_text("unexpected deserialization")
+    return {}
+
+
+class _UnapprovedCheckpoint:
+    def __init__(self, marker):
+        self.marker = str(marker)
+
+    def __reduce__(self):
+        return _checkpoint_marker, (self.marker,)
+
+
+def test_restricted_checkpoint_loads():
+    """Pilot resume/init and packaging accept tensor state, not arbitrary globals."""
+    from examples.package_tiers import load_run
+    torch.set_num_threads(1)
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        tr, va = _stream(d)
+        cfg = _tiny("dense")
+        run = d / "run"
+        kw = dict(batch=2, seq=16, grad_accum=1, eval_every=1,
+                  eval_windows=1, ckpt_every=1, log=lambda m: None)
+        pretrain(cfg, tr, va, run, steps=1, **kw)
+        saved = torch.load(run / "ckpt.pt", weights_only=True)
+        assert saved["step"] == 1 and saved["opt"]["state"]
+        (run / "run.json").write_text(json.dumps({
+            "arch": "dense", "hidden": 64, "layers": 6,
+            "intermediate": 128, "seq": 64, "balance": "smebu",
+            "moe_dispatch": "batched", "kda_chunk": 64}))
+        model, _, _ = load_run(run)
+        for name, value in saved["model"].items():
+            assert torch.equal(value, model.state_dict()[name]), name
+        # Both supported init_from formats remain accepted.
+        raw = d / "raw.pt"
+        torch.save(saved["model"], raw)
+        for i, src in enumerate((run / "ckpt.pt", raw)):
+            assert pretrain(cfg, tr, va, d / f"init{i}", steps=0,
+                            init_from=src, **kw)["steps"] == 0
+        assert pretrain(cfg, tr, va, run, steps=2, **kw)["steps"] == 2
+        # Reject a synthetic non-allowlisted global at each entry point.
+        marker = d / "marker.txt"
+        bad = d / "bad.pt"
+        torch.save(_UnapprovedCheckpoint(marker), bad)
+        (run / "ckpt.pt").write_bytes(bad.read_bytes())
+        before = (run / "ckpt.pt").read_bytes()
+        before_log = (run / "log.jsonl").read_bytes()
+        for load in (lambda: load_run(run),
+                     lambda: pretrain(cfg, tr, va, run, steps=3, **kw),
+                     lambda: pretrain(cfg, tr, va, d / "bad-init",
+                                      steps=1, init_from=bad, **kw)):
+            try:
+                load()
+            except pickle.UnpicklingError:
+                pass
+            else:
+                raise AssertionError("non-allowlisted checkpoint accepted")
+            assert not marker.exists()
+            assert (run / "ckpt.pt").read_bytes() == before
+            assert (run / "log.jsonl").read_bytes() == before_log
+        tr = va = None
+        gc.collect()
+    print("PASS test_restricted_checkpoint_loads")
+
+
 if __name__ == "__main__":
     test_configs()
     test_shards()
@@ -343,3 +411,4 @@ if __name__ == "__main__":
     test_exact_resume_and_learning()
     test_nonfinite_stop_then_resume_is_bitwise()
     test_prepare_data_script()
+    test_restricted_checkpoint_loads()
