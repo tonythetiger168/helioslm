@@ -1087,6 +1087,12 @@ def test_kv_cache_analytic_suite():
 # test_benchmark (three-modes), test_grpo_length, test_grpo_u1 and
 # test_distill_agent (D4; in-file raises shim + explicit UTF-8 JSONL
 # reads) moved from EXEMPT to FOLDED — the backlog is now 126 files.
+# 2026-11-17 daily-maintenance round: test_agent (v5.23 agent layer),
+# test_swe_bench (SWE gates), test_swe_agent_rl, test_tool_recovery and
+# test_harness_deep moved from EXEMPT to FOLDED — the backlog is now
+# 121 files. test_term_bench was triaged and stays EXEMPT: it binds
+# 127.0.0.1 through ThreadingHTTPServer, the same exemption class as
+# test_openai_stream_smoke.
 # OpenAI-compatible stream smoke (serving/openai_stream_smoke.py):
 # test_openai_stream_smoke is exempt for the same reason as test_hsh_web.
 # It binds 127.0.0.1 through ThreadingHTTPServer on an ephemeral port and
@@ -1220,13 +1226,20 @@ FOLDED_SIDECARS = {
     "test_grpo_length": "test_grpo_length_suite",
     "test_grpo_u1": "test_grpo_u1_suite",
     "test_distill_agent": "test_distill_agent_suite",
+    # daily-maintenance round 2026-11-17: v5.23 agent layer / SWE gates /
+    # SWE agent RL / tool-call recovery / deep harness wiring
+    "test_agent": "test_agent_suite",
+    "test_swe_bench": "test_swe_bench_suite",
+    "test_swe_agent_rl": "test_swe_agent_rl_suite",
+    "test_tool_recovery": "test_tool_recovery_suite",
+    "test_harness_deep": "test_harness_deep_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
 # folding. Being listed here is not an endorsement that a file should
 # stay out of the gate; it only means "known, pending triage".
 EXEMPT_SIDECARS = {
-    'test_agent', 'test_api_distill',
+    'test_api_distill',
     'test_async_grpo', 'test_attn_res',
     'test_bench_quant', 'test_calibrated_prefetcher',
     'test_calibrated_router',
@@ -1239,7 +1252,6 @@ EXEMPT_SIDECARS = {
     'test_distill_gen', 'test_distill_sft',
     'test_gguf_quant',
     'test_global_prope_kv', 'test_gpu_batch_run', 'test_grounded_replay',
-    'test_harness_deep',
     'test_hca_rescue', 'test_hdl_bench', 'test_hdl_data', 'test_hdl_git_sources',
     'test_hdl_projects', 'test_hdl_reward', 'test_hdl_train_eval', 'test_hf_license_audit',
     'test_hsh_egress', 'test_hsh_extras', 'test_hsh_interaction',
@@ -1264,9 +1276,9 @@ EXEMPT_SIDECARS = {
     'test_repo_longctx', 'test_rlcd_head',
     'test_rtllm_bench', 'test_selfgen_meta',
     'test_smebu_sandwich', 'test_std_bench', 'test_swarm_parallel',
-    'test_swe_agent_rl', 'test_swe_bench', 'test_task_grammar',
+    'test_task_grammar',
     'test_term_bench',
-    'test_tool_recovery', 'test_toy_bpe', 'test_trust_gate', 'test_trust_gate_clarify',
+    'test_toy_bpe', 'test_trust_gate', 'test_trust_gate_clarify',
     'test_trust_gate_v2', 'test_tw_bench', 'test_uvm_bench', 'test_v110_github_pg',
     'test_v111_office', 'test_v112_niche', 'test_v113_media', 'test_v114_blender_omi',
     'test_v115_benchmark', 'test_v116_robot', 'test_v117_swarm', 'test_v118_robot_slam_vision',
@@ -2657,6 +2669,102 @@ def test_distill_agent_suite():
     _pass("test_distill_agent_suite",
           "D4 agent-trajectory distillation: all 5 sidecar tests under "
           "the daily gate (raises shim; UTF-8 JSONL reads)")
+
+
+# ---------------------------------------------------------------------------
+# daily-maintenance round (2026-11-17): fold five more sidecars into the
+# daily gate, all agentic-eval themed — test_agent (v5.23 agent layer:
+# tool-call schema/parser roundtrip and boundaries, tool equivalence,
+# bitwise replay, env oracles, termination, routing monotonicity, gate
+# bounds, parse-error recovery; 9 functions), test_swe_bench (SWE task
+# gates: reference artifact pins, grading guards, episode rows; 4
+# functions), test_swe_agent_rl (SWE agent RL: action masks, env
+# semantics, memo-key soundness, rollout structure, scripted policies,
+# SFT warm start, training artifact; 7 functions), test_tool_recovery
+# (tool-call repair: strict input unchanged, 7 repairable classes, 6
+# not-repaired classes, 3000-case fuzz; 4 functions) and
+# test_harness_deep (deep harness wiring: state across plugins, full
+# preset, effect log audit, multi-step pipeline; 4 functions). All five
+# are plain zero-argument functions: no pytest, no fixtures, no
+# sockets, no CUDA (28 sidecar functions total). test_term_bench was
+# triaged and left EXEMPT: it binds 127.0.0.1 through
+# ThreadingHTTPServer, the same exemption class as
+# test_openai_stream_smoke.
+# ---------------------------------------------------------------------------
+
+
+def test_agent_suite():
+    """v5.23 agent layer (schema/parser, tools, replay, envs, routing)
+    under the daily gate."""
+    from helioslm_v5.tests import test_agent as m
+    expected = {"test_t1_render_parse_roundtrip", "test_t2_parse_boundaries",
+                "test_t3_tool_equivalence", "test_t4_termination",
+                "test_t5_bitwise_replay", "test_t6_routing_monotonicity",
+                "test_t7_gate_value_bounds", "test_t8_parse_error_recovery",
+                "test_t9_envs_oracle_correct"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_agent_suite",
+          "v5.23 agent layer: all 9 sidecar tests under the daily gate")
+
+
+def test_swe_bench_suite():
+    """SWE task gates (reference artifact pins, grading guards, episode
+    rows) under the daily gate."""
+    from helioslm_v5.tests import test_swe_bench as m
+    expected = {"test_episode_row", "test_grading_guards",
+                "test_reference_artifact_has_swe_gates",
+                "test_reference_gates_every_task"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_swe_bench_suite",
+          "SWE bench: all 4 sidecar tests under the daily gate")
+
+
+def test_swe_agent_rl_suite():
+    """SWE agent RL (action masks, env semantics, memo keys, rollouts,
+    scripted policies, SFT warm start, training artifact) under the
+    daily gate."""
+    from helioslm_v5.tests import test_swe_agent_rl as m
+    expected = {"test_action_mask", "test_env_semantics",
+                "test_memo_key_is_sound", "test_rollout_structure",
+                "test_sft_warm_start_pieces", "test_scripted_policies",
+                "test_training_artifact"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_swe_agent_rl_suite",
+          "SWE agent RL: all 7 sidecar tests under the daily gate")
+
+
+def test_tool_recovery_suite():
+    """Tool-call repair (strict input unchanged, repairable /
+    not-repaired classes, 3000-case fuzz) under the daily gate."""
+    from helioslm_v5.tests import test_tool_recovery as m
+    expected = {"test_not_repaired_classes", "test_random_fuzz_never_crashes",
+                "test_repairable_classes", "test_strict_input_unchanged"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_tool_recovery_suite",
+          "tool-call recovery: all 4 sidecar tests under the daily gate")
+
+
+def test_harness_deep_suite():
+    """Deep harness wiring (state across plugins, full preset, effect
+    log audit view, multi-step pipeline) under the daily gate."""
+    from helioslm_v5.tests import test_harness_deep as m
+    expected = {"test_effect_log_as_audit_viewer",
+                "test_full_preset_wires_everything",
+                "test_multi_step_pipeline_with_state",
+                "test_state_persists_across_plugins"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_harness_deep_suite",
+          "deep harness wiring: all 4 sidecar tests under the daily gate")
 
 
 def test_sidecar_coverage_guard():

@@ -1,5 +1,10 @@
-# HeliosLM v5.269 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.271 - DeepSeek/K3-Style Architecture
 
+v5.271 (2026-11-17): five more sidecar suites folded into the mandated
+daily gate (v5.23 agent layer, SWE task gates, SWE agent RL, tool-call
+recovery, deep harness wiring; 91 folded / 121 exempt, TESTS 202). All
+five are plain zero-argument functions; none needed pytest shims.
+test_term_bench was triaged and stays exempt (binds 127.0.0.1).
 v5.269 (2026-11-14): five more sidecar suites folded into the mandated
 daily gate (agent harness, three-modes benchmark, GRPO length penalty,
 GRPO U1, D4 agent-trajectory distillation; 86 folded / 126 exempt,

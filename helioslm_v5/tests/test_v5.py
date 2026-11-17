@@ -395,6 +395,15 @@ TESTS = [
     case_upstream_suites.test_grpo_length_suite,
     case_upstream_suites.test_grpo_u1_suite,
     case_upstream_suites.test_distill_agent_suite,
+    # daily-maintenance round (2026-11-17): v5.23 agent layer, SWE task
+    # gates, SWE agent RL, tool-call recovery, deep harness wiring. All
+    # plain zero-argument functions: no pytest, no fixtures, no sockets,
+    # no CUDA (28 sidecar functions total).
+    case_upstream_suites.test_agent_suite,
+    case_upstream_suites.test_swe_bench_suite,
+    case_upstream_suites.test_swe_agent_rl_suite,
+    case_upstream_suites.test_tool_recovery_suite,
+    case_upstream_suites.test_harness_deep_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 

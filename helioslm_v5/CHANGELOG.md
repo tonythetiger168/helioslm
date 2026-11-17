@@ -1,5 +1,24 @@
 # HeliosLM v5 Changelog
 
+## v5.271 (2026-11-17) - Agent-layer / SWE / tool-recovery sidecars folded into the suite
+
+Daily-maintenance fold of five more sidecar suites into the mandated
+daily gate (TESTS 197 -> 202), all agentic-eval themed: test_agent
+(v5.23 agent layer — tool-call schema/parser roundtrip and boundaries,
+tool equivalence, bitwise replay, env oracles, termination, routing
+monotonicity, gate bounds, parse-error recovery; 9 functions),
+test_swe_bench (SWE task gates; 4), test_swe_agent_rl (action masks,
+env semantics, memo-key soundness, rollouts, scripted policies, SFT
+warm start, training artifact; 7), test_tool_recovery (strict input
+unchanged, 7 repairable classes, 6 not-repaired classes, 3000-case
+fuzz; 4) and test_harness_deep (state across plugins, full preset
+wiring, effect-log audit view, multi-step pipeline; 4). All five are
+plain zero-argument functions — no pytest shim needed; each was
+verified standalone before wrapping. FOLDED 86 -> 91, EXEMPT 126 ->
+121, coverage guard still locks 212 files. test_term_bench was triaged
+and stays EXEMPT: it binds 127.0.0.1 through ThreadingHTTPServer, the
+same exemption class as test_openai_stream_smoke.
+
 ## v5.270 (2026-11-16) - cuDNN fused attention for the JAX pretrainer on GPU
 
 `examples/jax_pretrain_tpu.py --attn auto` now probes cuDNN fused
