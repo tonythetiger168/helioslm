@@ -1093,6 +1093,10 @@ def test_kv_cache_analytic_suite():
 # 121 files. test_term_bench was triaged and stays EXEMPT: it binds
 # 127.0.0.1 through ThreadingHTTPServer, the same exemption class as
 # test_openai_stream_smoke.
+# 2026-11-17 limitations round: test_chunked_ce (T140 fused chunked
+# output head + cross-entropy) and test_cpt_pilot (T134 route-B pilot:
+# mixture fetch/plan/write, cpt_hf train loop, gap table, cap_weights)
+# moved from EXEMPT to FOLDED — the backlog is now 119 files.
 # OpenAI-compatible stream smoke (serving/openai_stream_smoke.py):
 # test_openai_stream_smoke is exempt for the same reason as test_hsh_web.
 # It binds 127.0.0.1 through ThreadingHTTPServer on an ephemeral port and
@@ -1233,6 +1237,10 @@ FOLDED_SIDECARS = {
     "test_swe_agent_rl": "test_swe_agent_rl_suite",
     "test_tool_recovery": "test_tool_recovery_suite",
     "test_harness_deep": "test_harness_deep_suite",
+    # limitations round 2026-11-17: T140 fused chunked CE / T134 CPT
+    # pilot (mixture fetch, train loop, gap table)
+    "test_chunked_ce": "test_chunked_ce_suite",
+    "test_cpt_pilot": "test_cpt_pilot_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1243,8 +1251,7 @@ EXEMPT_SIDECARS = {
     'test_async_grpo', 'test_attn_res',
     'test_bench_quant', 'test_calibrated_prefetcher',
     'test_calibrated_router',
-    'test_chunked_ce', 'test_clamped_swiglu',
-    'test_cpt_pilot',
+    'test_clamped_swiglu',
     'test_csa_learned', 'test_csa_learned_16x', 'test_csa_learned_h64',
     'test_csa_learned_r3', 'test_cuda_device_paths', 'test_cuda_smoke', 'test_custom_attention_notebook',
     'test_cvdp_bench',
@@ -2765,6 +2772,69 @@ def test_harness_deep_suite():
         getattr(m, name)()
     _pass("test_harness_deep_suite",
           "deep harness wiring: all 4 sidecar tests under the daily gate")
+
+
+# ---------------------------------------------------------------------------
+# limitations round (2026-11-17): fold two more sidecars into the daily
+# gate — test_chunked_ce (T140: fused chunked output head + CE equals
+# full-logits loss/grads across mask/softcap/chunk shapes, bf16 hidden,
+# return_logits=False, model gradient parity, pretrain ce_chunk loss
+# curve, ce_chunk validation; 6 functions) and test_cpt_pilot (T134:
+# source parsing and licence families, plan/skip/blocked, write_source
+# uint32 + zh variants, MixedSource determinism and validation, the
+# cpt_hf train loop with WSD decay switch / max_hours / freeze,
+# fit_warmup, dry_run_report, gap table, cap_weights; 10 functions).
+# Both files carry an in-file pytest shim; test_chunked_ce's
+# parametrized rows are hoisted to module level (_MASKED/_CAPS/_CHUNKS/
+# _ARCHS) so this gate runs every row pytest would collect.
+
+
+def test_chunked_ce_suite():
+    """T140 fused chunked LM loss under the daily gate. The stacked
+    parametrize on test_matches_full_logits (masked 2 × cap 2 × chunk 4
+    = 16 rows) and the arch lists iterate the hoisted module-level
+    lists."""
+    from helioslm_v5.tests import test_chunked_ce as m
+    expected = {"test_matches_full_logits", "test_bf16_hidden",
+                "test_forward_without_logits",
+                "test_pretrain_same_as_full_logits",
+                "test_model_gradients_match", "test_ce_chunk_validated"}
+    _drift_guard(m, expected)
+    for masked in m._MASKED:
+        for cap in m._CAPS:
+            for chunk in m._CHUNKS:
+                m.test_matches_full_logits(masked, cap, chunk)
+    m.test_bf16_hidden()
+    m.test_forward_without_logits()
+    for arch in m._ARCHS:
+        m.test_pretrain_same_as_full_logits(arch)
+        m.test_model_gradients_match(arch)
+    m.test_ce_chunk_validated()
+    _pass("test_chunked_ce_suite",
+          "T140 chunked CE: 16 masked/cap/chunk rows == full logits, "
+          "bf16 hidden, no-logits forward, dense+MoE gradient parity and "
+          "pretrain loss curve, ce_chunk validation (6 sidecar tests "
+          "under the daily gate)")
+
+
+def test_cpt_pilot_suite():
+    """T134 route-B pilot under the daily gate: all ten functions are
+    zero-argument (the skipif torch marker is a no-op — torch is always
+    present in the gate's runtime)."""
+    from helioslm_v5.tests import test_cpt_pilot as m
+    expected = {"test_parse_and_licence", "test_plan",
+                "test_plan_no_access", "test_write_source",
+                "test_mixed_source", "test_train_loop",
+                "test_short_run_still_decays", "test_dry_run_report",
+                "test_gap_from_checkpoint", "test_cap_weights"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_cpt_pilot_suite",
+          "T134 CPT pilot: source parse/licence, plan + blocked, "
+          "write_source, MixedSource, train loop with decay switch and "
+          "freeze, fit_warmup, dry-run report, gap table, cap_weights "
+          "(10 sidecar tests under the daily gate)")
 
 
 def test_sidecar_coverage_guard():

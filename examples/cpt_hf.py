@@ -192,7 +192,11 @@ def train(model, phases, *, steps, micro_batch, seq, grad_accum, lr,
     model.train()
     dev_type = torch.device(device).type
     for step in range(steps):
-        if max_hours is not None and (time.time() - t0) / 3600 > max_hours:
+        # >=, not >: a zero-hour budget must stop before the first step
+        # even when the wall clock reads the same value at both calls
+        # (Windows time.time() resolution can make elapsed exactly 0.0
+        # here; the pilot test pins stopped=="max_hours" at steps==0).
+        if max_hours is not None and (time.time() - t0) / 3600 >= max_hours:
             stopped = "max_hours"
             break
         src = phases["decay"] if (step >= decay_at and phases.get("decay")) \

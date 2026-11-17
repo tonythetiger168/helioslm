@@ -17,12 +17,72 @@ exist at once. Pins:
 
 Run from repo root: python3 -m pytest helioslm_v5/tests/test_chunked_ce.py
 """
+import gc
 import json
 import sys
 import tempfile
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    # This file is also executed directly by the daily TESTS suite
+    # (case_upstream_suites), where pytest is not installed. The shim
+    # covers exactly the three pytest features used below: raises
+    # (match= is checked with re.search on str(exc)), mark.parametrize
+    # (collection-time only; the daily-gate wrapper iterates the
+    # hoisted module-level lists itself) and approx (list-aware;
+    # test_pretrain_same_as_full_logits compares loss lists with
+    # abs=1e-4). Patterns from test_hsh_tools.py / test_base_gap.py.
+    import contextlib as _contextlib
+    import re as _re
+
+    class _Mark:
+        @staticmethod
+        def parametrize(*_args, **_kwargs):
+            return lambda f: f
+
+    class _Approx:
+        """pytest.approx stand-in: default rel=1e-6 / abs=1e-12; compares
+        elementwise when the expected value is a list/tuple (as
+        test_pretrain_same_as_full_logits does with abs=1e-4)."""
+
+        def __init__(self, expected, rel=None, abs=None):
+            self.expected = expected
+            self.rel = 1e-6 if rel is None else rel
+            self.abs = 1e-12 if abs is None else abs
+
+        def __eq__(self, other):
+            exp = self.expected
+            if isinstance(exp, (list, tuple)):
+                if not isinstance(other, (list, tuple)) or \
+                        len(other) != len(exp):
+                    return False
+                return all(abs(o - e) <= max(self.rel * abs(e), self.abs)
+                           for o, e in zip(other, exp))
+            return abs(other - exp) <= max(self.rel * abs(exp), self.abs)
+
+    class _PytestShim:
+        mark = _Mark()
+
+        @staticmethod
+        @_contextlib.contextmanager
+        def raises(exc, match=None):
+            try:
+                yield
+            except exc as e:
+                if match is not None and not _re.search(match, str(e)):
+                    raise AssertionError(
+                        f"raised {e!r}, which does not match /{match}/"
+                    ) from None
+                return
+            raise AssertionError(f"{exc.__name__} was not raised")
+
+        @staticmethod
+        def approx(expected, rel=None, abs=None):
+            return _Approx(expected, rel=rel, abs=abs)
+
+    pytest = _PytestShim()
 import torch
 import torch.nn.functional as F
 
@@ -42,9 +102,17 @@ def _full(h, w, t, mask, cap):
     return (ce * mask).sum() / mask.sum() if mask is not None else ce.mean()
 
 
-@pytest.mark.parametrize("masked", [False, True])
-@pytest.mark.parametrize("cap", [None, 5.0])
-@pytest.mark.parametrize("chunk", [1, 64, 77, 10_000])
+# The parametrize rows are module-level so the daily-gate wrapper in
+# case_upstream_suites can iterate exactly the rows pytest would collect.
+_MASKED = [False, True]
+_CAPS = [None, 5.0]
+_CHUNKS = [1, 64, 77, 10_000]
+_ARCHS = ["dense", "moe"]
+
+
+@pytest.mark.parametrize("masked", _MASKED)
+@pytest.mark.parametrize("cap", _CAPS)
+@pytest.mark.parametrize("chunk", _CHUNKS)
 def test_matches_full_logits(masked, cap, chunk):
     g = torch.Generator().manual_seed(0)
     N, d, V = 300, 32, 1000
@@ -84,7 +152,7 @@ def test_forward_without_logits():
     assert torch.allclose(model.lm_head(hidden2), logits)
 
 
-@pytest.mark.parametrize("arch", ["dense", "moe"])
+@pytest.mark.parametrize("arch", _ARCHS)
 def test_pretrain_same_as_full_logits(arch):
     torch.set_num_threads(1)
     runs = []
@@ -98,10 +166,18 @@ def test_pretrain_same_as_full_logits(arch):
                      log=lambda m: None)
             rows = [json.loads(x) for x in (out / "log.jsonl").read_text().splitlines()]
             runs.append([r["train_loss"] for r in rows if "train_loss" in r])
+        # Windows: the TokenShards keep the train/val shards open through
+        # np.memmap, and unlinking an mmapped file fails with WinError 32
+        # when the TemporaryDirectory cleans up (Linux tolerates the
+        # unlink, which is why upstream never saw it). Drop the
+        # references and collect before the with-block exits — same fix
+        # as test_pretrain_pilot.py (v5.240).
+        del tr, va
+        gc.collect()
     assert len(runs[0]) == 4 and runs[0] == pytest.approx(runs[1], abs=1e-4)
 
 
-@pytest.mark.parametrize("arch", ["dense", "moe"])
+@pytest.mark.parametrize("arch", _ARCHS)
 def test_model_gradients_match(arch):
     torch.manual_seed(0)
     model = HeliosLMv5(_tiny(arch)).train()

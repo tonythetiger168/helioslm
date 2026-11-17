@@ -23,13 +23,47 @@ Pins:
 
 Run from repo root: python3 -m pytest helioslm_v5/tests/test_cpt_pilot.py
 """
+import gc
 import json
 import sys
 import tempfile
 from pathlib import Path
 
 import numpy as np
-import pytest
+try:
+    import pytest
+except ImportError:
+    # This file is also executed directly by the daily TESTS suite
+    # (case_upstream_suites), where pytest is not installed. The shim
+    # covers exactly the two pytest features used below: raises (no
+    # match= arguments) and mark.skipif (torch IS installed in the
+    # gate's runtime, so the skipif condition is False and the
+    # decorator is a no-op). Same pattern as test_hsh_tools.py.
+    import contextlib as _contextlib
+    import re as _re
+
+    class _Mark:
+        @staticmethod
+        def skipif(*_args, **_kwargs):
+            return lambda f: f
+
+    class _PytestShim:
+        mark = _Mark()
+
+        @staticmethod
+        @_contextlib.contextmanager
+        def raises(exc, match=None):
+            try:
+                yield
+            except exc as e:
+                if match is not None and not _re.search(match, str(e)):
+                    raise AssertionError(
+                        f"raised {e!r}, which does not match /{match}/"
+                    ) from None
+                return
+            raise AssertionError(f"{exc.__name__} was not raised")
+
+    pytest = _PytestShim()
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
@@ -141,6 +175,14 @@ def test_mixed_source():
         for bad in (([a], [1, 2]), ([a], [0]), ([], [])):
             with pytest.raises(ValueError):
                 cpt_hf.MixedSource(*bad)
+        # Windows: TokenShard keeps a.bin/b.bin open through np.memmap
+        # (the batch tensors share the mapping); unlinking an mmapped
+        # file fails with WinError 32 when the TemporaryDirectory cleans
+        # up (Linux tolerates it). Drop the references and collect
+        # before the with-block exits — same fix as
+        # test_pretrain_pilot.py (v5.240).
+        del a, b, m, x1, x2, bad
+        gc.collect()
 
 
 def _LM(vocab=32):
@@ -198,6 +240,13 @@ def test_train_loop():
                            grad_accum=1, lr=1e-3, warmup=1, max_hours=0.0,
                            autocast=False)
         assert res["stopped"] == "max_hours" and res["steps"] == 0
+        # Windows: the MixedSource shards keep main/m.bin and decay/z.bin
+        # open through np.memmap; unlinking an mmapped file fails with
+        # WinError 32 when the TemporaryDirectory cleans up (Linux
+        # tolerates it). Drop the references and collect before the
+        # with-block exits — same fix as test_pretrain_pilot.py (v5.240).
+        del phases
+        gc.collect()
 
 
 @needs_torch
@@ -213,6 +262,13 @@ def test_short_run_still_decays():
                      grad_accum=1, lr=1e-3, warmup=cpt_hf.fit_warmup(20, 100, 0.2),
                      log=rows.append, autocast=False)
         assert [r["phase"] for r in rows].index("decay") == 16
+        # Windows: the MixedSource shards keep the bins open through
+        # np.memmap; unlinking an mmapped file fails with WinError 32
+        # when the TemporaryDirectory cleans up (Linux tolerates it).
+        # Drop the reference and collect before the with-block exits —
+        # same fix as test_pretrain_pilot.py (v5.240).
+        del phases
+        gc.collect()
 
 
 @needs_torch

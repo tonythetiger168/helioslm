@@ -404,6 +404,13 @@ TESTS = [
     case_upstream_suites.test_swe_agent_rl_suite,
     case_upstream_suites.test_tool_recovery_suite,
     case_upstream_suites.test_harness_deep_suite,
+    # limitations round (2026-11-17): T140 fused chunked output head +
+    # CE, T134 route-B CPT pilot (mixture fetch/plan/write, train loop,
+    # gap table). In-file pytest shims; parametrized rows hoisted to
+    # module level and iterated by the wrappers (16 sidecar functions
+    # total).
+    case_upstream_suites.test_chunked_ce_suite,
+    case_upstream_suites.test_cpt_pilot_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 
