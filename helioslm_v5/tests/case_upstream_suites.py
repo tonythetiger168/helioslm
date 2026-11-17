@@ -2868,7 +2868,7 @@ def test_sidecar_coverage_guard():
 
 
 # ---------------------------------------------------------------------------
-# v5.268 own 0.3B base: test_jax_pretrain (11 functions). The numpy-only
+# Own 0.3B base: test_jax_pretrain. The numpy-only
 # eight (mixture loader, checkpoints, LR, shards + upload fallback,
 # committed mixture, preset size) always run; the four that need jax
 # (chunked loss / causality, export vs numpy Llama, train + exact
@@ -2888,7 +2888,8 @@ def test_jax_pretrain_suite():
              "test_preset_size"}
     jax_only = {"test_chunked_loss_matches_full_logits_and_causal",
                 "test_export_hf_matches_reference_llama",
-                "test_train_learns_and_resume_is_exact"}
+                "test_train_learns_and_resume_is_exact",
+                "test_train_preserves_checkpoint_on_nonfinite_metrics"}
     _drift_guard(m, needs_tmp | plain | jax_only)
     import gc  # v5.269: see below
     for name in sorted(plain):
@@ -2908,11 +2909,13 @@ def test_jax_pretrain_suite():
     if importlib.util.find_spec("jax") is not None:
         m.test_chunked_loss_matches_full_logits_and_causal()
         for name in ("test_export_hf_matches_reference_llama",
-                     "test_train_learns_and_resume_is_exact"):
+                     "test_train_learns_and_resume_is_exact",
+                     "test_train_preserves_checkpoint_on_nonfinite_metrics"):
             with tempfile.TemporaryDirectory() as t:
                 getattr(m, name)(Path(t))
                 gc.collect()
         ran += len(jax_only)
+    total = len(plain | needs_tmp | jax_only)
     _pass("test_jax_pretrain_suite",
-          f"own 0.3B base JAX path: {ran} of 11 sidecar tests under the "
-          "daily gate (jax-only ones need jax)")
+          f"own 0.3B base JAX path: {ran} of {total} sidecar tests under "
+          "the daily gate (jax-only ones need jax)")
