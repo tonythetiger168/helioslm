@@ -164,6 +164,18 @@ def test_summarize_groups():
     assert s["bugfix"]["pass"] == 0.5 and s["complete/unseen"]["pass"] == 0.5
     assert s["op:cond"] == {"n": 1, "pass": 0.0, "synth": 0.0}
 
+    failed = {"pass": False, "synth": False}
+    for results in ({"a": res["a"]},
+                    {"a": res["a"], "b": []},
+                    {"a": res["a"], "b": [failed], "c": [failed]}):
+        partial = ob.summarize(tasks, results)
+        assert partial["all"] == {"n": 3, "pass": 0.3333, "synth": 0.3333}
+        for group in ("unseen", "complete", "complete/unseen", "op:assign"):
+            assert partial[group] == {"n": 2 if group == "unseen" else 1,
+                                      "pass": 0.0, "synth": 0.0}
+    assert ob.summarize(tasks, {})["all"] == {"n": 3, "pass": 0.0, "synth": 0.0}
+    assert ob.summarize([], {}) == {}
+
 
 def test_build_and_score_with_tools():
     """End to end on a one-file toy IP (needs yosys + sv2v + git)."""
@@ -268,7 +280,8 @@ def test_report_csv_v5265():
     with tempfile.TemporaryDirectory() as d:
         d = Path(d)
         tasks = [{"id": "a", "ip": "x", "kind": "bugfix", "split": "seen", "op": "reset"},
-                 {"id": "b", "ip": "y", "kind": "complete", "split": "unseen", "op": "assign"}]
+                 {"id": "b", "ip": "y", "kind": "complete", "split": "unseen", "op": "assign"},
+                 {"id": "c", "ip": "y", "kind": "complete", "split": "unseen", "op": "assign"}]
         (d / "t.jsonl").write_text("\n".join(json.dumps(t) for t in tasks))
         (d / "m.json").write_text(json.dumps({"results": {
             "a": [{"pass": True, "synth": True, "error": None, "seconds": 1.5}],
@@ -279,5 +292,11 @@ def test_report_csv_v5265():
         assert rows[0].startswith("id,ip,kind,split,op,m:pass,m:fail,m:seconds")
         assert rows[1].startswith("a,x,bugfix,seen,reset,1,,1.5")
         assert rows[2].startswith("b,y,complete,unseen,assign,0,convert,")
-        assert run.fail_counts(tasks, {"b": [{"pass": False, "error": "sv2v: x"}]}) == \
-            {"all": {"convert": 1}, "complete": {"convert": 1}}
+        assert rows[3].startswith("c,y,complete,unseen,assign,0,missing,")
+        assert len(rows) == 4
+        results = {"b": [{"pass": False, "error": "sv2v: x"}], "c": []}
+        assert run.fail_counts(tasks, results) == {
+            "all": {"convert": 1, "missing": 2},
+            "bugfix": {"missing": 1},
+            "complete": {"convert": 1, "missing": 1},
+        }

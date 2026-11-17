@@ -140,11 +140,11 @@ def cmd_score(a):
 
 
 def fail_counts(tasks, results):
-    """{kind: {pass / failure stage: samples}} plus "all"."""
+    """Count scored samples by stage, plus one missing count per unscored task."""
     out = {}
     for t in tasks:
-        for r in results.get(t["id"]) or []:
-            key = ob.fail_type(r) or "pass"
+        for r in results.get(t["id"]) or [None]:
+            key = (ob.fail_type(r) or "pass") if r is not None else "missing"
             for k in ("all", t["kind"]):
                 d = out.setdefault(k, {})
                 d[key] = d.get(key, 0) + 1
