@@ -22,7 +22,10 @@ from the golden one:
 Random simulation is a test, not a proof: a rare-path difference can be
 missed. ``prepare`` keeps only tasks whose golden design compiles,
 simulates against itself and has a port list that can be driven.
-Answers are untrusted code: run this on the pod.
+``audit_task`` measures that risk before RL: it replays the golden design
+on several seeds, then tries deterministic one-token mutants and calls an
+optional formal-equivalence callback for every mutant the simulator fails
+to kill. Answers are untrusted code: run this on the pod.
 """
 import math
 import re
@@ -37,10 +40,32 @@ CYCLES = 400
 SIM_TIMEOUT_S = 20
 COMPILE_TIMEOUT_S = 30
 GATE_WEIGHT = 0.1
+FORMAL_TIMEOUT_S = 120
+FORMAL_SEQ = 8
 
 _RESET = re.compile(r"^a?(reset|rst)(_?n|_?b)?$|^(rst|reset)_?\w*$", re.I)
 _CLOCK = re.compile(r"^(clk|clock)\w*$|^\w*_(clk|clock)$", re.I)
 _MODULE = re.compile(r"\bmodule\s+(\w+)")
+# One-token mutations tried in source order. Comments are blanked with
+# spaces first, so an offset always addresses the original text.
+_MUTANT_SWAPS = (
+    (r"(?<![&])&(?![&=])", "|"),
+    (r"(?<![|])\|(?![|=])", "&"),
+    (r"(?<![\^~])\^(?![~=])", "~^"),
+    (r"(?<![+])\+(?![+:=])", "-"),
+    (r"==", "!="),
+    (r"!=", "=="),
+    (r"(?<![<])<(?![<=])", ">="),
+    (r"(?<![>-])>(?![>=])", "<="),
+    (r"1'b0", "1'b1"),
+    (r"1'b1", "1'b0"),
+    (r"&&", "||"),
+    (r"\|\|", "&&"),
+    (r"(?<![\w'])~(?=[\w(])", ""),
+    (r"\?\s*(\w+)\s*:\s*(\w+)", lambda m: f"? {m.group(2)} : {m.group(1)}"),
+    (r"(?<![\w'\[:$.])(\d+)(?![\w'\]:.])", lambda m: str(int(m.group(1)) + 1)),
+)
+AUDIT_STATES = ("killed", "equivalent", "false_accept", "unknown", "invalid")
 
 
 class RewardError(Exception):
@@ -50,6 +75,13 @@ class RewardError(Exception):
 def strip_comments(text):
     text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
     return re.sub(r"//[^\n]*", "", text)
+
+
+def _mask_comments(text):
+    """Comments replaced by spaces, preserving every offset and newline."""
+    text = re.sub(r"/\*.*?\*/", lambda m: re.sub(r"[^\n]", " ", m.group(0)),
+                  text, flags=re.S)
+    return re.sub(r"//[^\n]*", lambda m: " " * len(m.group(0)), text)
 
 
 def module_names(text):
@@ -76,6 +108,55 @@ def top_module(text):
 def _body(text, name):
     m = re.search(rf"\bmodule\s+{name}\b(.*?)\bendmodule\b", text, re.S)
     return m.group(1) if m else ""
+
+
+def _module_body_span(clean, name):
+    """``(start, end)`` of module ``name``'s body in comment-masked text."""
+    m = re.search(rf"\bmodule\s+{re.escape(name)}\b", clean)
+    if not m:
+        raise RewardError(f"no module {name}")
+    endm = re.search(r"\bendmodule\b", clean[m.end():])
+    if not endm:
+        raise RewardError(f"module {name} has no endmodule")
+    body_end = m.end() + endm.start()
+    depth = 0
+    for pos in range(m.end(), body_end):
+        ch = clean[pos]
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth = max(0, depth - 1)
+        elif ch == ";" and depth == 0:
+            return pos + 1, body_end
+    raise RewardError(f"module {name} has no header terminator")
+
+
+def mutants(golden, top=None, max_mutants=None):
+    """Deterministic one-token mutants of ``golden``'s top module body.
+
+    Returns ``(label, text)`` pairs in source order. Comments are masked
+    without changing offsets, so mutation never edits a comment. Interface
+    drift is rejected by ``audit_task`` before a mutant is simulated.
+    """
+    if max_mutants is not None and max_mutants < 0:
+        raise ValueError("max_mutants must be >= 0")
+    if max_mutants == 0:
+        return []
+    name = top or top_module(golden)
+    clean = _mask_comments(golden)
+    start, end = _module_body_span(clean, name)
+    out, seen = [], {golden}
+    for pat, rep in _MUTANT_SWAPS:
+        for hit in re.finditer(pat, clean[start:end]):
+            a, b = start + hit.start(), start + hit.end()
+            new = rep(hit) if callable(rep) else rep
+            text = golden[:a] + new + golden[b:]
+            if text not in seen:
+                seen.add(text)
+                out.append((f"{hit.group(0)}->{new or 'del'}@{a}", text))
+                if max_mutants is not None and len(out) >= max_mutants:
+                    return out
+    return out
 
 
 def _params(header_and_body):
@@ -262,14 +343,15 @@ def need(tool):
     return path
 
 
-def simulate(answer, golden, name, ports, cycles=CYCLES):
+def simulate(answer, golden, name, ports, cycles=CYCLES, seed=1):
     """``{"ok", "mismatches", "checks", "log"}`` for one answer."""
     iverilog, vvp = need("iverilog"), need("vvp")
     with tempfile.TemporaryDirectory(prefix="hdlr_") as td:
         td = Path(td)
         (td / "gold.v").write_text(rename_all(golden, "gold_"), encoding="utf-8")
         (td / "dut.v").write_text(answer, encoding="utf-8")
-        (td / "tb.v").write_text(equiv_tb(name, ports, cycles), encoding="utf-8")
+        (td / "tb.v").write_text(equiv_tb(name, ports, cycles, seed=seed),
+                                  encoding="utf-8")
         try:
             c = subprocess.run([iverilog, "-g2012", "-s", "tb", "-o", "sim",
                                 "gold.v", "dut.v", "tb.v"], cwd=td,
@@ -291,6 +373,176 @@ def simulate(answer, golden, name, ports, cycles=CYCLES):
     mism, checks = int(m.group(1)), int(m.group(2))
     return {"ok": mism == 0 and checks > 0, "mismatches": mism, "checks": checks,
             "log": out[-500:]}
+
+
+def formal_equiv(answer, golden, top, timeout=FORMAL_TIMEOUT_S):
+    """Yosys miter/SAT verdict for ``answer`` versus ``golden``.
+
+    Returns ``True`` when the bounded temporal-induction proof succeeds,
+    ``False`` when SAT finds a difference, and ``None`` for no tool,
+    timeout, parse failure or an unproven result. The callback contract of
+    ``audit_task`` also accepts this value as ``(verdict, log)``.
+    """
+    yosys = shutil.which("yosys")
+    if not yosys:
+        return None, "yosys not found on PATH"
+    if not re.fullmatch(r"[A-Za-z_]\w*", top):
+        raise RewardError(f"unsafe module name {top!r}")
+    script = "; ".join((
+        "read_verilog -sv gold.v",
+        f"prep -top gold_{top} -flatten",
+        "design -stash gold",
+        "read_verilog -sv dut.v",
+        f"prep -top {top} -flatten",
+        "design -stash gate",
+        f"design -copy-from gold -as gold gold_{top}",
+        f"design -copy-from gate -as gate {top}",
+        "miter -equiv -flatten -ignore_gold_x gold gate miter",
+        "hierarchy -top miter",
+        f"sat -verify -tempinduct -prove trigger 0 -set-init-undef "
+        f"-set-def-inputs -seq {FORMAL_SEQ} miter",
+    ))
+    with tempfile.TemporaryDirectory(prefix="hdlr_eq_") as td:
+        td = Path(td)
+        (td / "gold.v").write_text(rename_all(golden, "gold_"), encoding="utf-8")
+        (td / "dut.v").write_text(answer, encoding="utf-8")
+        try:
+            r = subprocess.run([yosys, "-q", "-p", script], cwd=td,
+                               capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return None, f"formal timeout after {timeout}s"
+    log = (r.stdout + r.stderr)[-2000:]
+    if r.returncode == 0:
+        return True, log
+    if re.search(r"model found|counterexample|FAIL", log, re.I):
+        return False, log
+    return None, log
+
+
+def _equiv_verdict(result):
+    """Normalize ``equiv_fn`` output: bool, None, or ``(bool|None, log)``."""
+    detail = None
+    if isinstance(result, tuple):
+        verdict = result[0] if result else None
+        detail = result[1] if len(result) > 1 else None
+    else:
+        verdict = result
+    return (None if verdict is None else bool(verdict)), detail
+
+
+def _invalid_result(label, why):
+    return {"label": label, "status": "invalid", "why": str(why)[-500:]}
+
+
+def audit_task(task, seeds=(1, 2, 3), max_mutants=8, simulate_fn=None,
+               equiv_fn=None):
+    """Audit how often this task's random-simulation reward can false-accept.
+
+    The golden design must be self-equivalent on every seed. Each mutant is
+    first rejected when it changes the module interface, then simulated on
+    every seed. A surviving mutant is classified by ``equiv_fn(mutant,
+    golden, top)`` (bool, None for no verdict, or ``(verdict, log)``):
+
+    - ``killed``: simulation found a mismatch;
+    - ``equivalent``: formal proof says the mutant is genuinely equivalent;
+    - ``false_accept``: formal proof says it differs but simulation missed it;
+    - ``unknown``: simulation missed it and no formal verdict is available;
+    - ``invalid``: the mutant does not compile, times out or changes ports.
+
+    ``ok`` means the golden self-check passed and no proven false accept was
+    found. ``unknown`` mutants are reported separately and are not a proof.
+    """
+    sim = simulate_fn or simulate
+    seeds = tuple(seeds)
+    if not seeds:
+        raise ValueError("seeds must not be empty")
+    if max_mutants < 1:
+        raise ValueError("max_mutants must be >= 1")
+    top, golden = task["top"], task["golden"]
+    ports = [tuple(p) for p in task["ports"]]
+    counts = {state: 0 for state in AUDIT_STATES}
+    base = {"ok": False, "golden_ok": False, "seeds": list(seeds),
+            "n_mutants": 0, "counts": counts, "false_accept": [],
+            "unknown": [], "invalid": [], "results": []}
+    try:
+        candidates = mutants(golden, top=top, max_mutants=max_mutants)
+    except RewardError as e:
+        return {**base, "why": str(e)}
+
+    for seed in seeds:
+        try:
+            res = sim(golden, golden, top, ports, seed=seed)
+        except Exception as e:                         # noqa: BLE001
+            return {**base, "why": f"golden seed {seed} failed: {e}"}
+        if not res.get("ok"):
+            why = res.get("log", "")[-300:]
+            return {**base, "why": f"golden seed {seed} failed: {why}"}
+    base["golden_ok"] = True
+    base["n_mutants"] = len(candidates)
+
+    for label, mutant in candidates:
+        row = {"label": label}
+        try:
+            if top_module(mutant) != top or top_ports(mutant, top) != ports:
+                row = _invalid_result(label, "module interface changed")
+                counts["invalid"] += 1
+                base["invalid"].append(label)
+                base["results"].append(row)
+                continue
+        except Exception as e:                         # noqa: BLE001
+            row = _invalid_result(label, e)
+            counts["invalid"] += 1
+            base["invalid"].append(label)
+            base["results"].append(row)
+            continue
+
+        killed = invalid = False
+        for seed in seeds:
+            try:
+                res = sim(mutant, golden, top, ports, seed=seed)
+            except Exception as e:                     # noqa: BLE001
+                row = _invalid_result(label, e)
+                invalid = True
+                break
+            row.update({"seed": seed, "mismatches": res.get("mismatches"),
+                        "checks": res.get("checks")})
+            if not res.get("ok"):
+                if res.get("mismatches"):
+                    row["status"] = "killed"
+                    killed = True
+                else:
+                    row = _invalid_result(label, res.get("log", "simulation failed"))
+                    invalid = True
+                break
+        if killed:
+            counts["killed"] += 1
+        elif invalid:
+            counts["invalid"] += 1
+            base["invalid"].append(label)
+        else:
+            verdict, detail = (None, None)
+            if equiv_fn is not None:
+                try:
+                    verdict, detail = _equiv_verdict(equiv_fn(mutant, golden, top))
+                except Exception as e:                 # noqa: BLE001
+                    detail = str(e)
+            if verdict is True:
+                row["status"] = "equivalent"
+                counts["equivalent"] += 1
+            elif verdict is False:
+                row["status"] = "false_accept"
+                counts["false_accept"] += 1
+                base["false_accept"].append(label)
+            else:
+                row["status"] = "unknown"
+                counts["unknown"] += 1
+                base["unknown"].append(label)
+            if detail:
+                row["formal_log"] = str(detail)[-500:]
+        base["results"].append(row)
+
+    base["ok"] = base["golden_ok"] and counts["false_accept"] == 0
+    return base
 
 
 def synth_cells(code, top, timeout=120):
@@ -332,14 +584,14 @@ def extract_answer(text):
     return text[m.start():b + len("endmodule")].strip() + "\n" if m and b > m.start() else ""
 
 
-def reward(text, task, gate_weight=GATE_WEIGHT, synth=synth_cells):
+def reward(text, task, gate_weight=GATE_WEIGHT, synth=synth_cells, seed=1):
     """``(reward, info)`` for one sampled answer to ``task`` (``golden``,
     ``top``, ``ports`` and optionally ``ref_cells``)."""
     code = extract_answer(text)
     if not code or not re.search(rf"\bmodule\s+{task['top']}\b", code):
         return 0.0, {"ok": False, "why": "no module " + task["top"]}
     res = simulate(code, task["golden"], task["top"],
-                   [tuple(p) for p in task["ports"]])
+                   [tuple(p) for p in task["ports"]], seed=seed)
     info = {k: res[k] for k in ("ok", "mismatches", "checks")}
     if not res["ok"]:
         return 0.0, info

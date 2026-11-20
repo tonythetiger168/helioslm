@@ -126,7 +126,7 @@ output file is `.sv`/`.svh`, `v` for Verilog). `--extra` runs yosys
 gets `area_ratio` = reference cells / sample cells (above 1 is smaller
 than the reference), averaged as `area_ratio_mean`.
 
-## RL reward (H4, v5.185)
+## RL reward (H4, v5.185; audit gate v5.272)
 
 `helioslm_v5/eval/hdl_reward.py` scores an answer against a golden
 design instead of a fixed testbench: both are simulated with Icarus on
@@ -138,11 +138,84 @@ golden design gains up to 0.1. Random simulation is a test, not a
 proof, so the reward is for training, and the benchmarks above stay the
 measure.
 
+Before another H4 RL run, audit the prepared tasks. `audit_task` replays
+the golden design on several seeds, mutates one operator or constant at
+a time, and classifies each mutant as `killed`, `equivalent`,
+`false_accept`, `unknown` or `invalid`. With `--formal`, the CLI resolves
+surviving mutants through a Yosys miter/SAT check (`formal_equiv`):
+`False` is a proven simulation miss, while a timeout or unproven result
+stays `unknown`. Do not treat `unknown` as proof of reward safety.
+
 ```bash
-python examples/hdl_rl_hf.py prepare --parquet codev_r1_rl_train.parquet --out tasks.jsonl
-python examples/hdl_rl_hf.py train --model <sft checkpoint> --tasks tasks.jsonl \
-    --out runs/rl --frozen-bf16 --max-hours 5
+python examples/hdl_rl_hf.py prepare --parquet codev_r1_rl_train.parquet \
+    --out /workspace/rl/tasks.jsonl
+python examples/hdl_rl_hf.py audit --tasks /workspace/rl/tasks.jsonl \
+    --seeds 1 17 101 --mutants 8 --formal \
+    --out /workspace/rl/reward_audit.json
+python examples/hdl_rl_hf.py train --model <sft checkpoint> \
+    --tasks /workspace/rl/tasks.jsonl --out runs/rl --frozen-bf16 --max-hours 5
 ```
+
+Reward-audit gate: every task must have `golden_ok`; `false_accept` must
+be zero. If `unknown` is nonzero, resolve those mutants with formal
+equivalence or more directed seeds before scaling RL. An `invalid` mutant
+is not evidence either way; check whether the mutation changed the port
+list or merely hit a tool limit.
+
+### Pod-side H4 follow-up gates
+
+1. **Repair-LoRA gate.** Train a LoRA repair pass on the H4 RL checkpoint
+   from the OpenTitan edit/repair pairs, then score it on the held-out
+   OpenTitan benchmark. The candidate must beat the H4 RL baseline
+   (6/179) and reach at least the stock E4B-it baseline (59/179), with no
+   material H3 benchmark regression:
+
+   ```bash
+   python examples/ot_bugfix_run.py build --ot /workspace/opentitan \
+       --out ot_tasks.jsonl
+   python examples/ot_bugfix_run.py pairs --ot /workspace/opentitan \
+       --tasks ot_tasks.jsonl --out edit_pairs.jsonl
+   python examples/sft_hf.py prepare --records edit_pairs.jsonl \
+       --tokenizer /workspace/runs/h4_rl/final --out /workspace/repair_sft
+   python examples/sft_hf.py train --model /workspace/runs/h4_rl/final \
+       --data /workspace/repair_sft --lora --out /workspace/runs/h4_repair_lora
+   python examples/ot_bugfix_run.py generate --tasks ot_tasks.jsonl \
+       --model /workspace/runs/h4_repair_lora/final --out h4_repair.samples.json
+   python examples/ot_bugfix_run.py score --tasks ot_tasks.jsonl \
+       --ot /workspace/opentitan --samples h4_repair.samples.json \
+       --out h4_repair.json
+   python examples/ot_bugfix_run.py report --tasks ot_tasks.jsonl \
+       --scores h4_rl.json e4b_it.json h4_repair.json --out ot_compare.csv
+   python examples/hdl_eval_all.py --model /workspace/runs/h4_repair_lora/final \
+       --rtllm-exclude <list from self-check> \
+       --out results/hdl/h4_repair_lora.json
+   ```
+
+2. **SFT-only control.** Repeat the H3 SFT data and hyperparameters from
+   the Gemma 4 E4B base without H1/H2 continued pretraining. This decides
+   whether the CPT stage is contributing beyond CodeV-R1 SFT; report it in
+   the same VerilogEval / RTLLM / CVDP table as H3 + SFT:
+
+   ```bash
+   python examples/sft_hf.py prepare --records codev_r1_sft.jsonl \
+       --tokenizer google/gemma-4-E4B --out /workspace/sft_only_data --no-think
+   python examples/sft_hf.py train --model google/gemma-4-E4B \
+       --data /workspace/sft_only_data --epochs 1 --frozen-bf16 \
+       --out /workspace/runs/sft_only
+   python examples/hdl_eval_all.py --model /workspace/runs/sft_only/final \
+       --rtllm-exclude <list from self-check> \
+       --out results/hdl/sft_only.json
+   ```
+
+3. **KL-anchored RL gate.** Do not scale the current H4 loop: it has no
+   KL term and no reference model. Add an HF-model KL anchor (the GRPO
+   implementations in `helioslm_v5/src/training/grpo.py` and
+   `examples/swe_agent_rl_train.py` show the intended k3-KL pattern),
+   then run a small coefficient sweep against the no-KL checkpoint. A
+   candidate passes only when reward-audit is clean, OpenTitan editing is
+   at least the stock E4B-it baseline, VerilogEval / RTLLM pass@1 are
+   within 0.02 absolute of the SFT starting checkpoint and CVDP pass@1 is
+   within 0.01.
 
 H3 results (pass@1, n=1; continued pretraining of Gemma 4 E4B on the
 HDL mixture, then SFT on CodeV-R1 answers without the reasoning):
