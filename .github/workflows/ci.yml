@@ -65,6 +65,33 @@ jobs:
         run: python -m pytest helioslm_v5/tests/ -q -n 4 --ignore=helioslm_v5/tests/test_v5.py
       - name: Integration test (v5.1 serving stack)
         run: python integration_test_v51.py
+      - name: Wheel install and execution smoke (py3.12)
+        if: matrix.python == '3.12'
+        run: |
+          python -m pip wheel . --no-deps --no-build-isolation --wheel-dir "$RUNNER_TEMP/wheel"
+          python -m pip install --no-deps --target "$RUNNER_TEMP/helioslm-wheel" "$RUNNER_TEMP"/wheel/helioslm-*.whl
+          cd "$RUNNER_TEMP"
+          HELIOSLM_WHEEL_TARGET="$RUNNER_TEMP/helioslm-wheel" python -I - <<'PY'
+          import os
+          import sys
+          import torch
+
+          sys.path.insert(0, os.environ["HELIOSLM_WHEEL_TARGET"])
+          from helioslm_v5.configs.config_v5 import HeliosLMv5Config
+          from helioslm_v5.hsh import Context
+          from helioslm_v5.hub import CONFIG_FORMAT_VERSION, _serialize_config
+          from helioslm_v5.src.model_v5 import HeliosLMv5
+
+          config = HeliosLMv5Config(size="lite", num_hidden_layers=1)
+          model = HeliosLMv5(config)
+          output = model.generate(torch.tensor([[1, 2]]), max_new_tokens=1,
+                                  temperature=0)
+          assert output.shape == (1, 3)
+          assert _serialize_config(config)["config_format_version"] == CONFIG_FORMAT_VERSION
+          assert Context() is not None
+          import helioslm_v5.harness.harness_plugins  # noqa: F401
+          print("wheel install smoke: imports, config and one-token generation OK")
+          PY
       # v5.177: CVDP harnesses are cocotb tests; cocotb is installed only
       # for this step so the main suite runs without it.
       - name: CVDP harness on cocotb + Icarus
