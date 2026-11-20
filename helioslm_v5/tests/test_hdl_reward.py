@@ -15,7 +15,11 @@ Pins:
    the gate bonus;
 6. ``row_prompt_golden`` reads verl-style rows; ``group_advantages``
    drops groups with one reward value; ``pg_loss`` raises the log-prob
-   of a positive-advantage answer (tiny random model, CPU).
+   of a positive-advantage answer (tiny random model, CPU);
+7. ``mutants`` is deterministic and never edits comments or the module
+   header; ``audit_task`` classifies killed, false-accept, equivalent
+   and unknown mutants with injectable simulators / equivalence checkers;
+   ``formal_equiv`` maps Yosys proof, counterexample and unproven logs.
 
 Run from repo root: python3 -m pytest helioslm_v5/tests/test_hdl_reward.py
 """
@@ -23,6 +27,7 @@ import json
 import shutil
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -48,6 +53,119 @@ module sub(input [7:0] a, input [7:0] b, input s, output [7:0] y);
   assign y = s ? b : a;
 endmodule
 """
+AUDIT_SRC = """module m(input [1:0] a, input [1:0] b, input s, output [1:0] y);
+  // keep this comment: a & b -> 0
+  wire [1:0] t = a & b;
+  assign y = s ? t : a;
+endmodule
+"""
+
+
+def _audit_task():
+    return {"golden": AUDIT_SRC, "top": "m", "ports": hr.top_ports(AUDIT_SRC, "m")}
+
+
+def test_mutants_deterministic_and_interface_preserving():
+    first = hr.mutants(AUDIT_SRC, top="m", max_mutants=4)
+    assert first == hr.mutants(AUDIT_SRC, top="m", max_mutants=4)
+    assert len(first) == 2
+    assert len({label for label, _ in first}) == len(first)
+    header = AUDIT_SRC.split(");", 1)[0] + ");"
+    for _, text in first:
+        assert text.startswith(header)
+        assert "// keep this comment: a & b -> 0" in text
+        assert hr.top_module(text) == "m"
+        assert hr.top_ports(text, "m") == hr.top_ports(AUDIT_SRC, "m")
+
+
+def test_audit_killed_mutants_and_seed_forwarding():
+    calls = []
+
+    def sim(answer, golden, name, ports, seed=1):
+        calls.append((answer, seed))
+        bad = answer != golden
+        return {"ok": not bad, "mismatches": int(bad), "checks": 3, "log": ""}
+
+    out = hr.audit_task(_audit_task(), seeds=(7, 8, 9), max_mutants=2,
+                        simulate_fn=sim, equiv_fn=lambda *args: False)
+    assert out["golden_ok"] and out["ok"]
+    assert out["counts"]["killed"] == 2
+    assert [seed for _, seed in calls[:3]] == [7, 8, 9]
+    assert [seed for _, seed in calls[3:]] == [7, 7]
+
+
+def test_audit_false_accept_and_equivalent_mutants():
+    def sim(*args, seed=1):
+        return {"ok": True, "mismatches": 0, "checks": 3, "log": ""}
+
+    false = hr.audit_task(_audit_task(), seeds=(5,), max_mutants=2,
+                          simulate_fn=sim, equiv_fn=lambda *args: (False, "diff"))
+    assert not false["ok"]
+    assert false["counts"]["false_accept"] == 2
+    assert false["false_accept"] == [row["label"] for row in false["results"]]
+
+    equal = hr.audit_task(_audit_task(), seeds=(5,), max_mutants=2,
+                          simulate_fn=sim, equiv_fn=lambda *args: True)
+    assert equal["ok"] and equal["counts"]["equivalent"] == 2
+
+
+def test_audit_survivor_without_formal_verdict_is_unknown():
+    def sim(*args, seed=1):
+        return {"ok": True, "mismatches": 0, "checks": 3, "log": ""}
+
+    out = hr.audit_task(_audit_task(), seeds=(5, 6), max_mutants=2,
+                        simulate_fn=sim)
+    assert out["ok"]                       # no proven false accept
+    assert out["counts"]["unknown"] == 2   # but simulation did not prove safety
+    assert len(out["unknown"]) == 2
+
+
+def test_formal_equiv_verdicts(monkeypatch):
+    monkeypatch.setattr(hr.shutil, "which", lambda tool: "/bin/yosys")
+    logs = iter([
+        (0, "SAT proof finished - no model found: SUCCESS"),
+        (1, "SAT proof finished - model found: FAIL"),
+        (1, "ERROR: unproven"),
+    ])
+
+    def run(cmd, cwd, capture_output, text, timeout):
+        assert "miter -equiv" in cmd[3] and "-set-init-undef" in cmd[3]
+        code, log = next(logs)
+        return SimpleNamespace(returncode=code, stdout=log, stderr="")
+
+    monkeypatch.setattr(hr.subprocess, "run", run)
+    assert hr.formal_equiv(AUDIT_SRC, AUDIT_SRC, "m")[0] is True
+    assert hr.formal_equiv(AUDIT_SRC, AUDIT_SRC, "m")[0] is False
+    assert hr.formal_equiv(AUDIT_SRC, AUDIT_SRC, "m")[0] is None
+
+
+def test_audit_cli_writes_summary(tmp_path, monkeypatch):
+    import hdl_rl_hf as rl
+    task_path = tmp_path / "tasks.jsonl"
+    out_path = tmp_path / "audit" / "result.json"
+    task_path.write_text(json.dumps(_audit_task()) + "\n", encoding="utf-8")
+
+    def fake(task, seeds, max_mutants, simulate_fn=None, equiv_fn=None):
+        assert seeds == (3, 4) and max_mutants == 2 and equiv_fn is None
+        return {"ok": True, "golden_ok": True, "seeds": list(seeds),
+                "n_mutants": 2, "counts": {"killed": 1, "equivalent": 0,
+                                           "false_accept": 0, "unknown": 1,
+                                           "invalid": 0},
+                "false_accept": [], "unknown": ["x"], "invalid": [],
+                "results": []}
+
+    monkeypatch.setattr(rl.hr, "audit_task", fake)
+    out = rl.cmd_audit(SimpleNamespace(tasks=str(task_path), out=str(out_path),
+                                       seeds=[3, 4], mutants=2, formal=False,
+                                       workers=1))
+    assert out["summary"] == {"tasks": 1, "golden_ok": 1,
+                              "false_accept_tasks": 0, "unknown_tasks": 1,
+                              "counts": {"killed": 1, "equivalent": 0,
+                                         "false_accept": 0, "unknown": 1,
+                                         "invalid": 0},
+                              "ok": True}
+    assert json.loads(out_path.read_text(encoding="utf-8"))["schema"] == \
+        "hdl-reward-audit/1"
 
 
 def test_ports_and_top():
