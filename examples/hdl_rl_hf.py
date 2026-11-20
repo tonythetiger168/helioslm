@@ -18,11 +18,14 @@ task with vLLM from the current policy (saved in bf16 to
 (advantage ``(r - mean) / (std + eps)``; groups where every answer got
 the same reward are dropped, as in DAPO). The update is the on-policy
 policy gradient: token-level ``-A * log p`` averaged over the response
-tokens of the round, split into ``--minibatches`` optimizer steps. No
-KL term and no reference model. The policy reuses ``cpt_hf.py``'s
+tokens of the round, split into ``--minibatches`` optimizer steps. Set
+``--kl-coef`` to add the DeepSeekMath k3 KL penalty against a frozen
+bf16 reference (``--ref``, default: the SFT ``--model``); zero keeps the
+original no-reference control arm. The policy reuses ``cpt_hf.py``'s
 loading (``--freeze``, ``--frozen-bf16``) and fp32 master weights.
 Writes ``<out>/log.jsonl`` (per round: mean reward, pass rate, kept
-groups, gate bonus), ``<out>/final`` and ``<out>/result.json``.
+groups, gate bonus, mean unscaled per-token KL), ``<out>/final`` and
+``<out>/result.json``.
 
 v5.207: ``--reward mcq`` trains on multiple-choice tasks instead
 (``helioslm_v5/eval/mcq_reward.py``: reasoning, then 「答案：X」 checked
@@ -231,16 +234,56 @@ def group_advantages(rewards, group, eps=1e-4):
     return out
 
 
-def pg_loss(model, prompt_ids, resp_ids, adv, n_tokens, device):
-    """``-adv * sum(log p(response))`` / ``n_tokens`` for one sample."""
+def _response_logprobs(model, prompt_ids, resp_ids, device):
+    """Per-token log p(response), with no reduction across tokens."""
     import torch
     import torch.nn.functional as F
     ids = torch.tensor([prompt_ids + resp_ids], device=device)
     k = len(resp_ids)
     out = model(input_ids=ids[:, :-1], logits_to_keep=k)
     logits = out.logits if hasattr(out, "logits") else out[0]
-    lp = -F.cross_entropy(logits[0, -k:].float(), ids[0, -k:], reduction="sum")
-    return -adv * lp / n_tokens
+    return -F.cross_entropy(logits[0, -k:].float(), ids[0, -k:],
+                            reduction="none")
+
+
+def ref_logprobs(model, prompt_ids, resp_ids, device):
+    """Per-token response log-probabilities under the frozen reference."""
+    import torch
+    with torch.no_grad():
+        return _response_logprobs(model, prompt_ids, resp_ids, device)
+
+
+def kl_loss(ref_lp, policy_lp, coef):
+    """DeepSeekMath's non-negative k3 KL estimator, scaled by ``coef``."""
+    import torch
+    logr = (ref_lp - policy_lp).clamp(max=60.0)
+    return coef * (torch.expm1(logr) - logr)
+
+
+def pg_loss_with_kl(model, prompt_ids, resp_ids, adv, n_tokens, device,
+                    ref_model=None, kl_coef=0.0):
+    """Return (normalized PG + KL loss, unscaled KL token sum).
+
+    The second value is detached and is summed over response tokens so the
+    caller can log a coefficient-independent, per-token round average.
+    """
+    import torch
+    policy_lp = _response_logprobs(model, prompt_ids, resp_ids, device)
+    loss = -adv * policy_lp.sum() / n_tokens
+    kl_sum = torch.zeros((), device=device)
+    if ref_model is not None and kl_coef:
+        reference_lp = ref_logprobs(ref_model, prompt_ids, resp_ids, device)
+        kl = kl_loss(reference_lp, policy_lp, 1.0)
+        loss = loss + kl_coef * kl.sum() / n_tokens
+        kl_sum = kl.sum().detach()
+    return loss, kl_sum
+
+
+def pg_loss(model, prompt_ids, resp_ids, adv, n_tokens, device,
+            ref_model=None, kl_coef=0.0):
+    """``-adv * sum(log p(response))`` / ``n_tokens``, plus optional KL."""
+    return pg_loss_with_kl(model, prompt_ids, resp_ids, adv, n_tokens,
+                           device, ref_model, kl_coef)[0]
 
 
 def save_policy(model, tok_dir, out):
@@ -291,6 +334,8 @@ def cmd_train(a):
     import torch
     from transformers import AutoModelForCausalLM
     from cpt_hf import cast_frozen, freeze
+    if a.kl_coef < 0:
+        raise ValueError("--kl-coef must be non-negative")
     tasks = [json.loads(x) for x in open(a.tasks, encoding="utf-8") if x.strip()]
     rng = random.Random(a.seed)
     rng.shuffle(tasks)
@@ -303,6 +348,16 @@ def cmd_train(a):
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
     model.config.use_cache = False
     model.to(device).train()
+    ref_model = None
+    if a.kl_coef:
+        # Anchor the entire run at the SFT starting point (or explicit --ref),
+        # never at a moving policy snapshot. bf16 halves the extra GPU memory.
+        ref_model = AutoModelForCausalLM.from_pretrained(a.ref or a.model,
+                                                         dtype=torch.bfloat16)
+        ref_model.config.use_cache = False
+        ref_model.to(device).eval()
+        for p in ref_model.parameters():
+            p.requires_grad_(False)
     params = [p for p in model.parameters() if p.requires_grad]
     opt = torch.optim.AdamW(params, lr=a.lr, betas=(0.9, 0.99), weight_decay=0.0)
     out = Path(a.out)
@@ -344,6 +399,7 @@ def cmd_train(a):
         advs = group_advantages(rewards, a.group)
         keep = [(g, ad) for g, ad in zip(gens, advs) if ad is not None and g["ids"]]
         n_tok = sum(len(g["ids"]) for g, _ in keep)
+        kl_token_sum = 0.0
         tu = time.time()
         if keep:
             rng.shuffle(keep)
@@ -354,7 +410,10 @@ def cmd_train(a):
                 pt = sum(len(g["ids"]) for g, _ in part)
                 for g, ad in part:
                     with torch.autocast("cuda", dtype=torch.bfloat16):
-                        loss = pg_loss(model, g["prompt_ids"], g["ids"], float(ad), pt, device)
+                        loss, kl_sum = pg_loss_with_kl(
+                            model, g["prompt_ids"], g["ids"], float(ad), pt,
+                            device, ref_model=ref_model, kl_coef=a.kl_coef)
+                    kl_token_sum += float(kl_sum)
                     loss.backward()
                 gn = torch.nn.utils.clip_grad_norm_(params, 1.0)
                 if not bool(torch.isfinite(gn)):
@@ -375,6 +434,7 @@ def cmd_train(a):
                "truncated": sum(1 for g in gens if g["finish"] == "length"),
                "gate_bonus": round(float(np.mean([s[0] - 1 for s in correct])), 4)
                if correct and a.reward == "hdl" else None,
+               "kl": round(kl_token_sum / n_tok, 6) if n_tok else 0.0,
                "gen_s": round(t_gen, 1), "update_s": round(time.time() - tu, 1),
                "elapsed_s": round(time.time() - t0, 1)}
         logf.write(json.dumps(row) + "\n")
@@ -434,6 +494,9 @@ def main(argv=None):
     t.add_argument("--group", type=int, default=8)
     t.add_argument("--max-new", type=int, default=2048)
     t.add_argument("--lr", type=float, default=1e-6)
+    t.add_argument("--kl-coef", type=float, default=0.0,
+                   help="k3 KL coefficient; 0 keeps the no-reference control arm")
+    t.add_argument("--ref", help="frozen reference checkpoint (default: --model)")
     t.add_argument("--minibatches", type=int, default=2)
     t.add_argument("--reward", choices=("hdl", "mcq"), default="hdl")
     t.add_argument("--gate-weight", type=float, default=hr.GATE_WEIGHT)

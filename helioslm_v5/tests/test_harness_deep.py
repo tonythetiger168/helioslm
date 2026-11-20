@@ -31,6 +31,32 @@ def test_full_preset_wires_everything():
     print("PASS test_full_preset_wires_everything")
 
 
+def test_context_lookup_and_failed_plugin_contract():
+    ctx = Context()
+    marker = object()
+    assert ctx.register("tools.marker", marker) is marker
+    assert ctx.tools.marker is marker
+    try:
+        ctx.missing
+    except AttributeError as e:
+        assert "no service 'missing'" in str(e)
+    else:
+        raise AssertionError("unknown service did not raise AttributeError")
+
+    class BrokenPlugin:
+        def apply(self, ctx):
+            raise RuntimeError("apply failed")
+
+    try:
+        ctx.use(BrokenPlugin())
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("failed plugin apply was swallowed")
+    assert ctx._plugins == []
+    print("PASS test_context_lookup_and_failed_plugin_contract")
+
+
 def test_effect_log_as_audit_viewer():
     ctx = Context()
     for i in range(3):
@@ -77,6 +103,7 @@ def test_multi_step_pipeline_with_state():
 if __name__ == "__main__":
     test_state_persists_across_plugins()
     test_full_preset_wires_everything()
+    test_context_lookup_and_failed_plugin_contract()
     test_effect_log_as_audit_viewer()
     test_multi_step_pipeline_with_state()
-    print("\n4/4 harness deep-workflow tests passed")
+    print("\n5/5 harness deep-workflow tests passed")

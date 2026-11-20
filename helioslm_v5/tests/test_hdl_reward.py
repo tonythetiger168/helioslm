@@ -19,7 +19,9 @@ Pins:
 7. ``mutants`` is deterministic and never edits comments or the module
    header; ``audit_task`` classifies killed, false-accept, equivalent
    and unknown mutants with injectable simulators / equivalence checkers;
-   ``formal_equiv`` maps Yosys proof, counterexample and unproven logs.
+   ``formal_equiv`` maps Yosys proof, counterexample and unproven logs;
+8. the k3 KL estimator is zero at the anchor, positive away from it, and a
+   stronger KL coefficient reduces one-step drift on a tiny CPU model.
 
 Run from repo root: python3 -m pytest helioslm_v5/tests/test_hdl_reward.py
 """
@@ -270,3 +272,51 @@ def test_pg_loss_raises_logprob_of_positive_answer():
     rl.pg_loss(model, prompt, resp, 1.0, len(resp), "cpu").backward()
     opt.step()
     assert logp() > before
+
+
+def test_k3_kl_is_zero_at_anchor_positive_and_monotonic():
+    torch = pytest.importorskip("torch")
+    import hdl_rl_hf as rl
+    policy = torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0])
+    ref = torch.tensor([0.0, 1.0, -1.0, 2.0, -2.0])
+    kl = rl.kl_loss(ref, policy, coef=0.5)
+    assert kl[0].item() == 0.0
+    assert torch.all(kl[1:] > 0)
+    assert kl[3] > kl[1] and kl[4] > kl[2]
+    assert torch.allclose(kl, 0.5 * rl.kl_loss(ref, policy, coef=1.0))
+
+
+def test_stronger_kl_reduces_one_step_policy_drift():
+    torch = pytest.importorskip("torch")
+    transformers = pytest.importorskip("transformers")
+    import copy
+    import hdl_rl_hf as rl
+    torch.manual_seed(7)
+    cfg = transformers.GPT2Config(vocab_size=32, n_positions=32,
+                                  n_embd=16, n_layer=1, n_head=2)
+    initial = transformers.GPT2LMHeadModel(cfg).eval()
+    ref = copy.deepcopy(initial)
+    for p in ref.parameters():
+        p.requires_grad_(False)
+
+    def drift(kl_coef):
+        model = copy.deepcopy(initial)
+        # k3 has zero gradient at an exactly equal policy/reference pair.
+        # Move both arms to the same off-anchor warm start first; the measured
+        # second step is where the KL penalty can oppose further drift.
+        warm_opt = torch.optim.SGD(model.parameters(), lr=0.1)
+        rl.pg_loss(model, [1, 2, 3], [4, 5], 1.0, 2, "cpu").backward()
+        warm_opt.step()
+        opt = torch.optim.SGD(model.parameters(), lr=0.1)
+        loss = rl.pg_loss(model, [1, 2, 3], [4, 5], 1.0, 2, "cpu",
+                          ref_model=ref, kl_coef=kl_coef)
+        loss.backward()
+        opt.step()
+        with torch.no_grad():
+            return sum(float(((p - q) ** 2).sum())
+                       for p, q in zip(model.parameters(), initial.parameters()))
+
+    without_kl = drift(0.0)
+    with_kl = drift(2.0)
+    assert without_kl > 0.0
+    assert with_kl < without_kl

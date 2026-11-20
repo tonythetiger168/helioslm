@@ -1,10 +1,10 @@
 # H4 KL-anchored RL gate — pod runbook (v5.272+)
 
 Runbook for the KL-anchored RL gate from `docs/HDL_BENCH.md`
-("Pod-side H4 follow-up gates", item 3). The current H4 loop in
-`examples/hdl_rl_hf.py` has **no KL term and no reference model**; the
-first run regressed OpenTitan bug-fix editing from the stock E4B-it
-baseline 59/179 to 6/179. This gate adds a frozen-reference k3-KL anchor
+("Pod-side H4 follow-up gates", item 3). The H4 loop now implements the
+frozen-reference k3-KL anchor behind `--kl-coef` (zero retains the original
+no-reference control). The first run regressed OpenTitan bug-fix editing
+from the stock E4B-it baseline 59/179 to 6/179. This gate uses the anchor
 (the pattern in `helioslm_v5/src/training/grpo.py` and
 `examples/swe_agent_rl_train.py`), sweeps the coefficient once, and only
 then considers scaling RL.
@@ -25,9 +25,9 @@ Proceed only when the summary has `golden_ok == tasks`,
 directed seeds or a longer `--mutants` pass first (`unknown` is not a
 proof of reward safety).
 
-## Step 1 — add the KL anchor to `hdl_rl_hf.py`
+## Step 1 — KL anchor implementation (CPU-verified; pod sweep pending)
 
-The update path is `pg_loss` (token-level `-A * log p`). Add a frozen
+The update path is `pg_loss` (token-level `-A * log p`). The implementation uses a frozen
 reference pass and the non-negative k3 estimator, exactly the estimator
 used in `grpo.py` (`kl = coef * (expm1(logr) - logr)`,
 `logr = ref_logp - policy_logp`, clamped):
@@ -75,7 +75,10 @@ test that `kl_loss` is zero when `ref_lp == policy_lp`, positive
 otherwise, and monotone in `|logr|`; plus a tiny-random-model test that
 one optimizer step with a large `--kl-coef` moves the policy less than
 the same step with `--kl-coef 0` (same shape as
-`test_pg_loss_raises_logprob_of_positive_answer`).
+`test_pg_loss_raises_logprob_of_positive_answer`). Because k3 has zero
+gradient when policy and reference are exactly equal, the tiny-model test
+first applies an identical warm step to both arms, then measures the next
+step from that shared off-anchor state.
 
 ## Step 2 — one coefficient sweep, fixed budget
 

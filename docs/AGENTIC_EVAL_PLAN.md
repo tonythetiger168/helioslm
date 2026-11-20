@@ -1,5 +1,11 @@
 # Agentic eval expansion plan — Terminal-Bench track (v5.272+)
 
+Implementation status: Phase 1 is implemented with 50 tasks, three
+difficulty tiers, exact and seeded hidden-oracle verification, a per-task
+trap gate in the committed std-bench reference, and a calibration-board row
+embedded in each terminal API artifact that carries confidence. Phase 2/3
+remain plans; no upstream Terminal-Bench score is claimed.
+
 Why: 2026 agentic leaderboards weight long-horizon terminal/repository
 work highest (Artificial Analysis puts agentic coding at 30% of its
 intelligence index), and the strongest open-weight agentic models
@@ -17,12 +23,12 @@ Terminal-Bench-comparable track.
 | Tool-call parse recovery audit | `helioslm_v5/agent/tool_recovery.py` | working |
 | Verbalized-confidence capture | `DONE confidence=` in term_bench; `calibration_board.py` | working |
 
-Gaps against Terminal-Bench-style evaluation: only 10 miniature tasks;
-no upstream Terminal-Bench task adapter; no multi-step tasks requiring
-package installs or service orchestration; results not aggregated into
-one agentic index; no contamination control against upstream task text.
+Remaining gaps against Terminal-Bench-style evaluation: no upstream
+Terminal-Bench task adapter; no multi-step tasks requiring package installs
+or service orchestration; results not aggregated into one agentic index; no
+contamination control against upstream task text.
 
-## Phase 1 — scale the in-house miniature (no new deps)
+## Phase 1 — scale the in-house miniature (implemented, no new deps)
 
 1. Grow `term_bench.py` from 10 to ~50 tasks across families: log
    surgery, config repair, data pipeline (csv/json/jsonl), git

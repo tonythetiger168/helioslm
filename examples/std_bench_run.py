@@ -6,7 +6,7 @@ Two modes:
 1. Harness validation (no model, no network) — the committed artifact:
        python examples/std_bench_run.py --reference
    Scores synthetic generators on the committed subsets and the
-   terminal and SWE tasks, and enforces 15 gates: gold answers /
+   terminal and SWE tasks, and enforces 16 gates: gold answers /
    canonical solutions / scripted reference solutions must score 100%;
    empty, perturbed, do-nothing, prose-only and trap-patch replies must
    score 0%. A failing
@@ -36,7 +36,7 @@ _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
 from helioslm_v5.eval.calibration_board import (  # noqa: E402
-    canonical_sha256, sha256_file)
+    canonical_sha256, score_artifact, sha256_file)
 from helioslm_v5.eval.std_bench import (  # noqa: E402
     SCHEMA_ID, gsm8k_prompt, humaneval_prompt, load_gsm8k, load_humaneval,
     run_gsm8k, run_humaneval, summarize)
@@ -89,7 +89,10 @@ def reference_generators(bench, tasks):
             ("done_immediately", lambda p, i: "DONE confidence=0.5", 0.0),
             ("prose_no_command", lambda p, i: "This looks easy.", 0.0),
         ]
-        if bench == "swe":
+        if bench == "terminal":
+            traps = {t["id"]: [t["trap"]] for t in tasks}
+            gens.append(("trap_solution", scripted_from(traps), 0.0))
+        else:
             traps = {k: [v] for k, v in swe_bench.trap_commands().items()}
             gens.append(("trap_patch", scripted_from(traps), 0.0))
         return gens
@@ -181,7 +184,16 @@ def api_run(args):
             out["stop"] = stop_report(results)   # AC5: was DONE justified?
         name = args.model.split("/")[-1]
         dest = Path(args.out_dir) / f"std_bench_{bench}_{name}_{DATE}.json"
+        dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
+        if bench == "terminal":
+            # Reuse the board's real schema reader, not a second metric path.
+            # A run with no verbalized confidence remains a valid accuracy
+            # artifact, but has no calibration row by definition.
+            out["calibration"] = (score_artifact(dest)
+                                  if any(r["conf"] is not None for r in results)
+                                  else None)
+            dest.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
         print(json.dumps({k: v for k, v in out.items() if k != "results"},
                          indent=2))
         meter.clear()
