@@ -5,7 +5,10 @@ a gate-count bonus (``helioslm_v5/eval/hdl_reward.py``).
   # 1. tasks (CPU, needs iverilog + yosys): golden designs that can be driven
   python examples/hdl_rl_hf.py prepare --parquet codev_r1_rl_train.parquet \\
       --out /workspace/rl/tasks.jsonl
-  # 2. train (one GPU, vLLM for rollouts in a subprocess each round)
+  # 2. audit the reward before training (CPU, Icarus; --formal also needs Yosys)
+  python examples/hdl_rl_hf.py audit --tasks /workspace/rl/tasks.jsonl \\
+      --formal --out /workspace/rl/reward_audit.json
+  # 3. train (one GPU, vLLM for rollouts in a subprocess each round)
   python examples/hdl_rl_hf.py train --model /workspace/sft --tasks /workspace/rl/tasks.jsonl \\
       --out /workspace/runs/rl --max-hours 5
 
@@ -253,6 +256,37 @@ def save_policy(model, tok_dir, out):
             shutil.copy(src, out / f)
 
 
+def cmd_audit(a):
+    """Multi-seed mutant audit of H4 tasks (CPU; Icarus, plus Yosys with --formal)."""
+    tasks = [json.loads(x) for x in open(a.tasks, encoding="utf-8") if x.strip()]
+    workers = a.workers or cpu_limit()
+
+    def one(item):
+        i, task = item
+        res = hr.audit_task(task, seeds=tuple(a.seeds), max_mutants=a.mutants,
+                            equiv_fn=hr.formal_equiv if a.formal else None)
+        return {"task": task.get("name", f"task_{i}"), **res}
+
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        audits = list(ex.map(one, enumerate(tasks)))
+    counts = {state: sum(r["counts"][state] for r in audits)
+              for state in hr.AUDIT_STATES}
+    summary = {"tasks": len(audits),
+               "golden_ok": sum(bool(r["golden_ok"]) for r in audits),
+               "false_accept_tasks": sum(bool(r["false_accept"]) for r in audits),
+               "unknown_tasks": sum(bool(r["unknown"]) for r in audits),
+               "counts": counts,
+               "ok": bool(audits) and all(r["golden_ok"] and not r["false_accept"]
+                                           for r in audits)}
+    out = {"schema": "hdl-reward-audit/1", "seeds": a.seeds,
+           "max_mutants": a.mutants, "formal": bool(a.formal),
+           "summary": summary, "tasks": audits}
+    Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+    Path(a.out).write_text(json.dumps(out, indent=1) + "\n", encoding="utf-8")
+    print(json.dumps(summary), flush=True)
+    return out
+
+
 def cmd_train(a):
     import torch
     from transformers import AutoModelForCausalLM
@@ -384,6 +418,14 @@ def main(argv=None):
     g.add_argument("--temperature", type=float, default=1.0)
     g.add_argument("--gpu-mem", type=float, default=0.45)
     g.add_argument("--seed", type=int, default=0)
+    au = sub.add_parser("audit", help="multi-seed mutant audit of H4 tasks")
+    au.add_argument("--tasks", required=True)
+    au.add_argument("--out", required=True)
+    au.add_argument("--seeds", type=int, nargs="+", default=[1, 2, 3])
+    au.add_argument("--mutants", type=int, default=8)
+    au.add_argument("--formal", action="store_true",
+                    help="resolve surviving mutants with Yosys miter/SAT")
+    au.add_argument("--workers", type=int)
     t = sub.add_parser("train")
     t.add_argument("--model", required=True)
     t.add_argument("--tasks", required=True)
@@ -404,8 +446,8 @@ def main(argv=None):
     t.add_argument("--frozen-bf16", action="store_true")
     t.add_argument("--seed", type=int, default=0)
     a = ap.parse_args(argv)
-    return {"prepare": cmd_prepare, "prepare-mcq": cmd_prepare_mcq, "generate": cmd_generate,
-            "train": cmd_train}[a.cmd](a)
+    return {"prepare": cmd_prepare, "prepare-mcq": cmd_prepare_mcq,
+            "generate": cmd_generate, "audit": cmd_audit, "train": cmd_train}[a.cmd](a)
 
 
 if __name__ == "__main__":
