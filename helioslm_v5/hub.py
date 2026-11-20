@@ -3,15 +3,24 @@
 Use explicit, trusted repositories: PyTorch pickle checkpoints are unsafe to
 load from untrusted authors. No network call occurs on import.
 """
-from dataclasses import asdict, fields
+from dataclasses import asdict, fields, is_dataclass
 import json
 from pathlib import Path
 import tempfile
+from typing import get_args, get_type_hints
 
 import torch
 
 from helioslm_v5.configs.config_v5 import HeliosLMv5Config
 from helioslm_v5.src.model_v5 import HeliosLMv5
+
+
+# Artifact-format versions are independent of the HeliosLM software version.
+# Version 0 is the original unversioned config.json; version 1 adds this
+# marker and strict field validation. Keep old readers working by migrating
+# explicitly here when a later format changes the config layout.
+CONFIG_FORMAT_VERSION = 1
+_CONFIG_FORMAT_KEY = "config_format_version"
 
 
 def _hub():
@@ -23,29 +32,53 @@ def _hub():
 
 
 def _serialize_config(config):
-    return asdict(config)
+    return {_CONFIG_FORMAT_KEY: CONFIG_FORMAT_VERSION, **asdict(config)}
 
 
 def _config_from_dict(payload):
-    """Rehydrate nested dataclasses without discarding explicit settings."""
-    from dataclasses import is_dataclass
-    from typing import get_type_hints
-    def construct(cls, data):
+    """Rehydrate nested dataclasses without silently discarding settings.
+
+    Unversioned configs are the legacy v0 layout. Every known field must
+    survive the round trip: an unknown key usually means the checkpoint was
+    written by a newer/different implementation, and loading it with defaults
+    could change inference behavior even when the tensor names still match.
+    """
+    if not isinstance(payload, dict):
+        raise ValueError("config must be a JSON object")
+    data = dict(payload)
+    version = data.pop(_CONFIG_FORMAT_KEY, 0)
+    if isinstance(version, bool) or not isinstance(version, int):
+        raise ValueError("config_format_version must be an integer")
+    if version < 0 or version > CONFIG_FORMAT_VERSION:
+        raise ValueError(
+            f"unsupported config_format_version {version}; this build supports "
+            f"legacy 0 through {CONFIG_FORMAT_VERSION}"
+        )
+
+    def construct(cls, values, path):
+        if not isinstance(values, dict):
+            raise ValueError(f"{path} must be a JSON object")
+        known = {field.name for field in fields(cls)}
+        unknown = sorted(set(values) - known)
+        if unknown:
+            names = ", ".join(f"{path}.{name}" for name in unknown)
+            raise ValueError(f"unknown config field(s): {names}")
         hints = get_type_hints(cls)
         kwargs = {}
         for field in fields(cls):
-            if field.name not in data:
+            if field.name not in values:
                 continue
-            value = data[field.name]
+            value = values[field.name]
             typ = hints.get(field.name)
             # For Optional[Dataclass], find the dataclass in its union args.
-            from typing import get_args
-            nested = [t for t in (get_args(typ) or (typ,)) if isinstance(t, type) and is_dataclass(t)]
-            if isinstance(value, dict) and nested:
-                value = construct(nested[0], value)
+            nested = [t for t in (get_args(typ) or (typ,))
+                      if isinstance(t, type) and is_dataclass(t)]
+            if nested and value is not None:
+                value = construct(nested[0], value, f"{path}.{field.name}")
             kwargs[field.name] = value
         return cls(**kwargs)
-    return construct(HeliosLMv5Config, payload)
+
+    return construct(HeliosLMv5Config, data, "config")
 
 
 def save_pretrained(model, directory):

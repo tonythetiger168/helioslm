@@ -12,10 +12,7 @@ demands.
 """
 import random
 
-
-import sys as _sys
-_sys.path.insert(0, "/mnt/agents/output/hlwork/main/helioslm_v5/agent")
-from task_grammar import parse as parse_task, render as render_task
+from helioslm_v5.agent.task_grammar import parse as parse_task, render as render_task
 
 
 class SelfGenEnv:

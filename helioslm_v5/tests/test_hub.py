@@ -37,6 +37,10 @@ def test_hub_local_roundtrip(tmp_path):
     config = HeliosLMv5Config(size="lite")
     original = HeliosLMv5(config).eval()
     save_pretrained(original, tmp_path)
+    import json
+    from helioslm_v5.hub import CONFIG_FORMAT_VERSION
+    saved = json.loads((tmp_path / "config.json").read_text(encoding="utf-8"))
+    assert saved["config_format_version"] == CONFIG_FORMAT_VERSION
     restored = load_pretrained(tmp_path).eval()
     assert restored.config.size == "lite"
     for key, value in original.state_dict().items():
@@ -87,14 +91,44 @@ def test_hub_upload_download_with_mock_backend(tmp_path, monkeypatch):
 
 
 def test_hub_config_roundtrip_every_preset():
-    """config.json must rebuild every preset exactly (nested dataclasses,
-    tuples that JSON turns into lists), not just the lite default (#4)."""
+    """Round-trip every preset and reject settings that would be discarded."""
+    import copy
     import json
     from dataclasses import asdict
     from helioslm_v5.configs import config_v5 as C
-    from helioslm_v5.hub import _config_from_dict
+    from helioslm_v5.hub import (CONFIG_FORMAT_VERSION, _config_from_dict,
+                                 _serialize_config)
     presets = [HeliosLMv5Config(size="lite"), HeliosLMv5Config(size="mid"),
                C.k3_block_config(), C.mimo_hybrid_config(), C.qwen_next_config()]
     for cfg in presets:
         payload = json.loads(json.dumps(asdict(cfg)))
         assert _config_from_dict(payload) == cfg
+
+    cfg = HeliosLMv5Config(size="lite")
+    legacy = json.loads(json.dumps(asdict(cfg)))
+    original = copy.deepcopy(legacy)
+    # Existing checkpoints had no marker: treat them as legacy format 0.
+    assert _config_from_dict(legacy) == cfg
+    assert legacy == original, "config parsing must not mutate the input"
+
+    versioned = _serialize_config(cfg)
+    assert versioned["config_format_version"] == CONFIG_FORMAT_VERSION
+    assert _config_from_dict(versioned) == cfg
+
+    unknown = dict(legacy, definitely_not_a_real_option=123)
+    with pytest.raises(ValueError, match="config.definitely_not_a_real_option"):
+        _config_from_dict(unknown)
+
+    nested = copy.deepcopy(legacy)
+    nested["attention"]["definitely_not_a_real_option"] = 123
+    with pytest.raises(ValueError,
+                       match="config.attention.definitely_not_a_real_option"):
+        _config_from_dict(nested)
+
+    future = dict(versioned, config_format_version=CONFIG_FORMAT_VERSION + 1)
+    with pytest.raises(ValueError, match="unsupported config_format_version"):
+        _config_from_dict(future)
+
+    invalid = dict(versioned, config_format_version=True)
+    with pytest.raises(ValueError, match="config_format_version must be an integer"):
+        _config_from_dict(invalid)
