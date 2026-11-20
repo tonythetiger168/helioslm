@@ -35,18 +35,6 @@ from helioslm_v5.eval.calibration_board import score_artifact  # noqa: E402
 _SCRIPT = _REPO / "examples" / "std_bench_run.py"
 _TASKS = {t["id"]: t for t in tb.load_tasks()}
 
-NAIVE = {
-    "term/00-count-errors": "grep -c ERROR app.log > answer.txt",
-    "term/02-unique-emails": "grep -oE '[a-zA-Z0-9.]+@[a-zA-Z.]+' "
-                             "contacts.txt | sort -u > emails.txt",
-    "term/03-fix-script": "printf 'def total(n):\\n    return 55\\n' > calc.py",
-    "term/05-csv-sum": "awk -F, '$1 ~ /north/ {s+=$2} END {print s}' "
-                       "sales.csv > total.txt",
-    "term/07-replace-host": "sed -i 's/localhost/db.internal/g' config/*",
-    "term/09-archive": "tar -czf backup.tar.gz .",
-}
-
-
 def _state_after(task, commands):
     with tempfile.TemporaryDirectory() as root:
         tb.seed_sandbox(task, root)
@@ -56,7 +44,10 @@ def _state_after(task, commands):
 
 
 def test_tasks_start_unsolved_and_references_solve():
-    assert len(_TASKS) == 10
+    assert len(_TASKS) == 50
+    assert {t["tier"] for t in _TASKS.values()} == {"easy", "medium", "hard"}
+    assert {t["verification"] for t in _TASKS.values()} == \
+        {"exact", "seeded-invariant", "seeded-distribution"}
     for tid, task in _TASKS.items():
         ok, detail = _state_after(task, [])
         assert not ok, f"{tid} is solved before any command: {detail}"
@@ -66,8 +57,8 @@ def test_tasks_start_unsolved_and_references_solve():
 
 
 def test_verifiers_reject_naive_solutions():
-    for tid, cmd in NAIVE.items():
-        ok, detail = _state_after(_TASKS[tid], [cmd])
+    for tid, task in _TASKS.items():
+        ok, detail = _state_after(task, [task["trap"]])
         assert not ok, f"{tid} accepted a naive solution: {detail}"
     print("PASS test_verifiers_reject_naive_solutions")
 
@@ -126,7 +117,7 @@ class _Mock(BaseHTTPRequestHandler):
         tid, k = m.group(1), int(m.group(2)) - 1
         steps = _TASKS[tid]["solution"]
         if tid == "term/00-count-errors":      # a wrong-but-confident agent
-            steps = [NAIVE[tid]]
+            steps = [_TASKS[tid]["trap"]]
         text = (f"```bash\n{steps[k]}\n```" if k < len(steps)
                 else "DONE confidence=0.8")
         out = json.dumps({"choices": [{"message": {"content": text}}],
@@ -162,6 +153,9 @@ def test_api_path_with_mock():
             assert out["usage"]["calls"] == 2 + 2 + 2   # 1 cmd + DONE each
             row = score_artifact(path)
             assert row["overconfident_wrong"] == 0 and row["n_wrong_scored"] == 1
+            assert out["calibration"] == row
+            assert all(r["task_family"] and r["tier"] and r["verification"]
+                       for r in out["results"])
     finally:
         server.shutdown()
         server.server_close()
