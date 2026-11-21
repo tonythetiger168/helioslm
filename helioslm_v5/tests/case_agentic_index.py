@@ -17,6 +17,7 @@ from helioslm_v5.eval.agentic_index import (
     generate, load_components, render_index)
 from helioslm_v5.tests.case_common import _pass
 
+_REPO = Path(__file__).resolve().parent.parent.parent
 _SCORES = {"terminal": 0.50, "swe": 0.75, "long_horizon": 0.60,
            "tool_recovery": 0.90, "hdl": 0.40}
 _NS = {"terminal": 50, "swe": 40, "long_horizon": 5,
@@ -79,7 +80,7 @@ def test_metric_order_and_cli_reproduction():
         checked = subprocess.run([
             sys.executable, "-m", "helioslm_v5.eval.agentic_index",
             "--results", str(fixture), "--output", str(output), "--check"],
-            capture_output=True, text=True, timeout=30)
+            cwd=_REPO, capture_output=True, text=True, timeout=30)
         assert checked.returncode == 0, checked.stdout + checked.stderr
         assert "NOT A MODEL SCORE" in checked.stdout
     print("PASS test_metric_order_and_cli_reproduction")
@@ -175,7 +176,7 @@ def test_cli_stale_output_is_loud_and_not_rewritten():
         cli = subprocess.run([
             sys.executable, "-m", "helioslm_v5.eval.agentic_index",
             "--results", str(fixture), "--output", str(output), "--check"],
-            capture_output=True, text=True, timeout=30)
+            cwd=_REPO, capture_output=True, text=True, timeout=30)
         assert cli.returncode == 2
         assert "stale Agentic Index" in cli.stderr
         (fixture / "hdl.json").unlink()
