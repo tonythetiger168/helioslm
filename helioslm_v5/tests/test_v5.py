@@ -46,6 +46,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from helioslm_v5.tests import (  # noqa: E402
+    case_agentic_index,
     case_audio_vision,
     case_dualpipe,
     case_engine,
@@ -277,7 +278,9 @@ TESTS = [
     # the day the sidecar landed: one analytic function, no fixtures.
     case_upstream_suites.test_kv_cache_analytic_suite,
     # Worker launch env: pure file parse, folded the day it landed.
-    # test_openai_stream_smoke stays exempt (binds a port).
+    # test_openai_stream_smoke is not registered here. It binds
+    # 127.0.0.1 through ThreadingHTTPServer (ephemeral port) and reads a
+    # live SSE response, so it stays in EXEMPT_SIDECARS with test_hsh_web.
     case_upstream_suites.test_worker_launch_env_suite,
     # Mac MLX download zips (v5.245), folded the day it landed.
     case_upstream_suites.test_mlx_mac_suite,
@@ -314,7 +317,7 @@ TESTS = [
     case_upstream_suites.test_prefix_pool_chained_suite,
     case_upstream_suites.test_pool_ledger_suite,
     case_upstream_suites.test_stop_calibration_suite,
-    # daily-maintenance round (2026-11-08, v5.258): oracle-answer guard,
+    # daily-maintenance round (2026-11-08): oracle-answer guard,
     # tri-mode think parser + experience store, thinking-budget state
     # machine, three-modes report oracles, skill-docs validator. All
     # plain functions: no pytest, no fixtures, no sockets, no CUDA.
@@ -428,6 +431,9 @@ TESTS = [
     case_upstream_suites.test_csa_learned_16x_suite,
     case_upstream_suites.test_csa_learned_r3_suite,
     case_upstream_suites.test_distill_sft_suite,
+    # Phase 3 Agentic Index: fixed weights, strict provenance,
+    # schema-fixture boundary and byte-for-byte CLI --check.
+    case_agentic_index.test_agentic_index_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 

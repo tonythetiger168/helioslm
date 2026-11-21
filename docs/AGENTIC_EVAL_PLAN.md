@@ -3,8 +3,10 @@
 Implementation status: Phase 1 is implemented with 50 tasks, three
 difficulty tiers, exact and seeded hidden-oracle verification, a per-task
 trap gate in the committed std-bench reference, and a calibration-board row
-embedded in each terminal API artifact that carries confidence. Phase 2/3
-remain plans; no upstream Terminal-Bench score is claimed.
+embedded in each terminal API artifact that carries confidence. Phase 3's
+aggregation contract and reproducible CLI are implemented; Phase 2 remains a
+plan. There is still no five-component HeliosLM model baseline and no upstream
+Terminal-Bench score.
 
 Why: 2026 agentic leaderboards weight long-horizon terminal/repository
 work highest (Artificial Analysis puts agentic coding at 30% of its
@@ -22,11 +24,12 @@ Terminal-Bench-comparable track.
 | SWE-style RL env + repair bench | `helioslm_v5/eval/swe_bench.py`, `examples/swe_agent_rl_train.py` | working |
 | Tool-call parse recovery audit | `helioslm_v5/agent/tool_recovery.py` | working |
 | Verbalized-confidence capture | `DONE confidence=` in term_bench; `calibration_board.py` | working |
+| Fixed-weight agentic aggregation contract | `helioslm_v5/eval/agentic_index.py` | implemented; no model baseline yet |
 
 Remaining gaps against Terminal-Bench-style evaluation: no upstream
 Terminal-Bench task adapter; no multi-step tasks requiring package installs
-or service orchestration; results not aggregated into one agentic index; no
-contamination control against upstream task text.
+or service orchestration; no measured five-component run from one candidate
+checkpoint; no contamination control against upstream task text.
 
 ## Phase 1 — scale the in-house miniature (implemented, no new deps)
 
@@ -63,19 +66,74 @@ Acceptance: adapter runs the docker-free subset end-to-end on the pod;
 report is labeled "Terminal-Bench (subset, no-docker)" and never mixed
 with full-split vendor numbers.
 
-## Phase 3 — one agentic index
+## Phase 3 — one agentic index (aggregation implemented)
 
-Aggregate term_bench (scaled), long_horizon_bench, swe_bench and the
-HDL benches into `results/agentic_index.json` with fixed weights
-(terminal 30%, swe 30%, long-horizon 20%, tool-recovery 10%, HDL 10% —
-mirroring public weighting so external comparisons stay interpretable).
-Every row carries the model's checkpoint hash and the task-set hash, so
-a changed task set never silently compares against an old run.
+`helioslm_v5/eval/agentic_index.py` aggregates term_bench (scaled),
+long_horizon_bench, swe_bench, tool recovery and the HDL benches into
+`results/agentic_index.json` with fixed weights: terminal 30%, SWE 30%,
+long-horizon 20%, tool-recovery 10% and HDL 10%. Every component carries the
+model name, checkpoint SHA-256, task-set name and SHA-256, sample count and a
+source run artifact with its SHA-256. A changed task set therefore cannot
+silently compare against an old run, and components from different models or
+checkpoints cannot be mixed.
 
-Acceptance: `python -m helioslm_v5.eval.agentic_index --results
-results/...` reproduces the committed index JSON byte-for-byte for a
-recorded run (same reproducibility contract as `calibration_board
---check`).
+A results directory contains these five component descriptors:
+`terminal.json`, `swe.json`, `long_horizon.json`, `tool_recovery.json` and
+`hdl.json`. Source artifacts are addressed by normalized paths relative to
+that directory. For example:
+
+```json
+{
+  "schema": "agentic-component/1",
+  "component": "terminal",
+  "model": "helioslm-candidate",
+  "checkpoint_sha256": "<64 lowercase hex characters>",
+  "task_set": "term-bench-50-v1",
+  "task_set_sha256": "<64 lowercase hex characters>",
+  "score": 0.5,
+  "n": 50,
+  "evidence_type": "model_run",
+  "verification_tier": "measured",
+  "source": {
+    "artifact": "artifacts/terminal.json",
+    "sha256": "<64 lowercase hex characters>"
+  }
+}
+```
+
+Generate and later verify a recorded index with:
+
+```bash
+python -m helioslm_v5.eval.agentic_index \
+  --results results/<run> --output results/<run>/agentic_index.json
+python -m helioslm_v5.eval.agentic_index \
+  --results results/<run> --output results/<run>/agentic_index.json --check
+```
+
+`--check` compares the complete serialization byte-for-byte and never rewrites
+a stale output. Missing, duplicate or unknown components; malformed hashes;
+NaN, infinite, boolean or out-of-range scores; mixed checkpoint/model/evidence
+identities; and source hash mismatches are hard failures, not zero scores.
+
+**Evidence boundary:** a publishable model index requires all five components
+to use `model_run` + `measured`. Scripted std-bench references, the
+long-horizon `run_suite()` oracle, tool-recovery unit-test reports and HDL
+`self_check()` results validate harnesses; they are not candidate model runs
+and must not be relabeled to manufacture an index. A partial index is not a
+lower or provisional total.
+
+The daily-gate `case_agentic_index.py` builds an isolated `schema_fixture` +
+`schema-fixture` run and requires `is_model_score: false`. Its 0.625 is only
+the hand-computed math oracle (0.15 + 0.225 + 0.12 + 0.09 + 0.04), not a
+HeliosLM baseline. Four tests pin the weighting math, deterministic order,
+canonical component hash, strict validation, source tampering, CLI generation
+and non-writing byte-for-byte `--check`. No static fixture index is committed
+because there is no recorded five-component candidate run to publish yet.
+
+**Remaining Phase 3 work:** run one actual candidate checkpoint on all five
+benchmarks, adapt each measured artifact to the component schema, and commit
+that run's provenance and reproducible index before claiming a HeliosLM
+Agentic Index.
 
 ## Explicitly out of scope
 
