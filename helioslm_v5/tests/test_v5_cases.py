@@ -33,24 +33,25 @@ def test_case_list_is_unique():
     assert len(names) >= 93
 
 
-@pytest.mark.parametrize(("has_tokenizers", "executed"), [(True, "7/7"),
-                                                          (False, "6/7")])
-def test_distill_sft_suite_reporting(monkeypatch, capsys, has_tokenizers, executed):
+@pytest.mark.parametrize("has_tokenizers, expected", [(True, "7/7"),
+                                                       (False, "6/7")])
+def test_distill_sft_daily_report_counts_executed_cases(
+        monkeypatch, capsys, has_tokenizers, expected):
+    """The optional CLI case must not be reported as skipped when it ran."""
     import importlib.util
     from helioslm_v5.tests import case_upstream_suites as suites
-    from helioslm_v5.tests import test_distill_sft
+    from helioslm_v5.tests import test_distill_sft as sidecar
 
-    for name in vars(test_distill_sft):
+    for name in vars(sidecar):
         if name.startswith("test_"):
-            monkeypatch.setattr(test_distill_sft, name, lambda *args: None)
+            monkeypatch.setattr(sidecar, name, lambda *args: None)
     monkeypatch.setattr(importlib.util, "find_spec",
                         lambda name: object() if has_tokenizers else None)
 
     suites.test_distill_sft_suite()
-
     output = capsys.readouterr().out
-    assert f"D3 student SFT: {executed} sidecar tests" in output
-    assert ("SKIP test_cli_prepare_and_train:" in output) is not has_tokenizers
+    assert f"D3 student SFT: {expected} sidecar tests" in output
+    assert ("SKIP test_cli_prepare_and_train" in output) is (not has_tokenizers)
 
 
 @pytest.mark.parametrize("case", test_v5.TESTS,
