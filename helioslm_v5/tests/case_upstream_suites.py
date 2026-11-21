@@ -3020,15 +3020,17 @@ def test_distill_sft_suite():
             # before __exit__ drops the cycle — same fix as
             # test_jax_pretrain_suite (v5.269).
             gc.collect()
-    if importlib.util.find_spec("tokenizers") is not None:
+    has_tokenizers = importlib.util.find_spec("tokenizers") is not None
+    if has_tokenizers:
         with tempfile.TemporaryDirectory() as t:
             m.test_cli_prepare_and_train(Path(t))
             gc.collect()
     else:
         print("SKIP test_cli_prepare_and_train: 'tokenizers' not "
               "installed (importorskip semantics)")
+    executed = 7 if has_tokenizers else 6
     _pass("test_distill_sft_suite",
-          "D3 student SFT: 6/7 sidecar tests under the daily gate "
+          f"D3 student SFT: {executed}/7 sidecar tests under the daily gate "
           "(CLI prepare/train self-skips without the optional "
           "'tokenizers' package, as importorskip does on CI)")
 
