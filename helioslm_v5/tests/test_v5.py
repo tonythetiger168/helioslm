@@ -421,6 +421,13 @@ TESTS = [
     case_upstream_suites.test_grounded_replay_suite,
     case_upstream_suites.test_rlcd_head_suite,
     case_upstream_suites.test_mini_bench_suite,
+    # limitations round (2026-11-21): T117 16x CSA curriculum, T95
+    # round-3 compressor + relu2 option, D3 student SFT on teacher
+    # answers (in-file pytest shim; tmp_path via TemporaryDirectory;
+    # tokenizers CLI test self-skips). 11 sidecar functions total.
+    case_upstream_suites.test_csa_learned_16x_suite,
+    case_upstream_suites.test_csa_learned_r3_suite,
+    case_upstream_suites.test_distill_sft_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 

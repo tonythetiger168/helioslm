@@ -1103,6 +1103,10 @@ def test_kv_cache_analytic_suite():
 # test_option_matrix was triaged and stays EXEMPT for now: its pairwise
 # matrix runs 465 combos in ~157 s, which would materially grow the
 # mandated gate; it needs a slimmed smoke subset before folding.
+# 2026-11-21 limitations round: test_csa_learned_16x (T117 16x CSA
+# curriculum), test_csa_learned_r3 (T95 round-3 compressor + relu2) and
+# test_distill_sft (D3 student SFT on teacher answers) moved from
+# EXEMPT to FOLDED — the backlog is now 111 files.
 # OpenAI-compatible stream smoke (serving/openai_stream_smoke.py):
 # test_openai_stream_smoke is exempt for the same reason as test_hsh_web.
 # It binds 127.0.0.1 through ThreadingHTTPServer on an ephemeral port and
@@ -1255,6 +1259,11 @@ FOLDED_SIDECARS = {
     "test_grounded_replay": "test_grounded_replay_suite",
     "test_rlcd_head": "test_rlcd_head_suite",
     "test_mini_bench": "test_mini_bench_suite",
+    # limitations round 2026-11-21: T117 16x CSA curriculum / T95 round-3
+    # compressor + relu2 / D3 student SFT on teacher answers
+    "test_csa_learned_16x": "test_csa_learned_16x_suite",
+    "test_csa_learned_r3": "test_csa_learned_r3_suite",
+    "test_distill_sft": "test_distill_sft_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1266,11 +1275,11 @@ EXEMPT_SIDECARS = {
     'test_bench_quant', 'test_calibrated_prefetcher',
     'test_calibrated_router',
     'test_clamped_swiglu',
-    'test_csa_learned', 'test_csa_learned_16x', 'test_csa_learned_h64',
-    'test_csa_learned_r3', 'test_cuda_device_paths', 'test_cuda_smoke', 'test_custom_attention_notebook',
+    'test_csa_learned', 'test_csa_learned_h64',
+    'test_cuda_device_paths', 'test_cuda_smoke', 'test_custom_attention_notebook',
     'test_cvdp_bench',
     'test_device_matrix',
-    'test_distill_gen', 'test_distill_sft',
+    'test_distill_gen',
     'test_gguf_quant',
     'test_global_prope_kv', 'test_gpu_batch_run',
     'test_hca_rescue', 'test_hdl_bench', 'test_hdl_data', 'test_hdl_git_sources',
@@ -2934,6 +2943,94 @@ def test_mini_bench_suite():
         getattr(m, name)()
     _pass("test_mini_bench_suite",
           "v5.42 mini-bench: all 3 sidecar tests under the daily gate")
+
+
+# ---------------------------------------------------------------------------
+# limitations round (2026-11-21): fold three more sidecars into the
+# daily gate — test_csa_learned_16x (T117: ratio-4 -> 16x transfer_state
+# restart, committed 16x weights and zero-shot row re-evaluate, ordering
+# v5.60 < zero-shot < fine-tuned <= oracle ceiling, tier registered;
+# 2 functions), test_csa_learned_r3 (T95: round-3 4x weights re-evaluate
+# and beat v5.60, squared-ReLU option is bitwise mean pooling at zero
+# init and refuses unknown activations, tier registered; 2 functions)
+# and test_distill_sft (D3: transcript format / think-block / mix share,
+# encode mask boundary, pack + split by prompt, SFTShard, masked-CE
+# evaluation + init_from + bitwise resume, CLI prepare/train;
+# 7 functions). test_csa_learned_16x / test_csa_learned_r3 are plain
+# zero-argument files (no pytest at all); test_distill_sft gained the
+# in-file pytest shim (raises / importorskip / scalar approx) — its
+# tmp_path tests get real TemporaryDirectories and its
+# tokenizers-dependent CLI test self-skips under the gate because the
+# optional 'tokenizers' package is absent from the managed runtime (the
+# wrapper checks importlib.util.find_spec, mirroring pytest's
+# importorskip on CI; precedent: test_decontam, test_package_tiers).
+
+
+def test_csa_learned_16x_suite():
+    """T117 16x CSA compressor by curriculum under the daily gate: both
+    sidecar tests as-is."""
+    from helioslm_v5.tests import test_csa_learned_16x as m
+    expected = {"test_transfer_state", "test_16x_slice_and_ordering"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_csa_learned_16x_suite",
+          "T117 16x CSA: both sidecar tests under the daily gate")
+
+
+def test_csa_learned_r3_suite():
+    """T95 learned compressor round 3 under the daily gate: both sidecar
+    tests as-is."""
+    from helioslm_v5.tests import test_csa_learned_r3 as m
+    expected = {"test_round3_slice_reevaluates_and_beats_v560",
+                "test_relu2_option"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_csa_learned_r3_suite",
+          "T95 round-3 compressor: both sidecar tests under the daily "
+          "gate")
+
+
+def test_distill_sft_suite():
+    """D3 student SFT on teacher answers under the daily gate. 6 of 7
+    sidecar tests run unconditionally; test_cli_prepare_and_train
+    self-skips when the optional 'tokenizers' package is absent (same
+    skip as pytest's importorskip on CI). The tmp_path tests get real
+    TemporaryDirectories."""
+    import gc  # same WinError 32 cycle fix as test_jax_pretrain_suite
+    import importlib.util
+    from helioslm_v5.tests import test_distill_sft as m
+    expected = {"test_format_and_keep_thinking", "test_mode_switch",
+                "test_encode_mask_boundary", "test_pack_and_split",
+                "test_sft_shard", "test_pretrain_masked_init_and_resume",
+                "test_cli_prepare_and_train"}
+    _drift_guard(m, expected)
+    for name in sorted(expected - {"test_sft_shard",
+                                   "test_pretrain_masked_init_and_resume",
+                                   "test_cli_prepare_and_train"}):
+        getattr(m, name)()
+    for name in ("test_sft_shard", "test_pretrain_masked_init_and_resume"):
+        with tempfile.TemporaryDirectory() as t:
+            getattr(m, name)(Path(t))
+            # Windows: SFTShard keeps np.memmap handles on the shard
+            # bins, and a reference cycle (traceback through the shim's
+            # raises generator) delays their release past
+            # TemporaryDirectory cleanup (WinError 32). gc.collect()
+            # before __exit__ drops the cycle — same fix as
+            # test_jax_pretrain_suite (v5.269).
+            gc.collect()
+    if importlib.util.find_spec("tokenizers") is not None:
+        with tempfile.TemporaryDirectory() as t:
+            m.test_cli_prepare_and_train(Path(t))
+            gc.collect()
+    else:
+        print("SKIP test_cli_prepare_and_train: 'tokenizers' not "
+              "installed (importorskip semantics)")
+    _pass("test_distill_sft_suite",
+          "D3 student SFT: 6/7 sidecar tests under the daily gate "
+          "(CLI prepare/train self-skips without the optional "
+          "'tokenizers' package, as importorskip does on CI)")
 
 
 def test_sidecar_coverage_guard():

@@ -24,7 +24,63 @@ import math
 import sys
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    # This file is also executed directly by the daily TESTS suite
+    # (case_upstream_suites), where pytest is not installed. The shim
+    # covers exactly the three pytest features used below: raises (no
+    # match= arguments), importorskip (torch IS installed in the gate's
+    # runtime, so it imports and returns; 'tokenizers' is absent and the
+    # wrapper self-skips that test instead of calling it — the shim
+    # fails loudly if reached) and approx (scalar only, one call passes
+    # abs=1e-5). Patterns from test_decontam.py / test_base_gap.py.
+    import contextlib as _contextlib
+    import importlib as _importlib
+    import re as _re
+
+    class _Approx:
+        """pytest.approx stand-in: scalar comparisons only, default
+        rel=1e-6 / abs=1e-12 (the one call site passes abs=1e-5)."""
+
+        def __init__(self, expected, rel=None, abs=None):
+            self.expected = expected
+            self.rel = 1e-6 if rel is None else rel
+            self.abs = 1e-12 if abs is None else abs
+
+        def __eq__(self, other):
+            return abs(other - self.expected) <= max(
+                self.rel * abs(self.expected), self.abs)
+
+    class _PytestShim:
+        @staticmethod
+        @_contextlib.contextmanager
+        def raises(exc, match=None):
+            try:
+                yield
+            except exc as e:
+                if match is not None and not _re.search(match, str(e)):
+                    raise AssertionError(
+                        f"raised {e!r}, which does not match /{match}/"
+                    ) from None
+                return
+            raise AssertionError(f"{exc.__name__} was not raised")
+
+        @staticmethod
+        def importorskip(module):
+            try:
+                return _importlib.import_module(module)
+            except ImportError as e:
+                raise AssertionError(
+                    f"importorskip: optional dependency {module!r} is "
+                    f"absent; the daily-gate wrapper must skip this "
+                    f"test instead of calling it") from e
+
+        @staticmethod
+        def approx(expected, rel=None, abs=None):
+            return _Approx(expected, rel=rel, abs=abs)
+
+    pytest = _PytestShim()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
