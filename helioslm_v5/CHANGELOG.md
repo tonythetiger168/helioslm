@@ -1,5 +1,33 @@
 # HeliosLM v5 Changelog
 
+## v5.272 (2026-11-21) - H4 reward audit, KL-anchored H4 RL, 50-task terminal eval
+
+Catch-up entry for #280, #281 and #282, which were merged without a
+version bump or CHANGELOG entry.
+
+#280: `helioslm_v5/eval/hdl_reward.py` treats the random-simulation
+reward as an auditable approximation: `simulate` takes a deterministic
+seed, `mutants` makes deterministic one-token mutants without touching
+comments or the module header, `formal_equiv` resolves survivors through
+a Yosys miter/SAT check (`True` proven equal, `False` counterexample,
+`None` unproven / tool failure), and `audit_task` classifies mutants as
+killed, equivalent, false-accept, unknown or invalid across seeds.
+`examples/hdl_rl_hf.py audit --formal` writes the pre-RL gate summary;
+`docs/HDL_BENCH.md` fixes the reward-audit and follow-up gates.
+
+#281 (docs only): `docs/H4_KL_RL_RUNBOOK.md`, `docs/AGENTIC_EVAL_PLAN.md`,
+`docs/K31_DISTILL_PLAN.md`.
+
+#282: `hdl_rl_hf.py train --kl-coef/--ref` adds the k3 KL penalty against
+a frozen bf16 reference (0 keeps the no-reference control arm, `kl` is
+logged per round); `term_bench.py` grows to 50 tiered tasks with
+no-op / reference / trap controls (std_bench reference now 16 gates);
+harness core contracts documented and tested.
+
+Fix: `test_harness_deep_suite` drift guard now registers the new
+`test_context_lookup_and_failed_plugin_contract` (5 sidecar tests); #282
+added the function without registering it, which failed the daily gate.
+
 ## v5.271 (2026-11-17) - Agent-layer / SWE / tool-recovery sidecars folded into the suite
 
 Daily-maintenance fold of five more sidecar suites into the mandated

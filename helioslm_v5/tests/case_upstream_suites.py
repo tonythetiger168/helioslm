@@ -2763,7 +2763,8 @@ def test_harness_deep_suite():
     """Deep harness wiring (state across plugins, full preset, effect
     log audit view, multi-step pipeline) under the daily gate."""
     from helioslm_v5.tests import test_harness_deep as m
-    expected = {"test_effect_log_as_audit_viewer",
+    expected = {"test_context_lookup_and_failed_plugin_contract",
+                "test_effect_log_as_audit_viewer",
                 "test_full_preset_wires_everything",
                 "test_multi_step_pipeline_with_state",
                 "test_state_persists_across_plugins"}
@@ -2771,7 +2772,7 @@ def test_harness_deep_suite():
     for name in sorted(expected):
         getattr(m, name)()
     _pass("test_harness_deep_suite",
-          "deep harness wiring: all 4 sidecar tests under the daily gate")
+          "deep harness wiring: all 5 sidecar tests under the daily gate")
 
 
 # ---------------------------------------------------------------------------
