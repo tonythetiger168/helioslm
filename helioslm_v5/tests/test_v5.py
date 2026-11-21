@@ -46,6 +46,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from helioslm_v5.tests import (  # noqa: E402
+    case_agentic_index,
     case_audio_vision,
     case_dualpipe,
     case_engine,
@@ -428,6 +429,9 @@ TESTS = [
     case_upstream_suites.test_csa_learned_16x_suite,
     case_upstream_suites.test_csa_learned_r3_suite,
     case_upstream_suites.test_distill_sft_suite,
+    # Phase 3 Agentic Index: fixed weights, strict provenance,
+    # schema-fixture boundary and byte-for-byte CLI --check.
+    case_agentic_index.test_agentic_index_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 
