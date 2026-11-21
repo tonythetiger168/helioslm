@@ -411,6 +411,16 @@ TESTS = [
     # total).
     case_upstream_suites.test_chunked_ce_suite,
     case_upstream_suites.test_cpt_pilot_suite,
+    # daily-maintenance round (2026-11-21): T12 attn-res oracles,
+    # longctx needle probes, T39 grounded replay, T35 RLCD head,
+    # v5.42 mini-bench harness. All plain zero-argument functions —
+    # no pytest, no fixtures, no sockets, no CUDA (9 sidecar functions
+    # total).
+    case_upstream_suites.test_attn_res_suite,
+    case_upstream_suites.test_longctx_suite,
+    case_upstream_suites.test_grounded_replay_suite,
+    case_upstream_suites.test_rlcd_head_suite,
+    case_upstream_suites.test_mini_bench_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 

@@ -1097,6 +1097,12 @@ def test_kv_cache_analytic_suite():
 # output head + cross-entropy) and test_cpt_pilot (T134 route-B pilot:
 # mixture fetch/plan/write, cpt_hf train loop, gap table, cap_weights)
 # moved from EXEMPT to FOLDED — the backlog is now 119 files.
+# 2026-11-21 daily-maintenance round: test_attn_res (T12), test_longctx,
+# test_grounded_replay (T39), test_rlcd_head (T35) and test_mini_bench
+# (v5.42) moved from EXEMPT to FOLDED — the backlog is now 114 files.
+# test_option_matrix was triaged and stays EXEMPT for now: its pairwise
+# matrix runs 465 combos in ~157 s, which would materially grow the
+# mandated gate; it needs a slimmed smoke subset before folding.
 # OpenAI-compatible stream smoke (serving/openai_stream_smoke.py):
 # test_openai_stream_smoke is exempt for the same reason as test_hsh_web.
 # It binds 127.0.0.1 through ThreadingHTTPServer on an ephemeral port and
@@ -1241,6 +1247,14 @@ FOLDED_SIDECARS = {
     # pilot (mixture fetch, train loop, gap table)
     "test_chunked_ce": "test_chunked_ce_suite",
     "test_cpt_pilot": "test_cpt_pilot_suite",
+    # daily-maintenance round 2026-11-21 (v5.273): T12 attn-res oracles /
+    # longctx needle probes / T39 grounded replay / T35 RLCD head /
+    # v5.42 mini-bench harness
+    "test_attn_res": "test_attn_res_suite",
+    "test_longctx": "test_longctx_suite",
+    "test_grounded_replay": "test_grounded_replay_suite",
+    "test_rlcd_head": "test_rlcd_head_suite",
+    "test_mini_bench": "test_mini_bench_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1248,7 +1262,7 @@ FOLDED_SIDECARS = {
 # stay out of the gate; it only means "known, pending triage".
 EXEMPT_SIDECARS = {
     'test_api_distill',
-    'test_async_grpo', 'test_attn_res',
+    'test_async_grpo',
     'test_bench_quant', 'test_calibrated_prefetcher',
     'test_calibrated_router',
     'test_clamped_swiglu',
@@ -1258,7 +1272,7 @@ EXEMPT_SIDECARS = {
     'test_device_matrix',
     'test_distill_gen', 'test_distill_sft',
     'test_gguf_quant',
-    'test_global_prope_kv', 'test_gpu_batch_run', 'test_grounded_replay',
+    'test_global_prope_kv', 'test_gpu_batch_run',
     'test_hca_rescue', 'test_hdl_bench', 'test_hdl_data', 'test_hdl_git_sources',
     'test_hdl_projects', 'test_hdl_reward', 'test_hdl_train_eval', 'test_hf_license_audit',
     'test_hsh_egress', 'test_hsh_extras', 'test_hsh_interaction',
@@ -1268,9 +1282,9 @@ EXEMPT_SIDECARS = {
     'test_k3_llamacpp_parts', 'test_kda_chunked', 'test_kda_k3_style', 'test_kda_subchunk',
     'test_kv_compress', 'test_kv_share', 'test_llamacpp_export', 'test_llamacpp_kimi_k3',
     'test_llamacpp_tokenizer', 'test_lm_decision_head', 'test_lm_harness', 'test_logit_kd',
-    'test_longctx', 'test_longctx_harness',
+    'test_longctx_harness',
     'test_midtrain',
-    'test_mimo_hybrid', 'test_mini_bench', 'test_mla_every', 'test_mla_expanded_training',
+    'test_mimo_hybrid', 'test_mla_every', 'test_mla_expanded_training',
     'test_moe_config_table', 'test_mopd', 'test_mtp_light', 'test_mtp_rollout',
     'test_multiseed', 'test_nope_temperature',     'test_noul_continuous', 'test_nvfp4_qat_e2e',
     # Binds 127.0.0.1 (ephemeral port); same exemption as test_hsh_web.
@@ -1280,7 +1294,7 @@ EXEMPT_SIDECARS = {
     'test_distill_local_3070',
     'test_option_matrix', 'test_ple',
     'test_probe_api', 'test_prune_kd_gemma4', 'test_quant_calib', 'test_quantile_balancing', 'test_qwen_next',
-    'test_repo_longctx', 'test_rlcd_head',
+    'test_repo_longctx',
     'test_rtllm_bench', 'test_selfgen_meta',
     'test_smebu_sandwich', 'test_std_bench', 'test_swarm_parallel',
     'test_task_grammar',
@@ -2836,6 +2850,90 @@ def test_cpt_pilot_suite():
           "write_source, MixedSource, train loop with decay switch and "
           "freeze, fit_warmup, dry-run report, gap table, cap_weights "
           "(10 sidecar tests under the daily gate)")
+
+
+# ---------------------------------------------------------------------------
+# daily-maintenance round (2026-11-21, v5.273): fold five more
+# exempt-backlog sidecars into the daily gate — the T12 attention-residual
+# mixer oracles, the long-context needle probes, the T39 grounded-replay
+# audit oracles, the T35 RLCD confidence-head oracles and the v5.42
+# mini-benchmark harness oracles. All five are plain zero-argument
+# functions: no pytest import, no fixtures, no sockets, no CUDA, no
+# subprocess; each was verified standalone on the managed runtime before
+# folding (combined wall time ~1.2 s, so the gate's budget is untouched).
+# test_option_matrix was triaged and stays EXEMPT for now: its pairwise
+# matrix runs 465 combos in ~157 s on this machine, which would
+# materially grow the mandated gate — it needs a slimmed smoke subset
+# before folding.
+# ---------------------------------------------------------------------------
+
+
+def test_attn_res_suite():
+    """T12 attention-residual mixer oracles under the daily gate. One
+    plain function: toy-stack determinism and migration gates."""
+    from helioslm_v5.tests import test_attn_res as m
+    expected = {"test_t12_attnres_oracles"}
+    _drift_guard(m, expected)
+    m.test_t12_attnres_oracles()
+    _pass("test_attn_res_suite",
+          "T12 attn-res mixer: 1 sidecar test under the daily gate")
+
+
+def test_longctx_suite():
+    """Long-context needle probes under the daily gate. One plain
+    function: depth-0.1 hit / depth-0.9 miss against a scripted model_fn
+    and the seeded corpus determinism pin."""
+    from helioslm_v5.tests import test_longctx as m
+    expected = {"test_longctx_probes"}
+    _drift_guard(m, expected)
+    m.test_longctx_probes()
+    _pass("test_longctx_suite",
+          "longctx needle probes: 1 sidecar test under the daily gate")
+
+
+def test_grounded_replay_suite():
+    """T39 grounding-aware replay oracles under the daily gate. Pins:
+    the recorded grounded trajectory re-verifies end to end on a fresh
+    GroundingGate, and tampered observations are caught."""
+    from helioslm_v5.tests import test_grounded_replay as m
+    expected = {"test_grounded_replay_catches_tamper",
+                "test_grounded_replay_roundtrip"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_grounded_replay_suite",
+          "T39 grounded replay: both sidecar tests under the daily gate")
+
+
+def test_rlcd_head_suite():
+    """T35 RLCD confidence-head oracles under the daily gate. Pins: the
+    head recovers the right/wrong separation from outcomes alone while
+    the model's own confidence claim stays pinned at ~0.9999, and the
+    RLCD reward adjustment penalizes confident-wrong."""
+    from helioslm_v5.tests import test_rlcd_head as m
+    expected = {"test_model_conf_carries_no_signal_but_head_recovers",
+                "test_rlcd_penalizes_confident_wrong"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_rlcd_head_suite",
+          "T35 RLCD head: both sidecar tests under the daily gate")
+
+
+def test_mini_bench_suite():
+    """v5.42 mini-benchmark harness oracles (Phase 3.3) under the daily
+    gate. Pins: accuracy is measured not assumed (a wrong-answer layout
+    scores 0.0), the task-file schema with loud errors on 5 bad cases,
+    and a perfect stub scores 10/10 with an exact per-benchmark split."""
+    from helioslm_v5.tests import test_mini_bench as m
+    expected = {"test_accuracy_is_measured_not_assumed",
+                "test_load_tasks_schema_and_loud_errors",
+                "test_perfect_stub_scores_all_benchmarks"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_mini_bench_suite",
+          "v5.42 mini-bench: all 3 sidecar tests under the daily gate")
 
 
 def test_sidecar_coverage_guard():

@@ -1,5 +1,26 @@
 # HeliosLM v5 Changelog
 
+## v5.273 (2026-11-21) - Attn-res / longctx / grounded-replay / RLCD / mini-bench sidecars folded into the suite
+
+Daily-maintenance fold of five more sidecar suites into the mandated
+daily gate (TESTS 204 -> 209): test_attn_res (T12 attention-residual
+mixer oracles; 1 function), test_longctx (needle-probe depth pins and
+seeded corpus determinism; 1), test_grounded_replay (T39: the recorded
+grounded trajectory re-verifies on a fresh GroundingGate, tampered
+observations caught; 2), test_rlcd_head (T35: the head recovers the
+right/wrong separation from outcomes alone while the model's own
+confidence claim stays pinned at ~0.9999, confident-wrong penalized;
+2) and test_mini_bench (v5.42 Phase 3.3: accuracy measured not
+assumed, task-schema loud errors, perfect-stub 10/10 with an exact
+per-benchmark split; 3). All five are plain zero-argument functions —
+no pytest import, no fixtures, no sockets, no CUDA, no subprocess —
+and each was verified standalone before wrapping (combined wall time
+~1.2 s, so the gate's budget is untouched). FOLDED 93 -> 98, EXEMPT
+119 -> 114, coverage guard still locks 212 files. test_option_matrix
+was triaged and stays EXEMPT for now: its pairwise matrix runs 465
+combos in ~157 s on this machine, which would materially grow the
+mandated gate — it needs a slimmed smoke subset before folding.
+
 ## v5.272 (2026-11-21) - H4 reward audit, KL-anchored H4 RL, 50-task terminal eval
 
 Catch-up entry for #280, #281 and #282, which were merged without a
