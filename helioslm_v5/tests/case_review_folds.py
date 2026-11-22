@@ -12,10 +12,11 @@ mechanisms whose oracles sat in the EXEMPT sidecar backlog.
 Bookkeeping note: the wrappers live here, not in
 case_upstream_suites.py, because that file is 160KB+ and the GitHub
 API content path is transcription-risky at that size (two slip events
-on record). The sidecars stay listed in EXEMPT_SIDECARS so the
-coverage guard is unaffected; moving the registry entries to
-FOLDED_SIDECARS is left to the next direct-edit (non-API) maintenance
-round. Their tests run daily here regardless.
+on record). The registry entries moved from EXEMPT_SIDECARS to
+FOLDED_SIDECARS in the 2026-11-23 direct-edit maintenance round; the
+coverage guard resolves wrapper names across both modules (its import
+of this module is call-time deferred, because this module imports
+_drift_guard from that one).
 """
 import sys
 from pathlib import Path
