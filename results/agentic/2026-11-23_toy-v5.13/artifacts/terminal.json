@@ -252,6 +252,7 @@
    "<no command>",
    "<no command>",
    "<no command>",
+   "<no command>",
    "<no command>"
   ],
   "conf": null,
@@ -272,6 +273,7 @@
   "ended": "max_steps",
   "invalid_replies": 10,
   "commands": [
+   "<no command>",
    "<no command>",
    "<no command>",
    "<no command>",
