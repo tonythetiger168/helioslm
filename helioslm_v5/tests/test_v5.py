@@ -430,9 +430,20 @@ TESTS = [
     case_upstream_suites.test_csa_learned_16x_suite,
     case_upstream_suites.test_csa_learned_r3_suite,
     case_upstream_suites.test_distill_sft_suite,
+    # daily-maintenance round (2026-11-22): OS6 MoE config table, T121
+    # API-teacher distillation, T106 gpt-oss clamped SwiGLU. 14 sidecar
+    # functions total, ~5.6 s combined.
+    case_upstream_suites.test_moe_config_table_suite,
+    case_upstream_suites.test_api_distill_suite,
+    case_upstream_suites.test_clamped_swiglu_suite,
     # Phase 3 Agentic Index: fixed weights, strict provenance,
     # schema-fixture boundary and byte-for-byte CLI --check.
     case_agentic_index.test_agentic_index_suite,
+    # limitations round (2026-11-22): T110 option matrix as a documented
+    # smoke subset (full 465-combo matrix stays in pytest), T40
+    # calibrated prefetcher at states=20 smoke sizes.
+    case_upstream_suites.test_option_matrix_suite,
+    case_upstream_suites.test_calibrated_prefetcher_suite,
     # Native candidate rows -> reproducible component descriptors;
     # scripted oracle/self-check artifacts remain ineligible.
     case_agentic_adapters.test_agentic_adapters_suite,
