@@ -4,9 +4,9 @@ Implementation status: Phase 1 is implemented with 50 tasks, three
 difficulty tiers, exact and seeded hidden-oracle verification, a per-task
 trap gate in the committed std-bench reference, and a calibration-board row
 embedded in each terminal API artifact that carries confidence. Phase 3's
-aggregation contract and reproducible CLI are implemented; Phase 2 remains a
-plan. There is still no five-component HeliosLM model baseline and no upstream
-Terminal-Bench score.
+aggregation contract, native-artifact adapters and reproducible CLIs are
+implemented; Phase 2 remains a plan. There is still no five-component
+HeliosLM model baseline and no upstream Terminal-Bench score.
 
 Why: 2026 agentic leaderboards weight long-horizon terminal/repository
 work highest (Artificial Analysis puts agentic coding at 30% of its
@@ -25,6 +25,7 @@ Terminal-Bench-comparable track.
 | Tool-call parse recovery audit | `helioslm_v5/agent/tool_recovery.py` | working |
 | Verbalized-confidence capture | `DONE confidence=` in term_bench; `calibration_board.py` | working |
 | Fixed-weight agentic aggregation contract | `helioslm_v5/eval/agentic_index.py` | implemented; no model baseline yet |
+| Native run-artifact to component adapters | `helioslm_v5/eval/agentic_adapters.py` | implemented; no candidate run recorded yet |
 
 Remaining gaps against Terminal-Bench-style evaluation: no upstream
 Terminal-Bench task adapter; no multi-step tasks requiring package installs
@@ -66,7 +67,7 @@ Acceptance: adapter runs the docker-free subset end-to-end on the pod;
 report is labeled "Terminal-Bench (subset, no-docker)" and never mixed
 with full-split vendor numbers.
 
-## Phase 3 — one agentic index (aggregation implemented)
+## Phase 3 — one agentic index (aggregation and adapters implemented)
 
 `helioslm_v5/eval/agentic_index.py` aggregates term_bench (scaled),
 long_horizon_bench, swe_bench, tool recovery and the HDL benches into
@@ -101,6 +102,42 @@ that directory. For example:
 }
 ```
 
+`helioslm_v5/eval/agentic_adapters.py` converts native benchmark output into
+those descriptors. It recomputes every score from the source rows instead of
+trusting a summary field. For example, after an actual terminal candidate run:
+
+```bash
+python -m helioslm_v5.eval.agentic_adapters \
+  --results results/<run> --component terminal \
+  --artifact artifacts/terminal.json \
+  --model helioslm-candidate \
+  --checkpoint-sha256 "$CHECKPOINT_SHA256" \
+  --task-set term-bench-50-v1 \
+  --task-set-sha256 "$TERM_TASK_SET_SHA256" \
+  --evidence-type model_run
+python -m helioslm_v5.eval.agentic_adapters \
+  --results results/<run> --component terminal \
+  --artifact artifacts/terminal.json \
+  --model helioslm-candidate \
+  --checkpoint-sha256 "$CHECKPOINT_SHA256" \
+  --task-set term-bench-50-v1 \
+  --task-set-sha256 "$TERM_TASK_SET_SHA256" \
+  --evidence-type model_run --check
+```
+
+The accepted source shapes are the row lists returned by `run_term_bench()` and
+`run_swe_bench()`, the dictionary returned by `evaluate_policy()`, the
+`hdl-bench/1` dictionary returned by `hdl_bench.score()`, and a strict
+`tool-recovery-run/1` object with `rows: [{task, correct}, ...]`. Terminal/SWE
+use mean per-task pass@1; long-horizon uses scenario success rate; tool
+recovery uses exact-recovery rate; HDL uses pass@1. Component `n` counts all
+scored episodes or generated HDL samples. Duplicate task IDs, non-boolean
+outcomes, inconsistent counts and summary/row mismatches are hard failures.
+The long-horizon `run_suite()` shape and tool-recovery test-report shape are
+rejected outright. Adapter `--check` is byte-for-byte and non-writing, just
+like index `--check`; `schema_fixture` remains available only for isolated
+schema tests.
+
 Generate and later verify a recorded index with:
 
 ```bash
@@ -131,9 +168,8 @@ and non-writing byte-for-byte `--check`. No static fixture index is committed
 because there is no recorded five-component candidate run to publish yet.
 
 **Remaining Phase 3 work:** run one actual candidate checkpoint on all five
-benchmarks, adapt each measured artifact to the component schema, and commit
-that run's provenance and reproducible index before claiming a HeliosLM
-Agentic Index.
+benchmarks, generate descriptors with these adapters, and commit that run's
+provenance and reproducible index before claiming a HeliosLM Agentic Index.
 
 ## Explicitly out of scope
 

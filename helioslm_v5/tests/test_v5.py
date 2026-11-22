@@ -46,6 +46,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from helioslm_v5.tests import (  # noqa: E402
+    case_agentic_adapters,
     case_agentic_index,
     case_audio_vision,
     case_dualpipe,
@@ -244,9 +245,10 @@ TESTS = [
     # long-horizon agent bench (#174, v5.221), external reference model
     # gate (v5.220), LoRA SFT (v5.217), hsh clinical preset (v5.223) and
     # the medical-data PHI/licence guard (v5.215) — folded with the same
-    # drift-guarded wrapper pattern (parametrized cases with full lists,
-    # tmp_path via TemporaryDirectory, monkeypatch via the stand-in,
-    # transformers-dependent LoRA cases pre-checked on find_spec).
+    # drift-guarded wrapper pattern (parametrized rows called with
+    # full lists, tmp_path via TemporaryDirectory, monkeypatch via the
+    # _MonkeyPatch stand-in, the confinement symlink probe
+    # capability-gated for Windows hosts).
     case_upstream_suites.test_long_horizon_bench_suite,
     case_upstream_suites.test_external_model_gate_suite,
     case_upstream_suites.test_lora_suite,
@@ -443,6 +445,9 @@ TESTS = [
     # calibrated prefetcher at states=20 smoke sizes.
     case_upstream_suites.test_option_matrix_suite,
     case_upstream_suites.test_calibrated_prefetcher_suite,
+    # Native candidate rows -> reproducible component descriptors;
+    # scripted oracle/self-check artifacts remain ineligible.
+    case_agentic_adapters.test_agentic_adapters_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 
