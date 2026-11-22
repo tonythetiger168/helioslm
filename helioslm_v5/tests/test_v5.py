@@ -259,8 +259,8 @@ TESTS = [
     # limitations round (2026-11-04): the hsh harness core sidecars —
     # session log (H2), tool registry/pipeline (H3), LLM seam / turn
     # driver (H4), built-in tools / PTC / presets (H5) — folded with the
-    # same drift-guarded wrapper pattern (parametrized cases with full
-    # lists, tmp_path via TemporaryDirectory, monkeypatch stand-in
+    # same drift-guarded wrapper pattern (parametrized rows called with
+    # full lists, tmp_path via TemporaryDirectory, monkeypatch stand-in
     # extended with setenv/delenv, the confinement symlink probe
     # capability-gated for Windows hosts).
     case_upstream_suites.test_hsh_session_suite,
