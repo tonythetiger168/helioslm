@@ -80,7 +80,14 @@ def test_metric_order_and_cli_reproduction():
         checked = subprocess.run([
             sys.executable, "-m", "helioslm_v5.eval.agentic_index",
             "--results", str(fixture), "--output", str(output), "--check"],
-            cwd=_REPO, capture_output=True, text=True, timeout=30)
+            cwd=_REPO, capture_output=True, text=True, timeout=30,
+            # 2026-11-22 (v5.274): explicit UTF-8 — text=True alone decodes
+            # with the locale codec, and on a cp950 Windows machine the
+            # child's banner (0xE2 lead byte, a UTF-8 em-dash) kills the
+            # reader thread with UnicodeDecodeError, leaving
+            # checked.stdout=None at returncode 0. CI (UTF-8 Linux) never
+            # saw this; the explicit codec makes the pin portable.
+            encoding="utf-8", errors="replace")
         assert checked.returncode == 0, checked.stdout + checked.stderr
         assert "NOT A MODEL SCORE" in checked.stdout
     print("PASS test_metric_order_and_cli_reproduction")
@@ -176,7 +183,9 @@ def test_cli_stale_output_is_loud_and_not_rewritten():
         cli = subprocess.run([
             sys.executable, "-m", "helioslm_v5.eval.agentic_index",
             "--results", str(fixture), "--output", str(output), "--check"],
-            cwd=_REPO, capture_output=True, text=True, timeout=30)
+            cwd=_REPO, capture_output=True, text=True, timeout=30,
+            # Same cp950 guard as test_metric_order_and_cli_reproduction.
+            encoding="utf-8", errors="replace")
         assert cli.returncode == 2
         assert "stale Agentic Index" in cli.stderr
         (fixture / "hdl.json").unlink()

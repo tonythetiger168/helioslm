@@ -1,5 +1,12 @@
-# HeliosLM v5.273 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.274 - DeepSeek/K3-Style Architecture
 
+v5.274 (2026-11-22): three more sidecar suites folded into the mandated
+daily gate (OS6 MoE configuration table, T121 API-teacher distillation,
+T106 gpt-oss clamped SwiGLU; 104 folded / 108 exempt, TESTS 216). All
+three are plain zero-argument functions; none needed pytest shims
+(combined ~5.6 s, gate budget untouched). test_calibrated_prefetcher
+was triaged and stays exempt for now (its stable/chaos arms run real
+training loops, ~47 s — same discipline as test_option_matrix).
 v5.273 (2026-11-21): five more sidecar suites folded into the mandated
 daily gate (T12 attention-residual oracles, long-context needle probes,
 T39 grounded replay, T35 RLCD head, v5.42 mini-bench harness; 98 folded

@@ -1,5 +1,43 @@
 # HeliosLM v5 Changelog
 
+## v5.274 (2026-11-22) - MoE config table / API distillation / clamped SwiGLU sidecars folded into the suite
+
+Daily-maintenance fold of three more sidecar suites into the mandated
+daily gate (TESTS 213 -> 216): test_moe_config_table (OS6: vendor
+reference rows within 4% of stated total parameters, closed-form expert
+counts, candidate search near 30B-A3B; 3 functions, ~0.0 s),
+test_api_distill (T121: top-k alignment oracles exact/renormalised,
+sparse_kd_loss value+gradient vs hand-written soft CE, verified-sample
+collection rate, simulated top-k API on a real model, committed 3-seed
+probe artifact; 5 functions, ~4.9 s) and test_clamped_swiglu (T106:
+gpt-oss clamped-SwiGLU — defaults unchanged, independent swiglu
+re-implementation oracle, activation bound [-42, 56], huge-limit SiLU
+reduction, cached-decode == full forward, validation loud errors; 6
+functions, ~0.7 s). All three are plain zero-argument functions — no
+pytest import, no fixtures, no sockets, no CUDA, no subprocess — each
+verified standalone on the 2026-11-22 tree before wrapping (combined
+~5.6 s, so the gate's budget is untouched). FOLDED 101 -> 104, EXEMPT
+111 -> 108, coverage guard still locks 212 files. TESTS baseline note:
+the previous release's "TESTS 212" predates upstream #287 (Agentic
+Index suite), which raised the gate to 213 before this fold.
+test_calibrated_prefetcher was triaged and stays EXEMPT for now: it
+passes standalone but needs ~47 s of real training loops in its
+stable/chaos arms, which would materially grow the mandated gate —
+same discipline as test_option_matrix (~157 s); both need slimmed
+smoke subsets before folding.
+
+Also fixed one upstream portability break found by this machine's gate:
+#287's case_agentic_index.py ran its CLI --check subprocess with
+text=True but no explicit codec, so on a cp950 Windows host the child's
+banner (0xE2 lead byte of a UTF-8 em-dash) crashed the reader thread
+with UnicodeDecodeError and checked.stdout came back None at
+returncode 0 (TypeError: argument of type 'NoneType' is not iterable).
+UTF-8 CI never saw it. Both subprocess.run calls now pass
+encoding="utf-8", errors="replace" — same explicit-UTF-8 precedent as
+the v5.269 JSONL reads. Quantified: repro shows rc=0, stdout=None,
+stderr='' with a UnicodeDecodeError in subprocess._readerthread; with
+the fix the suite passes all 4 oracles.
+
 ## v5.273 (2026-11-21) - Attn-res / longctx / grounded-replay / RLCD / mini-bench sidecars folded into the suite
 
 Daily-maintenance fold of five more sidecar suites into the mandated

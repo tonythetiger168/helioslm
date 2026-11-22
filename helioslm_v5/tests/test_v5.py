@@ -429,6 +429,12 @@ TESTS = [
     case_upstream_suites.test_csa_learned_16x_suite,
     case_upstream_suites.test_csa_learned_r3_suite,
     case_upstream_suites.test_distill_sft_suite,
+    # daily-maintenance round (2026-11-22): OS6 MoE config table, T121
+    # API-teacher distillation, T106 gpt-oss clamped SwiGLU. 14 sidecar
+    # functions total, ~5.6 s combined.
+    case_upstream_suites.test_moe_config_table_suite,
+    case_upstream_suites.test_api_distill_suite,
+    case_upstream_suites.test_clamped_swiglu_suite,
     # Phase 3 Agentic Index: fixed weights, strict provenance,
     # schema-fixture boundary and byte-for-byte CLI --check.
     case_agentic_index.test_agentic_index_suite,

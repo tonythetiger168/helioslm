@@ -1107,6 +1107,14 @@ def test_kv_cache_analytic_suite():
 # curriculum), test_csa_learned_r3 (T95 round-3 compressor + relu2) and
 # test_distill_sft (D3 student SFT on teacher answers) moved from
 # EXEMPT to FOLDED — the backlog is now 111 files.
+# 2026-11-22 daily-maintenance round: test_moe_config_table (OS6),
+# test_api_distill (T121) and test_clamped_swiglu (T106) moved from
+# EXEMPT to FOLDED — the backlog is now 108 files.
+# test_calibrated_prefetcher was triaged and stays EXEMPT for now: it
+# passes standalone but takes ~47 s wall time (the stable/chaos
+# prefetch arms run real training loops), which would materially grow
+# the mandated gate — same discipline as test_option_matrix (~157 s);
+# both need slimmed smoke subsets before folding.
 # OpenAI-compatible stream smoke (serving/openai_stream_smoke.py):
 # test_openai_stream_smoke is exempt for the same reason as test_hsh_web.
 # It binds 127.0.0.1 through ThreadingHTTPServer on an ephemeral port and
@@ -1264,17 +1272,20 @@ FOLDED_SIDECARS = {
     "test_csa_learned_16x": "test_csa_learned_16x_suite",
     "test_csa_learned_r3": "test_csa_learned_r3_suite",
     "test_distill_sft": "test_distill_sft_suite",
+    # daily-maintenance round 2026-11-22 (v5.274): OS6 MoE config table /
+    # T121 API-teacher distillation / T106 gpt-oss clamped SwiGLU
+    "test_moe_config_table": "test_moe_config_table_suite",
+    "test_api_distill": "test_api_distill_suite",
+    "test_clamped_swiglu": "test_clamped_swiglu_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
 # folding. Being listed here is not an endorsement that a file should
 # stay out of the gate; it only means "known, pending triage".
 EXEMPT_SIDECARS = {
-    'test_api_distill',
     'test_async_grpo',
     'test_bench_quant', 'test_calibrated_prefetcher',
     'test_calibrated_router',
-    'test_clamped_swiglu',
     'test_csa_learned', 'test_csa_learned_h64',
     'test_cuda_device_paths', 'test_cuda_smoke', 'test_custom_attention_notebook',
     'test_cvdp_bench',
@@ -1294,7 +1305,7 @@ EXEMPT_SIDECARS = {
     'test_longctx_harness',
     'test_midtrain',
     'test_mimo_hybrid', 'test_mla_every', 'test_mla_expanded_training',
-    'test_moe_config_table', 'test_mopd', 'test_mtp_light', 'test_mtp_rollout',
+    'test_mopd', 'test_mtp_light', 'test_mtp_rollout',
     'test_multiseed', 'test_nope_temperature',     'test_noul_continuous', 'test_nvfp4_qat_e2e',
     # Binds 127.0.0.1 (ephemeral port); same exemption as test_hsh_web.
     'test_openai_stream_smoke',
@@ -3033,6 +3044,70 @@ def test_distill_sft_suite():
           f"D3 student SFT: {executed}/7 sidecar tests under the daily gate "
           "(CLI prepare/train self-skips without the optional "
           "'tokenizers' package, as importorskip does on CI)")
+
+
+# ---------------------------------------------------------------------------
+# daily-maintenance round (2026-11-22): fold three more zero-flag
+# sidecars into the daily gate — test_moe_config_table (OS6: vendor
+# reference rows within 4% of stated totals, closed-form expert counts,
+# candidate search near 30B-A3B; 3 functions, ~0.0 s), test_api_distill
+# (T121: top-k alignment oracles, sparse_kd_loss value+gradient,
+# verified-sample collection, simulated top-k API on a real model,
+# committed 3-seed probe artifact; 5 functions, ~4.9 s) and
+# test_clamped_swiglu (T106: gpt-oss clamped-SwiGLU — defaults
+# unchanged, independent swiglu re-implementation oracle, activation
+# bound [-42, 56], huge-limit SiLU limit, cached-decode equality,
+# validation loud errors; 6 functions, ~0.7 s). All three are plain
+# zero-argument functions — no pytest import, no fixtures, no sockets,
+# no CUDA, no subprocess — verified standalone on the 2026-11-22 tree
+# before wrapping (combined ~5.6 s, gate budget untouched).
+# test_calibrated_prefetcher was triaged the same day and stays EXEMPT:
+# it passes but needs ~47 s (real training loops in the stable/chaos
+# arms) — see the banner near FOLDED_SIDECARS.
+
+
+def test_moe_config_table_suite():
+    """OS6 MoE configuration table under the daily gate: all 3 sidecar
+    tests as-is (reference-row vendor totals, closed form, candidates)."""
+    from helioslm_v5.tests import test_moe_config_table as m
+    expected = {"test_reference_rows_match_vendor_totals",
+                "test_closed_form",
+                "test_candidates_near_30b_a3b"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_moe_config_table_suite",
+          "OS6 MoE config table: all 3 sidecar tests under the daily gate")
+
+
+def test_api_distill_suite():
+    """T121 distillation from an API teacher under the daily gate: all
+    5 sidecar tests as-is (alignment oracles, sparse KD loss, sequence
+    collection, simulated top-k API, committed probe artifact)."""
+    from helioslm_v5.tests import test_api_distill as m
+    expected = {"test_alignment_oracles", "test_sparse_kd_loss",
+                "test_collect_sequences", "test_topk_api_on_model",
+                "test_probe_artifact"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_api_distill_suite",
+          "T121 API distillation: all 5 sidecar tests under the daily gate")
+
+
+def test_clamped_swiglu_suite():
+    """T106 gpt-oss clamped SwiGLU under the daily gate: all 6 sidecar
+    tests as-is (defaults, gpt-oss oracle, activation bound, SiLU limit,
+    model wiring, validation)."""
+    from helioslm_v5.tests import test_clamped_swiglu as m
+    expected = {"test_defaults_unchanged", "test_matches_gpt_oss_reference",
+                "test_activation_bound", "test_huge_limit_is_silu",
+                "test_model_with_gpt_oss_experts", "test_validation"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_clamped_swiglu_suite",
+          "T106 clamped SwiGLU: all 6 sidecar tests under the daily gate")
 
 
 def test_sidecar_coverage_guard():

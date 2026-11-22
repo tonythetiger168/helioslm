@@ -572,11 +572,11 @@ As of 2026-10-31:
 
 The last five releases; every earlier release is in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md).
 
+- **v5.274** — three more sidecar suites folded into the daily gate (OS6 MoE config table, T121 API-teacher distillation, T106 gpt-oss clamped SwiGLU; 104 folded / 108 exempt); test_calibrated_prefetcher triaged, stays exempt for now (~47 s training loops too slow for the gate)
 - **v5.273** — five more sidecar suites folded into the daily gate (T12 attn-res oracles, longctx needle probes, T39 grounded replay, T35 RLCD head, v5.42 mini-bench harness; 98 folded / 114 exempt); test_option_matrix triaged, stays exempt for now (465-combo pairwise matrix too slow for the gate)
 - **v5.271** — five more sidecar suites folded into the daily gate (v5.23 agent layer, SWE gates, SWE agent RL, tool-call recovery, deep harness wiring; 91 folded / 121 exempt); test_term_bench triaged, stays exempt (binds 127.0.0.1)
 - **v5.269** — five more sidecar suites folded into the daily gate (agent harness, three-modes benchmark, GRPO length, GRPO U1, D4 agent distillation; 86 folded / 126 exempt); test_distill_agent carries an in-file raises shim and explicit UTF-8 JSONL reads (Windows cp950 fix); repairs the v5.268 fold so its suite runs pytest-free (in-file shim) and memmap-safe on Windows (gc before temp-dir cleanup)
 - **v5.265** — OpenTitan bug-fix bench records per-task timing and failure stage; new `report` CSV (H4 repair baseline)
-- **v5.264** — seven more sidecar suites folded into the daily gate (T21 chat-tuned summary, CSA, T11 DSA oracle, T13 disagg, T18 disagg Pareto, multi-env, file env; 78 folded / 133 exempt)
 
 ## License
 
