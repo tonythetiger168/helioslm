@@ -46,6 +46,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from helioslm_v5.tests import (  # noqa: E402
+    case_agentic_adapters,
     case_agentic_index,
     case_audio_vision,
     case_dualpipe,
@@ -443,6 +444,9 @@ TESTS = [
     # calibrated prefetcher at states=20 smoke sizes.
     case_upstream_suites.test_option_matrix_suite,
     case_upstream_suites.test_calibrated_prefetcher_suite,
+    # Native candidate rows -> reproducible component descriptors;
+    # scripted oracle/self-check artifacts remain ineligible.
+    case_agentic_adapters.test_agentic_adapters_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 
