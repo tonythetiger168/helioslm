@@ -61,6 +61,7 @@ from helioslm_v5.tests import (  # noqa: E402
     case_muon,
     case_quant,
     case_quant_fused,
+    case_review_closure,
     case_rope_cache,
     case_security,
     case_serving,
@@ -258,8 +259,8 @@ TESTS = [
     # limitations round (2026-11-04): the hsh harness core sidecars —
     # session log (H2), tool registry/pipeline (H3), LLM seam / turn
     # driver (H4), built-in tools / PTC / presets (H5) — folded with the
-    # same drift-guarded wrapper pattern (parametrized rows called with
-    # full lists, tmp_path via TemporaryDirectory, monkeypatch stand-in
+    # same drift-guarded wrapper pattern (parametrized cases with full
+    # lists, tmp_path via TemporaryDirectory, monkeypatch stand-in
     # extended with setenv/delenv, the confinement symlink probe
     # capability-gated for Windows hosts).
     case_upstream_suites.test_hsh_session_suite,
@@ -447,6 +448,10 @@ TESTS = [
     # Native candidate rows -> reproducible component descriptors;
     # scripted oracle/self-check artifacts remain ineligible.
     case_agentic_adapters.test_agentic_adapters_suite,
+    # 2026-10-10 review-plan closure oracles: MLA vs HCA contrast,
+    # NVFP4 QAT end-to-end training, batched MTP acceptance telemetry,
+    # and true-parallel swarm delegate_all.
+    case_review_closure.test_review_closure_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 
