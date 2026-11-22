@@ -59,6 +59,7 @@ from helioslm_v5.tests import (  # noqa: E402
     case_model_mtp,
     case_moe,
     case_muon,
+    case_outcome_calibration,
     case_quant,
     case_quant_fused,
     case_review_closure,
@@ -460,6 +461,10 @@ TESTS = [
     case_review_folds.test_indexer_share_suite,
     case_review_folds.test_mla_every_suite,
     case_review_folds.test_k3_block_suite,
+    # P2 (2026-11-23): verified-outcome confidence recalibration —
+    # the CALIBRATION.md shift gap (AUROC 0.545) attacked with the
+    # verified-decision signal instead of input-side OOD tricks.
+    case_outcome_calibration.test_outcome_calibration_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 
