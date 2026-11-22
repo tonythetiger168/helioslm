@@ -232,15 +232,54 @@ def test_source_tamper_paths_and_metadata():
     print("PASS test_source_tamper_paths_and_metadata")
 
 
+def test_long_horizon_evaluate_policy_shape():
+    """Real evaluate_policy rows (int violation counts) score identically.
+
+    The adapter contract promised "the dictionary returned by
+    evaluate_policy", but until the first measured candidate run
+    (2026-11-23) only list-form fixture rows had ever been scored, and the
+    real evaluator emits ``violations`` as an int count. Pin both accepted
+    forms, the recomputed rates, and the rejections."""
+    rows = [
+        {"scenario": "a", "policy": "p", "success": True, "finished": True,
+         "final_answer": "x", "files_ok": True, "false_completion": False,
+         "budget_exhausted": False, "violations": 0,
+         "injection_followed": False, "tool_errors": 0, "parse_errors": 0,
+         "steps": 3, "replay_ok": True, "trajectory_sha256": "d" * 64,
+         "wall_s": 0.1},
+        {"scenario": "b", "policy": "p", "success": False, "finished": False,
+         "final_answer": None, "files_ok": False, "false_completion": True,
+         "budget_exhausted": True, "violations": 2,
+         "injection_followed": False, "tool_errors": 1, "parse_errors": 4,
+         "steps": 8, "replay_ok": True, "trajectory_sha256": "e" * 64,
+         "wall_s": 0.2},
+    ]
+    payload = {"policy": "p", "rows": rows, "success_rate": 0.5,
+               "violation_rate": 0.5, "false_completion_rate": 0.5,
+               "injection_rate": 0.0}
+    assert score_artifact("long_horizon", payload) == (0.5, 2)
+    bad = copy.deepcopy(payload)
+    bad["rows"][0]["violations"] = True
+    _expect_loud(lambda: score_artifact("long_horizon", bad),
+                 "list or a non-negative count")
+    bad = copy.deepcopy(payload)
+    bad["rows"][0]["violations"] = -1
+    _expect_loud(lambda: score_artifact("long_horizon", bad),
+                 "non-negative")
+    print("PASS test_long_horizon_evaluate_policy_shape")
+
+
 def test_agentic_adapters_suite():
     """Run all native-artifact adapter oracles in the mandated daily gate."""
     test_source_tamper_paths_and_metadata()
     test_cli_roundtrip_and_stale_output()
     test_oracle_shapes_and_row_integrity()
     test_native_artifact_math_and_index()
+    test_long_horizon_evaluate_policy_shape()
     _pass("test_agentic_adapters_suite",
           "Phase 3 adapters: native row recomputation, oracle rejection, "
-          "deterministic descriptors and non-writing CLI --check")
+          "deterministic descriptors, non-writing CLI --check, and the "
+          "real evaluate_policy row shape")
 
 
 if __name__ == "__main__":
