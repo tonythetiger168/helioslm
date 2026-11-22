@@ -1,0 +1,220 @@
+{
+ "results": [
+  {
+   "id": "echo-00",
+   "family": "echo",
+   "task": "echo HCC8:",
+   "prompt": "echo HCC8:",
+   "expected": "HCC8",
+   "final": "HCC6",
+   "correct": false
+  },
+  {
+   "id": "echo-01",
+   "family": "echo",
+   "task": "echo BGG2:",
+   "prompt": "echo BGG2:",
+   "expected": "BGG2",
+   "final": "BGG2",
+   "correct": true
+  },
+  {
+   "id": "echo-02",
+   "family": "echo",
+   "task": "echo ABB6:",
+   "prompt": "echo ABB6:",
+   "expected": "ABB6",
+   "final": "ABBB",
+   "correct": false
+  },
+  {
+   "id": "echo-03",
+   "family": "echo",
+   "task": "echo EBA4:",
+   "prompt": "echo EBA4:",
+   "expected": "EBA4",
+   "final": "EBA4",
+   "correct": true
+  },
+  {
+   "id": "echo-04",
+   "family": "echo",
+   "task": "echo FHF0:",
+   "prompt": "echo FHF0:",
+   "expected": "FHF0",
+   "final": "FHF0",
+   "correct": true
+  },
+  {
+   "id": "echo-05",
+   "family": "echo",
+   "task": "echo AEA7:",
+   "prompt": "echo AEA7:",
+   "expected": "AEA7",
+   "final": "AEA7",
+   "correct": true
+  },
+  {
+   "id": "echo-06",
+   "family": "echo",
+   "task": "echo DDH9:",
+   "prompt": "echo DDH9:",
+   "expected": "DDH9",
+   "final": "DDH9",
+   "correct": true
+  },
+  {
+   "id": "echo-07",
+   "family": "echo",
+   "task": "echo BFG6:",
+   "prompt": "echo BFG6:",
+   "expected": "BFG6",
+   "final": "BFG6",
+   "correct": true
+  },
+  {
+   "id": "echo-08",
+   "family": "echo",
+   "task": "echo FGG0:",
+   "prompt": "echo FGG0:",
+   "expected": "FGG0",
+   "final": "FGG0",
+   "correct": true
+  },
+  {
+   "id": "echo-09",
+   "family": "echo",
+   "task": "echo EEE2:",
+   "prompt": "echo EEE2:",
+   "expected": "EEE2",
+   "final": "EEE2",
+   "correct": true
+  },
+  {
+   "id": "echo-10",
+   "family": "echo",
+   "task": "echo AFG7:",
+   "prompt": "echo AFG7:",
+   "expected": "AFG7",
+   "final": "AFG7",
+   "correct": true
+  },
+  {
+   "id": "echo-11",
+   "family": "echo",
+   "task": "echo DEA6:",
+   "prompt": "echo DEA6:",
+   "expected": "DEA6",
+   "final": "DDEA",
+   "correct": false
+  },
+  {
+   "id": "echo-12",
+   "family": "echo",
+   "task": "echo HEC3:",
+   "prompt": "echo HEC3:",
+   "expected": "HEC3",
+   "final": "HEC3",
+   "correct": true
+  },
+  {
+   "id": "echo-13",
+   "family": "echo",
+   "task": "echo HHC6:",
+   "prompt": "echo HHC6:",
+   "expected": "HHC6",
+   "final": "HCC6",
+   "correct": false
+  },
+  {
+   "id": "echo-14",
+   "family": "echo",
+   "task": "echo ACE1:",
+   "prompt": "echo ACE1:",
+   "expected": "ACE1",
+   "final": "ACE1",
+   "correct": true
+  },
+  {
+   "id": "echo-15",
+   "family": "echo",
+   "task": "echo GDF2:",
+   "prompt": "echo GDF2:",
+   "expected": "GDF2",
+   "final": "GDF2",
+   "correct": true
+  },
+  {
+   "id": "echo-16",
+   "family": "echo",
+   "task": "echo EEF6:",
+   "prompt": "echo EEF6:",
+   "expected": "EEF6",
+   "final": "EF67",
+   "correct": false
+  },
+  {
+   "id": "echo-17",
+   "family": "echo",
+   "task": "echo CGE3:",
+   "prompt": "echo CGE3:",
+   "expected": "CGE3",
+   "final": "HDDH",
+   "correct": false
+  },
+  {
+   "id": "echo-18",
+   "family": "echo",
+   "task": "echo AGD0:",
+   "prompt": "echo AGD0:",
+   "expected": "AGD0",
+   "final": "AFG7",
+   "correct": false
+  },
+  {
+   "id": "echo-19",
+   "family": "echo",
+   "task": "echo HBD1:",
+   "prompt": "echo HBD1:",
+   "expected": "HBD1",
+   "final": "DC6E",
+   "correct": false
+  },
+  {
+   "id": "echo-20",
+   "family": "echo",
+   "task": "echo AFA6:",
+   "prompt": "echo AFA6:",
+   "expected": "AFA6",
+   "final": "ABAB",
+   "correct": false
+  },
+  {
+   "id": "echo-21",
+   "family": "echo",
+   "task": "echo HDD7:",
+   "prompt": "echo HDD7:",
+   "expected": "HDD7",
+   "final": "D946",
+   "correct": false
+  },
+  {
+   "id": "echo-22",
+   "family": "echo",
+   "task": "echo DDG5:",
+   "prompt": "echo DDG5:",
+   "expected": "DDG5",
+   "final": "DDDH",
+   "correct": false
+  },
+  {
+   "id": "echo-23",
+   "family": "echo",
+   "task": "echo EEE0:",
+   "prompt": "echo EEE0:",
+   "expected": "EEE0",
+   "final": "EEE2",
+   "correct": false
+  }
+ ]
+}

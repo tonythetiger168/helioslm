@@ -61,6 +61,7 @@ from helioslm_v5.tests import (  # noqa: E402
     case_muon,
     case_quant,
     case_quant_fused,
+    case_review_closure,
     case_rope_cache,
     case_security,
     case_serving,
@@ -447,6 +448,10 @@ TESTS = [
     # Native candidate rows -> reproducible component descriptors;
     # scripted oracle/self-check artifacts remain ineligible.
     case_agentic_adapters.test_agentic_adapters_suite,
+    # 2026-10-10 review-plan closure oracles: MLA vs HCA contrast,
+    # NVFP4 QAT end-to-end training, batched MTP acceptance telemetry,
+    # and true-parallel swarm delegate_all.
+    case_review_closure.test_review_closure_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 
