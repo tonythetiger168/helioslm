@@ -438,6 +438,11 @@ TESTS = [
     # Phase 3 Agentic Index: fixed weights, strict provenance,
     # schema-fixture boundary and byte-for-byte CLI --check.
     case_agentic_index.test_agentic_index_suite,
+    # limitations round (2026-11-22): T110 option matrix as a documented
+    # smoke subset (full 465-combo matrix stays in pytest), T40
+    # calibrated prefetcher at states=20 smoke sizes.
+    case_upstream_suites.test_option_matrix_suite,
+    case_upstream_suites.test_calibrated_prefetcher_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 

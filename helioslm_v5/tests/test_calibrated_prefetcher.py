@@ -25,11 +25,15 @@ def test_interface_matches_colibri():
     print(f"PASS test_interface_matches_colibri (chosen={chosen})")
 
 
-def test_uncertainty_widens_prefetch():
+def test_uncertainty_widens_prefetch(states=40):
+    # states=40 is the full upstream oracle; the daily-gate smoke passes
+    # states=20 (14.8 s vs 23.4 s measured 2026-11-22). The stable/
+    # chaotic pattern density is unchanged and the assertion held with
+    # distinct prefetch sets at both sizes.
     pf = CalibratedPrefetcher(num_experts=8, top_k=2, hi=0.7, lo=0.3,
                               widen_factor=2)
     recs = []
-    for i in range(40):
+    for i in range(states):
         conf = i % 2 == 0
         marker = "STABLE" if conf else "CHAOTIC"
         for e in range(8):
@@ -46,10 +50,14 @@ def test_uncertainty_widens_prefetch():
           f"(stable={len(conf_chosen)} chaos={len(chaos_chosen)})")
 
 
-def test_outcome_training_lowers_miss_confidence():
+def test_outcome_training_lowers_miss_confidence(states=60):
+    # states=60 is the full upstream oracle; the daily-gate smoke passes
+    # states=20 (11.4 s vs 25.1 s measured 2026-11-22). The assertion
+    # threshold is unchanged: expert_7 confidence measured 0.44 at 60
+    # states and 0.438 at 20 states against the 0.5 bound.
     pf = CalibratedPrefetcher(num_experts=8, top_k=2)
     recs = []
-    for i in range(60):
+    for i in range(states):
         for e in range(8):
             needed = 1.0 if (e in (0, 1) and i % 5 != 0) else 0.0
             recs.append({"ids": torch.tensor(text_to_ids(f"state {i}")),

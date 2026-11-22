@@ -1110,11 +1110,16 @@ def test_kv_cache_analytic_suite():
 # 2026-11-22 daily-maintenance round: test_moe_config_table (OS6),
 # test_api_distill (T121) and test_clamped_swiglu (T106) moved from
 # EXEMPT to FOLDED — the backlog is now 108 files.
-# test_calibrated_prefetcher was triaged and stays EXEMPT for now: it
-# passes standalone but takes ~47 s wall time (the stable/chaos
+# test_calibrated_prefetcher was triaged and stayed EXEMPT at the time:
+# it passes standalone but takes ~47 s wall time (the stable/chaos
 # prefetch arms run real training loops), which would materially grow
 # the mandated gate — same discipline as test_option_matrix (~157 s);
-# both need slimmed smoke subsets before folding.
+# both needed slimmed smoke subsets before folding (done below).
+# 2026-11-22 limitations round: test_option_matrix (T110; SMOKE subset
+# — all 30 singles + the complete 11-pair rejection set + 21 curated
+# cross-section builds; the full 465-combo matrix stays in pytest) and
+# test_calibrated_prefetcher (T40; training tests at states=20 smoke
+# sizes) moved from EXEMPT to FOLDED — the backlog is now 106 files.
 # OpenAI-compatible stream smoke (serving/openai_stream_smoke.py):
 # test_openai_stream_smoke is exempt for the same reason as test_hsh_web.
 # It binds 127.0.0.1 through ThreadingHTTPServer on an ephemeral port and
@@ -1277,6 +1282,10 @@ FOLDED_SIDECARS = {
     "test_moe_config_table": "test_moe_config_table_suite",
     "test_api_distill": "test_api_distill_suite",
     "test_clamped_swiglu": "test_clamped_swiglu_suite",
+    # limitations round 2026-11-22: T110 option matrix (smoke subset) /
+    # T40 calibrated prefetcher (states=20 smoke sizes)
+    "test_option_matrix": "test_option_matrix_suite",
+    "test_calibrated_prefetcher": "test_calibrated_prefetcher_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1284,7 +1293,7 @@ FOLDED_SIDECARS = {
 # stay out of the gate; it only means "known, pending triage".
 EXEMPT_SIDECARS = {
     'test_async_grpo',
-    'test_bench_quant', 'test_calibrated_prefetcher',
+    'test_bench_quant',
     'test_calibrated_router',
     'test_csa_learned', 'test_csa_learned_h64',
     'test_cuda_device_paths', 'test_cuda_smoke', 'test_custom_attention_notebook',
@@ -1312,7 +1321,7 @@ EXEMPT_SIDECARS = {
     # v5.253: one case binds 127.0.0.1 (a llama-server stand-in); same
     # exemption as test_openai_stream_smoke. pytest still runs it in CI.
     'test_distill_local_3070',
-    'test_option_matrix', 'test_ple',
+    'test_ple',
     'test_probe_api', 'test_prune_kd_gemma4', 'test_quant_calib', 'test_quantile_balancing', 'test_qwen_next',
     'test_repo_longctx',
     'test_rtllm_bench', 'test_selfgen_meta',
@@ -3108,6 +3117,60 @@ def test_clamped_swiglu_suite():
         getattr(m, name)()
     _pass("test_clamped_swiglu_suite",
           "T106 clamped SwiGLU: all 6 sidecar tests under the daily gate")
+
+
+# ---------------------------------------------------------------------------
+# limitations round (2026-11-22): fold two heavyweight sidecars into the
+# daily gate as DOCUMENTED SMOKE SUBSETS (the daily report's "slimmed
+# smoke subset" candidates). test_option_matrix (T110): the full 465-
+# combo pairwise matrix costs ~150 s of model builds, so the gate runs
+# test_every_rule_is_reachable FIRST (its standalone path re-scans every
+# pair at config level — full rule coverage, no model builds), then
+# _run_matrix over all 30 singles + the sidecar's curated SMOKE_PAIRS
+# (the complete 11-pair rejection set measured 2026-11-22, plus 21
+# accepted cross-section builds incl. the fp8 tolerance branch), then
+# the AST config-access scan; the full matrix still runs under pytest.
+# test_calibrated_prefetcher (T40): record_outcome trains 800 epochs,
+# so the two training tests take an optional states= parameter (default
+# = upstream oracle) and the gate passes states=20 — thresholds
+# unchanged, measured margins in the sidecar comments.
+
+
+def test_option_matrix_suite():
+    """T110 option compatibility matrix under the daily gate — smoke
+    subset (see the round note above and SMOKE_PAIRS in the sidecar)."""
+    from helioslm_v5.tests import test_option_matrix as m
+    expected = {"test_pairwise_matrix", "test_every_rule_is_reachable",
+                "test_core_modules_read_config_directly"}
+    _drift_guard(m, expected)
+    assert m._HITS is None  # standalone path: config-level full scan
+    m.test_every_rule_is_reachable()
+    combos = [(n,) for n in sorted(m.FEATURES)] + \
+        [tuple(p) for p in m.SMOKE_PAIRS]
+    m._run_matrix(combos)
+    m.test_core_modules_read_config_directly()
+    _pass("test_option_matrix_suite",
+          f"T110 option matrix smoke: {len(m.OPTION_RULES)} rules "
+          f"reachable (config-level full scan), {len(combos)} combos "
+          f"(30 singles + 11 rejection + 21 cross-section) decode==full, "
+          f"{len(m._CORE)} core modules read config directly")
+
+
+def test_calibrated_prefetcher_suite():
+    """T40 CalibratedPrefetcher (Colibri x RLCD) under the daily gate —
+    the two training tests at states=20 smoke sizes (upstream defaults
+    unchanged for pytest)."""
+    from helioslm_v5.tests import test_calibrated_prefetcher as m
+    expected = {"test_interface_matches_colibri",
+                "test_uncertainty_widens_prefetch",
+                "test_outcome_training_lowers_miss_confidence"}
+    _drift_guard(m, expected)
+    m.test_interface_matches_colibri()
+    m.test_uncertainty_widens_prefetch(states=20)
+    m.test_outcome_training_lowers_miss_confidence(states=20)
+    _pass("test_calibrated_prefetcher_suite",
+          "T40 calibrated prefetcher: all 3 sidecar tests under the "
+          "daily gate (training tests at states=20 smoke sizes)")
 
 
 def test_sidecar_coverage_guard():

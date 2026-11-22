@@ -136,9 +136,11 @@ def _try(names):
     return "ok", err, None
 
 
-def _run_matrix():
+def _run_matrix(combos=None):
     names = sorted(FEATURES)
-    combos = [(n,) for n in names] + list(itertools.combinations(names, 2))
+    if combos is None:
+        combos = [(n,) for n in names] + \
+            list(itertools.combinations(names, 2))
     hit_rules, bad, ok = set(), [], 0
     for combo in combos:
         status, info, msg = _try(combo)
@@ -160,6 +162,44 @@ def _run_matrix():
             bad.append((combo, f"rejected only at model build: {msg}"))
     assert not bad, "\n".join(f"{c}: {m}" for c, m in bad)
     return combos, ok, hit_rules
+
+
+# Daily-gate smoke subset (2026-11-22): the full matrix is 30 singles +
+# 435 pairs = 465 model builds (~150 s measured on the gate machine),
+# too heavy for the mandated daily gate. The gate runs ALL 30 singles
+# (every feature's decode==full oracle) plus the pairs below: the first
+# 11 are the COMPLETE rejection set of the full matrix (measured
+# 2026-11-22; they exercise 7 distinct OPTION_RULES rejection paths at
+# zero build cost), the next 21 are accepted builds covering every
+# cross-section combination (attention x moe/top/hybrid/mtp,
+# moe x top/hybrid/mtp, top x hybrid/mtp, hybrid x mtp), the
+# same-section window compositions and the fp8_cache tolerance branch.
+# Measured smoke errors <= 2e-6 (tolerances 1e-4 / fp8 1e-2). Rule
+# reachability is NOT weakened: the gate calls
+# test_every_rule_is_reachable first, whose standalone path re-scans
+# every pair at config level without building models. The full matrix
+# still runs under pytest and `python test_option_matrix.py`.
+SMOKE_PAIRS = [
+    # the complete rejection set of the full matrix (11 pairs, 7 rules)
+    ("attn_res", "hc_sinkhorn"), ("attn_res", "hyper_conn"),
+    ("expanded", "fp8_cache"), ("expanded", "sparse"),
+    ("expanded", "sparse_learned"), ("fp8_cache", "kv_share"),
+    ("hc_sinkhorn", "ple"), ("hyper_conn", "ple"),
+    ("kv_share", "sparse"), ("kv_share", "sparse_learned"),
+    ("p_rope", "yarn"),
+    # accepted cross-section builds (21 pairs; all section pairs covered)
+    ("nope", "clamped_swiglu"), ("window", "first_k_dense"),
+    ("qk_norm", "smebu"), ("soft_cap", "sandwich_norm"),
+    ("output_gate", "zero_centered"), ("interleave", "gated_conv"),
+    ("learnable_sink", "final_soft_cap"), ("window_sink", "hybrid"),
+    ("yarn", "hybrid"), ("k_eq_v", "mtp_light"),
+    ("sparse_learned", "mtp_light"), ("first_k_dense", "ple"),
+    ("clamped_swiglu", "hybrid"), ("smebu", "mtp_light"),
+    ("sandwich_norm", "hybrid"), ("zero_centered", "mtp_light"),
+    ("hybrid", "mtp_light"), ("fp8_cache", "window"),
+    ("window", "interleave"), ("window", "window_sink"),
+    ("sparse", "smebu"),
+]
 
 
 _HITS = None
