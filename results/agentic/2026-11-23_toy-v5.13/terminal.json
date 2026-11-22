@@ -1,0 +1,16 @@
+{
+  "checkpoint_sha256": "88a21456cbad856aabcb908464ea281b689a264c5db3b7ea4be50c82d49bda25",
+  "component": "terminal",
+  "evidence_type": "model_run",
+  "model": "helioslm-toy-2.41",
+  "n": 50,
+  "schema": "agentic-component/1",
+  "score": 0.0,
+  "source": {
+    "artifact": "artifacts/terminal.json",
+    "sha256": "51e0ebed58bdf4512fe9ece5e2c6a11c1c50914a083d48b00ffac6db73ea5252"
+  },
+  "task_set": "term-bench-50-v1",
+  "task_set_sha256": "be25ef130fba63d3baad715e046422b21355439dd2e7c27d1f706738d947b494",
+  "verification_tier": "measured"
+}

@@ -1,0 +1,16 @@
+{
+  "checkpoint_sha256": "88a21456cbad856aabcb908464ea281b689a264c5db3b7ea4be50c82d49bda25",
+  "component": "tool_recovery",
+  "evidence_type": "model_run",
+  "model": "helioslm-toy-2.41",
+  "n": 70,
+  "schema": "agentic-component/1",
+  "score": 0.0,
+  "source": {
+    "artifact": "artifacts/tool_recovery.json",
+    "sha256": "f6e878e884ec10d4247b60dba4bce283714b1d1b0a965d0065a26a6e5dd3ed57"
+  },
+  "task_set": "tool-recovery-repairable-7x10-v1",
+  "task_set_sha256": "500841c36acb32c8e9459aa34a983b4d274cde32b68d93bba3632ea22006b149",
+  "verification_tier": "measured"
+}
