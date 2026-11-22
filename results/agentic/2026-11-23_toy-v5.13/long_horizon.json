@@ -1,0 +1,16 @@
+{
+  "checkpoint_sha256": "88a21456cbad856aabcb908464ea281b689a264c5db3b7ea4be50c82d49bda25",
+  "component": "long_horizon",
+  "evidence_type": "model_run",
+  "model": "helioslm-toy-2.41",
+  "n": 5,
+  "schema": "agentic-component/1",
+  "score": 0.0,
+  "source": {
+    "artifact": "artifacts/long_horizon.json",
+    "sha256": "30a77cc29cb0d2bbd1ad687a04e41699827e4451d5e02ea0d44426cc10034310"
+  },
+  "task_set": "long-horizon-5-v1",
+  "task_set_sha256": "9c7e87cf9809f0e70af121ba0c8c1381d075aa790cf8d71347d6a511b5b64301",
+  "verification_tier": "measured"
+}

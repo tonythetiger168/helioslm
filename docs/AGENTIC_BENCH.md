@@ -58,8 +58,48 @@ On the committed schema fixtures (explicitly `is_model_score: false` —
 a math/provenance check, not a model score): components 0.75/0.50/0.50/
 0.75/0.50 across the five tracks aggregate to **0.625** under the fixed
 weights, byte-identical under reversed input order and CLI regeneration
-(`--check`). No HeliosLM model baseline exists yet; the first measured
-five-component run is a separately gated milestone.
+(`--check`).
+
+## Measured: the first HeliosLM Agentic Index (toy candidate, 2026-11-23)
+
+The first measured five-component candidate run is committed at
+`results/agentic/2026-11-23_toy-v5.13/` (runner:
+`examples/agentic_candidate_run.py`). Candidate: the committed toy
+checkpoint `checkpoints/toy_v5.13.pt` (8.5M params, char-ascii,
+val_loss 2.41), greedy decoding, every component on the same checkpoint
+bytes (sha256 `88a21456…`).
+
+| component | score | n | evidence |
+|---|---|---|---|
+| terminal | 0.0000 | 50 | model_run / measured |
+| swe | 0.0000 | 20 | model_run / measured |
+| long_horizon | 0.0000 | 5 | model_run / measured |
+| tool_recovery | 0.0000 | 70 | model_run / measured |
+| hdl | 0.0000 | 156 | model_run / measured |
+| **Agentic Index** | **0.000000** | | `is_model_score: true` |
+
+Zero is the honest baseline: the toy model babbles code-shaped text and
+cannot follow any of the five protocols (500/500 terminal replies
+unparseable; 70/70 tool repairs not exactly recovered; 156/156 HDL
+samples fail to compile — failure codes 88 syntax / 68 other; all
+long-horizon scenarios budget-exhausted with zero guard violations).
+The run's value is the measured pipeline itself: native artifacts →
+recomputed descriptors → hash-pinned index, all `model_run` evidence,
+and a floor from which every future candidate is a delta. The index
+verifies byte-for-byte:
+
+```bash
+python3 -m helioslm_v5.eval.agentic_index \
+  --results results/agentic/2026-11-23_toy-v5.13 \
+  --output results/agentic/2026-11-23_toy-v5.13/agentic_index.json --check
+```
+
+Re-running a component regenerates its artifact byte-for-byte (greedy,
+fixed seeds; verified for tool_recovery). One contract fix landed with
+this run: the long-horizon adapter now accepts `evaluate_policy`'s real
+int `violations` counts alongside the fixture's list form (both score
+identically; the drift surfaced only when the first real artifact was
+scored).
 
 ## Reproduce
 

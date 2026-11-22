@@ -1,0 +1,109 @@
+{
+  "agentic_index": 0.0,
+  "checkpoint_sha256": "88a21456cbad856aabcb908464ea281b689a264c5db3b7ea4be50c82d49bda25",
+  "components": [
+    {
+      "checkpoint_sha256": "88a21456cbad856aabcb908464ea281b689a264c5db3b7ea4be50c82d49bda25",
+      "component": "terminal",
+      "evidence_type": "model_run",
+      "model": "helioslm-toy-2.41",
+      "n": 50,
+      "schema": "agentic-component/1",
+      "score": 0.0,
+      "source": {
+        "artifact": "artifacts/terminal.json",
+        "sha256": "51e0ebed58bdf4512fe9ece5e2c6a11c1c50914a083d48b00ffac6db73ea5252"
+      },
+      "task_set": "term-bench-50-v1",
+      "task_set_sha256": "be25ef130fba63d3baad715e046422b21355439dd2e7c27d1f706738d947b494",
+      "verification_tier": "measured",
+      "weight": 0.3,
+      "weighted_score": 0.0
+    },
+    {
+      "checkpoint_sha256": "88a21456cbad856aabcb908464ea281b689a264c5db3b7ea4be50c82d49bda25",
+      "component": "swe",
+      "evidence_type": "model_run",
+      "model": "helioslm-toy-2.41",
+      "n": 20,
+      "schema": "agentic-component/1",
+      "score": 0.0,
+      "source": {
+        "artifact": "artifacts/swe.json",
+        "sha256": "fa5778041b26ade85393c61484ed0ea97b5c01dd9c11fba5403ed99731b95881"
+      },
+      "task_set": "swe-bench-mini-v1",
+      "task_set_sha256": "2bdf4599db55280a3149d74b2957d6a1dd541af9bc560c4eb8c627d691ff7dc0",
+      "verification_tier": "measured",
+      "weight": 0.3,
+      "weighted_score": 0.0
+    },
+    {
+      "checkpoint_sha256": "88a21456cbad856aabcb908464ea281b689a264c5db3b7ea4be50c82d49bda25",
+      "component": "long_horizon",
+      "evidence_type": "model_run",
+      "model": "helioslm-toy-2.41",
+      "n": 5,
+      "schema": "agentic-component/1",
+      "score": 0.0,
+      "source": {
+        "artifact": "artifacts/long_horizon.json",
+        "sha256": "30a77cc29cb0d2bbd1ad687a04e41699827e4451d5e02ea0d44426cc10034310"
+      },
+      "task_set": "long-horizon-5-v1",
+      "task_set_sha256": "9c7e87cf9809f0e70af121ba0c8c1381d075aa790cf8d71347d6a511b5b64301",
+      "verification_tier": "measured",
+      "weight": 0.2,
+      "weighted_score": 0.0
+    },
+    {
+      "checkpoint_sha256": "88a21456cbad856aabcb908464ea281b689a264c5db3b7ea4be50c82d49bda25",
+      "component": "tool_recovery",
+      "evidence_type": "model_run",
+      "model": "helioslm-toy-2.41",
+      "n": 70,
+      "schema": "agentic-component/1",
+      "score": 0.0,
+      "source": {
+        "artifact": "artifacts/tool_recovery.json",
+        "sha256": "f6e878e884ec10d4247b60dba4bce283714b1d1b0a965d0065a26a6e5dd3ed57"
+      },
+      "task_set": "tool-recovery-repairable-7x10-v1",
+      "task_set_sha256": "500841c36acb32c8e9459aa34a983b4d274cde32b68d93bba3632ea22006b149",
+      "verification_tier": "measured",
+      "weight": 0.1,
+      "weighted_score": 0.0
+    },
+    {
+      "checkpoint_sha256": "88a21456cbad856aabcb908464ea281b689a264c5db3b7ea4be50c82d49bda25",
+      "component": "hdl",
+      "evidence_type": "model_run",
+      "model": "helioslm-toy-2.41",
+      "n": 156,
+      "schema": "agentic-component/1",
+      "score": 0.0,
+      "source": {
+        "artifact": "artifacts/hdl.json",
+        "sha256": "a126a36f2e0b7ecc7b8bfdbcc829330923b98e71384a097a82946ae0ecbf94ea"
+      },
+      "task_set": "verilog-eval-v2/spec-to-rtl@c498220d",
+      "task_set_sha256": "b9f29750ecb244f1abaf4d03f6bef3635be5f1c14a9f49205958c66fe82ce2f7",
+      "verification_tier": "measured",
+      "weight": 0.1,
+      "weighted_score": 0.0
+    }
+  ],
+  "components_sha256": "f81348c23ce0fd7855c60bd891de6eb5067392c1e609466ebba5f21c1eb1f239",
+  "evidence_type": "model_run",
+  "is_model_score": true,
+  "model": "helioslm-toy-2.41",
+  "schema": "agentic-index/1",
+  "verification_tier": "measured",
+  "weights": {
+    "hdl": 0.1,
+    "long_horizon": 0.2,
+    "swe": 0.3,
+    "terminal": 0.3,
+    "tool_recovery": 0.1
+  }
+}
