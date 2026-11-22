@@ -62,6 +62,7 @@ from helioslm_v5.tests import (  # noqa: E402
     case_quant,
     case_quant_fused,
     case_review_closure,
+    case_review_folds,
     case_rope_cache,
     case_security,
     case_serving,
@@ -452,6 +453,13 @@ TESTS = [
     # NVFP4 QAT end-to-end training, batched MTP acceptance telemetry,
     # and true-parallel swarm delegate_all.
     case_review_closure.test_review_closure_suite,
+    # review-plan closure (2026-11-23): the B1-1 IndexShare shared
+    # indexer, the B1-5 --mla-every sweep plumbing + bitwise gate, and
+    # the K3 block-order pins — the last review-plan mechanisms whose
+    # oracles sat in the EXEMPT backlog (wrappers in case_review_folds).
+    case_review_folds.test_indexer_share_suite,
+    case_review_folds.test_mla_every_suite,
+    case_review_folds.test_k3_block_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 

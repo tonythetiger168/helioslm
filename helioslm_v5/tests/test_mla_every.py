@@ -110,6 +110,7 @@ def test_sweep_cli_smoke():
              "--prompts", "1", "--decode-tokens", "2",
              "--cache-seq", "64", "--output", str(out)],
             capture_output=True, text=True, timeout=240,
+            encoding="utf-8", errors="replace",
             cwd=str(_REPO))
         assert r.returncode == 0, f"sweep CLI failed:\n{r.stderr[-800:]}"
         payload = json.loads(out.read_text())
