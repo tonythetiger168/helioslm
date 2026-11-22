@@ -1,8 +1,8 @@
 # CALIBRATION — confidence that answers to outcomes
 
-Status: measured baseline, 2026-11-23. Every number below was produced by
-running the code in this repo on this checkout; nothing is assumed or
-copied from a vendor claim.
+Status: measured, 2026-11-23 (P2 outcome-recalibration row added the
+same day). Every number below was produced by running the code in this
+repo on this checkout; nothing is assumed or copied from a vendor claim.
 
 ## Why this document exists
 
@@ -59,6 +59,50 @@ Two honest readings:
    version of the `conf_on_wrong_mean = 1.0` failure above, now with a
    measured mechanism.
 
+## P2: closing the shift gap with verified outcomes (measured)
+
+The shift above is a CONCEPT shift — the inverted split reuses the exact
+same state words, so p(x) is unchanged and only p(y|x) flipped. No
+input-side mechanism can detect that: density/OOD scores, ensembles of
+identically-trained heads, and split-conformal are all blind to it by
+construction. The only signal that can separate right from wrong there
+is an OUTCOME, which the verified-decision engine already defines: a
+decision counts as verified when an oracle or replay check backs it
+(`cost_per_verified_decision.md`).
+
+`agent/outcome_calibration.py` spends that signal. Each verified outcome
+is stored as the head's own encoder features plus the 0/1 verdict; a
+small ridge-logistic probe learns `P(correct | state)` from exactly
+those verified records, and reported confidence is rescaled by it.
+Answers are never changed, so accuracy is untouched by construction and
+every point of lift is confidence ranking. Cold start (no verified
+outcomes yet) is the identity — an uninstrumented deployment can never
+be silently degraded.
+
+Measured (same probe, same seeds; the first 40 of the 200 shifted
+decisions are verified, the remaining 160 are scored after warmup):
+
+| Metric (route head, shifted) | Raw | After 40 verified outcomes |
+| --- | --- | --- |
+| accuracy (post-warmup subset) | 0.356 | 0.356 (unchanged) |
+| 10-bin ECE | 0.390 (full split) | **0.155** |
+| AUROC (confidence vs correctness) | 0.545 (full split) | **0.935** |
+| Brier | 0.382 (full split) | **0.083** |
+
+Honest boundaries of this result:
+
+- The lift costs verified decisions — 40 of 200 here (20%). With zero
+  outcome budget the shift row stands at AUROC 0.545 and nothing in
+  this repo claims otherwise.
+- The calibrator knows nothing about the task or the shift; it sees
+  encoder features and verdicts only. It does not make the head
+  shift-robust — accuracy stays 0.356 — it makes confidence answer to
+  verified outcomes, which is what a gate should route on.
+- The mechanism and its guards (cold-start identity, single-class
+  buffer refusal, 0/1 verdict enforcement) are pinned in
+  `tests/case_outcome_calibration.py`; the numbers reproduce with
+  `python3 docs/calibration_probe.py`.
+
 ## What we measure (definitions as implemented)
 
 - **ECE** — 10 equal-width bins over max-softmax confidence;
@@ -74,8 +118,9 @@ Two honest readings:
 
 ```bash
 # DecisionHead shift experiment (CPU, ~1 min): trains on 400 records,
-# evaluates on 200 in-distribution + 200 rule-inverted records, prints
-# the table above as JSON.
+# evaluates on 200 in-distribution + 200 rule-inverted records, then
+# streams the same shifted records through the P2 outcome calibrator
+# (40 verified) — prints all three blocks above as JSON.
 python3 docs/calibration_probe.py   # self-contained, seeds fixed
 ```
 
@@ -87,7 +132,10 @@ document with the new measured row, not the old one.
 
 - Never gate on raw confidence from a model outside its training
   distribution; AUROC-on-shift is the metric that must clear a floor,
-  not ID ECE.
+  not ID ECE. Wherever decisions are verified anyway, feed the verdicts
+  to `OutcomeCalibrator` and gate on the recalibrated confidence — the
+  measured row above is the difference between routing on a coin flip
+  (0.545) and routing on a ranked signal (0.935).
 - A decision is "verified" only when an oracle or replay check backs it
   (`cost_per_verified_decision.md` builds the cost model on exactly that
   definition: `correct AND final == expected`).
