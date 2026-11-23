@@ -1,5 +1,37 @@
 # HeliosLM v5 Changelog
 
+## v5.275 (2026-11-23) - CHANGELOG catch-up for #285-#294 (Agentic Index, calibration, review-plan closure)
+
+No code change in this release: it records ten merges that landed after
+v5.274 without a CHANGELOG entry or a version bump.
+
+- #285 ci: torch pin selects 2.15.0 on Python 3.15+, keeps 2.14.1 on
+  3.11/3.12.
+- #286 tests: the distill-SFT sidecar reports 7/7 executed cases when
+  the tokenizers-dependent CLI case runs and 6/7 when it skips.
+- 92a3749 limitations: option-matrix and calibrated-prefetcher sidecars
+  folded into the daily gate as documented smoke subsets (TESTS 218).
+- #287 eval: agentic-index/1 contract (fixed weights, component/source
+  provenance, deterministic --check; schema fixtures are not model
+  evidence).
+- #289 eval: native benchmark outputs (term_bench, swe_bench,
+  evaluate_policy, hdl-bench/1, tool-recovery-run/1) adapted into
+  agentic-component/1 descriptors with source-byte provenance; mismatched
+  or scripted shapes are hard failures (TESTS 219).
+- #290 review-plan closure: B1-2/B1-3/B1-4/B1-6 oracles
+  (case_review_closure.py, TESTS 220), docs/CALIBRATION.md and
+  docs/cost_per_verified_decision.md with their probes.
+- #291 case_review_folds.py runs the T76 IndexShare, T79 mla-every and
+  block-order sidecars daily (TESTS 223); docs/AGENTIC_BENCH.md.
+- #292 first measured five-component run of examples/agentic_candidate_run.py
+  on a toy candidate; adapter accepts integer evaluate_policy violation
+  counts.
+- #293 agent/outcome_calibration.py: OutcomeCalibrator rescales
+  confidence from oracle-verified outcomes (never changes answers);
+  case_outcome_calibration.py registered (TESTS 224).
+- #294 the three case_review_folds sidecars move from EXEMPT to FOLDED
+  in the registry (109 folded / 103 exempt, 212 files).
+
 ## v5.274 (2026-11-22) - MoE config table / API distillation / clamped SwiGLU sidecars folded into the suite
 
 Daily-maintenance fold of three more sidecar suites into the mandated

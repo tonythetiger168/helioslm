@@ -1,5 +1,8 @@
-# HeliosLM v5.274 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.275 - DeepSeek/K3-Style Architecture
 
+v5.275 (2026-11-23): CHANGELOG catch-up for #285-#294 (Agentic
+Index contract and adapters, outcome calibration, review-plan closure
+oracles); no code change.
 v5.274 (2026-11-22): three more sidecar suites folded into the mandated
 daily gate (OS6 MoE configuration table, T121 API-teacher distillation,
 T106 gpt-oss clamped SwiGLU; 104 folded / 108 exempt, TESTS 216). All
