@@ -1286,6 +1286,15 @@ FOLDED_SIDECARS = {
     # T40 calibrated prefetcher (states=20 smoke sizes)
     "test_option_matrix": "test_option_matrix_suite",
     "test_calibrated_prefetcher": "test_calibrated_prefetcher_suite",
+    # review-plan closure 2026-11-23 (direct-edit round): the B1-1
+    # IndexShare, B1-5 --mla-every and K3 block-order sidecars move
+    # from EXEMPT to FOLDED. Their wrappers live in
+    # case_review_folds.py (this file is too large for safe API
+    # transcription), so the coverage guard resolves wrapper names
+    # across both modules.
+    "test_indexer_share": "test_indexer_share_suite",
+    "test_mla_every": "test_mla_every_suite",
+    "test_k3_block": "test_k3_block_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1307,13 +1316,13 @@ EXEMPT_SIDECARS = {
     'test_hsh_egress', 'test_hsh_extras', 'test_hsh_interaction',
     'test_hsh_mcp',
     'test_hsh_skills',
-    'test_hsh_web', 'test_indexer_share', 'test_k3_block',
+    'test_hsh_web',
     'test_k3_llamacpp_parts', 'test_kda_chunked', 'test_kda_k3_style', 'test_kda_subchunk',
     'test_kv_compress', 'test_kv_share', 'test_llamacpp_export', 'test_llamacpp_kimi_k3',
     'test_llamacpp_tokenizer', 'test_lm_decision_head', 'test_lm_harness', 'test_logit_kd',
     'test_longctx_harness',
     'test_midtrain',
-    'test_mimo_hybrid', 'test_mla_every', 'test_mla_expanded_training',
+    'test_mimo_hybrid', 'test_mla_expanded_training',
     'test_mopd', 'test_mtp_light', 'test_mtp_rollout',
     'test_multiseed', 'test_nope_temperature',     'test_noul_continuous', 'test_nvfp4_qat_e2e',
     # Binds 127.0.0.1 (ephemeral port); same exemption as test_hsh_web.
@@ -3179,7 +3188,7 @@ def test_sidecar_coverage_guard():
     Loud both ways: a NEW sidecar upstream lands must be folded or
     exempted the same day; a deleted/renamed file must be dropped from
     the registry. Also pins that every FOLDED entry really names a
-    wrapper defined in this module."""
+    wrapper defined in this module or in case_review_folds."""
     tests_dir = Path(__file__).resolve().parent
     on_disk = {p.stem for p in tests_dir.glob("test_*.py")}
     on_disk.discard("test_v5")  # the gate itself, not a sidecar
@@ -3188,8 +3197,14 @@ def test_sidecar_coverage_guard():
     overlap = folded & exempt
     assert not overlap, f"listed as both folded and exempt: {sorted(overlap)}"
     import helioslm_v5.tests.case_upstream_suites as self_mod
-    missing_wrappers = [w for w in FOLDED_SIDECARS.values()
-                        if not callable(getattr(self_mod, w, None))]
+    # B1-fold wrappers live in case_review_folds (2026-11-23). That
+    # module imports _drift_guard from this one, so the import here
+    # stays call-time deferred: module-level would be circular.
+    from helioslm_v5.tests import case_review_folds
+    fold_modules = (self_mod, case_review_folds)
+    missing_wrappers = [
+        w for w in FOLDED_SIDECARS.values()
+        if not any(callable(getattr(m, w, None)) for m in fold_modules)]
     assert not missing_wrappers, \
         f"FOLDED entries without a wrapper function: {missing_wrappers}"
     new = sorted(on_disk - folded - exempt)
