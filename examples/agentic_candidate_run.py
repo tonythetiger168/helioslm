@@ -18,7 +18,7 @@ Usage (from the repo root):
 
     python3 examples/agentic_candidate_run.py \
         --checkpoint checkpoints/toy_v5.13.pt \
-        --results results/agentic/2026-11-23_toy-v5.13
+        --results results/agentic/<run-name>
 
 Determinism: greedy decoding (temperature=0), fixed task order, fixed
 seeds for the tool-recovery corpus — a rerun on the same checkpoint and

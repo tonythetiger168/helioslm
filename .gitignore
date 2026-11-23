@@ -67,3 +67,6 @@ data/hdl_bench/
 
 # Editor/backup leftovers
 *.bak
+
+# Agentic candidate-run outputs stay private (not published)
+results/agentic/
