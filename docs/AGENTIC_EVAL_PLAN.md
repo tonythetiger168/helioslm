@@ -167,18 +167,16 @@ canonical component hash, strict validation, source tampering, CLI generation
 and non-writing byte-for-byte `--check`. No static fixture index is committed
 because there is no recorded five-component candidate run to publish yet.
 
-**Phase 3 first measured run (2026-11-23, done):** the toy checkpoint
+**Phase 3 pipeline smoke (2026-11-23, done):** the toy checkpoint
 (`checkpoints/toy_v5.13.pt`) was run through all five benchmarks by
-`examples/agentic_candidate_run.py`; artifacts, `model_run`/`measured`
-descriptors and the aggregate index (**0.000000**, `is_model_score: true`)
-are committed under `results/agentic/2026-11-23_toy-v5.13/` — see
-`docs/AGENTIC_BENCH.md` for the numbers. The index verifies byte-for-byte
-with `--check`. The run also exposed and fixed one contract drift: the
+`examples/agentic_candidate_run.py` to exercise the measured pipeline end
+to end; its outputs are kept out of this repository (`results/agentic/`
+is git-ignored). The run also exposed and fixed one contract drift: the
 long-horizon adapter now accepts `evaluate_policy`'s real int `violations`
 counts (previously only the list-form fixture rows had ever been scored).
 **Remaining Phase 3 work:** score a trained candidate on the same five
-tracks (needs an authorized checkpoint) to lift the index above the toy
-floor.
+tracks (needs an authorized checkpoint) to record the first trained-candidate
+baseline.
 
 ## Explicitly out of scope
 
