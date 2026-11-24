@@ -58,7 +58,12 @@ On the committed schema fixtures (explicitly `is_model_score: false` —
 a math/provenance check, not a model score): components 0.75/0.50/0.50/
 0.75/0.50 across the five tracks aggregate to **0.625** under the fixed
 weights, byte-identical under reversed input order and CLI regeneration
-(`--check`).
+(equality of files, not just scores). A no-op candidate (empty reply
+everywhere) scores 0 on all five — the oracle rejects silence; the
+false-completion probe (claims DONE, no file writes) is caught by
+state verification, not self-report. Aggregation is a pure function of
+the five component files plus their task-set hashes, so any score
+travels with its provenance.
 
 ## Candidate runs (pipeline smoke, 2026-11-23)
 
@@ -89,6 +94,30 @@ A second run (2026-11-23) scored the trained mid SFT checkpoint
 chat-tool-SFT model, while the same checkpoint scores 9/12 + 3 safe
 abstentions on grounded chat in-distribution (0/12 ungrounded). Full
 report: `docs/AGENTIC_MID_CANDIDATE.md`.
+
+## External reference row — Kimi K3.1 Pro (hosted API, 2026-11-24)
+
+`examples/k31_reference_run.py` (Route C of `docs/K31_DISTILL_PLAN.md`)
+drives the hosted Kimi K3.1 Pro chat-completions API through the *same*
+five-track interfaces, with per-call `usage` cost accounting (rates are
+vendor-reported assumptions: $2/1M input, $10/1M output, checked
+2026-11-24), a hard `--max-cost-usd` abort (default $1.00), and the API
+key read from the environment only (artifacts store a sha256
+fingerprint, never the key). This row is **our measurement of an
+external model**, not a vendor-reported number; it is not comparable to
+Terminal-Bench and is never mixed into the Agentic Index of our own
+candidates.
+
+Smoke run (1 terminal episode, `reasoning_effort=low`, 2026-11-24):
+task passed in 2 steps, 3 API calls, $0.0032. Full ~50-episode row is
+pending and will land with per-track pass rates and total cost.
+
+```bash
+export MOONSHOT_API_KEY=sk-...
+python3 examples/k31_reference_run.py --smoke
+python3 examples/k31_reference_run.py --episodes 50 \
+    --out results/reference/<date>_k31-pro/
+```
 
 ## Reproduce
 
