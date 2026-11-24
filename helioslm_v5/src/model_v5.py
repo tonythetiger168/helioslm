@@ -46,6 +46,7 @@ from helioslm_v5.src.attention.linear_attention import (
     GatedDeltaAttention, past_seq_len)
 from helioslm_v5.src.moe.sigmoid_moe import DeviceLimitedMoE
 from helioslm_v5.src.inference.mtp import MTPModule, MTPDecoder
+from helioslm_v5.src.inference.decode_strategy import DecodeStrategy
 from helioslm_v5.src.vision.navit import NaViTEncoder
 from helioslm_v5.src.audio.streaming_encoder import StreamingAudioEncoder
 
@@ -808,10 +809,16 @@ class HeliosLMv5(nn.Module):
           ``inference.thinking_budget.ThinkingBudget``; each row's thinking
           span is forced closed after ``budget`` tokens. None (default) =
           unchanged decoding. Plain path only.
+
+        The ``use_mtp`` x ``thinking_budget`` combination is validated by
+        the decode-strategy layer (``inference.decode_strategy``), which
+        owns the mutual-exclusion rule; this method is a compatibility
+        facade that builds a ``DecodeStrategy`` from its keyword arguments
+        and dispatches on it. The default strategy is the plain path and
+        is bit-identical to the pre-refactor default.
         """
-        if use_mtp and thinking_budget is not None:
-            raise ValueError("thinking_budget is not supported with use_mtp=True")
-        if use_mtp:
+        strategy = DecodeStrategy(use_mtp=use_mtp, thinking_budget=thinking_budget)
+        if strategy.use_mtp:
             if self.mtp_modules is None:
                 raise ValueError(
                     "use_mtp=True but config.mtp.enabled=False: no MTP modules"
@@ -852,7 +859,7 @@ class HeliosLMv5(nn.Module):
         try:
             return self._generate_impl(
                 input_ids, max_new_tokens, temperature, top_p, attention_mask,
-                thinking_budget,
+                strategy.thinking_budget,
             )
         finally:
             self.train(was_training)
