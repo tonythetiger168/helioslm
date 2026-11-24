@@ -1196,6 +1196,9 @@ FOLDED_SIDECARS = {
     "test_oracle_guard": "test_oracle_guard_suite",
     "test_think": "test_think_suite",
     "test_thinking_budget": "test_thinking_budget_suite",
+    # roadmap 2026Q4-v2 improvement 5 (2026-11-24): decode-strategy
+    # layer landed with its oracle sidecar, folded the same day
+    "test_decode_strategy": "test_decode_strategy_suite",
     "test_three_modes": "test_three_modes_suite",
     "test_skill_docs": "test_skill_docs_suite",
     # limitations round 2026-11-08 (package tiers / prereg plans)
@@ -1866,6 +1869,24 @@ def test_thinking_budget_suite():
           "thinking budget: all 5 sidecar tests under the daily gate")
 
 
+def test_decode_strategy_suite():
+    """Decode-strategy layer (roadmap 2026Q4-v2, improvement 5) under
+    the daily gate: the strategy layer owns the use_mtp x
+    thinking_budget exclusion, generate() delegates as a compatibility
+    facade, the default strategy is bit-identical, and a valid budget
+    strategy is still enforced."""
+    from helioslm_v5.tests import test_decode_strategy as m
+    expected = {"test_strategy_layer_owns_the_rule",
+                "test_generate_facade_delegates",
+                "test_default_strategy_bit_identical",
+                "test_budget_strategy_still_enforced"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_decode_strategy_suite",
+          "decode strategy layer: all 4 sidecar tests under the daily gate")
+
+
 def test_three_modes_suite():
     """Three-modes report oracles (T19) under the daily gate: one plain
     function, folded as-is."""
@@ -2432,7 +2453,7 @@ def test_decontam_suite():
 def test_distill_filter_suite():
     """D2 teacher-answer filtering (src/training/distill_filter.py,
     v5.112) under the daily gate. Pins: simplified-rate detection
-    (Traditional 台/着 excluded); every single-record drop reason
+    (Traditional 叒/着 excluded); every single-record drop reason
     (truncated, empty/leaked think, token caps, simplified, eval
     overlap, unparsable code) and loud max_tokens refusal; math
     self-consistency keeps the majority; near-duplicate prompts dropped
@@ -2453,8 +2474,8 @@ def test_distill_filter_suite():
 
 
 # ---------------------------------------------------------------------------
-# daily-maintenance round (2026-11-11, v5.264): fold seven more
-# sidecars into the daily gate — test_chat_tuned (T21 tuned-artifact
+# daily-maintenance round (2026-11-11, v5.264): fold seven more sidecars
+# into the daily gate — test_chat_tuned (T21 tuned-artifact
 # summary), test_csa (7; CSA ratio-1 == dense, slow-reference match,
 # causality/selection, padding exclusion, no-grad through top-k, v4
 # stack preset, committed A/B slice), test_dsa (T11 two-layer DSA
