@@ -4,6 +4,7 @@
 - **基準：** `main` @ `1fd3358`（v5.53）+ PR #21（審查修正）
 - **驗證層級：** `unverified`（計劃文件；第 1 節的排行榜數字來自第三方彙整網站，未經本 repo 重現）
 - **相關文件：** [`ROADMAP.md`](ROADMAP.md)（Local Decision Engine 方向）、[`PHASE0_3_PLAN.md`](PHASE0_3_PLAN.md)
+- **2026-11-24 更新：** 技術細節由 [`ROADMAP_2026Q4_V2.md`](ROADMAP_2026Q4_V2.md)（v2）取代；本文件的策略層（定位、Phase 架構）仍然有效。
 
 ---
 
@@ -204,7 +205,7 @@ HeliosLM 不應追排行榜，它的優勢在別處：
 Phase B2（GLM／MiMo 對照）：
 
 - [NVIDIA GLM-5.3 model card](https://build.nvidia.com/z-ai/glm-5-3/modelcard)
-- [Z.ai GLM-5.3-Flash 文件](https://docs.z.ai/guides/vlm/glm-5.3-flash)
+- [Z.ai GLM-5.3-Flash 文件](https://docs.z.ai/guides/vlm/glm-5-3-flash)
 - [SGLang GLM-5.3](https://docs.sglang.io/cookbook/autoregressive/GLM/GLM-5.3)
 - [SemiAnalysis GLM-5.2/5.3](https://inferencex.semianalysis.com/model/glm-5-3)
 - [daily.dev GLM-5.3-Flash notes](https://daily.dev/posts/glm-5-3-flash-architecture-notes-4pnix3fdg)
