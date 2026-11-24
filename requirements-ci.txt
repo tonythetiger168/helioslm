@@ -4,12 +4,17 @@
 # Bump deliberately, in its own PR, and re-run the full suite.
 --index-url https://download.pytorch.org/whl/cpu
 --extra-index-url https://pypi.org/simple
-# torch 2.14.1 has no CPython 3.15 wheels. Keep the existing 3.11/3.12
-# CI gate unchanged; 2.15.0 is the verified 3.15+ CPU dependency.
-torch==2.15.0; python_version >= "3.15"
-torch==2.14.1; python_version < "3.15"
+# torch 2.15.0 (2026-10-28) requires Python >= 3.11, matching the CI
+# gate (3.11/3.12) exactly; the <3.15 fallback to 2.14.1 is no longer
+# needed. 2.15 breaking changes reviewed: none apply (no nested-tensor
+# checkpoints, no distributed NCCL, no macOS MPS, no complex-dtype ops).
+# GPU pods still pin 2.14.1+cu130 separately (docs/DEVICE_MATRIX.md).
+torch==2.15.0
+# numpy 2.5.5 (2026-11-15) is a patch release over 2.5.4 (bugfixes,
+# StringDType hardening, eMudhra-related fixes; one compat note: void/
+# subarray -> StringDType cast now raises TypeError — not used here).
 # numpy 2.5 ships no CPython 3.11 wheels; 2.4.6 is what py3.11 resolved.
-numpy==2.5.4; python_version >= "3.12"
+numpy==2.5.5; python_version >= "3.12"
 numpy==2.4.6; python_version < "3.12"
 pytest==9.1.1
 # v5.79 (tech-debt Phase 3): parallel test workers
