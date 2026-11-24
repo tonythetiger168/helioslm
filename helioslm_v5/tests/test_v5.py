@@ -249,9 +249,9 @@ TESTS = [
     # long-horizon agent bench (#174, v5.221), external reference model
     # gate (v5.220), LoRA SFT (v5.217), hsh clinical preset (v5.223) and
     # the medical-data PHI/licence guard (v5.215) — folded with the same
-    # drift-guarded wrapper pattern (parametrized rows called with
-    # full lists, tmp_path via TemporaryDirectory, monkeypatch via the
-    # stand-in, transformers-dependent LoRA cases pre-checked on find_spec).
+    # drift-guarded wrapper pattern (parametrized cases with full lists,
+    # tmp_path via TemporaryDirectory, monkeypatch via the stand-in,
+    # transformers-dependent LoRA cases pre-checked on find_spec).
     case_upstream_suites.test_long_horizon_bench_suite,
     case_upstream_suites.test_external_model_gate_suite,
     case_upstream_suites.test_lora_suite,
