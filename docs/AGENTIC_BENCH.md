@@ -108,9 +108,33 @@ external model**, not a vendor-reported number; it is not comparable to
 Terminal-Bench and is never mixed into the Agentic Index of our own
 candidates.
 
-Smoke run (1 terminal episode, `reasoning_effort=low`, 2026-11-24):
-task passed in 2 steps, 3 API calls, $0.0032. Full ~50-episode row is
-pending and will land with per-track pass rates and total cost.
+Full 50-episode run (`reasoning_effort=low`, 2026-11-24), **HeliosLM
+same-harness measurement of an external model**, not vendor-reported:
+
+| Track | Episodes | Passed | Pass rate |
+| --- | ---: | ---: | ---: |
+| Terminal | 16 | 15 | 0.9375 |
+| SWE | 8 | 8 | 1.0000 |
+| Long horizon | 5 | 3 | 0.6000 |
+| Tool recovery | 13 | 3 | 0.2308 |
+| HDL | 8 | 0 | 0.0000 |
+
+The initial manifest recorded $0.314694. A long-horizon prompt-format
+correction (`manifest_long_horizon_v3.json`) superseded its initial 0/5 row
+with the 3/5 result above and added $0.042692; cumulative measured-run cost
+is therefore **$0.357386**, below the $1 cap. Artifact SHA-256 values:
+terminal `4431453018dadabe5b7787ca753d0b13332315652d9423f5cf9e3065bb85315a`,
+SWE `a557792cee15c5b27570219dc32acfaec24543edcf3815e33f3b71a9e0ff564c`,
+long horizon `9a3cdb5a2ace2b13fceb1528ba8e617271b9f2ed45d7407b53c38fb686817877`,
+tool recovery `7597f34457e0988b9c2f17cea7759207cf17eb0d99feeeaec3d2c9a900f40c5c`,
+HDL `7c7aca42ce339e1c46257cfda2ca10863e625c9ed52e6c628dba0727302554eb`.
+Long-horizon rows carry per-episode `trajectory_sha256`; tool-recovery rows
+carry `reply_sha256`. Terminal/SWE retain their command transcripts and HDL
+retains generated samples, but this run did not allocate usage cost or an
+individual hash to every one of those episodes; the artifact-level hashes
+above are the available integrity evidence, not a claim of finer provenance.
+These subset pass rates are not combined into a HeliosLM candidate Agentic
+Index and are not comparable with vendor-published benchmark scores.
 
 ```bash
 export MOONSHOT_API_KEY=sk-...

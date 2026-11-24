@@ -56,6 +56,51 @@ Acceptance: teacher pass-rate per family reported; student trained on
 verified traces beats the same-budget control on the Phase-1 term_bench
 set without regressing the H3 table.
 
+### Route A offline pipeline (implemented 2026-11-24)
+
+`helioslm_v5.src.training.agentic_distill` and
+`examples/agentic_distill.py` now cover all four improvement-3 protocols:
+terminal, SWE, long-horizon and tool recovery. The task generator produces
+fresh parameterized training tasks with `agentic-distill-disjoint-v1`
+provenance; it does not clone `term_bench.TASKS`, `swe_bench.TASKS`,
+`long_horizon_bench.SCENARIOS` or the seeded tool-recovery eval corpus.
+Collection records the exact prompt/reply at every model step. Terminal and
+SWE acceptance requires a DONE reply plus final-state or visible+hidden test
+verification; long-horizon acceptance additionally requires a fresh-sandbox
+replay, no OracleGuard violation, no injection and no parse error; tool
+recovery requires strict parsing and exact equality with the original calls.
+
+```bash
+python3 examples/agentic_distill.py tasks --per-protocol 25 \
+    --out runs/route-a/tasks.jsonl
+# Collection executes untrusted commands: use an existing disposable container.
+python3 examples/agentic_distill.py collect --tasks runs/route-a/tasks.jsonl \
+    --out runs/route-a/trajectories.jsonl --container-confirmed \
+    --max-cost-usd 1.0
+python3 examples/agentic_distill.py export \
+    --trajectories runs/route-a/trajectories.jsonl --out runs/route-a/sft.jsonl
+```
+
+Collection checks the new tasks against all four built-in formal eval sets
+before the first API call. Long-horizon SFT inputs preserve the
+candidate-facing `MidCandidate.policy` text verbatim; AgentLoop internals and
+teacher-wrapper private API instructions are not substituted as student input.
+Export requires a non-empty eval index, drops foreign/unverified trajectories
+and malformed targets, applies
+`data_quality.heuristic_check`, then applies the 13-gram `decontam.py` gate
+to every prompt+target. The report exposes unchecked short eval items and
+per-protocol survivor counts; an empty result is refused rather than written
+as a placeholder. Extra `--eval` JSONL files can extend, but cannot disable,
+the built-in index. API keys come from the named environment variable only;
+the CLI neither rents an endpoint nor starts SFT.
+
+The existing K3.1 reference JSON artifacts are **not training input**. They
+are same-harness measurements of an external model, and the terminal/SWE
+artifacts contain commands but not the original per-step prompts/replies.
+Using those eval-derived traces for SFT and then reporting gains on the same
+tasks would be contamination. Candidate training, its sizing/cost review and
+the subsequent five-track acceptance run remain separate authorized steps.
+
 ## Route B — preference pairs for the trust/decision layer
 
 K3.1's published hallucination-rate improvement is the behavior
