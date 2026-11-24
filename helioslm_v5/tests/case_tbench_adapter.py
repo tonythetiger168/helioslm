@@ -234,7 +234,7 @@ def test_cli_lists_every_skip_and_is_deterministic():
         # output deterministic without invoking any task-provided script.
         stdout = io.StringIO()
         with contextlib.redirect_stdout(stdout):
-            assert tba.main(command[4:]) == 0
+            assert tba.main(command[3:]) == 0
         assert 'task="alpha"' in stdout.getvalue()
     print("PASS test_cli_lists_every_skip_and_is_deterministic")
 

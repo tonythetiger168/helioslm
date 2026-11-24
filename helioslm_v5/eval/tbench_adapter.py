@@ -295,6 +295,12 @@ def inventory(root, task_set, source_commit, expected_task_set_sha256,
             continue
         try:
             raw = _read_limited(root, f"{task_id}/task.toml", MAX_CONFIG_BYTES)
+            # Presence alone is insufficient: required task content must be a
+            # regular file, never a symlink to host data outside the task set.
+            for relative in ("instruction.md", "tests/test.sh"):
+                if relative in files:
+                    _read_limited(root, f"{task_id}/{relative}",
+                                  MAX_INSPECTION_BYTES)
             config = tomllib.loads(raw.decode("utf-8"))
             rows.append(_classify(root, task_id, config, files, mode))
         except (OSError, UnicodeError, tomllib.TOMLDecodeError, TaskSetError) as exc:
