@@ -24,7 +24,7 @@ Usage:
 
     export MOONSHOT_API_KEY=sk-...
     python examples/k31_reference_run.py --smoke --skip-hdl   # 1 episode
-    python examples/k31_reference_run.py --episodes 50 \\
+    python examples/k31_reference_run.py --episodes 50 \
         --out results/reference/2026-11-24_k31-pro/
 """
 import argparse
@@ -147,10 +147,18 @@ class K31Candidate:
         return self._call([{"role": "user", "content": prompt}])
 
     def policy(self, scenario, observations):
-        prompt = ("You are an agent that replies with exactly one tool call.\n"
-                  f"Task: {scenario.task}\n"
-                  + "".join(f"observation: {o}\n" for o in observations)
-                  + "Your reply:")
+        tools = "calc, str_op, file_read, file_write, finish"
+        prompt = (
+            "You are an agent that replies with exactly one tool call.\n"
+            "Reply with ONLY this exact format (no spaces between the "
+            "markers and the JSON, compact JSON, no prose):\n"
+            '@@tool@@{"calls":[{"name":"<tool>","args":{...}}]}@@end@@\n'
+            f"Available tools: {tools}.\n"
+            "When the task is fully complete, reply instead with "
+            "'DONE <answer>'.\n"
+            f"Task: {scenario.task}\n"
+            + "".join(f"observation: {o}\n" for o in observations)
+            + "Your reply:")
         return self._call([{"role": "user", "content": prompt}])
 
     def hdl(self, system, user, i):
