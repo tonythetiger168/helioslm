@@ -5,8 +5,9 @@ difficulty tiers, exact and seeded hidden-oracle verification, a per-task
 trap gate in the committed std-bench reference, and a calibration-board row
 embedded in each terminal API artifact that carries confidence. Phase 3's
 aggregation contract, native-artifact adapters and reproducible CLIs are
-implemented; Phase 2 remains a plan. There is still no five-component
-HeliosLM model baseline and no upstream Terminal-Bench score.
+implemented; Phase 2's pinned Terminal-Bench 2.1 feasibility audit is
+complete, but its adapter remains a plan. There is still no upstream
+Terminal-Bench score.
 
 Why: 2026 agentic leaderboards weight long-horizon terminal/repository
 work highest (Artificial Analysis puts agentic coding at 30% of its
@@ -24,13 +25,13 @@ Terminal-Bench-comparable track.
 | SWE-style RL env + repair bench | `helioslm_v5/eval/swe_bench.py`, `examples/swe_agent_rl_train.py` | working |
 | Tool-call parse recovery audit | `helioslm_v5/agent/tool_recovery.py` | working |
 | Verbalized-confidence capture | `DONE confidence=` in term_bench; `calibration_board.py` | working |
-| Fixed-weight agentic aggregation contract | `helioslm_v5/eval/agentic_index.py` | implemented; no model baseline yet |
-| Native run-artifact to component adapters | `helioslm_v5/eval/agentic_adapters.py` | implemented; no candidate run recorded yet |
+| Fixed-weight agentic aggregation contract | `helioslm_v5/eval/agentic_index.py` | implemented; toy and trained-candidate runs recorded below |
+| Native run-artifact to component adapters | `helioslm_v5/eval/agentic_adapters.py` | implemented; candidate run evidence remains outside the repo |
 
 Remaining gaps against Terminal-Bench-style evaluation: no upstream
 Terminal-Bench task adapter; no multi-step tasks requiring package installs
-or service orchestration; no measured five-component run from one candidate
-checkpoint; no contamination control against upstream task text.
+or service orchestration; no contamination control against upstream task
+text.
 
 ## Phase 1 — scale the in-house miniature (implemented, no new deps)
 
@@ -50,22 +51,42 @@ Acceptance: 50 tasks, every verifier covered by a unit test that a
 no-op run fails and the scripted solution passes; runtime < 10 min CPU
 for the full set; board row emitted per run.
 
-## Phase 2 — upstream Terminal-Bench adapter (pod only)
+## Phase 2 — upstream Terminal-Bench adapter (container only)
 
-1. Adapter `helioslm_v5/eval/tbench_adapter.py`: read upstream task
-   dirs (task.toml + tests), translate into the term_bench sandbox
-   protocol, run the upstream pytest-style verifier after DONE.
-2. Upstream tasks assume docker; the pod has none. Run with the same
-   discipline as CVDP: only tasks whose harness needs the stock image,
-   executed directly with paths pointed at a temp dir; `list` prints
-   skipped ids with reasons.
-3. Decontamination: hash task instruction text against training
-   mixtures (`decontam.py`) before reporting any number; contaminated
-   tasks are excluded and counted.
+The 2026-11-25 feasibility audit is in
+`docs/TBENCH_PHASE2_FEASIBILITY.md`. It pins Terminal-Bench 2.1 at source
+commit `12b7565679ce5006230b820666353673a133db93` and statically classifies
+all 89 tasks. No upstream code was executed and no score was produced.
+Terminal-Bench 2.1 revises 28 of the 89 tasks in 2.0, so versions, scores and
+task-set hashes must remain separate.
 
-Acceptance: adapter runs the docker-free subset end-to-end on the pod;
-report is labeled "Terminal-Bench (subset, no-docker)" and never mixed
-with full-split vendor numbers.
+1. Build `helioslm_v5/eval/tbench_adapter.py` as a Harbor-native adapter.
+   Preserve the task image/build definition, resources, network declaration,
+   timeouts, `tests/test.sh` lifecycle and raw Harbor reward. Do not replace
+   these with `term_bench.task["verify"](root)` or a pytest-only shortcut.
+2. Implement read-only `list`/inventory first. It must pin the task-set
+   identity, classify capabilities without executing task content, and print
+   every skipped task ID with stable machine-readable reasons.
+3. Execute only inside an existing disposable container/pod with an isolated
+   Harbor runtime. Start with container-only oracle/no-op smoke controls,
+   then the pinned full split when that runtime is available. Never expose
+   host credentials, paths or the host Docker socket to a task container.
+4. The former automatic docker-free acceptance is withdrawn: all 89 pinned
+   tasks declare prebuilt images and Dockerfiles, allow Internet access and
+   install verifier dependencies, so the conservative static no-docker gate
+   auto-admits 0/89. Any future manually audited no-docker exception is a
+   separate custom subset, not a native or full-split result.
+5. Decontaminate task instructions against training mixtures before a
+   candidate rollout; record contaminated IDs explicitly. Run artifacts must
+   retain source/task-set hashes, Harbor and runtime versions, resolved image
+   digests, per-task rewards/failures and all subset/skip identities.
+
+Acceptance: read-only discovery covers the complete pinned set with
+synthetic-fixture tests; native execution preserves Harbor semantics; a full
+2.1 report accounts for all 89 tasks. Any subset is labeled with its exact
+version, runtime and task IDs. In particular, a no-docker report is labeled
+"Terminal-Bench (subset, no-docker)" and is never mixed with native or
+full-split vendor numbers. Static parsing or partial runs produce no score.
 
 ## Phase 3 — one agentic index (aggregation and adapters implemented)
 
@@ -164,8 +185,9 @@ The daily-gate `case_agentic_index.py` builds an isolated `schema_fixture` +
 the hand-computed math oracle (0.15 + 0.225 + 0.12 + 0.09 + 0.04), not a
 HeliosLM baseline. Four tests pin the weighting math, deterministic order,
 canonical component hash, strict validation, source tampering, CLI generation
-and non-writing byte-for-byte `--check`. No static fixture index is committed
-because there is no recorded five-component candidate run to publish yet.
+and non-writing byte-for-byte `--check`. No static fixture index is committed;
+the toy and trained-candidate runs described below remain run evidence, not a
+schema fixture relabeled as a publishable model index.
 
 **Phase 3 pipeline smoke (2026-11-23, done):** the toy checkpoint
 (`checkpoints/toy_v5.13.pt`) was run through all five benchmarks by
