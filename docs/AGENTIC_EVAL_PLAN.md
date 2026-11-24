@@ -174,9 +174,26 @@ to end; its outputs are kept out of this repository (`results/agentic/`
 is git-ignored). The run also exposed and fixed one contract drift: the
 long-horizon adapter now accepts `evaluate_policy`'s real int `violations`
 counts (previously only the list-form fixture rows had ever been scored).
-**Remaining Phase 3 work:** score a trained candidate on the same five
-tracks (needs an authorized checkpoint) to record the first trained-candidate
-baseline.
+
+**Phase 3 trained candidate (2026-11-23, done):** the mid SFT checkpoint
+(`mid_sft_v5.33`, 360M params, BPE, authorized for this run) was scored on
+the same five tracks via the runner's `--candidate mid` wrapper
+(`examples/mid_candidate.py`). Agentic Index **0.000000** — equal to the
+toy floor, but for a different reason: the mid model's SFT distribution is
+the chat tool protocol, so all five harness protocols are
+out-of-distribution (bash prompts EOS after a token or two, policy prompts
+emit unparseable `@@tool@@`-flavoured text, repair and Verilog outputs are
+off-protocol). Driven **in-distribution**, the same checkpoint scores
+9/12 correct + 3/12 safe abstentions on grounded chat (GroundingGate) vs
+0/12 ungrounded (it confabulates tool arguments) — the sharpest evidence
+yet that the failure mode to fix is unverified self-trust, not incapacity.
+Full numbers, controls and roadmap implications:
+`docs/AGENTIC_MID_CANDIDATE.md`.
+**Remaining Phase 3 work:** produce candidates SFT-trained on the harness
+protocols themselves (term_bench bash, long-horizon single-call policy,
+tool-recovery repair format, Verilog spec-to-RTL) to lift the trained
+index above the toy floor; keep the grounded-chat eval as a standing
+regression gate.
 
 ## Explicitly out of scope
 

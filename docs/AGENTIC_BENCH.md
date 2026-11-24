@@ -83,6 +83,13 @@ int `violations` counts alongside the fixture's list form (both score
 identically; the drift surfaced only when the first real artifact was
 scored).
 
+A second run (2026-11-23) scored the trained mid SFT checkpoint
+(`--candidate mid`, `mid_sft_v5.33`, 360M params): Agentic Index
+**0.000000** — the five harness protocols are out-of-distribution for a
+chat-tool-SFT model, while the same checkpoint scores 9/12 + 3 safe
+abstentions on grounded chat in-distribution (0/12 ungrounded). Full
+report: `docs/AGENTIC_MID_CANDIDATE.md`.
+
 ## Reproduce
 
 ```bash

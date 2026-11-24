@@ -20,6 +20,11 @@ Usage (from the repo root):
         --checkpoint checkpoints/toy_v5.13.pt \
         --results results/agentic/<run-name>
 
+    python3 examples/agentic_candidate_run.py \
+        --candidate mid \
+        --checkpoint checkpoints/mid_sft_v5.33.pt \
+        --results results/agentic/<run-name>
+
 Determinism: greedy decoding (temperature=0), fixed task order, fixed
 seeds for the tool-recovery corpus — a rerun on the same checkpoint and
 task sets reproduces every artifact byte-for-byte (HDL wall-clock fields
@@ -29,6 +34,16 @@ Candidate notes: the committed toy checkpoint is a char-ascii model with
 vocab 1024 and 2048 positions; prompts are truncated head+tail to fit,
 and characters outside the vocab are mapped to '?'. Both are candidate
 limitations, recorded here — they are not harness modifications.
+
+``--candidate mid`` wraps a BPE chat-SFT checkpoint (360M params, vocab
+32768, 8192 positions — e.g. mid_sft_v5.33, fetched from the project's
+Hugging Face repo; ``*.pt`` is gitignored) via examples/mid_candidate.py.
+The mid model was SFT-trained on the chat tool protocol (``##user##`` /
+``##assistant##`` / ``##tool##`` with ``@@tool@@`` blocks and the
+calc/str_op/file_read/file_write/finish tools), so the bash / policy /
+Verilog prompts of these five tracks are out-of-distribution for it —
+see docs/AGENTIC_MID_CANDIDATE.md. That is a candidate limitation, not a
+harness modification.
 
 HDL data: fetched from the pinned upstream commit. ``--hdl-cache`` may
 point at an existing ``hdl_bench.fetch`` cache; otherwise the runner
@@ -114,6 +129,14 @@ class CharCandidate:
     # hdl_bench interface: (system, user, i) -> [text] * n
     def hdl(self, system, user, i):
         return [self.generate(system + "\n" + user, max_new=384)]
+
+
+def make_candidate(kind, checkpoint):
+    """Instantiate the candidate wrapper matching the checkpoint format."""
+    if kind == "mid":
+        from mid_candidate import MidCandidate
+        return MidCandidate(checkpoint)
+    return CharCandidate(checkpoint)
 
 
 # ---------------------------------------------------------------- components
@@ -225,6 +248,10 @@ def main(argv=None):
     parser.add_argument("--results", required=True, type=Path)
     parser.add_argument("--components", default=",".join(COMPONENTS),
                         help="comma-separated subset (default: all five)")
+    parser.add_argument("--candidate", choices=["toy", "mid"], default="toy",
+                        help="checkpoint wrapper: 'toy' is the committed "
+                             "char-ascii toy checkpoint; 'mid' is a BPE "
+                             "chat-SFT checkpoint (examples/mid_candidate.py)")
     parser.add_argument("--hdl-cache", default="data/hdl_bench",
                         help="hdl_bench fetch cache (default: data/hdl_bench)")
     parser.add_argument("--skip-adapters", action="store_true",
@@ -240,9 +267,9 @@ def main(argv=None):
     if unknown:
         parser.exit(2, f"unknown components: {sorted(unknown)}\n")
 
-    cand = CharCandidate(args.checkpoint)
-    print(f"candidate: {args.checkpoint} sha256={cand.checkpoint_sha256[:12]}…",
-          flush=True)
+    cand = make_candidate(args.candidate, args.checkpoint)
+    print(f"candidate: {args.checkpoint} ({args.candidate}) "
+          f"sha256={cand.checkpoint_sha256[:12]}…", flush=True)
 
     task_sets = {}
     existing = results / "task_sets.json"
