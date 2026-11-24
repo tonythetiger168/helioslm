@@ -4,6 +4,7 @@
 - **基準：** `main` @ `1fd3358`（v5.53）+ PR #21（審查修正）
 - **驗證層級：** `unverified`（計劃文件；第 1 節的排行榜數字來自第三方彙整網站，未經本 repo 重現）
 - **相關文件：** [`ROADMAP.md`](ROADMAP.md)（Local Decision Engine 方向）、[`PHASE0_3_PLAN.md`](PHASE0_3_PLAN.md)
+- **2026-11-24 更新：** 技術細節由 [`ROADMAP_2026Q4_V2.md`](ROADMAP_2026Q4_V2.md)（v2）取代；本文件的策略層（定位、Phase 架構）仍然有效。
 
 ---
 
