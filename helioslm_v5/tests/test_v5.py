@@ -47,6 +47,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from helioslm_v5.tests import (  # noqa: E402
     case_agentic_adapters,
+    case_agentic_distill,
     case_agentic_index,
     case_audio_vision,
     case_dualpipe,
@@ -248,9 +249,9 @@ TESTS = [
     # long-horizon agent bench (#174, v5.221), external reference model
     # gate (v5.220), LoRA SFT (v5.217), hsh clinical preset (v5.223) and
     # the medical-data PHI/licence guard (v5.215) — folded with the same
-    # drift-guarded wrapper pattern (parametrized cases with full lists,
-    # tmp_path via TemporaryDirectory, monkeypatch via the stand-in,
-    # transformers-dependent LoRA cases pre-checked on find_spec).
+    # drift-guarded wrapper pattern (parametrized rows called with
+    # full lists, tmp_path via TemporaryDirectory, monkeypatch via the
+    # stand-in, transformers-dependent LoRA cases pre-checked on find_spec).
     case_upstream_suites.test_long_horizon_bench_suite,
     case_upstream_suites.test_external_model_gate_suite,
     case_upstream_suites.test_lora_suite,
@@ -450,6 +451,9 @@ TESTS = [
     # Native candidate rows -> reproducible component descriptors;
     # scripted oracle/self-check artifacts remain ineligible.
     case_agentic_adapters.test_agentic_adapters_suite,
+    # Route A: fresh, eval-disjoint four-protocol teacher trajectories;
+    # only verified, quality-filtered and decontaminated steps reach SFT.
+    case_agentic_distill.test_agentic_distill_suite,
     # 2026-10-10 review-plan closure oracles: MLA vs HCA contrast,
     # NVFP4 QAT end-to-end training, batched MTP acceptance telemetry,
     # and true-parallel swarm delegate_all.
