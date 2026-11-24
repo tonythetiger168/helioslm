@@ -5,9 +5,9 @@ difficulty tiers, exact and seeded hidden-oracle verification, a per-task
 trap gate in the committed std-bench reference, and a calibration-board row
 embedded in each terminal API artifact that carries confidence. Phase 3's
 aggregation contract, native-artifact adapters and reproducible CLIs are
-implemented; Phase 2's pinned Terminal-Bench 2.1 feasibility audit is
-complete, but its adapter remains a plan. There is still no upstream
-Terminal-Bench score.
+implemented. Phase 2A's pinned Terminal-Bench 2.1 read-only discovery and
+capability inventory are implemented; Harbor-native execution remains a
+plan. There is still no upstream Terminal-Bench score.
 
 Why: 2026 agentic leaderboards weight long-horizon terminal/repository
 work highest (Artificial Analysis puts agentic coding at 30% of its
@@ -27,9 +27,10 @@ Terminal-Bench-comparable track.
 | Verbalized-confidence capture | `DONE confidence=` in term_bench; `calibration_board.py` | working |
 | Fixed-weight agentic aggregation contract | `helioslm_v5/eval/agentic_index.py` | implemented; toy and trained-candidate runs recorded below |
 | Native run-artifact to component adapters | `helioslm_v5/eval/agentic_adapters.py` | implemented; candidate run evidence remains outside the repo |
+| Terminal-Bench 2.1 read-only task identity and capability inventory | `helioslm_v5/eval/tbench_adapter.py` | Phase 2A implemented; no execution or scoring |
 
 Remaining gaps against Terminal-Bench-style evaluation: no upstream
-Terminal-Bench task adapter; no multi-step tasks requiring package installs
+Terminal-Bench execution adapter; no multi-step tasks requiring package installs
 or service orchestration; no contamination control against upstream task
 text.
 
@@ -60,13 +61,18 @@ all 89 tasks. No upstream code was executed and no score was produced.
 Terminal-Bench 2.1 revises 28 of the 89 tasks in 2.0, so versions, scores and
 task-set hashes must remain separate.
 
-1. Build `helioslm_v5/eval/tbench_adapter.py` as a Harbor-native adapter.
+1. Build the Harbor-native execution bridge as a later container-only phase.
    Preserve the task image/build definition, resources, network declaration,
    timeouts, `tests/test.sh` lifecycle and raw Harbor reward. Do not replace
    these with `term_bench.task["verify"](root)` or a pytest-only shortcut.
-2. Implement read-only `list`/inventory first. It must pin the task-set
-   identity, classify capabilities without executing task content, and print
-   every skipped task ID with stable machine-readable reasons.
+2. Phase 2A read-only `list`/inventory is implemented in
+   `helioslm_v5/eval/tbench_adapter.py`. It requires the source commit,
+   canonical task-set SHA-256 and (for the pinned split) Git tasks-tree ID;
+   an identity mismatch is a hard failure. The only CLI subcommand is `list`.
+   It classifies capabilities without importing Harbor or executing task
+   content, treats symlinks as data rather than following them, and prints
+   every skipped task ID with stable machine-readable reasons. Its JSON
+   report has schema `tbench-inventory/1` and contains no score or reward.
 3. Execute only inside an existing disposable container/pod with an isolated
    Harbor runtime. Start with container-only oracle/no-op smoke controls,
    then the pinned full split when that runtime is available. Never expose

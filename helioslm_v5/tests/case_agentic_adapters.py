@@ -11,6 +11,7 @@ from helioslm_v5.eval.agentic_adapters import (
     AgenticAdapterError, generate_component, score_artifact)
 from helioslm_v5.eval.agentic_index import (
     AgenticIndexError, build_index, load_components)
+from helioslm_v5.tests import case_tbench_adapter
 from helioslm_v5.tests.case_common import _pass
 
 _REPO = Path(__file__).resolve().parent.parent.parent
@@ -276,10 +277,11 @@ def test_agentic_adapters_suite():
     test_oracle_shapes_and_row_integrity()
     test_native_artifact_math_and_index()
     test_long_horizon_evaluate_policy_shape()
+    case_tbench_adapter.test_tbench_adapter_suite()
     _pass("test_agentic_adapters_suite",
           "Phase 3 adapters: native row recomputation, oracle rejection, "
           "deterministic descriptors, non-writing CLI --check, and the "
-          "real evaluate_policy row shape")
+          "real evaluate_policy row shape; Phase 2A read-only Harbor inventory")
 
 
 if __name__ == "__main__":
