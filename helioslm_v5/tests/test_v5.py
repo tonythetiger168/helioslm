@@ -465,6 +465,10 @@ TESTS = [
     # the CALIBRATION.md shift gap (AUROC 0.545) attacked with the
     # verified-decision signal instead of input-side OOD tricks.
     case_outcome_calibration.test_outcome_calibration_suite,
+    # roadmap 2026Q4-v2 improvement 5 (2026-11-24): decode-strategy
+    # layer oracle (the use_mtp x thinking_budget exclusion moved to
+    # inference/decode_strategy.py; default path bit-identical).
+    case_upstream_suites.test_decode_strategy_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 
