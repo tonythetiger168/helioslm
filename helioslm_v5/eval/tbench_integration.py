@@ -22,8 +22,7 @@ inventory must agree on ``task_set``, ``source_commit``, ``tasks_tree`` and
 import math
 import re
 
-from helioslm_v5.eval.tbench_harbor import (
-    HARBOR_API_COMMIT, INVENTORY_SCHEMA, HarborBridgeError, _rows_by_id)
+from helioslm_v5.eval.tbench_harbor import HARBOR_API_COMMIT, _rows_by_id
 
 
 DECONTAM_SCHEMA = "tbench-decontam/1"
