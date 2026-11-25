@@ -45,7 +45,7 @@ contamination control against upstream task text.
    check only), multi-file refactor with a failing-test oracle.
 2. Add difficulty tiers: tasks where the verifier checks an exact final
    state AND tasks where it checks invariants over a distribution
-   (seeded), so the bench measures robustness not memorized command
+   (seeded), so the bench measures robustness, not memorized command
    sequences.
 3. Wire results into `calibration_board.py` so verbalized confidence vs
    outcome is reported per family (we already record the confidence;
