@@ -11,7 +11,8 @@ from helioslm_v5.eval.agentic_adapters import (
     AgenticAdapterError, generate_component, score_artifact)
 from helioslm_v5.eval.agentic_index import (
     AgenticIndexError, build_index, load_components)
-from helioslm_v5.tests import case_tbench_adapter, case_tbench_harbor
+from helioslm_v5.tests import (
+    case_tbench_adapter, case_tbench_harbor, case_tbench_integration)
 from helioslm_v5.tests.case_common import _pass
 
 _REPO = Path(__file__).resolve().parent.parent.parent
@@ -279,11 +280,13 @@ def test_agentic_adapters_suite():
     test_long_horizon_evaluate_policy_shape()
     case_tbench_adapter.test_tbench_adapter_suite()
     case_tbench_harbor.test_tbench_harbor_suite()
+    case_tbench_integration.test_tbench_integration_suite()
     _pass("test_agentic_adapters_suite",
           "Phase 3 adapters: native row recomputation, oracle rejection, "
           "deterministic descriptors, non-writing CLI --check, and the "
           "real evaluate_policy row shape; Phase 2A read-only Harbor inventory; "
-          "Phase 2B.1 isolated-agent bridge and Phase 2B.2 smoke contracts")
+          "Phase 2B.1 isolated-agent bridge and Phase 2B.2 smoke contracts; "
+          "Phase 2C decontamination ledger and result integration")
 
 
 if __name__ == "__main__":

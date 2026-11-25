@@ -1,7 +1,7 @@
 # Terminal-Bench Phase 2 feasibility — Harbor-native adapter, not a `term_bench` translation
 
 Audit date: 2026-11-25  
-Status: **Phase 2A, Phase 2B.1 bridge core and Phase 2B.2 smoke contracts implemented; no upstream task executed**
+Status: **Phase 2A, Phase 2B.1 bridge core, Phase 2B.2 smoke contracts and Phase 2C integration contracts implemented; no upstream task executed**
 
 ## Decision
 
@@ -170,6 +170,23 @@ explicit reasons. Those features remain part of the general Harbor format and
 must not be assumed absent from other datasets or future versions.
 
 ### Phase 2C — decontamination and result integration
+
+**Phase 2C contracts implemented (synthetic only, 2026-11-25).**
+`helioslm_v5/eval/tbench_integration.py` validates the caller-supplied
+training-mixture manifest (`training-mixture/1`: name, SHA-256, scan method
+and per-task match evidence hashes) and builds a `tbench-decontam/1` ledger
+that keeps every inventory task exactly once. A contaminated task is recorded
+as excluded with its evidence hash; it never silently becomes a zero and
+never disappears from the accounting. `build_terminal_component` validates a
+native run report (`tbench-native-run/1`), requires every `eligible_static`
+row to appear exactly once as either a scored row (finite raw reward,
+completed verifier status, stable failure category, resolved `sha256:` image
+digest, hashed raw artifacts) or a skipped row with taxonomy reasons, and
+recomputes the terminal component score from the scored rows — contaminated
+and skipped tasks change the denominator explicitly. Identity mismatches
+between inventory, decontamination and run reports are hard failures.
+Synthetic fixtures only: no mixture scan, model rollout, container, verifier
+or score was executed.
 
 Before a candidate rollout, apply training-mixture decontamination to task
 instructions and record excluded IDs. A contaminated task cannot silently
