@@ -260,6 +260,53 @@ tool-recovery repair format, Verilog spec-to-RTL) to lift the trained
 index above the toy floor; keep the grounded-chat eval as a standing
 regression gate.
 
+## Phase 3.5 — harness-protocol candidate SFT (cost-tiered plan)
+
+No base model: the HeliosLM pipeline is self-trained end to end, and this
+track stays on that line. The failure mode measured above is protocol
+out-of-distribution, not incapacity, so the next candidate is SFT on
+machine-generated harness-protocol data. Spending is tiered; every tier is
+a hard stop that needs explicit authorization before the next one starts.
+GPU hours are quoted for an A100 80GB (US$1.1–2.75/hr) with an RTX 4090
+(US$0.7–0.9/hr) as the budget alternative.
+
+| Tier | Cap | Content | Output | Gate to proceed |
+|---|---|---|---|---|
+| T0 | US$0 (CPU sandbox) | Generate the five-track protocol dataset (~100k rows: term_bench bash, long-horizon policy, tool-recovery repair, Verilog spec-to-RTL, grounded-chat retention), manifest SHA-256, format/decontamination validation in CI | training-ready `harness_sft` dataset | validation suite green and merged |
+| T1 | ~US$5 | 5% subset smoke run (1 epoch): loss curve, no NaN, checkpoint save/load, eval hook | smoke checkpoint (never scored) | loss decreases monotonically |
+| T2 | ~US$15 | full 1 epoch on ~47M tokens | first testable candidate | ≥2 tracks non-zero; otherwise fix data, not budget |
+| T3 | ~US$30 | 3 epochs + full Agentic Index + GroundingGate regression check | first **measured** trained-candidate index | index clearly above toy floor (≥3 tracks non-zero), GroundingGate holds 9/12 + 3 abstentions ±1, parse rate ≥95% |
+| T4 | US$50 hard cap | one full re-run after infrastructure failure only | — | stop and report at the cap; no auto-renewal |
+| T5+ | by proposal | mixture/lr ablations, 1B/1–2B-token Stage 2 pilot (US$100–300), Stage 2 proper (US$300–3,000), 7B from-scratch (US$15k–45k), frontier scale (US$0.5M+) | — | each tier is separately proposed and authorized |
+
+**T0 builder implemented (synthetic/generator data only, 2026-11-26).**
+`helioslm_v5/eval/harness_sft_data.py` emits the five tracks and verifies
+each against its own oracle: term_bench rows are prompt/reply pairs from
+replaying every task's scripted solution in a real sandbox (the replay must
+pass the task verifier), long-horizon rows are correct-policy trajectories
+re-executed through the real `AgentLoop` (scripted scenarios plus
+parameterised variants; injection scenarios teach refusal-by-ignoring),
+tool-recovery rows are corrupt-then-repair pairs whose target round-trips
+exactly under `recover_tool_call`, the HDL track is a hand-written plus
+parameterised generator suite in the pinned VerilogEval prompt envelope
+(Icarus-gated when the simulator is installed; no upstream text or code),
+and grounded-chat rows retain the answer-or-abstain behaviour. The v1 build
+wrote 99,134 rows (`term_bench` 102, `long_horizon` 90,022,
+`tool_recovery` 8,000, `hdl` 1,004 with all 1,004 Icarus-verified,
+`grounded_chat` 6); manifest SHA-256
+`2dbceb152ab339140987313f74c4149f733a38bc93d45310c8ccd2351e4d1410` covers the
+written bytes. No model, network, upstream benchmark text or teacher API is
+involved; the dataset itself lands outside the repo (results are
+git-ignored). T1 (smoke run) and above still need explicit authorization
+and a GPU budget.
+
+Data boundaries: all T0 rows are machine-generated from in-repo harness
+oracles — no upstream Terminal-Bench text, no teacher API, no external
+corpus. Decontamination against upstream task text still runs through the
+Phase 2C ledger rules before any candidate is scored on the pinned split.
+Checkpoints are fingerprinted by SHA-256; API keys, if a later authorized
+tier needs them, come only from environment variables.
+
 ## Explicitly out of scope
 
 - OSWorld-style GUI control (needs a display stack the pod lacks).
