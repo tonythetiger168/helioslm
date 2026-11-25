@@ -70,3 +70,5 @@ data/hdl_bench/
 
 # Agentic candidate-run outputs stay private (not published)
 results/agentic/
+# Harness-protocol SFT datasets are large, derivable and stay local
+results/harness_sft*/
