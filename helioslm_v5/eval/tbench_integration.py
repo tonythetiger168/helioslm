@@ -1,310 +1,328 @@
 """Terminal-Bench Phase 2C: decontamination ledger and result integration.
 
-This module is pure data validation. It does not download task text, scan a
-training corpus, start a container, run a model or call a verifier. The
-caller supplies the training-mixture manifest produced by an actual
-decontamination scan, an inventory report produced by Phase 2A and a native
-run report produced inside the attested Harbor runtime. This module checks
-their identities and accounting, keeps every task in the ledger exactly once
-and recomputes the terminal component score from the scored rows.
+Pure-data validation only.  Nothing here downloads task text, scans a training
+corpus, starts a container, runs a model, or invokes a Harbor verifier.  The
+n-gram matching itself lives in ``helioslm_v5.eval.decontam`` and is run by an
+authorized outer process; this module validates the caller-supplied mixture
+manifest and enforces the accounting rules from
+``docs/TBENCH_PHASE2_FEASIBILITY.md``:
+
+- a contaminated task is recorded as excluded with its reason and evidence —
+  it never silently becomes a zero and never disappears from the accounting;
+- a native result report must account for every ``eligible_static`` inventory
+  row exactly once: either a scored row or a skipped row with stable reasons;
+- the terminal component score is recomputed from the scored rows, never
+  copied from a summary field, and keeps the exact task-set identity.
+
+Input identities are pinned: the run report, decontamination report and
+inventory must agree on ``task_set``, ``source_commit``, ``tasks_tree`` and
+``task_set_sha256``.
 """
-import json
+
 import math
+import re
 
 from helioslm_v5.eval.tbench_harbor import (
     HARBOR_API_COMMIT, INVENTORY_SCHEMA, HarborBridgeError, _rows_by_id)
 
+
 DECONTAM_SCHEMA = "tbench-decontam/1"
-RUN_SCHEMA = "tbench-native-run/1"
+NATIVE_RUN_SCHEMA = "tbench-native-run/1"
 MIXTURE_SCHEMA = "training-mixture/1"
 COMPONENT_SCHEMA = "agentic-component/1"
 
-_FAILURE_CATEGORIES = (
-    "wrong_answer", "agent_timeout", "agent_exception",
-    "verifier_exception", "environment_failure",
+FAILURE_CATEGORIES = (
+    "wrong_answer",
+    "agent_timeout",
+    "agent_exception",
+    "verifier_exception",
+    "environment_failure",
 )
-_SKIP_REASONS = (
-    "contaminated", "native_runtime_unavailable", "image_pull_or_build_failed",
-    "absolute_path_isolation_required", "verifier_dependencies_unavailable",
-    "unsupported_os", "multi_container", "multi_step", "separate_verifier",
-    "artifact_handoff", "accelerator_requested", "mcp_requested",
-    "network_policy_unsupported", "invalid_task", "unsupported_schema",
+SKIP_REASONS = (
+    "contaminated",
+    "native_runtime_unavailable",
+    "image_pull_or_build_failed",
+    "absolute_path_isolation_required",
+    "verifier_dependencies_unavailable",
+    "unsupported_os",
+    "multi_container",
+    "multi_step",
+    "separate_verifier",
+    "artifact_handoff",
+    "accelerator_requested",
+    "mcp_requested",
+    "network_policy_unsupported",
+    "invalid_task",
+    "unsupported_schema",
     "missing_required_file",
 )
+_HEX64 = re.compile(r"[0-9a-f]{64}\Z")
+_IMAGE_DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
 
-def _require_text(obj, key):
-    value = obj.get(key)
+class TbenchIntegrationError(ValueError):
+    """Identity mismatch, bad accounting, or malformed Phase 2C evidence."""
+
+
+def _require_text(value, what):
     if not isinstance(value, str) or not value.strip():
-        raise HarborBridgeError(f"{key} must be a non-empty string")
+        raise TbenchIntegrationError(f"{what} must be a non-empty string")
     return value
 
 
-def _require_hex64(obj, key):
-    value = _require_text(obj, key)
-    if (len(value) != 64 or value != value.lower()
-            or any(c not in "0123456789abcdef" for c in value)):
-        raise HarborBridgeError(f"{key} must be 64 lowercase hexadecimal characters")
+def _require_hex64(value, what):
+    if not isinstance(value, str) or not _HEX64.fullmatch(value):
+        raise TbenchIntegrationError(f"{what} must be 64 lowercase hexadecimal")
     return value
 
 
 def _identity(report):
-    if not isinstance(report, dict):
-        raise HarborBridgeError("report must be an object")
     return {
-        "task_set": _require_text(report, "task_set"),
-        "source_commit": _require_text(report, "source_commit"),
-        "tasks_tree": _require_text(report, "tasks_tree"),
-        "task_set_sha256": _require_hex64(report, "task_set_sha256"),
+        "task_set": report["task_set"],
+        "source_commit": report["source_commit"],
+        "tasks_tree": report["tasks_tree"],
+        "task_set_sha256": report["task_set_sha256"],
     }
 
 
 def _check_identity(report, inventory, what):
-    identity = _identity(report)
-    for key, value in identity.items():
-        if inventory[key] != value:
-            raise HarborBridgeError(
-                f"{what} {key} does not match the inventory identity")
+    for key in ("task_set", "source_commit", "tasks_tree", "task_set_sha256"):
+        if report.get(key) != inventory.get(key):
+            raise TbenchIntegrationError(
+                f"{what} {key} does not match the verified inventory")
 
 
 def validate_mixture(mixture):
-    """Validate a caller-supplied training-mixture decontamination manifest."""
-    if not isinstance(mixture, dict):
-        raise HarborBridgeError("mixture must be an object")
-    if mixture.get("schema") != MIXTURE_SCHEMA:
-        raise HarborBridgeError(f"mixture schema must be {MIXTURE_SCHEMA}")
-    _require_text(mixture, "name")
-    _require_hex64(mixture, "sha256")
-    _require_text(mixture, "method")
+    """Validate a training-mixture decontamination manifest.
+
+    The manifest is produced by an authorized outer scan (for example with
+    ``decontam.EvalIndex``).  Every match must name a task ID plus the scan
+    method and a hash of the matched evidence; identities let a later audit
+    distinguish which corpus and which scan produced the exclusion list.
+    """
+    if not isinstance(mixture, dict) or mixture.get("schema") != MIXTURE_SCHEMA:
+        raise TbenchIntegrationError(f"mixture manifest must use {MIXTURE_SCHEMA}")
+    _require_text(mixture.get("name"), "mixture name")
+    _require_hex64(mixture.get("sha256"), "mixture sha256")
+    _require_text(mixture.get("method"), "mixture scan method")
     matches = mixture.get("matches")
     if not isinstance(matches, list):
-        raise HarborBridgeError("mixture matches must be a list")
-    matched = set()
+        raise TbenchIntegrationError("mixture matches must be a list")
+    seen = set()
     for match in matches:
         if not isinstance(match, dict):
-            raise HarborBridgeError("mixture match must be an object")
-        task = _require_text(match, "task")
-        _require_hex64(match, "evidence_sha256")
-        if task in matched:
-            raise HarborBridgeError(f"duplicate mixture match for {task!r}")
-        matched.add(task)
-    return matched
+            raise TbenchIntegrationError("mixture match entries must be objects")
+        task = _require_text(match.get("task"), "mixture match task")
+        if task in seen:
+            raise TbenchIntegrationError(f"duplicate mixture match: {task}")
+        seen.add(task)
+        _require_hex64(match.get("evidence_sha256"), "mixture match evidence")
+    return mixture
 
 
 def build_decontamination_report(inventory_report, mixture):
-    """Fold the mixture manifest into a decontamination ledger.
+    """Ledger of clean vs contaminated tasks for one verified inventory.
 
-    Every inventory task appears in the ledger exactly once. A task matched
-    by the mixture scan is recorded as excluded with its match evidence; it
-    never silently becomes a zero and never disappears from the accounting.
+    Every inventory row appears exactly once in the output, so an exclusion
+    can never hide a task.  Contaminated rows keep ``excluded: True`` and
+    their match evidence; nothing is scored or dropped here.
     """
-    if inventory_report.get("schema") != INVENTORY_SCHEMA:
-        raise HarborBridgeError(f"inventory schema must be {INVENTORY_SCHEMA}")
-    identity = _identity(inventory_report)
-    matched = validate_mixture(mixture)
     rows = _rows_by_id(inventory_report)
-    unknown = matched - set(rows)
+    mixture = validate_mixture(mixture)
+    matched = {match["task"]: match for match in mixture["matches"]}
+    unknown = sorted(task for task in matched if task not in rows)
     if unknown:
-        raise HarborBridgeError(
-            f"mixture matches reference tasks absent from the inventory: "
-            f"{sorted(unknown)!r}")
-    evidence = {match["task"]: match["evidence_sha256"]
-                for match in mixture["matches"]}
+        raise TbenchIntegrationError(
+            f"mixture matches unknown inventory tasks: {unknown}")
     ledger = []
-    for row in inventory_report["tasks"]:
-        task = row["task"]
-        entry = {"task": task, "status": row["status"],
-                 "skipped_reasons": list(row["skipped_reasons"])}
-        if task in matched:
-            entry["excluded"] = True
-            entry["exclusion_reason"] = "contaminated"
-            entry["evidence_sha256"] = evidence[task]
-        ledger.append(entry)
+    for task_id in sorted(rows):
+        match = matched.get(task_id)
+        ledger_row = {
+            "id": task_id,
+            "status": rows[task_id].get("status"),
+            "contaminated": match is not None,
+            "excluded": match is not None,
+        }
+        if match is not None:
+            ledger_row["exclusion_reason"] = "contaminated"
+            ledger_row["evidence_sha256"] = match["evidence_sha256"]
+        ledger.append(ledger_row)
+    excluded = sorted(matched)
     return {
         "schema": DECONTAM_SCHEMA,
-        **identity,
+        **_identity(inventory_report),
         "mixture": {
             "name": mixture["name"],
             "sha256": mixture["sha256"],
             "method": mixture["method"],
         },
-        "n_tasks": len(ledger),
-        "n_contaminated": len(matched),
-        "excluded_ids": sorted(matched),
         "rows": ledger,
+        "n_tasks": len(rows),
+        "n_contaminated": len(excluded),
+        "excluded_ids": excluded,
     }
 
 
-def _validate_scored_row(row):
+def _validate_scored_row(row, rows):
+    if not isinstance(row, dict):
+        raise TbenchIntegrationError("run rows must be objects")
+    task = _require_text(row.get("id"), "run row id")
+    if task not in rows:
+        raise TbenchIntegrationError(f"run row is absent from the inventory: {task}")
     reward = row.get("reward")
-    if isinstance(reward, bool) or not isinstance(reward, (int, float)):
-        raise HarborBridgeError("reward must be a finite number")
-    if not math.isfinite(reward):
-        raise HarborBridgeError("reward must be a finite number")
-    if not 0.0 <= float(reward) <= 1.0:
-        raise HarborBridgeError("reward must be within [0, 1]")
+    if type(reward) not in (int, float) or not math.isfinite(reward):
+        raise TbenchIntegrationError(f"run row {task} reward must be a finite number")
     if row.get("verifier_status") != "completed":
-        raise HarborBridgeError("scored rows require verifier_status 'completed'")
+        raise TbenchIntegrationError(
+            f"run row {task} needs a completed Harbor verifier status")
     category = row.get("failure_category")
-    if float(reward) >= 1.0:
+    if reward >= 1:
         if category is not None:
-            raise HarborBridgeError(
-                "a passed task must not carry a failure category")
-    elif category not in _FAILURE_CATEGORIES:
-        raise HarborBridgeError(
-            f"a failed task requires a failure category in {_FAILURE_CATEGORIES!r}")
-    digest = _require_text(row, "resolved_image_digest")
-    if not digest.startswith("sha256:") or len(digest) != 71:
-        raise HarborBridgeError(
-            "resolved_image_digest must be a sha256: image digest")
+            raise TbenchIntegrationError(
+                f"run row {task} passed but still declares a failure category")
+    elif category not in FAILURE_CATEGORIES:
+        raise TbenchIntegrationError(
+            f"run row {task} needs a stable failure category")
+    digest = row.get("resolved_image_digest")
+    if not isinstance(digest, str) or not _IMAGE_DIGEST.fullmatch(digest):
+        raise TbenchIntegrationError(
+            f"run row {task} needs a resolved sha256 image digest")
     artifacts = row.get("artifacts")
     if not isinstance(artifacts, list) or not artifacts:
-        raise HarborBridgeError("scored rows require non-empty hashed artifacts")
+        raise TbenchIntegrationError(f"run row {task} needs hashed raw artifacts")
     seen = set()
     for artifact in artifacts:
         if not isinstance(artifact, dict):
-            raise HarborBridgeError("artifact must be an object")
-        path = _require_text(artifact, "path")
+            raise TbenchIntegrationError("run row artifacts must be objects")
+        path = _require_text(artifact.get("path"), "run row artifact path")
         if path in seen:
-            raise HarborBridgeError(f"duplicate artifact path {path!r}")
+            raise TbenchIntegrationError(f"duplicate run row artifact: {path}")
         seen.add(path)
-        _require_hex64(artifact, "sha256")
+        _require_hex64(artifact.get("sha256"), "run row artifact sha256")
+    return task
 
 
-def _validate_skipped_row(row):
+def _validate_skipped_row(row, rows):
+    if not isinstance(row, dict):
+        raise TbenchIntegrationError("skipped rows must be objects")
+    task = _require_text(row.get("id"), "skipped row id")
+    if task not in rows:
+        raise TbenchIntegrationError(f"skipped row is absent from the inventory: {task}")
     reasons = row.get("reasons")
     if not isinstance(reasons, list) or not reasons:
-        raise HarborBridgeError("skipped rows require non-empty reasons")
+        raise TbenchIntegrationError(f"skipped row {task} needs explicit reasons")
     for reason in reasons:
-        if reason not in _SKIP_REASONS:
-            raise HarborBridgeError(f"unknown skip reason {reason!r}")
+        if reason not in SKIP_REASONS:
+            raise TbenchIntegrationError(
+                f"skipped row {task} has an unstable reason: {reason!r}")
+    return task
 
 
-def build_terminal_component(run_report, inventory_report, decontam_report,
-                             *, model, checkpoint_sha256, harbor_identity,
+def build_terminal_component(run_report, inventory_report, decontam_report, *,
+                             model, checkpoint_sha256, harbor_identity,
                              evidence_type):
-    """Integrate a native run report into a terminal component descriptor.
+    """Recompute the terminal component from accounted native run rows.
 
-    Every ``eligible_static`` inventory row must appear in the run report
-    exactly once, either as a scored row or as a skipped row with taxonomy
-    reasons. A contaminated task must never be scored and must be skipped
-    with the stable ``contaminated`` reason. The component score is the mean
-    raw reward recomputed from the scored rows over the decontaminated
-    denominator; a summary field is never trusted. Identity mismatches
-    between the inventory, decontamination and run reports are hard failures.
+    The score is the mean raw reward over tasks that are eligible, executed
+    and not contaminated.  Contaminated and skipped tasks stay in the
+    descriptor with their reasons; the denominator change is explicit in
+    ``n`` versus ``n_eligible``.  This is data validation only — it runs no
+    model, no container and no verifier.
     """
-    if not isinstance(run_report, dict):
-        raise HarborBridgeError("run report must be an object")
-    if run_report.get("schema") != RUN_SCHEMA:
-        raise HarborBridgeError(f"run report schema must be {RUN_SCHEMA}")
-    inventory_identity = _identity(inventory_report)
-    _check_identity(decontam_report, inventory_identity,
-                    "decontamination report")
-    _check_identity(run_report, inventory_identity, "run report")
-    if decontam_report.get("schema") != DECONTAM_SCHEMA:
-        raise HarborBridgeError(
-            f"decontamination report schema must be {DECONTAM_SCHEMA}")
     if evidence_type not in ("model_run", "schema_fixture"):
-        raise HarborBridgeError("evidence_type must be model_run or schema_fixture")
-    _require_text(run_report, "harbor_identity")
-    inventory_rows = _rows_by_id(inventory_report)
-    eligible = [task for task, row in inventory_rows.items()
-                if row["status"] == "eligible_static"
-                and not row["skipped_reasons"]]
-    contaminated = set(decontam_report.get("excluded_ids", []))
+        raise TbenchIntegrationError(
+            "terminal component evidence must be model_run or schema_fixture")
+    _require_text(model, "model")
+    _require_hex64(checkpoint_sha256, "checkpoint_sha256")
+    _require_text(harbor_identity, "harbor identity")
+
+    rows = _rows_by_id(inventory_report)
+    eligible = {task for task, row in rows.items()
+                if row.get("status") == "eligible_static"
+                and row.get("skipped_reasons") == []}
+    if not isinstance(decontam_report, dict) or decontam_report.get(
+            "schema") != DECONTAM_SCHEMA:
+        raise TbenchIntegrationError(
+            f"decontamination report must use {DECONTAM_SCHEMA}")
+    _check_identity(decontam_report, inventory_report, "decontamination report")
+    contaminated = set(decontam_report.get("excluded_ids") or [])
+    if not contaminated <= set(rows):
+        raise TbenchIntegrationError(
+            "decontamination exclusions must be inventory tasks")
+
+    if not isinstance(run_report, dict) or run_report.get(
+            "schema") != NATIVE_RUN_SCHEMA:
+        raise TbenchIntegrationError(f"run report must use {NATIVE_RUN_SCHEMA}")
+    _check_identity(run_report, inventory_report, "run report")
 
     scored = {}
+    for row in run_report.get("rows") or []:
+        task = _validate_scored_row(row, rows)
+        if task in scored:
+            raise TbenchIntegrationError(f"duplicate run row: {task}")
+        scored[task] = row
     skipped = {}
-    run_rows = run_report.get("rows")
-    if not isinstance(run_rows, list):
-        raise HarborBridgeError("run report rows must be a list")
-    for row in run_rows:
-        if not isinstance(row, dict):
-            raise HarborBridgeError("run row must be an object")
-        task = _require_text(row, "task")
-        if task not in inventory_rows:
-            raise HarborBridgeError(
-                f"run row {task!r} is absent from the inventory")
-        if task in scored or task in skipped:
-            raise HarborBridgeError(f"duplicate run row for {task!r}")
-        if "reward" in row:
-            _validate_scored_row(row)
-            scored[task] = row
-        else:
-            _validate_skipped_row(row)
-            skipped[task] = row
+    for row in run_report.get("skipped") or []:
+        task = _validate_skipped_row(row, rows)
+        if task in skipped:
+            raise TbenchIntegrationError(f"duplicate skipped row: {task}")
+        skipped[task] = row
+    overlap = sorted(set(scored) & set(skipped))
+    if overlap:
+        raise TbenchIntegrationError(
+            f"tasks cannot be both scored and skipped: {overlap}")
 
-    for task in eligible:
-        if task not in scored and task not in skipped:
-            raise HarborBridgeError(
-                f"eligible tasks missing from the run accounting: {task!r}")
-    for task in sorted(contaminated & set(scored)):
-        raise HarborBridgeError(
-            f"contaminated tasks must not be scored: {task!r}")
-    for task in sorted(contaminated & set(eligible)):
-        if task not in skipped:
-            raise HarborBridgeError(
-                f"contaminated eligible tasks must be skipped with the "
-                f"'contaminated' reason: {task!r}")
-        if "contaminated" not in skipped[task]["reasons"]:
-            raise HarborBridgeError(
-                f"contaminated eligible tasks must be skipped with the "
-                f"'contaminated' reason: {task!r}")
+    missing = sorted(eligible - set(scored) - set(skipped))
+    if missing:
+        raise TbenchIntegrationError(
+            f"eligible tasks missing from the run accounting: {missing}")
+    scored_contaminated = sorted(set(scored) & contaminated)
+    if scored_contaminated:
+        raise TbenchIntegrationError(
+            f"contaminated tasks must not be scored: {scored_contaminated}")
+    for task in sorted(contaminated & eligible):
+        reasons = skipped.get(task, {}).get("reasons", [])
+        if "contaminated" not in reasons:
+            raise TbenchIntegrationError(
+                f"contaminated task {task} must be skipped with the "
+                "'contaminated' reason")
 
-    denominator = sorted(set(eligible) - contaminated)
+    denominator = sorted(eligible - contaminated)
     if not denominator:
-        raise HarborBridgeError(
+        raise TbenchIntegrationError(
             "no scorable tasks remain after decontamination exclusions")
     if sorted(scored) != denominator:
-        raise HarborBridgeError(
+        raise TbenchIntegrationError(
             "scored rows must cover every non-contaminated eligible task")
-    score = sum(float(scored[task]["reward"]) for task in denominator)
-    score /= len(denominator)
+    rewards = [scored[task]["reward"] for task in denominator]
+    score = sum(rewards) / len(rewards) if rewards else 0.0
 
     return {
         "schema": COMPONENT_SCHEMA,
         "component": "terminal",
-        "model": _require_text({"model": model}, "model"),
-        "checkpoint_sha256": _require_hex64(
-            {"checkpoint_sha256": checkpoint_sha256}, "checkpoint_sha256"),
-        "task_set": inventory_identity["task_set"],
-        "task_set_sha256": inventory_identity["task_set_sha256"],
+        "model": model,
+        "checkpoint_sha256": checkpoint_sha256,
+        "task_set": inventory_report["task_set"],
+        "task_set_sha256": inventory_report["task_set_sha256"],
         "score": score,
-        "n": len(denominator),
+        "n": len(rewards),
         "evidence_type": evidence_type,
-        "verification_tier": (
-            "measured" if evidence_type == "model_run" else "schema-fixture"),
         "tbench": {
-            "source_commit": inventory_identity["source_commit"],
-            "tasks_tree": inventory_identity["tasks_tree"],
+            "source_commit": inventory_report["source_commit"],
+            "tasks_tree": inventory_report["tasks_tree"],
             "harbor_api_commit": HARBOR_API_COMMIT,
-            "harbor_identity": run_report["harbor_identity"],
+            "harbor_identity": harbor_identity,
             "n_eligible": len(eligible),
-            "n_contaminated": len(contaminated & set(eligible)),
-            "excluded_ids": sorted(contaminated & set(eligible)),
+            "n_contaminated": len(contaminated & eligible),
+            "excluded_ids": sorted(contaminated & eligible),
             "skipped": {task: list(skipped[task]["reasons"])
                         for task in sorted(skipped)},
-            "rows": [
-                {
-                    "task": task,
-                    "reward": scored[task]["reward"],
-                    "failure_category": scored[task].get("failure_category"),
-                    "resolved_image_digest":
-                        scored[task]["resolved_image_digest"],
-                    "artifacts": [dict(a) for a in scored[task]["artifacts"]],
-                }
-                for task in denominator
-            ],
+            "rows": [{
+                "id": task,
+                "reward": scored[task]["reward"],
+                "failure_category": scored[task].get("failure_category"),
+                "resolved_image_digest": scored[task]["resolved_image_digest"],
+                "artifacts": [dict(a) for a in scored[task]["artifacts"]],
+            } for task in denominator],
         },
     }
-
-
-def _canonical(obj):
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"))
-
-
-__all__ = [
-    "COMPONENT_SCHEMA", "DECONTAM_SCHEMA", "MIXTURE_SCHEMA", "RUN_SCHEMA",
-    "build_decontamination_report", "build_terminal_component",
-    "validate_mixture",
-]
