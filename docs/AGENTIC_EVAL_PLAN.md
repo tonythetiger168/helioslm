@@ -6,8 +6,10 @@ trap gate in the committed std-bench reference, and a calibration-board row
 embedded in each terminal API artifact that carries confidence. Phase 3's
 aggregation contract, native-artifact adapters and reproducible CLIs are
 implemented. Phase 2A's pinned Terminal-Bench 2.1 read-only discovery and
-capability inventory are implemented; Harbor-native execution remains a
-plan. There is still no upstream Terminal-Bench score.
+capability inventory are implemented. Phase 2B.1's isolated agent-bridge core
+has synthetic protocol oracles; actual container-only oracle/no-op smoke,
+Harbor verifier integration and full-split execution remain pending. There is
+still no upstream Terminal-Bench score.
 
 Why: 2026 agentic leaderboards weight long-horizon terminal/repository
 work highest (Artificial Analysis puts agentic coding at 30% of its
@@ -28,11 +30,12 @@ Terminal-Bench-comparable track.
 | Fixed-weight agentic aggregation contract | `helioslm_v5/eval/agentic_index.py` | implemented; toy and trained-candidate runs recorded below |
 | Native run-artifact to component adapters | `helioslm_v5/eval/agentic_adapters.py` | implemented; candidate run evidence remains outside the repo |
 | Terminal-Bench 2.1 read-only task identity and capability inventory | `helioslm_v5/eval/tbench_adapter.py` | Phase 2A implemented; no execution or scoring |
+| Isolated Harbor command/observation agent core | `helioslm_v5/eval/tbench_harbor.py` | Phase 2B.1 synthetic contract only; no container smoke, verifier run or score |
 
-Remaining gaps against Terminal-Bench-style evaluation: no upstream
-Terminal-Bench execution adapter; no multi-step tasks requiring package installs
-or service orchestration; no contamination control against upstream task
-text.
+Remaining gaps against Terminal-Bench-style evaluation: no completed
+container-only Harbor oracle/no-op smoke or full-split execution result; no
+multi-step tasks requiring package installs or service orchestration; no
+contamination control against upstream task text.
 
 ## Phase 1 — scale the in-house miniature (implemented, no new deps)
 
@@ -42,7 +45,7 @@ text.
    check only), multi-file refactor with a failing-test oracle.
 2. Add difficulty tiers: tasks where the verifier checks an exact final
    state AND tasks where it checks invariants over a distribution
-   (seeded), so the bench measures robustness, not memorized command
+   (seeded), so the bench measures robustness not memorized command
    sequences.
 3. Wire results into `calibration_board.py` so verbalized confidence vs
    outcome is reported per family (we already record the confidence;
@@ -73,16 +76,27 @@ task-set hashes must remain separate.
    content, treats symlinks as data rather than following them, and prints
    every skipped task ID with stable machine-readable reasons. Its JSON
    report has schema `tbench-inventory/1` and contains no score or reward.
-3. Execute only inside an existing disposable container/pod with an isolated
+3. Phase 2B.1 implements the agent-side core in
+   `helioslm_v5/eval/tbench_harbor.py`, audited against Harbor source commit
+   `90f2ee3c18d394eb0da0070415c6297eb13b87f8`. It requires an explicit
+   disposable-runtime/no-host-exposure attestation and a native
+   `eligible_static` inventory row. Commands go only to `environment.exec`
+   without replacing Harbor's cwd, environment, user or timeout policy;
+   episodes retain task-set identity and populate `AgentContext.metadata`.
+   Harbor remains lazy-imported. Synthetic fake-environment tests cover DONE,
+   invalid replies, budget exhaustion, isolation rejections and observation
+   clipping. They do not invoke a verifier and produce no reward or score.
+4. Execute only inside an existing disposable container/pod with an isolated
    Harbor runtime. Start with container-only oracle/no-op smoke controls,
    then the pinned full split when that runtime is available. Never expose
    host credentials, paths or the host Docker socket to a task container.
-4. The former automatic docker-free acceptance is withdrawn: all 89 pinned
+   The Phase 2B.1 synthetic oracles are not this runtime smoke.
+5. The former automatic docker-free acceptance is withdrawn: all 89 pinned
    tasks declare prebuilt images and Dockerfiles, allow Internet access and
    install verifier dependencies, so the conservative static no-docker gate
    auto-admits 0/89. Any future manually audited no-docker exception is a
    separate custom subset, not a native or full-split result.
-5. Decontaminate task instructions against training mixtures before a
+6. Decontaminate task instructions against training mixtures before a
    candidate rollout; record contaminated IDs explicitly. Run artifacts must
    retain source/task-set hashes, Harbor and runtime versions, resolved image
    digests, per-task rewards/failures and all subset/skip identities.
