@@ -1,7 +1,7 @@
 # Terminal-Bench Phase 2 feasibility — Harbor-native adapter, not a `term_bench` translation
 
 Audit date: 2026-11-25  
-Status: **feasibility complete; no adapter implemented and no upstream task executed**
+Status: **Phase 2A and Phase 2B.1 bridge core implemented; no upstream task executed**
 
 ## Decision
 
@@ -118,6 +118,19 @@ Implement `helioslm_v5/eval/tbench_adapter.py` first as a parser/classifier:
    require Docker, network access or the 2.1 archive.
 
 ### Phase 2B — Harbor-native execution bridge
+
+**Phase 2B.1 bridge core implemented (synthetic only, 2026-11-25).**
+`helioslm_v5/eval/tbench_harbor.py` now provides the command/observation agent
+loop and a lazy Harbor `BaseAgent` factory. The interface audit is pinned to
+Harbor source commit `90f2ee3c18d394eb0da0070415c6297eb13b87f8`. Execution is a
+hard no unless the caller supplies a complete disposable-runtime attestation
+with no task-container host credentials, host paths or host Docker socket, and
+the task is `eligible_static` in a native Phase 2A inventory. Commands are sent
+only to `environment.exec` without replacing its cwd, environment, user or
+timeouts. Episodes retain the source/tree/task-set identity and are attached to
+`AgentContext.metadata`. Synthetic tests cover protocol parsing, clipping and
+rejection paths. No container was started, no verifier ran, and no reward or
+Terminal-Bench score was produced; the real oracle/no-op smoke remains pending.
 
 Use Harbor's environment and verifier rather than recreating them in
 `term_bench`:
