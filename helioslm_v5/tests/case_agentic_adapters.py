@@ -283,7 +283,7 @@ def test_agentic_adapters_suite():
           "Phase 3 adapters: native row recomputation, oracle rejection, "
           "deterministic descriptors, non-writing CLI --check, and the "
           "real evaluate_policy row shape; Phase 2A read-only Harbor inventory; "
-          "Phase 2B.1 synthetic isolated-agent bridge contract")
+          "Phase 2B.1 isolated-agent bridge and Phase 2B.2 smoke contracts")
 
 
 if __name__ == "__main__":

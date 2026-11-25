@@ -1,7 +1,7 @@
 # Terminal-Bench Phase 2 feasibility — Harbor-native adapter, not a `term_bench` translation
 
 Audit date: 2026-11-25  
-Status: **Phase 2A and Phase 2B.1 bridge core implemented; no upstream task executed**
+Status: **Phase 2A, Phase 2B.1 bridge core and Phase 2B.2 smoke contracts implemented; no upstream task executed**
 
 ## Decision
 
@@ -131,6 +131,22 @@ timeouts. Episodes retain the source/tree/task-set identity and are attached to
 `AgentContext.metadata`. Synthetic tests cover protocol parsing, clipping and
 rejection paths. No container was started, no verifier ran, and no reward or
 Terminal-Bench score was produced; the real oracle/no-op smoke remains pending.
+
+**Phase 2B.2 smoke contracts implemented (synthetic only, 2026-11-25).**
+The same module now validates the exact data contract for Harbor's built-in
+`oracle` and `nop` controls at pinned Harbor commit
+`90f2ee3c18d394eb0da0070415c6297eb13b87f8`. A smoke configuration must use
+those built-in agents, the pinned local task source, a disposable explicit
+backend, declared task resources/timeouts and the upstream verifier; model
+credentials, custom imports, mounts, Compose overlays and instruction or
+resource overrides are hard failures. A smoke result must be exception-free,
+retain Harbor's trial name and task checksum, retain completed verifier timing
+and `VerifierResult.rewards`, require
+`reward == 1` for oracle and `reward == 0` for no-op, record the resolved
+`sha256:` image digest, and carry hashed `result.json` plus verifier-log
+artifacts. Synthetic fixtures remain `synthetic_contract`; only an attested
+real runtime may emit `container_only_harness_smoke`, and even that is a
+harness gate rather than a benchmark score.
 
 Use Harbor's environment and verifier rather than recreating them in
 `term_bench`:
