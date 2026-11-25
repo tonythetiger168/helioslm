@@ -16,13 +16,16 @@ Harbor interface audit pin: commit
 
 import copy
 import inspect
+import math
 import re
 from dataclasses import asdict, dataclass
+from pathlib import PurePosixPath
 
 from helioslm_v5.eval.term_bench import parse_reply
 
 
 SCHEMA = "tbench-harbor-episode/1"
+SMOKE_SCHEMA = "tbench-harbor-smoke/1"
 INVENTORY_SCHEMA = "tbench-inventory/1"
 HARBOR_API_COMMIT = "90f2ee3c18d394eb0da0070415c6297eb13b87f8"
 DEFAULT_MAX_STEPS = 10
@@ -105,6 +108,212 @@ def _eligible_row(report, task_id):
     if row.get("status") != "eligible_static" or row.get("skipped_reasons") != []:
         raise HarborBridgeError(f"task is not eligible for native execution: {task_id!r}")
     return row
+
+
+def _empty(value):
+    return value is None or value == {} or value == []
+
+
+def validate_smoke_config(config, control, task_id):
+    """Validate a serialized Harbor TrialConfig for an oracle/no-op control.
+
+    This is a pure data check.  It deliberately excludes model credentials,
+    custom agents/verifiers, extra mounts, Compose overlays and instruction
+    overrides.  Harbor still owns construction and execution in the isolated
+    runtime; calling this function neither imports Harbor nor starts a task.
+    """
+    if control not in ("oracle", "nop"):
+        raise HarborBridgeError("smoke control must be oracle or nop")
+    if not isinstance(config, dict) or config.get("schema_version") != 1:
+        raise HarborBridgeError("smoke config must be serialized TrialConfig schema 1")
+    if config.get("install_only") is not False:
+        raise HarborBridgeError("smoke must execute both agent and verifier")
+    if config.get("source_trial") is not None or config.get("user_agent") is not None:
+        raise HarborBridgeError("smoke rejects regrade and simulated-user configs")
+    for key in ("timeout_multiplier", "agent_timeout_multiplier",
+                "verifier_timeout_multiplier", "agent_setup_timeout_multiplier",
+                "environment_build_timeout_multiplier"):
+        value = config.get(key, 1.0)
+        if type(value) not in (int, float) or value != 1.0:
+            raise HarborBridgeError(f"smoke preserves Harbor timeout policy: {key}")
+    if not _empty(config.get("extra_instruction_paths")) or not _empty(
+            config.get("extra_instructions")):
+        raise HarborBridgeError("smoke rejects instruction overrides")
+
+    task = config.get("task")
+    path = task.get("path") if isinstance(task, dict) else None
+    if not isinstance(path, str) or not path.startswith("/"):
+        raise HarborBridgeError("smoke task path must be absolute")
+    parsed = PurePosixPath(path)
+    if ".." in parsed.parts or parsed.name != task_id:
+        raise HarborBridgeError("smoke task path must identify the inventory task")
+    if any(task.get(key) is not None for key in
+           ("git_url", "git_commit_id", "name", "ref", "source", "download_dir")):
+        raise HarborBridgeError("smoke requires the pinned local task source")
+    if task.get("overwrite") is not False:
+        raise HarborBridgeError("smoke must not overwrite the pinned task source")
+
+    agent = config.get("agent")
+    if not isinstance(agent, dict) or agent.get("name") != control:
+        raise HarborBridgeError(f"smoke requires Harbor's built-in {control} agent")
+    if agent.get("import_path") is not None:
+        raise HarborBridgeError("smoke rejects custom agent imports")
+    for key in ("model_name", "base_url", "model_api_key_name", "model_api_format"):
+        if agent.get(key) is not None:
+            raise HarborBridgeError(f"smoke control must not configure {key}")
+    if agent.get("skip_model_parsing") is not False:
+        raise HarborBridgeError("smoke control must not configure model parsing")
+    for key in ("override_timeout_sec", "override_setup_timeout_sec",
+                "max_timeout_sec", "n_concurrent", "concurrency_group",
+                "resume_trajectory", "load_trajectory", "bridge"):
+        if not _empty(agent.get(key)):
+            raise HarborBridgeError(f"smoke preserves Harbor agent policy: {key}")
+    for key in ("skills", "extra_allowed_hosts", "mcp_servers", "env", "kwargs"):
+        if not _empty(agent.get(key)):
+            raise HarborBridgeError(f"smoke agent {key} must be empty")
+
+    environment = config.get("environment")
+    if not isinstance(environment, dict) or environment.get("delete") is not True:
+        raise HarborBridgeError("smoke environment must be disposable")
+    if not isinstance(environment.get("type"), str) or not environment["type"]:
+        raise HarborBridgeError("smoke environment needs an explicit Harbor backend")
+    if environment.get("import_path") is not None:
+        raise HarborBridgeError("smoke rejects custom environment imports")
+    if environment.get("force_build") is not False:
+        raise HarborBridgeError("smoke preserves the pinned prebuilt image")
+    for key in ("override_cpus", "override_memory_mb", "override_storage_mb",
+                "override_gpus", "override_tpu", "cpu_enforcement_policy",
+                "memory_enforcement_policy"):
+        if not _empty(environment.get(key)):
+            raise HarborBridgeError(f"smoke preserves task resources/policy: {key}")
+    if environment.get("stream") is not False:
+        raise HarborBridgeError("smoke preserves Harbor streaming policy")
+    for key in ("mounts", "extra_docker_compose", "extra_allowed_hosts", "env", "kwargs"):
+        if not _empty(environment.get(key)):
+            raise HarborBridgeError(f"smoke environment {key} must be empty")
+
+    verifier = config.get("verifier")
+    if not isinstance(verifier, dict) or verifier.get("disable") is not False:
+        raise HarborBridgeError("smoke requires the upstream verifier")
+    if verifier.get("import_path") is not None:
+        raise HarborBridgeError("smoke rejects custom verifier imports")
+    for key in ("override_timeout_sec", "max_timeout_sec"):
+        if not _empty(verifier.get(key)):
+            raise HarborBridgeError(f"smoke preserves verifier timeout policy: {key}")
+    for key in ("extra_allowed_hosts", "env", "kwargs"):
+        if not _empty(verifier.get(key)):
+            raise HarborBridgeError(f"smoke verifier {key} must be empty")
+    return config
+
+
+def _smoke_artifacts(artifacts):
+    if not isinstance(artifacts, list) or not artifacts:
+        raise HarborBridgeError("smoke evidence needs result and verifier artifacts")
+    normalized = []
+    seen = set()
+    for artifact in artifacts:
+        if not isinstance(artifact, dict):
+            raise HarborBridgeError("smoke artifact entries must be objects")
+        path = artifact.get("path")
+        digest = artifact.get("sha256")
+        if not isinstance(path, str) or not path or path.startswith("/"):
+            raise HarborBridgeError("smoke artifact paths must be relative")
+        parsed = PurePosixPath(path)
+        if ".." in parsed.parts or str(parsed) != path:
+            raise HarborBridgeError("smoke artifact paths must be normalized")
+        if not isinstance(digest, str) or not _HEX64.fullmatch(digest):
+            raise HarborBridgeError("smoke artifact sha256 is invalid")
+        if path in seen:
+            raise HarborBridgeError(f"duplicate smoke artifact: {path}")
+        seen.add(path)
+        normalized.append({"path": path, "sha256": digest})
+    if not any(PurePosixPath(item["path"]).name == "result.json"
+               for item in normalized):
+        raise HarborBridgeError("smoke evidence needs Harbor result.json")
+    if not any("verifier" in PurePosixPath(item["path"]).parts
+               for item in normalized):
+        raise HarborBridgeError("smoke evidence needs a verifier log")
+    return normalized
+
+
+def build_smoke_report(result, control, inventory_report, task_id, isolation,
+                       resolved_image_digest, artifacts, evidence_type):
+    """Validate one serialized Harbor TrialResult and preserve raw rewards.
+
+    ``evidence_type`` is deliberately mandatory: synthetic fixtures remain
+    ``synthetic_contract``; only an attested real runtime may supply
+    ``container_only_harness_smoke``.  Oracle requires reward 1 and no-op
+    requires reward 0.  Any exception, missing verifier timing or other reward
+    is a failed smoke gate, never a model score or benchmark aggregate.
+    """
+    if evidence_type not in ("synthetic_contract", "container_only_harness_smoke"):
+        raise HarborBridgeError("smoke evidence type must be explicit")
+    if control not in ("oracle", "nop"):
+        raise HarborBridgeError("smoke control must be oracle or nop")
+    isolation.validate()
+    row = _eligible_row(inventory_report, task_id)
+    if evidence_type == "container_only_harness_smoke" and (
+            isolation.harbor_backend == "synthetic-environment"):
+        raise HarborBridgeError("synthetic environment cannot claim container smoke")
+    if not isinstance(resolved_image_digest, str) or not re.fullmatch(
+            r"sha256:[0-9a-f]{64}", resolved_image_digest):
+        raise HarborBridgeError("smoke needs a resolved sha256 image digest")
+    if not isinstance(result, dict) or result.get("schema_version") != 1:
+        raise HarborBridgeError("smoke result must be serialized TrialResult schema 1")
+    if result.get("task_name") != task_id:
+        raise HarborBridgeError("smoke result task does not match inventory")
+    if not isinstance(result.get("id"), str) or not result["id"]:
+        raise HarborBridgeError("smoke result needs a Harbor trial ID")
+    if not isinstance(result.get("trial_name"), str) or not result["trial_name"]:
+        raise HarborBridgeError("smoke result needs a Harbor trial name")
+    if not isinstance(result.get("task_checksum"), str) or not result["task_checksum"]:
+        raise HarborBridgeError("smoke result needs Harbor's task checksum")
+    validate_smoke_config(result.get("config"), control, task_id)
+    agent_info = result.get("agent_info")
+    if not isinstance(agent_info, dict) or agent_info.get("name") != control:
+        raise HarborBridgeError("smoke result used the wrong control agent")
+    if result.get("exception_info") is not None or result.get("step_results"):
+        raise HarborBridgeError("smoke accepts only exception-free single-step trials")
+    if result.get("reward_valid") is not True:
+        raise HarborBridgeError("Harbor did not mark the smoke reward valid")
+    timing = result.get("verifier")
+    if not isinstance(timing, dict) or not timing.get("started_at") or not timing.get(
+            "finished_at"):
+        raise HarborBridgeError("smoke needs completed Harbor verifier timing")
+    verifier_result = result.get("verifier_result")
+    rewards = verifier_result.get("rewards") if isinstance(verifier_result, dict) else None
+    if not isinstance(rewards, dict) or not rewards:
+        raise HarborBridgeError("smoke needs raw Harbor verifier rewards")
+    for name, value in rewards.items():
+        if not isinstance(name, str) or not name or type(value) not in (int, float):
+            raise HarborBridgeError("smoke reward keys/values must be text/numbers")
+        if not math.isfinite(value):
+            raise HarborBridgeError("smoke rewards must be finite")
+    expected = 1 if control == "oracle" else 0
+    if rewards.get("reward") != expected:
+        raise HarborBridgeError(
+            f"{control} smoke expected reward={expected}, got {rewards.get('reward')!r}")
+    evidence = _smoke_artifacts(artifacts)
+    return {
+        "schema": SMOKE_SCHEMA,
+        "evidence_type": evidence_type,
+        "is_benchmark_result": False,
+        "task": task_id,
+        "control": control,
+        "task_set": inventory_report["task_set"],
+        "source_commit": inventory_report["source_commit"],
+        "tasks_tree": inventory_report["tasks_tree"],
+        "task_set_sha256": inventory_report["task_set_sha256"],
+        "static_row": copy.deepcopy(row),
+        "isolation": asdict(isolation),
+        "harbor_api_commit": HARBOR_API_COMMIT,
+        "harbor_trial_id": result["id"],
+        "resolved_image_digest": resolved_image_digest,
+        "raw_rewards": copy.deepcopy(rewards),
+        "expected_reward": expected,
+        "passed": True,
+        "artifacts": evidence,
+    }
 
 
 def _clip(text, limit):

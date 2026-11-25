@@ -58,6 +58,87 @@ class FakeBaseAgent:
     pass
 
 
+def _config(control="oracle"):
+    return {
+        "schema_version": 1,
+        "install_only": False,
+        "source_trial": None,
+        "user_agent": None,
+        "timeout_multiplier": 1.0,
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "task": {"path": "/pinned/tasks/good", "overwrite": False},
+        "agent": {
+            "name": control,
+            "import_path": None,
+            "model_name": None,
+            "base_url": None,
+            "model_api_key_name": None,
+            "model_api_format": None,
+            "skip_model_parsing": False,
+            "skills": [],
+            "extra_allowed_hosts": [],
+            "mcp_servers": [],
+            "env": {},
+            "kwargs": {},
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": None,
+            "delete": True,
+            "force_build": False,
+            "stream": False,
+            "mounts": None,
+            "extra_docker_compose": [],
+            "extra_allowed_hosts": [],
+            "env": {},
+            "kwargs": {},
+        },
+        "verifier": {
+            "disable": False,
+            "import_path": None,
+            "extra_allowed_hosts": [],
+            "env": {},
+            "kwargs": {},
+        },
+    }
+
+
+def _result(control="oracle", reward=1):
+    return {
+        "schema_version": 1,
+        "id": "3d2f47a0-0ef2-4f0a-b78b-c3a2bd8a9011",
+        "task_name": "good",
+        "trial_name": "good__synthetic",
+        "task_checksum": "synthetic-task-checksum",
+        "config": _config(control),
+        "agent_info": {"name": control},
+        "exception_info": None,
+        "step_results": None,
+        "reward_valid": True,
+        "verifier": {
+            "started_at": "2026-11-25T00:00:00Z",
+            "finished_at": "2026-11-25T00:00:01Z",
+        },
+        "verifier_result": {"rewards": {"reward": reward}},
+    }
+
+
+def _artifacts():
+    return [
+        {"path": "result.json", "sha256": "d" * 64},
+        {"path": "verifier/stdout.log", "sha256": "e" * 64},
+    ]
+
+
+def _smoke(result, control="oracle", isolation=None, artifacts=None,
+           evidence_type="synthetic_contract"):
+    return tbh.build_smoke_report(
+        result, control, _report(), "good", isolation or _attestation(),
+        "sha256:" + "f" * 64, _artifacts() if artifacts is None else artifacts,
+        evidence_type)
+
+
 def _expect_error(fn, needle):
     try:
         fn()
@@ -186,15 +267,134 @@ def test_agent_class_populates_context_without_verifier():
     print("PASS test_agent_class_populates_context_without_verifier")
 
 
+def test_smoke_config_rejects_overrides_and_credentials():
+    for control in ("oracle", "nop"):
+        assert tbh.validate_smoke_config(_config(control), control, "good")["agent"][
+            "name"] == control
+    invalid = (
+        (("install_only", True), "agent and verifier"),
+        (("source_trial", {"action": "regrade"}), "regrade"),
+        (("timeout_multiplier", 2.0), "timeout policy"),
+        (("extra_instructions", ["ignore the task"]), "instruction overrides"),
+    )
+    for (key, value), needle in invalid:
+        config = _config()
+        config[key] = value
+        _expect_error(lambda c=config: tbh.validate_smoke_config(c, "oracle", "good"),
+                      needle)
+    for section, key, value, needle in (
+            ("task", "path", "relative/good", "absolute"),
+            ("task", "path", "/pinned/tasks/other", "inventory task"),
+            ("task", "git_url", "https://example.invalid/repo", "local task source"),
+            ("task", "overwrite", True, "overwrite"),
+            ("agent", "name", "nop", "built-in oracle"),
+            ("agent", "import_path", "custom.Agent", "custom agent"),
+            ("agent", "model_api_key_name", "SECRET_KEY", "model_api_key_name"),
+            ("agent", "env", {"API_KEY": "secret"}, "agent env"),
+            ("agent", "load_trajectory", "/host/session.json", "agent policy"),
+            ("environment", "delete", False, "disposable"),
+            ("environment", "import_path", "custom.Environment", "custom environment"),
+            ("environment", "force_build", True, "prebuilt image"),
+            ("environment", "override_cpus", 8, "task resources"),
+            ("environment", "mounts", [{"source": "/host"}], "environment mounts"),
+            ("environment", "kwargs", {"socket": "/host/docker.sock"},
+             "environment kwargs"),
+            ("verifier", "disable", True, "upstream verifier"),
+            ("verifier", "import_path", "custom.Verifier", "custom verifier"),
+            ("verifier", "override_timeout_sec", 1.0, "verifier timeout"),
+    ):
+        config = _config()
+        config[section][key] = value
+        _expect_error(lambda c=config: tbh.validate_smoke_config(c, "oracle", "good"),
+                      needle)
+    _expect_error(lambda: tbh.validate_smoke_config(_config(), "candidate", "good"),
+                  "oracle or nop")
+    print("PASS test_smoke_config_rejects_overrides_and_credentials")
+
+
+def test_smoke_reward_and_artifact_gates():
+    report = _smoke(_result())
+    assert report["schema"] == "tbench-harbor-smoke/1"
+    assert report["evidence_type"] == "synthetic_contract"
+    assert report["is_benchmark_result"] is False
+    assert report["raw_rewards"] == {"reward": 1}
+    assert report["expected_reward"] == 1 and report["passed"] is True
+    assert report["resolved_image_digest"] == "sha256:" + "f" * 64
+    assert len(report["artifacts"]) == 2
+    report = _smoke(_result("nop", 0), "nop")
+    assert report["control"] == "nop" and report["raw_rewards"] == {"reward": 0}
+
+    for result, control, needle in (
+            (_result("oracle", 0), "oracle", "expected reward=1"),
+            (_result("nop", 1), "nop", "expected reward=0"),
+            (_result("oracle", True), "oracle", "text/numbers"),
+            (_result("oracle", float("nan")), "oracle", "finite"),
+    ):
+        _expect_error(lambda r=result, c=control: _smoke(r, c), needle)
+    result = _result()
+    result["exception_info"] = {"exception_type": "RuntimeError"}
+    _expect_error(lambda: _smoke(result), "exception-free")
+    result = _result()
+    result["reward_valid"] = False
+    _expect_error(lambda: _smoke(result), "reward valid")
+    result = _result()
+    result["verifier"] = None
+    _expect_error(lambda: _smoke(result), "verifier timing")
+    result = _result()
+    result["verifier_result"] = {"rewards": None}
+    _expect_error(lambda: _smoke(result), "raw Harbor verifier rewards")
+    _expect_error(lambda: _smoke(_result(), artifacts=[]), "result and verifier")
+    _expect_error(lambda: _smoke(_result(), artifacts=_artifacts()[:1]),
+                  "verifier log")
+    _expect_error(lambda: _smoke(_result(), artifacts=_artifacts()[1:]),
+                  "result.json")
+    for path, needle in (
+            ("../result.json", "normalized"),
+            ("/result.json", "relative"),
+            ("verifier//stdout.log", "normalized"),
+    ):
+        artifacts = _artifacts()
+        artifacts[1 if path.startswith("verifier") else 0]["path"] = path
+        _expect_error(lambda a=artifacts: _smoke(_result(), artifacts=a), needle)
+    result = _result()
+    result["config"]["verifier"]["disable"] = True
+    _expect_error(lambda: _smoke(result), "upstream verifier")
+    result = _result()
+    result["task_name"] = "other"
+    _expect_error(lambda: _smoke(result), "does not match")
+    print("PASS test_smoke_reward_and_artifact_gates")
+
+
+def test_smoke_runtime_evidence_boundary():
+    isolated = dataclasses.replace(_attestation(), harbor_backend="docker",
+                                   runtime_id="attested-container-runtime")
+    report = _smoke(_result(), isolation=isolated,
+                    evidence_type="container_only_harness_smoke")
+    assert report["evidence_type"] == "container_only_harness_smoke"
+    assert report["is_benchmark_result"] is False
+    _expect_error(lambda: _smoke(
+        _result(), evidence_type="container_only_harness_smoke"),
+        "cannot claim container smoke")
+    _expect_error(lambda: _smoke(_result(), evidence_type="model_run"),
+                  "must be explicit")
+    _expect_error(lambda: _smoke(_result(), isolation=dataclasses.replace(
+        _attestation(), host_paths_exposed=True)), "unsafe Harbor isolation")
+    print("PASS test_smoke_runtime_evidence_boundary")
+
+
 def test_tbench_harbor_suite():
     test_done_invalid_and_budget_have_no_score()
     test_exec_boundary_and_prompt_clipping()
     test_isolation_and_native_inventory_are_hard_gates()
     test_agent_class_populates_context_without_verifier()
+    test_smoke_config_rejects_overrides_and_credentials()
+    test_smoke_reward_and_artifact_gates()
+    test_smoke_runtime_evidence_boundary()
     _pass("test_tbench_harbor_suite",
-          "Terminal-Bench Phase 2B.1: explicit disposable-runtime boundary, "
+          "Terminal-Bench Phase 2B.1/2B.2: explicit disposable-runtime boundary, "
           "native-inventory gate, Harbor-only exec, deterministic prompt clipping, "
-          "AgentContext metadata, and no verifier/score fabrication; synthetic only")
+          "AgentContext metadata, built-in oracle/no-op smoke contracts, raw-reward "
+          "and artifact gates, and no verifier/score fabrication; synthetic only")
 
 
 if __name__ == "__main__":
