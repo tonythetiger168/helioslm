@@ -7,9 +7,10 @@ embedded in each terminal API artifact that carries confidence. Phase 3's
 aggregation contract, native-artifact adapters and reproducible CLIs are
 implemented. Phase 2A's pinned Terminal-Bench 2.1 read-only discovery and
 capability inventory are implemented. Phase 2B.1's isolated agent-bridge core
-has synthetic protocol oracles; actual container-only oracle/no-op smoke,
-Harbor verifier integration and full-split execution remain pending. There is
-still no upstream Terminal-Bench score.
+and Phase 2B.2's built-in oracle/no-op smoke contracts have synthetic
+protocol oracles; actual container-only smoke execution, Harbor verifier runs
+and full-split execution remain pending. There is still no upstream
+Terminal-Bench score.
 
 Why: 2026 agentic leaderboards weight long-horizon terminal/repository
 work highest (Artificial Analysis puts agentic coding at 30% of its
@@ -30,7 +31,7 @@ Terminal-Bench-comparable track.
 | Fixed-weight agentic aggregation contract | `helioslm_v5/eval/agentic_index.py` | implemented; toy and trained-candidate runs recorded below |
 | Native run-artifact to component adapters | `helioslm_v5/eval/agentic_adapters.py` | implemented; candidate run evidence remains outside the repo |
 | Terminal-Bench 2.1 read-only task identity and capability inventory | `helioslm_v5/eval/tbench_adapter.py` | Phase 2A implemented; no execution or scoring |
-| Isolated Harbor command/observation agent core | `helioslm_v5/eval/tbench_harbor.py` | Phase 2B.1 synthetic contract only; no container smoke, verifier run or score |
+| Isolated Harbor command/observation agent core and oracle/no-op smoke gates | `helioslm_v5/eval/tbench_harbor.py` | Phase 2B.1/2B.2 synthetic contracts only; no container smoke, verifier run or score |
 
 Remaining gaps against Terminal-Bench-style evaluation: no completed
 container-only Harbor oracle/no-op smoke or full-split execution result; no
@@ -86,6 +87,16 @@ task-set hashes must remain separate.
    Harbor remains lazy-imported. Synthetic fake-environment tests cover DONE,
    invalid replies, budget exhaustion, isolation rejections and observation
    clipping. They do not invoke a verifier and produce no reward or score.
+   Phase 2B.2 adds pure-data contracts for Harbor's built-in `oracle` and
+   `nop` controls: serialized `TrialConfig` values must keep the pinned local
+   task source, disposable environment, task resources and timeout policy;
+   reject model credentials, custom agents/verifiers, mounts and Compose
+   overlays; and require the upstream verifier. Serialized `TrialResult`
+   evidence must be exception-free, retain Harbor's trial name and task
+   checksum, have completed verifier timing and a valid raw reward
+   (`oracle`=1, `nop`=0), retain the resolved image digest,
+   and include hashed `result.json` plus verifier-log artifacts. These checks
+   validate the control contract only and still execute nothing.
 4. Execute only inside an existing disposable container/pod with an isolated
    Harbor runtime. Start with container-only oracle/no-op smoke controls,
    then the pinned full split when that runtime is available. Never expose

@@ -117,10 +117,10 @@ def _empty(value):
 def validate_smoke_config(config, control, task_id):
     """Validate a serialized Harbor TrialConfig for an oracle/no-op control.
 
-    This is a pure data check.  It deliberately excludes model credentials,
-    custom agents/verifiers, extra mounts, Compose overlays and instruction
-    overrides.  Harbor still owns construction and execution in the isolated
-    runtime; calling this function neither imports Harbor nor starts a task.
+    This is a pure data check.  It excludes model credentials, custom imports,
+    mounts, Compose overlays, resource overrides and instruction overrides.
+    Harbor still owns construction and execution; this function neither imports
+    Harbor nor starts a task.
     """
     if control not in ("oracle", "nop"):
         raise HarborBridgeError("smoke control must be oracle or nop")
@@ -136,9 +136,10 @@ def validate_smoke_config(config, control, task_id):
         value = config.get(key, 1.0)
         if type(value) not in (int, float) or value != 1.0:
             raise HarborBridgeError(f"smoke preserves Harbor timeout policy: {key}")
-    if not _empty(config.get("extra_instruction_paths")) or not _empty(
-            config.get("extra_instructions")):
-        raise HarborBridgeError("smoke rejects instruction overrides")
+    for key in ("extra_instruction_paths", "extra_instructions", "artifacts",
+                "override_error_policy"):
+        if not _empty(config.get(key)):
+            raise HarborBridgeError(f"smoke rejects {key}")
 
     task = config.get("task")
     path = task.get("path") if isinstance(task, dict) else None
@@ -158,17 +159,20 @@ def validate_smoke_config(config, control, task_id):
         raise HarborBridgeError(f"smoke requires Harbor's built-in {control} agent")
     if agent.get("import_path") is not None:
         raise HarborBridgeError("smoke rejects custom agent imports")
-    for key in ("model_name", "base_url", "model_api_key_name", "model_api_format"):
+    for key in ("model_name", "base_url", "model_api_key_name",
+                "model_api_format", "bridge"):
         if agent.get(key) is not None:
             raise HarborBridgeError(f"smoke control must not configure {key}")
     if agent.get("skip_model_parsing") is not False:
         raise HarborBridgeError("smoke control must not configure model parsing")
     for key in ("override_timeout_sec", "override_setup_timeout_sec",
                 "max_timeout_sec", "n_concurrent", "concurrency_group",
-                "resume_trajectory", "load_trajectory", "bridge"):
-        if not _empty(agent.get(key)):
+                "resume_trajectory", "load_trajectory"):
+        value = agent.get(key)
+        if value is not None and value is not False:
             raise HarborBridgeError(f"smoke preserves Harbor agent policy: {key}")
-    for key in ("skills", "extra_allowed_hosts", "mcp_servers", "env", "kwargs"):
+    for key in ("skills", "extra_allowed_hosts", "mcp_servers", "env", "kwargs",
+                "include_logs", "exclude_logs"):
         if not _empty(agent.get(key)):
             raise HarborBridgeError(f"smoke agent {key} must be empty")
 
@@ -178,17 +182,20 @@ def validate_smoke_config(config, control, task_id):
     if not isinstance(environment.get("type"), str) or not environment["type"]:
         raise HarborBridgeError("smoke environment needs an explicit Harbor backend")
     if environment.get("import_path") is not None:
-        raise HarborBridgeError("smoke rejects custom environment imports")
+        raise HarborBridgeError("smoke rejects custom environments")
     if environment.get("force_build") is not False:
-        raise HarborBridgeError("smoke preserves the pinned prebuilt image")
-    for key in ("override_cpus", "override_memory_mb", "override_storage_mb",
-                "override_gpus", "override_tpu", "cpu_enforcement_policy",
-                "memory_enforcement_policy"):
-        if not _empty(environment.get(key)):
-            raise HarborBridgeError(f"smoke preserves task resources/policy: {key}")
+        raise HarborBridgeError("smoke must not rebuild a mutable task image")
     if environment.get("stream") is not False:
         raise HarborBridgeError("smoke preserves Harbor streaming policy")
-    for key in ("mounts", "extra_docker_compose", "extra_allowed_hosts", "env", "kwargs"):
+    for key in ("override_cpus", "override_memory_mb", "override_storage_mb",
+                "override_gpus", "override_tpu"):
+        if environment.get(key) is not None:
+            raise HarborBridgeError(f"smoke preserves task resources: {key}")
+    for key in ("cpu_enforcement_policy", "memory_enforcement_policy"):
+        if environment.get(key, "auto") != "auto":
+            raise HarborBridgeError(f"smoke preserves task resources: {key}")
+    for key in ("mounts", "extra_docker_compose", "extra_allowed_hosts", "env",
+                "kwargs"):
         if not _empty(environment.get(key)):
             raise HarborBridgeError(f"smoke environment {key} must be empty")
 
@@ -198,9 +205,10 @@ def validate_smoke_config(config, control, task_id):
     if verifier.get("import_path") is not None:
         raise HarborBridgeError("smoke rejects custom verifier imports")
     for key in ("override_timeout_sec", "max_timeout_sec"):
-        if not _empty(verifier.get(key)):
-            raise HarborBridgeError(f"smoke preserves verifier timeout policy: {key}")
-    for key in ("extra_allowed_hosts", "env", "kwargs"):
+        if verifier.get(key) is not None:
+            raise HarborBridgeError(f"smoke preserves Harbor verifier policy: {key}")
+    for key in ("extra_allowed_hosts", "env", "kwargs", "include_logs",
+                "exclude_logs"):
         if not _empty(verifier.get(key)):
             raise HarborBridgeError(f"smoke verifier {key} must be empty")
     return config
@@ -240,11 +248,11 @@ def build_smoke_report(result, control, inventory_report, task_id, isolation,
                        resolved_image_digest, artifacts, evidence_type):
     """Validate one serialized Harbor TrialResult and preserve raw rewards.
 
-    ``evidence_type`` is deliberately mandatory: synthetic fixtures remain
-    ``synthetic_contract``; only an attested real runtime may supply
-    ``container_only_harness_smoke``.  Oracle requires reward 1 and no-op
-    requires reward 0.  Any exception, missing verifier timing or other reward
-    is a failed smoke gate, never a model score or benchmark aggregate.
+    ``evidence_type`` is mandatory: fixtures remain ``synthetic_contract``;
+    only an attested real runtime may supply ``container_only_harness_smoke``.
+    Oracle requires reward 1 and no-op requires reward 0.  Any exception,
+    missing verifier timing or other reward is a failed harness gate, never a
+    model score or benchmark aggregate.
     """
     if evidence_type not in ("synthetic_contract", "container_only_harness_smoke"):
         raise HarborBridgeError("smoke evidence type must be explicit")
@@ -260,15 +268,15 @@ def build_smoke_report(result, control, inventory_report, task_id, isolation,
         raise HarborBridgeError("smoke needs a resolved sha256 image digest")
     if not isinstance(result, dict) or result.get("schema_version") != 1:
         raise HarborBridgeError("smoke result must be serialized TrialResult schema 1")
+    validate_smoke_config(result.get("config"), control, task_id)
     if result.get("task_name") != task_id:
         raise HarborBridgeError("smoke result task does not match inventory")
-    if not isinstance(result.get("id"), str) or not result["id"]:
-        raise HarborBridgeError("smoke result needs a Harbor trial ID")
     if not isinstance(result.get("trial_name"), str) or not result["trial_name"]:
         raise HarborBridgeError("smoke result needs a Harbor trial name")
     if not isinstance(result.get("task_checksum"), str) or not result["task_checksum"]:
         raise HarborBridgeError("smoke result needs Harbor's task checksum")
-    validate_smoke_config(result.get("config"), control, task_id)
+    if not isinstance(result.get("id"), str) or not result["id"]:
+        raise HarborBridgeError("smoke result needs a Harbor trial ID")
     agent_info = result.get("agent_info")
     if not isinstance(agent_info, dict) or agent_info.get("name") != control:
         raise HarborBridgeError("smoke result used the wrong control agent")
@@ -308,6 +316,8 @@ def build_smoke_report(result, control, inventory_report, task_id, isolation,
         "isolation": asdict(isolation),
         "harbor_api_commit": HARBOR_API_COMMIT,
         "harbor_trial_id": result["id"],
+        "harbor_trial_name": result["trial_name"],
+        "task_checksum": result["task_checksum"],
         "resolved_image_digest": resolved_image_digest,
         "raw_rewards": copy.deepcopy(rewards),
         "expected_reward": expected,

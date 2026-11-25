@@ -41,23 +41,6 @@ def _report():
     }
 
 
-class FakeEnvironment:
-    def __init__(self, results=(), name="good"):
-        self.environment_name = name
-        self.results = list(results)
-        self.calls = []
-
-    async def exec(self, command, **kwargs):
-        self.calls.append((command, kwargs))
-        if not self.results:
-            raise AssertionError("unexpected synthetic exec")
-        return self.results.pop(0)
-
-
-class FakeBaseAgent:
-    pass
-
-
 def _config(control="oracle"):
     return {
         "schema_version": 1,
@@ -67,6 +50,8 @@ def _config(control="oracle"):
         "timeout_multiplier": 1.0,
         "extra_instruction_paths": [],
         "extra_instructions": [],
+        "artifacts": [],
+        "override_error_policy": {},
         "task": {"path": "/pinned/tasks/good", "overwrite": False},
         "agent": {
             "name": control,
@@ -75,7 +60,15 @@ def _config(control="oracle"):
             "base_url": None,
             "model_api_key_name": None,
             "model_api_format": None,
+            "bridge": None,
             "skip_model_parsing": False,
+            "override_timeout_sec": None,
+            "override_setup_timeout_sec": None,
+            "max_timeout_sec": None,
+            "n_concurrent": None,
+            "concurrency_group": None,
+            "resume_trajectory": False,
+            "load_trajectory": None,
             "skills": [],
             "extra_allowed_hosts": [],
             "mcp_servers": [],
@@ -85,9 +78,16 @@ def _config(control="oracle"):
         "environment": {
             "type": "docker",
             "import_path": None,
-            "delete": True,
             "force_build": False,
+            "delete": True,
             "stream": False,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": None,
+            "override_memory_mb": None,
+            "override_storage_mb": None,
+            "override_gpus": None,
+            "override_tpu": None,
             "mounts": None,
             "extra_docker_compose": [],
             "extra_allowed_hosts": [],
@@ -97,9 +97,13 @@ def _config(control="oracle"):
         "verifier": {
             "disable": False,
             "import_path": None,
+            "override_timeout_sec": None,
+            "max_timeout_sec": None,
             "extra_allowed_hosts": [],
             "env": {},
             "kwargs": {},
+            "include_logs": [],
+            "exclude_logs": [],
         },
     }
 
@@ -137,6 +141,23 @@ def _smoke(result, control="oracle", isolation=None, artifacts=None,
         result, control, _report(), "good", isolation or _attestation(),
         "sha256:" + "f" * 64, _artifacts() if artifacts is None else artifacts,
         evidence_type)
+
+
+class FakeEnvironment:
+    def __init__(self, results=(), name="good"):
+        self.environment_name = name
+        self.results = list(results)
+        self.calls = []
+
+    async def exec(self, command, **kwargs):
+        self.calls.append((command, kwargs))
+        if not self.results:
+            raise AssertionError("unexpected synthetic exec")
+        return self.results.pop(0)
+
+
+class FakeBaseAgent:
+    pass
 
 
 def _expect_error(fn, needle):
@@ -275,7 +296,9 @@ def test_smoke_config_rejects_overrides_and_credentials():
         (("install_only", True), "agent and verifier"),
         (("source_trial", {"action": "regrade"}), "regrade"),
         (("timeout_multiplier", 2.0), "timeout policy"),
-        (("extra_instructions", ["ignore the task"]), "instruction overrides"),
+        (("extra_instructions", ["ignore the task"]), "extra_instructions"),
+        (("artifacts", [{"path": "extra.log"}]), "artifacts"),
+        (("override_error_policy", {"agent": "ignore"}), "override_error_policy"),
     )
     for (key, value), needle in invalid:
         config = _config()
@@ -290,18 +313,30 @@ def test_smoke_config_rejects_overrides_and_credentials():
             ("agent", "name", "nop", "built-in oracle"),
             ("agent", "import_path", "custom.Agent", "custom agent"),
             ("agent", "model_api_key_name", "SECRET_KEY", "model_api_key_name"),
-            ("agent", "env", {"API_KEY": "secret"}, "agent env"),
+            ("agent", "skip_model_parsing", True, "model parsing"),
+            ("agent", "override_timeout_sec", 5, "agent policy"),
+            ("agent", "override_timeout_sec", 0, "agent policy"),
+            ("agent", "n_concurrent", 2, "agent policy"),
+            ("agent", "concurrency_group", "shared", "agent policy"),
+            ("agent", "bridge", {"transport": "custom"}, "bridge"),
             ("agent", "load_trajectory", "/host/session.json", "agent policy"),
+            ("agent", "include_logs", ["stdout"], "include_logs"),
+            ("agent", "env", {"API_KEY": "secret"}, "agent env"),
             ("environment", "delete", False, "disposable"),
-            ("environment", "import_path", "custom.Environment", "custom environment"),
-            ("environment", "force_build", True, "prebuilt image"),
-            ("environment", "override_cpus", 8, "task resources"),
+            ("environment", "import_path", "custom.Env", "custom environments"),
+            ("environment", "force_build", True, "rebuild"),
+            ("environment", "stream", True, "streaming policy"),
+            ("environment", "override_cpus", 1, "task resources"),
+            ("environment", "cpu_enforcement_policy", "limit", "task resources"),
+            ("environment", "memory_enforcement_policy", "guarantee", "task resources"),
             ("environment", "mounts", [{"source": "/host"}], "environment mounts"),
             ("environment", "kwargs", {"socket": "/host/docker.sock"},
              "environment kwargs"),
             ("verifier", "disable", True, "upstream verifier"),
             ("verifier", "import_path", "custom.Verifier", "custom verifier"),
-            ("verifier", "override_timeout_sec", 1.0, "verifier timeout"),
+            ("verifier", "override_timeout_sec", 5, "verifier policy"),
+            ("verifier", "max_timeout_sec", 5, "verifier policy"),
+            ("verifier", "include_logs", ["stdout"], "include_logs"),
     ):
         config = _config()
         config[section][key] = value
@@ -319,10 +354,22 @@ def test_smoke_reward_and_artifact_gates():
     assert report["is_benchmark_result"] is False
     assert report["raw_rewards"] == {"reward": 1}
     assert report["expected_reward"] == 1 and report["passed"] is True
+    assert report["harbor_trial_name"] == "good__synthetic"
+    assert report["task_checksum"] == "synthetic-task-checksum"
     assert report["resolved_image_digest"] == "sha256:" + "f" * 64
     assert len(report["artifacts"]) == 2
     report = _smoke(_result("nop", 0), "nop")
     assert report["control"] == "nop" and report["raw_rewards"] == {"reward": 0}
+
+    result = _result()
+    result["task_name"] = "other"
+    _expect_error(lambda: _smoke(result), "does not match inventory")
+    result = _result()
+    result["trial_name"] = ""
+    _expect_error(lambda: _smoke(result), "trial name")
+    result = _result()
+    result["task_checksum"] = ""
+    _expect_error(lambda: _smoke(result), "task checksum")
 
     for result, control, needle in (
             (_result("oracle", 0), "oracle", "expected reward=1"),
@@ -343,6 +390,9 @@ def test_smoke_reward_and_artifact_gates():
     result = _result()
     result["verifier_result"] = {"rewards": None}
     _expect_error(lambda: _smoke(result), "raw Harbor verifier rewards")
+    result = _result()
+    result["config"]["environment"]["mounts"] = [{"source": "/host"}]
+    _expect_error(lambda: _smoke(result), "environment mounts")
     _expect_error(lambda: _smoke(_result(), artifacts=[]), "result and verifier")
     _expect_error(lambda: _smoke(_result(), artifacts=_artifacts()[:1]),
                   "verifier log")
@@ -356,12 +406,6 @@ def test_smoke_reward_and_artifact_gates():
         artifacts = _artifacts()
         artifacts[1 if path.startswith("verifier") else 0]["path"] = path
         _expect_error(lambda a=artifacts: _smoke(_result(), artifacts=a), needle)
-    result = _result()
-    result["config"]["verifier"]["disable"] = True
-    _expect_error(lambda: _smoke(result), "upstream verifier")
-    result = _result()
-    result["task_name"] = "other"
-    _expect_error(lambda: _smoke(result), "does not match")
     print("PASS test_smoke_reward_and_artifact_gates")
 
 
