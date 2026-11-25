@@ -8,8 +8,10 @@ aggregation contract, native-artifact adapters and reproducible CLIs are
 implemented. Phase 2A's pinned Terminal-Bench 2.1 read-only discovery and
 capability inventory are implemented. Phase 2B.1's isolated agent-bridge core
 and Phase 2B.2's built-in oracle/no-op smoke contracts have synthetic
-protocol oracles; actual container-only smoke execution, Harbor verifier runs
-and full-split execution remain pending. There is still no upstream
+protocol oracles. Phase 2C's decontamination ledger and result-integration
+contracts are implemented with synthetic fixtures; actual mixture scanning,
+container-only smoke execution, Harbor verifier runs and full-split execution
+remain pending. There is still no upstream
 Terminal-Bench score.
 
 Why: 2026 agentic leaderboards weight long-horizon terminal/repository
@@ -32,11 +34,12 @@ Terminal-Bench-comparable track.
 | Native run-artifact to component adapters | `helioslm_v5/eval/agentic_adapters.py` | implemented; candidate run evidence remains outside the repo |
 | Terminal-Bench 2.1 read-only task identity and capability inventory | `helioslm_v5/eval/tbench_adapter.py` | Phase 2A implemented; no execution or scoring |
 | Isolated Harbor command/observation agent core and oracle/no-op smoke gates | `helioslm_v5/eval/tbench_harbor.py` | Phase 2B.1/2B.2 synthetic contracts only; no container smoke, verifier run or score |
+| Decontamination ledger and native-run result integration | `helioslm_v5/eval/tbench_integration.py` | Phase 2C synthetic contracts only; no mixture scan, model run or score |
 
 Remaining gaps against Terminal-Bench-style evaluation: no completed
 container-only Harbor oracle/no-op smoke or full-split execution result; no
-multi-step tasks requiring package installs or service orchestration; no
-contamination control against upstream task text.
+real training-mixture scan against the upstream task text; no
+multi-step tasks requiring package installs or service orchestration.
 
 ## Phase 1 — scale the in-house miniature (implemented, no new deps)
 
@@ -107,10 +110,19 @@ task-set hashes must remain separate.
    install verifier dependencies, so the conservative static no-docker gate
    auto-admits 0/89. Any future manually audited no-docker exception is a
    separate custom subset, not a native or full-split result.
-6. Decontaminate task instructions against training mixtures before a
-   candidate rollout; record contaminated IDs explicitly. Run artifacts must
-   retain source/task-set hashes, Harbor and runtime versions, resolved image
-   digests, per-task rewards/failures and all subset/skip identities.
+6. Phase 2C contracts are implemented in
+   `helioslm_v5/eval/tbench_integration.py`. The decontamination ledger keeps
+   every inventory task exactly once; a contaminated task is recorded as
+   excluded with its match evidence and must be skipped with the stable
+   `contaminated` reason — it never silently becomes a zero or leaves the
+   accounting. Native run reports must account for every `eligible_static`
+   row exactly once (scored or skipped with taxonomy reasons); the terminal
+   component descriptor recomputes the mean reward from the scored rows and
+   preserves the source/tree/task-set identity, Harbor identity, resolved
+   image digests and hashed raw artifacts. Identity mismatches between the
+   inventory, decontamination and run reports are hard failures. Synthetic
+   fixtures only: no mixture scan, model rollout, container, verifier or
+   score was executed.
 
 Acceptance: read-only discovery covers the complete pinned set with
 synthetic-fixture tests; native execution preserves Harbor semantics; a full
