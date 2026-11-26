@@ -126,6 +126,74 @@ def test_hdl_rows_envelope_and_oracle():
     print("PASS test_hdl_rows_envelope_and_oracle")
 
 
+def test_term_bench_format_drills():
+    rows = gen.gen_term_bench_format(n_variants=8, seed=7)
+    assert len(rows) == 8
+    tasks = {t["id"]: t for t in term_bench.load_tasks()}
+    for row in rows:
+        assert row["track"] == "term_bench"
+        rec = row["record"]
+        tid = "/".join(rec["id"].split("/")[1:-1])
+        assert tid in tasks
+        kind, value = term_bench.parse_reply(rec["content"])
+        if "/fmt_done_" in rec["id"]:
+            assert kind == "done"
+            assert rec["content"].startswith("DONE confidence=")
+            # The trap-free DONE envelope is the zero-shot complement of
+            # the replay rows: full-history prompts never appear here.
+            assert "Commands so far" not in rec["messages"][0]["content"]
+        else:
+            assert kind == "cmd"
+            assert value == tasks[tid]["solution"][0]
+            assert rec["content"] == f"```bash\n{value}\n```"
+            prompt = rec["messages"][0]["content"]
+            assert prompt == term_bench.render_prompt(tasks[tid], [], 0)
+    # both drill shapes are exercised
+    assert any("/fmt_done_" in r["record"]["id"] for r in rows)
+    assert any("/fmt_first_" in r["record"]["id"] for r in rows)
+    print("PASS test_term_bench_format_drills")
+
+
+def test_hdl_format_drills():
+    rows = gen.gen_hdl_format(n_variants=8, seed=7)
+    assert len(rows) == 8
+    for row in rows:
+        assert row["track"] == "hdl"
+        rec = row["record"]
+        assert rec["messages"][0]["content"] == gen._HDL_SYSTEM
+        user = rec["messages"][1]["content"]
+        assert user.startswith("\nQuestion:\n")
+        assert user.endswith("\n\nAnswer:\n")
+        content = rec["content"]
+        # exactly one protocol shape per reply, and no Markdown fence ever
+        assert "```" not in content
+        begin = "[BEGIN]\n" in content
+        if begin:
+            assert content.startswith("[BEGIN]\n")
+            assert content.endswith("\n[DONE]")
+            body = content[len("[BEGIN]\n"):-len("\n[DONE]")]
+        else:
+            body = content
+        assert "module TopModule" in body
+        assert body.count("endmodule") == 1
+    print("PASS test_hdl_format_drills")
+
+
+def test_format_drills_compose_in_build_dataset():
+    rows, report = gen.build_dataset(n_variants=2, n_recovery=4,
+                                     n_generated=2, n_format=6)
+    assert report["term_bench"]["format_rows"] == 6
+    assert report["hdl"]["format_rows"] == 6
+    base, base_report = gen.build_dataset(n_variants=2, n_recovery=4,
+                                          n_generated=2)
+    assert "format_rows" not in base_report["term_bench"]
+    assert len(rows) == len(base) + 12
+    # n_format=0 preserves the T0 stream exactly
+    assert [r["record"]["id"] for r in rows[:len(base)]] == \
+        [r["record"]["id"] for r in base]
+    print("PASS test_format_drills_compose_in_build_dataset")
+
+
 def test_manifest_matches_written_bytes():
     rows, _ = gen.build_dataset(n_variants=2, n_recovery=4, n_generated=2)
     with tempfile.TemporaryDirectory() as td:
@@ -153,6 +221,9 @@ def test_harness_sft_data_suite():
     test_long_horizon_rows_match_agentloop_shape()
     test_tool_recovery_rows_roundtrip()
     test_hdl_rows_envelope_and_oracle()
+    test_term_bench_format_drills()
+    test_hdl_format_drills()
+    test_format_drills_compose_in_build_dataset()
     test_manifest_matches_written_bytes()
     _pass("test_harness_sft_data_suite",
           "Harness-protocol SFT dataset (T0): five tracks machine-generated "
@@ -161,7 +232,11 @@ def test_harness_sft_data_suite():
           "tool-recovery targets round-trip exactly, the HDL generator "
           "suite is Icarus-gated with no upstream text, and the manifest "
           "SHA-256 matches the written bytes; no model, network, upstream "
-          "benchmark text or teacher API involved")
+          "benchmark text or teacher API involved. T2 weak-track drills: "
+          "zero-shot term_bench first-command/DONE replies re-parse under "
+          "the harness parser, HDL strict-format variants stay fence-free "
+          "with a single module body, and the drill tracks compose into "
+          "build_dataset only when n_format > 0 (T0 stream untouched)")
 
 
 if __name__ == "__main__":
