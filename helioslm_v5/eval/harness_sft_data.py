@@ -97,6 +97,56 @@ def gen_term_bench():
     return rows
 
 
+def gen_term_bench_format(n_variants=64, seed=20261126):
+    """Zero-shot term_bench format drills (T2 weak-track reinforcement).
+
+    T1 format smoke scored term_bench 0/4: every training row embeds the
+    command inside a multi-step replay history, so the model never sees a
+    bare step-1 prompt whose correct reply is a single ```bash block or an
+    immediate DONE. These rows are exactly that: step-1 prompts rendered
+    by the real ``term_bench.render_prompt`` (byte-identical envelope),
+    paired with the protocol-perfect reply. Multi-step prompts with empty
+    history at step > 1 cannot occur in a real episode and are never
+    emitted. Every target re-parses under ``term_bench.parse_reply``.
+    """
+    rng = random.Random(seed)
+    tasks = term_bench.load_tasks()
+    rows = []
+    for i in range(n_variants):
+        task = tasks[rng.randrange(len(tasks))]
+        tid = task["id"]
+        if i % 4 == 3:
+            trap = task.get("trap") or ""
+            user = (
+                "You are operating a bash shell. Your working directory is "
+                "a sandbox that already contains the task's files. "
+                "Complete the task by running shell commands, one per "
+                "reply.\n"
+                "Reply with exactly one command in a ```bash code block. "
+                "When the task is complete, reply with "
+                "'DONE confidence=<p>' where <p> is your probability (0 "
+                "to 1) that the task is solved correctly.\n\n"
+                f"[{tid}/verify, step 1 of {term_bench.MAX_STEPS}]\n"
+                f"Task: {task['instruction']}\n"
+                "All steps of the solution have already been executed in "
+                "the sandbox and the task's own verifier passes.\n")
+            rows.append(_row("term_bench", _chat(
+                f"term_bench/{tid}/fmt_done_{i}", user,
+                "DONE confidence=0.95",
+                "Verifier already passes; the protocol reply is DONE with "
+                "a calibrated confidence, not another command."
+                + (f" Trap avoided: {trap}" if trap else ""))))
+        else:
+            prompt = term_bench.render_prompt(task, [], 0)
+            cmd = task["solution"][0]
+            rows.append(_row("term_bench", _chat(
+                f"term_bench/{tid}/fmt_first_{i}", prompt,
+                f"```bash\n{cmd}\n```",
+                "Step 1 of the scripted solution; exactly one ```bash "
+                "block, nothing else.")))
+    return rows
+
+
 # --------------------------------------------------------------------------
 # track 2: long_horizon single-call tool policy
 
@@ -464,6 +514,49 @@ def _hdl_generated_suite(rng, n):
     return suite
 
 
+def gen_hdl_format(n_variants=64, seed=20261126):
+    """HDL strict-format drills (T2 weak-track reinforcement).
+
+    T1 format smoke scored hdl 1/4. Every drill reuses a generator-suite
+    spec whose design is Icarus-verified by ``gen_hdl`` (the suites share
+    ``_hdl_generated_suite``), but asks for a specific protocol shape:
+    [BEGIN]-only, code-only, no-fence and bare-answer variants. The
+    correct reply always contains exactly the asked shape and nothing
+    else — the failure mode being taught against is emitting explanation
+    text or the wrong envelope around already-correct RTL.
+    """
+    rng = random.Random(seed)
+    pool = list(_HDL_SUITE) + _hdl_generated_suite(rng, n_variants)
+    suffixes = [
+        ("[BEGIN] markers only; do NOT use code fences",
+         lambda code: "[BEGIN]\n" + code.rstrip() + "\n[DONE]",
+         "Strict envelope: [BEGIN]/[DONE], no Markdown fence."),
+        ("the Verilog code only, with no markers and no fences",
+         lambda code: code.rstrip() + "\n",
+         "Code only: no [BEGIN], no fences, no commentary."),
+        ("the answer WITHOUT enclosing it in a Markdown code fence",
+         lambda code: "[BEGIN]\n" + code.rstrip() + "\n[DONE]",
+         "No-fence variant: markers are fine, fences are not."),
+        ("nothing except the completed module",
+         lambda code: code.rstrip() + "\n",
+         "Bare module: the reply is the module text alone."),
+    ]
+    rows = []
+    for i in range(n_variants):
+        rec_id, spec, code, _tb = pool[rng.randrange(len(pool))]
+        ask, render, reasoning = suffixes[i % len(suffixes)]
+        user = ("\nQuestion:\n" + spec.strip() + "\n"
+                "Reply with " + ask + ".\n\nAnswer:\n")
+        rows.append(_row("hdl", {
+            "id": f"{rec_id}/fmt_{i}",
+            "messages": [{"role": "system", "content": _HDL_SYSTEM},
+                         {"role": "user", "content": user}],
+            "content": render(code),
+            "reasoning": reasoning,
+        }))
+    return rows
+
+
 def gen_hdl(n_generated=24, seed=20261126):
     rng = random.Random(seed)
     suite = list(_HDL_SUITE) + _hdl_generated_suite(rng, n_generated)
@@ -532,12 +625,15 @@ def gen_grounded_chat():
 # assembly
 
 def build_dataset(seed=20261126, n_variants=30000, n_recovery=8000,
-                  n_generated=1000):
+                  n_generated=1000, n_format=0):
     """Build all tracks; returns (rows, report).
 
     The defaults land at ~99k rows for the T0 dataset while keeping every
     row oracle-checked (Icarus for HDL when the simulator is installed).
     Tests pass much smaller sizes so the suite stays fast.
+
+    ``n_format=0`` keeps the exact T0 byte stream; pass a positive count
+    (T2: 512) to append the term_bench/hdl strict-format drill tracks.
     """
     rows, report = [], {}
     tb = gen_term_bench()
@@ -555,6 +651,13 @@ def build_dataset(seed=20261126, n_variants=30000, n_recovery=8000,
     gc = gen_grounded_chat()
     rows += gc
     report["grounded_chat"] = {"rows": len(gc)}
+    if n_format:
+        tbf = gen_term_bench_format(n_variants=n_format, seed=seed)
+        rows += tbf
+        report["term_bench"]["format_rows"] = len(tbf)
+        hdlf = gen_hdl_format(n_variants=n_format, seed=seed)
+        rows += hdlf
+        report["hdl"]["format_rows"] = len(hdlf)
     report["total_rows"] = len(rows)
     return rows, report
 
