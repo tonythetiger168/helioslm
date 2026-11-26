@@ -274,7 +274,7 @@ GPU hours are quoted for an A100 80GB (US$1.1–2.75/hr) with an RTX 4090
 |---|---|---|---|---|
 | T0 | US$0 (CPU sandbox) | Generate the five-track protocol dataset (~100k rows: term_bench bash, long-horizon policy, tool-recovery repair, Verilog spec-to-RTL, grounded-chat retention), manifest SHA-256, format/decontamination validation in CI | training-ready `harness_sft` dataset | validation suite green and merged |
 | T1 | ~US$5 | 5% subset smoke run (1 epoch): loss curve, no NaN, checkpoint save/load, eval hook | smoke checkpoint (never scored) | loss decreases monotonically |
-| T2 | ~US$15 | full 1 epoch on ~47M tokens | first testable candidate | ≥2 tracks non-zero; otherwise fix data, not budget |
+| T2 | ~US$1–2 expected, US$25 hard cap | full 1 epoch (~176k rows, ~27M tokens at the T1-observed average) = ~5,560 steps at 32 rows/step | first testable candidate | ≥2 tracks non-zero; otherwise fix data, not budget |
 | T3 | ~US$30 | 3 epochs + full Agentic Index + GroundingGate regression check | first **measured** trained-candidate index | index clearly above toy floor (≥3 tracks non-zero), GroundingGate holds 9/12 + 3 abstentions ±1, parse rate ≥95% |
 | T4 | US$50 hard cap | one full re-run after infrastructure failure only | — | stop and report at the cap; no auto-renewal |
 | T5+ | by proposal | mixture/lr ablations, 1B/1–2B-token Stage 2 pilot (US$100–300), Stage 2 proper (US$300–3,000), 7B from-scratch (US$15k–45k), frontier scale (US$0.5M+) | — | each tier is separately proposed and authorized |
@@ -323,11 +323,19 @@ replays always embed commands in multi-step history, which T1 showed is
 not enough to elicit the zero-shot protocol); `gen_hdl_format` re-pairs
 Icarus-verified suite specs with strict-envelope replies ([BEGIN]-only /
 code-only / no-fence / bare-module variants, never a Markdown fence).
-Every drill target re-parses under its harness parser. T2 mixture (~178k
-rows): T0 full 99,134 + ~1,024 format drills + ~76k replay (≥40%), one
-epoch max, warm start from the T1 r2 checkpoint (sha256 `d6f7444b…` in
-the private HF dataset). T2 pod run still requires explicit tier
-approval before any spend.
+Every drill target re-parses under its harness parser. T2 mixture
+(~176k rows): T0 full 99,134 + 1,024 format drills (`n_format=512`) +
+~76k replay (43%, hard floor 40%), warm start from the T1 r2 checkpoint
+(sha256 `d6f7444b…` in the private HF dataset). **Step arithmetic
+(corrected 2026-11-27):** at micro 8 × accum 4 = 32 rows/step, one
+epoch over ~176k rows is **~5,560 steps** — an earlier 20k-step draft
+figure was 3.6 epochs and violated the one-epoch limit. At the T1 r2
+measured rate (200 steps in 91.3 s on an RTX 4090), one epoch trains in
+~45–90 min including checkpoint IO and eval, ~US$1–2 at US$0.89/h; the
+US$25 cap stands as rerun buffer. Execution order: step 0 (free, CPU)
+weak-track failure classification on the r2 checkpoint, then a single
+one-epoch run. T2 pod run still requires explicit approval before any
+spend.
 
 Data boundaries: all T0 rows are machine-generated from in-repo harness
 oracles — no upstream Terminal-Bench text, no teacher API, no external
