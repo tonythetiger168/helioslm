@@ -300,6 +300,35 @@ involved; the dataset itself lands outside the repo (results are
 git-ignored). T1 (smoke run) and above still need explicit authorization
 and a GPU budget.
 
+**T1 smoke completed (2026-11-27, ~US$0.23 total, pod deleted).** Two
+rounds on an RTX 4090 against `mid_sft_v5.33`: r1 trained on harness rows
+only and FAILED the grounded-chat regression gate (9/12 → 6/12 with three
+wrong answers); r2 added 3,200 mid original-SFT replay rows (40%) and
+PASSED (loss 7.86 → 0.74 over 200 steps, checkpoint reload finite,
+grounded 9/12 + 3 abstained before and after — no regression). Format
+smoke on r2: long_horizon 4/4, tool_recovery 3/4, grounded_chat 3/4,
+**hdl 1/4, term_bench 0/4**. The replay and eval sets share one toy
+generator (different seeds), so the 9/12 proves *no regression*, not
+capability. Lessons now hard requirements: replay ≥40% of any mixture,
+grounded regression is a hard gate, and the hdl/term_bench format tracks
+needed reinforcement.
+
+**T2 weak-track format drills (synthetic/generator data only,
+2026-11-27).** `harness_sft_data.py` gains two opt-in builders behind
+`build_dataset(n_format=...)` (default 0, so the T0 byte stream is
+unchanged): `gen_term_bench_format` emits zero-shot drills — step-1
+prompts rendered by the real `term_bench.render_prompt` paired with the
+first scripted command, plus verifier-passed DONE envelopes (the T0
+replays always embed commands in multi-step history, which T1 showed is
+not enough to elicit the zero-shot protocol); `gen_hdl_format` re-pairs
+Icarus-verified suite specs with strict-envelope replies ([BEGIN]-only /
+code-only / no-fence / bare-module variants, never a Markdown fence).
+Every drill target re-parses under its harness parser. T2 mixture (~178k
+rows): T0 full 99,134 + ~1,024 format drills + ~76k replay (≥40%), one
+epoch max, warm start from the T1 r2 checkpoint (sha256 `d6f7444b…` in
+the private HF dataset). T2 pod run still requires explicit tier
+approval before any spend.
+
 Data boundaries: all T0 rows are machine-generated from in-repo harness
 oracles — no upstream Terminal-Bench text, no teacher API, no external
 corpus. Decontamination against upstream task text still runs through the
