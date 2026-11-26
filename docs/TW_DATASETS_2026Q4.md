@@ -20,7 +20,7 @@ print(dataset_info("ikala/tmmluplus").card_data.license)
 | `lianghsun/Taiwan_c4` | Twinkle AI | ? | CC BY-NC-ND 4.0 | **否**（ND 能否訓練有疑義） | |
 | `yentinglin/zh_TW_c4` | Yen-Ting Lin | ? | [未驗證] | ? | |
 | `lianghsun/cosmopedia-zhtw` | Twinkle AI | 進行中 | 卡片兩處說法衝突 | 不明 | 合成資料 |
-| FineWeb-zhtw（ROCLING 2024） | 聯發科研究院等 | ? | [未驗證] | ? | HF id 未找到 |
+| FineWeb-zhtw（ROCLING 2024） | 台灣參考模型團隊等 | ? | [未驗證] | ? | HF id 未找到 |
 | 教育部《重編國語辭典修訂本》 | 教育部 | 約 16 萬詞條 | [未驗證] | 存疑 | |
 | 中研院平衡語料庫 | 中研院 | 約 1000 萬詞 | 付費授權 | **否** | 不可再散布 |
 | PTT／Dcard | — | — | 無合法散布的 dump | **否** | |

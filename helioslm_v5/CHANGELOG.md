@@ -1,5 +1,11 @@
 # HeliosLM v5 Changelog
 
+## v5.276 (2026-11-26) - docs: neutral source name in TW_DATASETS_2026Q4
+
+- `docs/TW_DATASETS_2026Q4.md`: the FineWeb-zhtw row's source column now
+  reads 「台灣參考模型團隊等」 instead of an organization name. One cell
+  changed; the rest of the file is untouched.
+
 ## v5.275 (2026-11-23) - CHANGELOG catch-up for #285-#294 (Agentic Index, calibration, review-plan closure)
 
 No code change in this release: it records ten merges that landed after
