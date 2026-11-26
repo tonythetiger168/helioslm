@@ -572,11 +572,11 @@ As of 2026-10-31:
 
 The last five releases; every earlier release is in [CHANGELOG.md](https://github.com/tonythetiger168/helioslm/blob/main/helioslm_v5/CHANGELOG.md).
 
+- **v5.276** — CHANGELOG catch-up for #296–#318 (agentic candidate run, Harbor smoke contracts, T0 harness SFT data builder, CLAUDE.md); no code change
 - **v5.275** — CHANGELOG catch-up for #285–#294 (Agentic Index contract and adapters, verified-outcome confidence recalibration, review-plan closure oracles); no code change
 - **v5.274** — three more sidecar suites folded into the daily gate (OS6 MoE config table, T121 API-teacher distillation, T106 gpt-oss clamped SwiGLU; 104 folded / 108 exempt); test_calibrated_prefetcher triaged, stays exempt for now (~47 s training loops too slow for the gate)
 - **v5.273** — five more sidecar suites folded into the daily gate (T12 attn-res oracles, longctx needle probes, T39 grounded replay, T35 RLCD head, v5.42 mini-bench harness; 98 folded / 114 exempt); test_option_matrix triaged, stays exempt for now (465-combo pairwise matrix too slow for the gate)
 - **v5.272** — H4 reward false-accept audit (deterministic mutants, optional Yosys formal equivalence), KL-anchored H4 RL controls, 50-task terminal eval
-- **v5.271** — five more sidecar suites folded into the daily gate (v5.23 agent layer, SWE gates, SWE agent RL, tool-call recovery, deep harness wiring; 91 folded / 121 exempt); test_term_bench triaged, stays exempt (binds 127.0.0.1)
 
 ## License
 

@@ -1,5 +1,46 @@
 # HeliosLM v5 Changelog
 
+## v5.276 (2026-11-26) - CHANGELOG catch-up for #296-#318 (agentic candidate run, Harbor contracts, T0 SFT data, CLAUDE.md)
+
+No code change in this release: it records the merges that landed after
+v5.275 without a CHANGELOG entry or a version bump (#311 is an issue,
+not a PR).
+
+- #296 agentic candidate-run results stay out of the public repo.
+- #297 README: version history lists the actual last five releases.
+- #302 Phase 3 trained-candidate run: mid_sft_v5.33 (360M BPE chat-SFT)
+  on the five agentic tracks, index 0.000000, with OOD analysis and a
+  grounded-chat control (docs/AGENTIC_MID_CANDIDATE.md).
+- #303 docs/ROADMAP_2026Q4_V2: improvement plan; v1 technical details
+  superseded, strategy unchanged.
+- #304 examples/k31_reference_run.py: external reference row through the
+  same five-track interfaces, per-call cost accounting, $1 abort, key
+  fingerprint only; labelled as an external measurement and never mixed
+  into our own Agentic Index.
+- #305 long_horizon policy prompt uses the compact tool-call form, so
+  strict-parser rejections no longer end every episode.
+- #306 deps: torch 2.14.1 -> 2.15.0, numpy 2.5.4 -> 2.5.5 (single pin).
+- #307 refactor: DecodeStrategy owns the use_mtp x thinking_budget
+  exclusion; generate() keeps a compatible facade, default path
+  bit-identical; four oracle sidecars folded into the daily gate.
+- #308 Route A offline four-protocol distillation pipeline with
+  eval-disjoint data, verified outcomes and decontam export gates.
+- #309 docs: Terminal-Bench Phase 2 feasibility and Harbor-native route.
+- #310 eval: pinned read-only Terminal-Bench 2.1 inventory (no native
+  execution or scoring).
+- #312 Harbor agent bridge core with isolation and native-inventory
+  gates (synthetic-tested).
+- #313 Harbor oracle / no-op smoke contracts (pinned task source,
+  no-credential, image-digest and hashed-artifact gates).
+- #314 stricter Harbor smoke contract gates (identity checks so a
+  numeric 0 cannot pass as empty, TrialResult identity fields required).
+- #315 Phase 2C decontamination ledger and result integration
+  (synthetic contracts).
+- #316 Phase 3.5 T0 harness-protocol SFT dataset builder, oracles wired
+  into the agentic adapter gate; generated datasets are kept out of the
+  repo.
+- #318 CLAUDE.md: PR, version, test-location and public-text rules.
+
 ## v5.275 (2026-11-23) - CHANGELOG catch-up for #285-#294 (Agentic Index, calibration, review-plan closure)
 
 No code change in this release: it records ten merges that landed after
