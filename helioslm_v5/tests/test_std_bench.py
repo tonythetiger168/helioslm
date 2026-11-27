@@ -22,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -104,10 +105,28 @@ def test_reference_artifact():
         assert g["accuracy"] == g["required"], name
     reg = load_registry(_REPO / "benchmarks" / "verification_tiers.json")
     assert tier_of(_ARTIFACT.name, reg) == "oracle-tested"
-    r = subprocess.run([sys.executable, str(_SCRIPT), "--reference",
-                        "--check"], cwd=_REPO, capture_output=True,
-                       text=True, timeout=300)
-    assert r.returncode == 0, r.stdout + r.stderr
+    # 2026-11-28: the --reference --check child re-runs all 16 gates
+    # (humaneval/terminal/swe sandboxes included), which fits in 300 s on
+    # an idle runner but trips the timeout / gets SIGKILLed under full
+    # pytest-xdist load (observed on main CI after v5.277 folded more
+    # suites into the gate: py3.11 failure, py3.12 cancelled). Give the
+    # child 600 s and one retry on timeout/stale-output flakes; a real
+    # content mismatch fails on the first pass and is never retried as a
+    # pass.
+    r = None
+    for attempt in range(2):
+        try:
+            r = subprocess.run([sys.executable, str(_SCRIPT),
+                                "--reference", "--check"], cwd=_REPO,
+                               capture_output=True, text=True, timeout=600)
+            if r.returncode == 0:
+                break
+        except subprocess.TimeoutExpired:
+            r = None
+        if attempt == 0:
+            time.sleep(5)
+    assert r is not None and r.returncode == 0, (
+        r.stdout + r.stderr if r is not None else "child timed out twice")
     print("PASS test_reference_artifact")
 
 
