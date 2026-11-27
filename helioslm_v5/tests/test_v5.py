@@ -486,6 +486,11 @@ TESTS = [
     case_upstream_suites.test_csa_learned_suite,
     case_upstream_suites.test_csa_learned_h64_suite,
     case_upstream_suites.test_kv_compress_suite,
+    # limitations round (2026-11-27): T15 stage-A real-model oracles
+    # (attn-res bitwise gate, sparse_top_k decode oracle, toy-checkpoint
+    # agent-loop smoke) and the T34 task grammar table/env agreement.
+    case_upstream_suites.test_v5_stage_a_suite,
+    case_upstream_suites.test_task_grammar_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 

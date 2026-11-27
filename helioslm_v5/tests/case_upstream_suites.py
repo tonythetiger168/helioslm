@@ -1134,6 +1134,11 @@ def test_kv_cache_analytic_suite():
 # test_csa_learned (T93), test_csa_learned_h64 (T94) and
 # test_kv_compress (T23) moved from EXEMPT to FOLDED — the backlog is
 # now 97 files.
+# 2026-11-27 limitations round: test_v5_stage_a (T15 real-model
+# integration oracles: attn-res bitwise gate, sparse_top_k decode
+# oracle, toy-checkpoint agent-loop smoke; ~3.2 s warm) and
+# test_task_grammar (T34 task grammar; ~0.0 s) moved from EXEMPT to
+# FOLDED — the backlog is now 95 files.
 # OpenAI-compatible stream smoke (serving/openai_stream_smoke.py):
 # test_openai_stream_smoke is exempt for the same reason as test_hsh_web.
 # It binds 127.0.0.1 through ThreadingHTTPServer on an ephemeral port and
@@ -1325,6 +1330,10 @@ FOLDED_SIDECARS = {
     "test_csa_learned": "test_csa_learned_suite",
     "test_csa_learned_h64": "test_csa_learned_h64_suite",
     "test_kv_compress": "test_kv_compress_suite",
+    # limitations round 2026-11-27: T15 stage-A real-model oracles /
+    # T34 task grammar (both zero-fixture plain functions)
+    "test_v5_stage_a": "test_v5_stage_a_suite",
+    "test_task_grammar": "test_task_grammar_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1363,7 +1372,6 @@ EXEMPT_SIDECARS = {
     'test_repo_longctx',
     'test_rtllm_bench', 'test_selfgen_meta',
     'test_smebu_sandwich', 'test_std_bench', 'test_swarm_parallel',
-    'test_task_grammar',
     'test_term_bench',
     'test_toy_bpe', 'test_trust_gate', 'test_trust_gate_clarify',
     'test_trust_gate_v2', 'test_tw_bench', 'test_uvm_bench', 'test_v110_github_pg',
@@ -1372,7 +1380,7 @@ EXEMPT_SIDECARS = {
     'test_v119_voice_ui_drive', 'test_v120_dna', 'test_v121_science', 'test_v122_crypto_cloud',
     'test_v123_spatial', 'test_v13_mid_model', 'test_v14_qwen', 'test_v15_math',
     'test_v16_code', 'test_v17_ic', 'test_v18_agent_plugins', 'test_v19_common',
-    'test_v19_extended', 'test_v533_mid', 'test_v5_cases', 'test_v5_stage_a',
+    'test_v19_extended', 'test_v533_mid', 'test_v5_cases',
     'test_web_ui', 'test_web_ui_v2', 'test_zh_tokenizer_coverage',
     'test_zh_train_speed',
 }
@@ -3376,6 +3384,54 @@ def test_kv_compress_suite():
         getattr(m, name)()
     _pass("test_kv_compress_suite",
           "T23 KV compress: all 4 sidecar tests under the daily gate")
+
+
+# 2026-11-27 limitations round: two more zero-flag sidecars folded into
+# the daily gate. Both are plain functions — no pytest import, no
+# fixtures, no sockets, no subprocess. Measured warm on CPU
+# (2026-11-27): test_v5_stage_a ~3.2 s (the T15a real-model build
+# dominates), test_task_grammar ~0.0 s. test_task_grammar inserts
+# helioslm_v5/agent on sys.path itself (same self-contained pattern as
+# test_review_fixes); the bare `envs`/`task_grammar` module names do not
+# collide with anything else in the gate.
+
+
+def test_v5_stage_a_suite():
+    """T15 stage-A real-model integration oracles under the daily gate:
+    T15a zero-init attn_res_gate is bitwise identical to
+    use_attention_residuals=False on the real model; T15b DSA
+    sparse_top_k decode oracle (k >= kv_len bit-identical to dense;
+    k < kv_len greedy-answer parity with the flip count reported, not
+    asserted); T15c the v5.23 agent loop driven by the committed
+    checkpoints/toy_v5.13.pt, where PARSE_ERROR recovery is the
+    expected path (the toy checkpoint is not tool-trained) and only
+    escaping exceptions fail."""
+    from helioslm_v5.tests import test_v5_stage_a as m
+    expected = {"test_t15a_attnres_zero_gate_bitwise",
+                "test_t15b_sparse_topk_decode_oracle",
+                "test_t15c_agent_loop_real_checkpoint_smoke"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_v5_stage_a_suite",
+          "T15 stage-A: all 3 sidecar tests (attn-res bitwise gate, "
+          "sparse_top_k decode oracle, toy-checkpoint agent-loop smoke) "
+          "under the daily gate")
+
+
+def test_task_grammar_suite():
+    """T34 task grammar oracles under the daily gate: render/parse
+    roundtrip identity for all 9 specs, cross-kind contamination
+    refusals, agreement with the live env generators (the real
+    consumers), and the echo kind."""
+    from helioslm_v5.tests import test_task_grammar as m
+    expected = {"test_roundtrip_identity", "test_no_cross_contamination",
+                "test_agrees_with_env_generators", "test_echo_kind"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_task_grammar_suite",
+          "T34 task grammar: all 4 sidecar tests under the daily gate")
 
 
 def test_sidecar_coverage_guard():
