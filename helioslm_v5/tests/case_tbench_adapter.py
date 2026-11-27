@@ -41,10 +41,17 @@ def _task(root, task_id="good", config=_BASE):
     base = Path(root) / task_id
     (base / "environment").mkdir(parents=True)
     (base / "tests").mkdir()
-    (base / "task.toml").write_text(config, encoding="utf-8")
-    (base / "instruction.md").write_text(_INSTRUCTION, encoding="utf-8")
-    (base / "environment" / "Dockerfile").write_text(_DOCKERFILE, encoding="utf-8")
-    (base / "tests" / "test.sh").write_text(_TEST, encoding="utf-8")
+    # 2026-11-27 (v5.277): write bytes, not text — Path.write_text uses
+    # newline=None, which translates \n to \r\n on Windows and inflates
+    # the on-disk task.toml from 238 to 255 bytes. The adapter hashes
+    # file bytes, so a CRLF-inflated fixture mismatches the descriptor
+    # digests computed from the same strings in memory. write_bytes
+    # keeps the fixture byte-identical on every platform.
+    (base / "task.toml").write_bytes(config.encode("utf-8"))
+    (base / "instruction.md").write_bytes(_INSTRUCTION.encode("utf-8"))
+    (base / "environment" / "Dockerfile").write_bytes(
+        _DOCKERFILE.encode("utf-8"))
+    (base / "tests" / "test.sh").write_bytes(_TEST.encode("utf-8"))
     return base
 
 

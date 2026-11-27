@@ -22,7 +22,36 @@ import copy
 import sys
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    # This file is also executed directly by the daily TESTS suite
+    # (case_upstream_suites), where pytest is not installed. The shim
+    # covers exactly the two pytest features used below: raises (a
+    # context manager asserting the exception type) and
+    # mark.parametrize (an identity decorator — the daily-gate wrapper
+    # iterates the hoisted case lists below with their full contents).
+    import contextlib as _contextlib
+
+    class _Mark:
+        @staticmethod
+        def parametrize(*_args, **_kwargs):
+            return lambda f: f
+
+    class _PytestShim:
+        mark = _Mark()
+
+        @staticmethod
+        @_contextlib.contextmanager
+        def raises(exc, match=None):
+            try:
+                yield
+            except exc:
+                return
+            raise AssertionError(f"{exc.__name__} was not raised")
+
+    pytest = _PytestShim()
+
 import torch
 import torch.nn.functional as F
 
@@ -36,6 +65,14 @@ from helioslm_v5.src.attention.linear_attention import (  # noqa: E402
 from helioslm_v5.src.model_v5 import HeliosLMv5  # noqa: E402
 
 K3 = dict(enabled=True, style="k3", per_channel_decay=True, short_conv_kernel=4)
+
+# Parametrized case lists live at module level so the daily-gate wrapper
+# (case_upstream_suites.test_kda_k3_style_suite) iterates exactly the
+# cases pytest would run — same pattern as MODES/CASES in
+# test_moe_batched_dispatch.
+REFERENCE_CHUNKS = [0, 8]
+LAYOUTS = ["plain", "mask", "packed"]
+DECAY_CHUNK_SUBS = [(7, 16), (32, 5), (128, 16)]
 
 
 def _cfg(**hybrid):
@@ -97,7 +134,7 @@ def _reference(m, x):
     return m.o_proj(o.reshape(B, T, H * D)), S
 
 
-@pytest.mark.parametrize("chunk", [0, 8])
+@pytest.mark.parametrize("chunk", REFERENCE_CHUNKS)
 def test_matches_llamacpp_reference(chunk):
     m = _layer(chunk)
     x = torch.randn(2, 37, m.hidden_size)
@@ -115,7 +152,7 @@ def _fwd(m, x, **kw):
     return y.detach(), present, x.grad, [p.grad for p in m.parameters()]
 
 
-@pytest.mark.parametrize("layout", ["plain", "mask", "packed"])
+@pytest.mark.parametrize("layout", LAYOUTS)
 def test_chunked_matches_loop(layout):
     a = _layer(0)
     b = copy.deepcopy(a)
@@ -155,7 +192,7 @@ def test_prefill_then_decode():
     assert torch.allclose(full, torch.cat(steps, 1), atol=1e-5)
 
 
-@pytest.mark.parametrize("chunk,sub", [(7, 16), (32, 5), (128, 16)])
+@pytest.mark.parametrize("chunk,sub", DECAY_CHUNK_SUBS)
 def test_decay_first_chunk_fp64(chunk, sub):
     g = torch.Generator().manual_seed(3)
     B, H, T, D = 2, 3, 90, 8

@@ -1,5 +1,13 @@
-# HeliosLM v5.275 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.277 - DeepSeek/K3-Style Architecture
 
+v5.277 (2026-11-27): four more zero-fixture sidecars folded into the
+mandated daily gate (test_calibrated_router/T30, test_csa_learned/T93,
+test_csa_learned_h64/T94, test_kv_compress/T23; 116 folded / 97 exempt,
+TESTS 232, ~27 s combined on CPU). Also fixes the gate's exit code for
+nested _pass rows (a fully green run exits 0 again), the tbench adapter
+fixture's CRLF byte inflation on Windows (write_bytes), and the
+terminal-eval sandbox PATH (git lives in /mingw64/bin, outside the
+pinned /usr/bin set).
 v5.275 (2026-11-23): CHANGELOG catch-up for #285-#294 (Agentic
 Index contract and adapters, outcome calibration, review-plan closure
 oracles); no code change.

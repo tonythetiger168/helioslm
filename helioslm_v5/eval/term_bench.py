@@ -715,6 +715,14 @@ def _sandbox_path():
     w = shutil.which("python3")
     if w:
         cands.append(os.path.dirname(os.path.abspath(w)))
+    # 2026-11-27 (v5.277): also expose git inside the sandbox. The pinned
+    # minimal PATH covers Git Bash's /usr/bin, but git.exe itself lives
+    # in /mingw64/bin, so any task shelling out to git failed with exit
+    # 127 — observed 2026-11-26 as term/32: "bash: line 1: git: command
+    # not found" (1/32 term tasks red before this fix).
+    g = shutil.which("git")
+    if g:
+        cands.append(os.path.dirname(os.path.abspath(g)))
     cands.append(os.path.dirname(os.path.abspath(sys.executable)))
     extra = []
     for d in cands:

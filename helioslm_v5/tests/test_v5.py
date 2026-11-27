@@ -473,6 +473,19 @@ TESTS = [
     # layer oracle (the use_mtp x thinking_budget exclusion moved to
     # inference/decode_strategy.py; default path bit-identical).
     case_upstream_suites.test_decode_strategy_suite,
+    # limitations round (2026-11-26): T137 KDA kimi-k3-style layer
+    # oracles (full fold, 12 parametrized cases, ~0.8 s) and the T17
+    # stage-B checkpoint eval (checkpoint uncommitted -> the loud-SKIP
+    # contract and the agent-stack import chain are what the gate pins).
+    case_upstream_suites.test_kda_k3_style_suite,
+    case_upstream_suites.test_v5_stage_b_suite,
+    # daily-maintenance round (2026-11-27): four more zero-flag sidecars
+    # folded — T30 calibrated router, T93/T94 learned CSA compressors and
+    # the T23 KV-cache compressor (~24 s combined on CPU).
+    case_upstream_suites.test_calibrated_router_suite,
+    case_upstream_suites.test_csa_learned_suite,
+    case_upstream_suites.test_csa_learned_h64_suite,
+    case_upstream_suites.test_kv_compress_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 
@@ -521,7 +534,14 @@ def main():
     for name, ok in RESULTS:
         if not ok:
             print(f"  FAILED: {name}")
-    sys.exit(0 if n_ok == len(RESULTS) == len(TESTS) else 1)
+    # v5.277 exit-code fix (2026-11-27): suite wrappers emit nested
+    # _pass rows, so a fully green run has len(RESULTS) > len(TESTS)
+    # (review_closure: 5 rows / 1 entry; agentic_adapters: 5 rows / 1
+    # entry via its four sub-suite calls — surplus +8 at TESTS=232).
+    # The old `n_ok == len(RESULTS) == len(TESTS)` chain therefore
+    # exited 1 even when every row passed. Require every recorded row
+    # green and at least one row per registered test instead.
+    sys.exit(0 if n_ok == len(RESULTS) >= len(TESTS) else 1)
 
 
 if __name__ == "__main__":

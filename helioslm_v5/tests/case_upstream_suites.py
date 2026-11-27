@@ -1120,6 +1120,20 @@ def test_kv_cache_analytic_suite():
 # cross-section builds; the full 465-combo matrix stays in pytest) and
 # test_calibrated_prefetcher (T40; training tests at states=20 smoke
 # sizes) moved from EXEMPT to FOLDED — the backlog is now 106 files.
+# 2026-11-26 limitations round: test_kda_k3_style (T137 KDA layer in
+# llama.cpp's kimi-k3 graph style; gained the in-file pytest shim —
+# raises / mark.parametrize — and its three parametrized lists were
+# hoisted to module level so the wrapper iterates exactly the cases
+# pytest runs; 12 cases, ~0.8 s warm) and test_v5_stage_b (T17
+# tool-tuned checkpoint end-to-end eval; the checkpoint is a local,
+# never-committed artifact, so the gate pins the loud-SKIP contract and
+# re-pins the v5.23 agent-stack import chain daily, ~1.8 s warm — the
+# 11.4 s standalone figure was the cold torch import the gate already
+# pays) moved from EXEMPT to FOLDED — the backlog is now 101 files.
+# 2026-11-27 daily-maintenance round: test_calibrated_router (T30),
+# test_csa_learned (T93), test_csa_learned_h64 (T94) and
+# test_kv_compress (T23) moved from EXEMPT to FOLDED — the backlog is
+# now 97 files.
 # OpenAI-compatible stream smoke (serving/openai_stream_smoke.py):
 # test_openai_stream_smoke is exempt for the same reason as test_hsh_web.
 # It binds 127.0.0.1 through ThreadingHTTPServer on an ephemeral port and
@@ -1298,6 +1312,19 @@ FOLDED_SIDECARS = {
     "test_indexer_share": "test_indexer_share_suite",
     "test_mla_every": "test_mla_every_suite",
     "test_k3_block": "test_k3_block_suite",
+    # limitations round 2026-11-26: T137 KDA kimi-k3-style layer (in-file
+    # shim, hoisted parametrized lists) / T17 stage-B checkpoint eval
+    # (loud-SKIP contract while the checkpoint stays uncommitted)
+    "test_kda_k3_style": "test_kda_k3_style_suite",
+    "test_v5_stage_b": "test_v5_stage_b_suite",
+    # daily-maintenance round 2026-11-27 (v5.277): T30 calibrated
+    # router / T93 CSA learned compressor / T94 hidden-64 compressor /
+    # T23 kv-compress causality (re-applied after the 2026-11-26 run was
+    # clobbered by a concurrent instance before its commit)
+    "test_calibrated_router": "test_calibrated_router_suite",
+    "test_csa_learned": "test_csa_learned_suite",
+    "test_csa_learned_h64": "test_csa_learned_h64_suite",
+    "test_kv_compress": "test_kv_compress_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1306,8 +1333,6 @@ FOLDED_SIDECARS = {
 EXEMPT_SIDECARS = {
     'test_async_grpo',
     'test_bench_quant',
-    'test_calibrated_router',
-    'test_csa_learned', 'test_csa_learned_h64',
     'test_cuda_device_paths', 'test_cuda_smoke', 'test_custom_attention_notebook',
     'test_cvdp_bench',
     'test_device_matrix',
@@ -1320,8 +1345,8 @@ EXEMPT_SIDECARS = {
     'test_hsh_mcp',
     'test_hsh_skills',
     'test_hsh_web',
-    'test_k3_llamacpp_parts', 'test_kda_chunked', 'test_kda_k3_style', 'test_kda_subchunk',
-    'test_kv_compress', 'test_kv_share', 'test_llamacpp_export', 'test_llamacpp_kimi_k3',
+    'test_k3_llamacpp_parts', 'test_kda_chunked', 'test_kda_subchunk',
+    'test_kv_share', 'test_llamacpp_export', 'test_llamacpp_kimi_k3',
     'test_llamacpp_tokenizer', 'test_lm_decision_head', 'test_lm_harness', 'test_logit_kd',
     'test_longctx_harness',
     'test_midtrain',
@@ -1348,7 +1373,7 @@ EXEMPT_SIDECARS = {
     'test_v123_spatial', 'test_v13_mid_model', 'test_v14_qwen', 'test_v15_math',
     'test_v16_code', 'test_v17_ic', 'test_v18_agent_plugins', 'test_v19_common',
     'test_v19_extended', 'test_v533_mid', 'test_v5_cases', 'test_v5_stage_a',
-    'test_v5_stage_b', 'test_web_ui', 'test_web_ui_v2', 'test_zh_tokenizer_coverage',
+    'test_web_ui', 'test_web_ui_v2', 'test_zh_tokenizer_coverage',
     'test_zh_train_speed',
 }
 
@@ -3201,6 +3226,156 @@ def test_calibrated_prefetcher_suite():
     _pass("test_calibrated_prefetcher_suite",
           "T40 calibrated prefetcher: all 3 sidecar tests under the "
           "daily gate (training tests at states=20 smoke sizes)")
+
+
+# ---------------------------------------------------------------------------
+# limitations round (2026-11-26): fold two more exempt-backlog sidecars
+# named by the 2026-11-22 daily report's triage candidates.
+# test_kda_k3_style (T137) is a full fold, not a smoke subset: all 12
+# parametrized cases run in ~0.8 s warm (measured 2026-11-26 on this
+# tree), so no slimming was needed. The file gained the in-file pytest
+# shim (raises / mark.parametrize — exactly the features it uses) and
+# its three parametrized lists moved to module level (REFERENCE_CHUNKS /
+# LAYOUTS / DECAY_CHUNK_SUBS) so the wrapper iterates exactly what pytest
+# runs. test_v5_stage_b (T17) imports no pytest and needs no fixtures;
+# its checkpoint is a local, never-committed artifact, so the gate pins
+# the loud-SKIP contract explicitly (and the full eval's own asserts
+# decide the day a checkpoint appears).
+# ---------------------------------------------------------------------------
+
+
+def test_kda_k3_style_suite():
+    """T137 KDA layer in llama.cpp's kimi-k3 graph style under the daily
+    gate: all 7 sidecar tests with their full parametrized lists —
+    config validation, equality with the independent llama.cpp-graph
+    reference at chunk 0/8, chunked == per-token loop (outputs, cache,
+    input and parameter gradients) over plain/mask/packed layouts,
+    chunked prefill then per-token decode == one-shot forward, fp64
+    decay-first chunked_delta_rule == sequential over 3 chunk/sub pairs,
+    the ~0.982 initial decay, and model-level chunk parity."""
+    from helioslm_v5.tests import test_kda_k3_style as m
+    expected = {"test_config", "test_matches_llamacpp_reference",
+                "test_chunked_matches_loop", "test_prefill_then_decode",
+                "test_decay_first_chunk_fp64", "test_initial_decay",
+                "test_model_level"}
+    _drift_guard(m, expected)
+    m.test_config()
+    for chunk in m.REFERENCE_CHUNKS:
+        m.test_matches_llamacpp_reference(chunk)
+    for layout in m.LAYOUTS:
+        m.test_chunked_matches_loop(layout)
+    m.test_prefill_then_decode()
+    for chunk, sub in m.DECAY_CHUNK_SUBS:
+        m.test_decay_first_chunk_fp64(chunk, sub)
+    m.test_initial_decay()
+    m.test_model_level()
+    _pass("test_kda_k3_style_suite",
+          "T137 KDA kimi-k3 style: all 7 sidecar tests (12 parametrized "
+          "cases) under the daily gate")
+
+
+def test_v5_stage_b_suite():
+    """T17 Stage-B tool-tuned checkpoint end-to-end verification under
+    the daily gate. checkpoints/tool_tuned_v5.27.pt is a local artifact
+    (built by examples/train_tool_tuned.py, never committed), so both
+    arms are pinned explicitly: checkpoint absent -> the test must print
+    its loud SKIP line and return before touching the model; checkpoint
+    present -> the full dense (+ optional sparse) agent-loop eval runs
+    and its own floor asserts decide. Either way the import resolution
+    of the whole v5.23 agent chain (envs / gate / loop / tools /
+    trajectory / model) is re-pinned daily — the measurable value of
+    this fold while the checkpoint is absent; a typo'd module path
+    would previously have passed the gate unnoticed."""
+    import contextlib
+    import io
+    from helioslm_v5.tests import test_v5_stage_b as m
+    expected = {"test_t17_tool_tuned_checkpoint_end_to_end"}
+    _drift_guard(m, expected)
+    ckpt = Path(m.__file__).resolve().parent.parent.parent / \
+        "checkpoints" / "tool_tuned_v5.27.pt"
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        m.test_t17_tool_tuned_checkpoint_end_to_end()
+    out = buf.getvalue()
+    if ckpt.exists():
+        assert "PASS test_t17_tool_tuned_checkpoint_end_to_end" in out, \
+            "checkpoint present but the T17 eval did not reach its PASS line"
+        arm = "full eval ran (checkpoint present)"
+    else:
+        assert "SKIP test_t17" in out, \
+            "checkpoint absent but the loud SKIP line was not printed"
+        arm = "checkpoint absent: loud-SKIP contract pinned"
+    _pass("test_v5_stage_b_suite", f"T17 stage-B checkpoint eval: {arm}")
+
+
+# 2026-11-27 daily-maintenance round: four more zero-flag sidecars folded
+# into the daily gate. All take no pytest fixtures (plain functions, no
+# tmp_path/monkeypatch/capsys), so each wrapper is a straight
+# drift-guard + call-through. Wall-clock on this machine (2026-11-27,
+# CPU): calibrated_router ~18s (the pi-warden forward is the heavy
+# one), csa_learned ~4s, csa_learned_h64 ~2s, kv_compress ~0.1s —
+# ~24s combined.
+
+
+def test_calibrated_router_suite():
+    """T30 calibrated inference router under the daily gate: all four
+    sidecar tests as-is."""
+    from helioslm_v5.tests import test_calibrated_router as m
+    expected = {"test_head_serves_gate_decisions",
+                "test_pi_warden_one_forward",
+                "test_escalate_and_unregistered_loud",
+                "test_continuous_uncertainty_readout"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_calibrated_router_suite",
+          "T30 calibrated router: all 4 sidecar tests under the daily "
+          "gate")
+
+
+def test_csa_learned_suite():
+    """T93 learned CSA compressor under the daily gate: all five
+    sidecar tests as-is."""
+    from helioslm_v5.tests import test_csa_learned as m
+    expected = {"test_fresh_learned_is_mean",
+                "test_pool_weights_are_masked_softmax",
+                "test_entries_and_causality",
+                "test_gradients_and_validation",
+                "test_committed_artifact_slice"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_csa_learned_suite",
+          "T93 learned CSA: all 5 sidecar tests under the daily gate")
+
+
+def test_csa_learned_h64_suite():
+    """T94 hidden-64 learned CSA variant under the daily gate: all
+    three sidecar tests as-is."""
+    from helioslm_v5.tests import test_csa_learned_h64 as m
+    expected = {"test_committed_slice_reevaluates",
+                "test_oracle_ceiling_recomputes",
+                "test_check_needs_artifact_sizes"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_csa_learned_h64_suite",
+          "T94 h64 CSA: all 3 sidecar tests under the daily gate")
+
+
+def test_kv_compress_suite():
+    """T23 KV-cache compressor under the daily gate: all four sidecar
+    tests as-is."""
+    from helioslm_v5.tests import test_kv_compress as m
+    expected = {"test_shapes_and_grads",
+                "test_causality_within_and_across_chunks",
+                "test_compression_slot_counts",
+                "test_topk_selection_size"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_kv_compress_suite",
+          "T23 KV compress: all 4 sidecar tests under the daily gate")
 
 
 def test_sidecar_coverage_guard():

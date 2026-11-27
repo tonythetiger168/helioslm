@@ -1,5 +1,43 @@
 # HeliosLM v5 Changelog
 
+## v5.277 (2026-11-27) - four more sidecar folds, gate exit-code fix, two Windows harness fixes
+
+Daily-maintenance release. Note on process: the 2026-11-26 working tree
+carried this same fold set plus these fixes under the v5.276 number and
+passed both gates locally, but a concurrent automation instance overwrote
+the tree before the commit, and upstream's own v5.276 (#319) landed
+instead. That work is re-applied here on top of #320, together with the
+concurrent instance's completed-but-uncommitted fold of
+test_kda_k3_style (T137) and test_v5_stage_b (T17), which this tree
+adopted and verified.
+
+Test folds (TESTS 228 -> 232; sidecar backlog 101 -> 97):
+
+- test_calibrated_router (T30), test_csa_learned (T93),
+  test_csa_learned_h64 (T94) and test_kv_compress (T23) moved from
+  EXEMPT to FOLDED in case_upstream_suites.py. All sixteen sidecar
+  tests are plain zero-fixture functions; each wrapper is a drift-guard
+  plus call-through. Measured wall-clock on CPU (2026-11-27): 19.5s /
+  4.7s / 2.4s / 0.2s respectively, ~27s combined.
+
+Fixes:
+
+- tests/test_v5.py main() exit code: suite wrappers emit nested _pass
+  rows, so a fully green run has len(RESULTS) > len(TESTS)
+  (review_closure 5 rows / 1 entry, agentic_adapters 5 rows / 1 entry;
+  surplus +8 at TESTS=232). The old
+  `n_ok == len(RESULTS) == len(TESTS)` chain exited 1 even when every
+  row passed. Now `n_ok == len(RESULTS) >= len(TESTS)`.
+- tests/case_tbench_adapter.py _task(): write fixture files with
+  write_bytes instead of write_text. Path.write_text(newline=None)
+  translates \n to \r\n on Windows, inflating task.toml from 238 to
+  255 bytes and breaking the byte-hash descriptor digests.
+- eval/term_bench.py _sandbox_path(): append the directory of
+  shutil.which("git") on Windows. The pinned minimal PATH covers Git
+  Bash's /usr/bin but git.exe lives in /mingw64/bin, so term/32 failed
+  with exit 127 ("bash: line 1: git: command not found"); observed
+  2026-11-26, re-verified 2026-11-27.
+
 ## v5.276 (2026-11-26) - CHANGELOG catch-up for #296-#318 (agentic candidate run, Harbor contracts, T0 SFT data, CLAUDE.md)
 
 No code change in this release: it records the merges that landed after
