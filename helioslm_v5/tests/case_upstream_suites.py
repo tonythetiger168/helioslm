@@ -1146,6 +1146,13 @@ def test_kv_cache_analytic_suite():
 # terminal UI / auto driving) moved from EXEMPT to FOLDED — all plain
 # zero-fixture functions, ~3.2 s combined on CPU (the T57 pair pays
 # 3.2 s; the other three are sub-0.1 s) — the backlog is now 91 files.
+# 2026-11-28 limitations round: test_v16_code (T48 code-execution
+# sandbox plugin) and test_v117_swarm (T59 leader-worker swarm plugin)
+# moved from EXEMPT to FOLDED — ~0.06 s combined — the backlog is now
+# 89 files. test_v14_qwen was triaged and stays EXEMPT: with a qwen/
+# checkout present (as on the dev host) it loads a real 0.6B model and
+# generates, which is far outside the gate's budget; without one it is
+# a pure loud-SKIP, so folding it would pin nothing on CI either.
 # OpenAI-compatible stream smoke (serving/openai_stream_smoke.py):
 # test_openai_stream_smoke is exempt for the same reason as test_hsh_web.
 # It binds 127.0.0.1 through ThreadingHTTPServer on an ephemeral port and
@@ -1348,6 +1355,10 @@ FOLDED_SIDECARS = {
     "test_v114_blender_omi": "test_v114_blender_omi_suite",
     "test_v115_benchmark": "test_v115_benchmark_suite",
     "test_v119_voice_ui_drive": "test_v119_voice_ui_drive_suite",
+    # limitations round 2026-11-28: T48 code-sandbox plugin / T59 swarm
+    # plugin (both zero-fixture plain functions)
+    "test_v16_code": "test_v16_code_suite",
+    "test_v117_swarm": "test_v117_swarm_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1390,10 +1401,10 @@ EXEMPT_SIDECARS = {
     'test_toy_bpe', 'test_trust_gate', 'test_trust_gate_clarify',
     'test_trust_gate_v2', 'test_tw_bench', 'test_uvm_bench', 'test_v110_github_pg',
     'test_v111_office', 'test_v113_media',
-    'test_v116_robot', 'test_v117_swarm', 'test_v118_robot_slam_vision',
+    'test_v116_robot', 'test_v118_robot_slam_vision',
     'test_v120_dna', 'test_v121_science', 'test_v122_crypto_cloud',
     'test_v123_spatial', 'test_v13_mid_model', 'test_v14_qwen', 'test_v15_math',
-    'test_v16_code', 'test_v17_ic', 'test_v18_agent_plugins', 'test_v19_common',
+    'test_v17_ic', 'test_v18_agent_plugins', 'test_v19_common',
     'test_v19_extended', 'test_v533_mid', 'test_v5_cases',
     'test_web_ui', 'test_web_ui_v2', 'test_zh_tokenizer_coverage',
     'test_zh_train_speed',
@@ -3509,6 +3520,44 @@ def test_v119_voice_ui_drive_suite():
     _pass("test_v119_voice_ui_drive_suite",
           "T61 voice/UI/drive plugins: all 3 sidecar tests under the "
           "daily gate")
+
+
+# 2026-11-28 limitations round: two more harness-plugin smoke sidecars
+# folded into the daily gate, same zero-fixture shape as the T54–T61
+# round above (combined ~0.06 s warm on this machine). Honest note:
+# test_v16_code's sandbox test asserts only that the result dict HAS a
+# "file_env_ok" key — with the scripted confab model the value is
+# deterministically False on every host (the confab answers calc/finish
+# instead of doing file work). The fold keeps the upstream oracle as-is;
+# strengthening that assertion is a separate, explicitly out-of-scope
+# change.
+
+
+def test_v16_code_suite():
+    """T48 code-execution sandbox harness plugin under the daily gate:
+    both sidecar tests as-is (plugin registration; the confab-driven
+    file-env run — see the note above about its weak upstream
+    assertion)."""
+    from helioslm_v5.tests import test_v16_code as m
+    expected = {"test_code_execution_sandbox", "test_code_plugin_registers"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_v16_code_suite",
+          "T48 code sandbox plugin: both sidecar tests under the daily "
+          "gate")
+
+
+def test_v117_swarm_suite():
+    """T59 multi-agent swarm (leader-worker + blackboard) harness
+    plugin under the daily gate: both sidecar tests as-is."""
+    from helioslm_v5.tests import test_v117_swarm as m
+    expected = {"test_swarm_spawn_and_delegate", "test_swarm_blackboard"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_v117_swarm_suite",
+          "T59 swarm plugin: both sidecar tests under the daily gate")
 
 
 def test_sidecar_coverage_guard():

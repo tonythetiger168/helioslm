@@ -499,6 +499,10 @@ TESTS = [
     case_upstream_suites.test_v114_blender_omi_suite,
     case_upstream_suites.test_v115_benchmark_suite,
     case_upstream_suites.test_v119_voice_ui_drive_suite,
+    # limitations round (2026-11-28): T48 code-sandbox plugin and T59
+    # leader-worker swarm plugin smoke oracles (~0.06 s combined).
+    case_upstream_suites.test_v16_code_suite,
+    case_upstream_suites.test_v117_swarm_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 
