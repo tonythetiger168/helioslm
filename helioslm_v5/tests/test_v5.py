@@ -491,6 +491,14 @@ TESTS = [
     # agent-loop smoke) and the T34 task grammar table/env agreement.
     case_upstream_suites.test_v5_stage_a_suite,
     case_upstream_suites.test_task_grammar_suite,
+    # daily-maintenance round (2026-11-28): four harness-plugin smoke
+    # sidecars folded — T54 niche (MCP/tmux/everything), T56
+    # blender/omi, T57 benchmark+report, T61 voice/UI/drive
+    # (~3.2 s combined on CPU).
+    case_upstream_suites.test_v112_niche_suite,
+    case_upstream_suites.test_v114_blender_omi_suite,
+    case_upstream_suites.test_v115_benchmark_suite,
+    case_upstream_suites.test_v119_voice_ui_drive_suite,
     case_upstream_suites.test_sidecar_coverage_guard,
 ]
 

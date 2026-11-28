@@ -1,5 +1,36 @@
 # HeliosLM v5 Changelog
 
+## v5.278 (2026-11-28) - four harness-plugin sidecar folds (T54/T56/T57/T61)
+
+Daily-maintenance release. TESTS 234 -> 238; sidecar backlog 95 -> 91.
+
+Bookkeeping note: four merges landed on 2026-11-27 after v5.277 without
+a CHANGELOG entry or version bump; recording them here for the audit
+trail.
+
+- #320 Phase 3.5 T2 weak-track format drills for the harness SFT
+  builder.
+- #321 docs: T2 sizing corrected to one epoch = ~5,560 steps, single
+  run.
+- limitations round (a4f6427): test_v5_stage_a (T15 real-model
+  integration oracles) and test_task_grammar (T34) folded into the
+  daily gate, TESTS 232 -> 234.
+- #322 CI: std_bench reference artifact regenerated for the v5.277
+  term_bench.py sandbox-PATH change; check hardened against xdist
+  loads.
+
+Test folds (all plain zero-fixture functions, drift-guard +
+call-through wrappers; measured on CPU 2026-11-28, ~3.2 s combined,
+the T57 benchmark pair dominating):
+
+- test_v112_niche (T54 niche harness plugins: MCP wizard, tmux,
+  everything-search; the tmux test self-skips loudly when tmux is
+  absent).
+- test_v114_blender_omi (T56 blender/omi harness plugins).
+- test_v115_benchmark (T57 benchmark + report harness plugins).
+- test_v119_voice_ui_drive (T61 voice dialog / terminal UI /
+  auto-drive harness plugins).
+
 ## v5.277 (2026-11-27) - four more sidecar folds, gate exit-code fix, two Windows harness fixes
 
 Daily-maintenance release. Note on process: the 2026-11-26 working tree

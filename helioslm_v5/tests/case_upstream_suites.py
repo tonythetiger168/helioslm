@@ -1139,6 +1139,13 @@ def test_kv_cache_analytic_suite():
 # oracle, toy-checkpoint agent-loop smoke; ~3.2 s warm) and
 # test_task_grammar (T34 task grammar; ~0.0 s) moved from EXEMPT to
 # FOLDED — the backlog is now 95 files.
+# 2026-11-28 daily-maintenance round: test_v112_niche (T54 niche
+# plugins: MCP wizard / tmux / everything-search), test_v114_blender_omi
+# (T56 blender/omi plugins), test_v115_benchmark (T57 benchmark +
+# report plugins) and test_v119_voice_ui_drive (T61 voice dialog /
+# terminal UI / auto driving) moved from EXEMPT to FOLDED — all plain
+# zero-fixture functions, ~3.2 s combined on CPU (the T57 pair pays
+# 3.2 s; the other three are sub-0.1 s) — the backlog is now 91 files.
 # OpenAI-compatible stream smoke (serving/openai_stream_smoke.py):
 # test_openai_stream_smoke is exempt for the same reason as test_hsh_web.
 # It binds 127.0.0.1 through ThreadingHTTPServer on an ephemeral port and
@@ -1334,6 +1341,13 @@ FOLDED_SIDECARS = {
     # T34 task grammar (both zero-fixture plain functions)
     "test_v5_stage_a": "test_v5_stage_a_suite",
     "test_task_grammar": "test_task_grammar_suite",
+    # daily-maintenance round 2026-11-28 (v5.278): T54 niche plugins /
+    # T56 blender+omi plugins / T57 benchmark+report plugins /
+    # T61 voice+UI+drive plugins (all zero-fixture plain functions)
+    "test_v112_niche": "test_v112_niche_suite",
+    "test_v114_blender_omi": "test_v114_blender_omi_suite",
+    "test_v115_benchmark": "test_v115_benchmark_suite",
+    "test_v119_voice_ui_drive": "test_v119_voice_ui_drive_suite",
 }
 
 # Pre-guard legacy backlog (2026-11-02 snapshot), NOT yet triaged for
@@ -1375,9 +1389,9 @@ EXEMPT_SIDECARS = {
     'test_term_bench',
     'test_toy_bpe', 'test_trust_gate', 'test_trust_gate_clarify',
     'test_trust_gate_v2', 'test_tw_bench', 'test_uvm_bench', 'test_v110_github_pg',
-    'test_v111_office', 'test_v112_niche', 'test_v113_media', 'test_v114_blender_omi',
-    'test_v115_benchmark', 'test_v116_robot', 'test_v117_swarm', 'test_v118_robot_slam_vision',
-    'test_v119_voice_ui_drive', 'test_v120_dna', 'test_v121_science', 'test_v122_crypto_cloud',
+    'test_v111_office', 'test_v113_media',
+    'test_v116_robot', 'test_v117_swarm', 'test_v118_robot_slam_vision',
+    'test_v120_dna', 'test_v121_science', 'test_v122_crypto_cloud',
     'test_v123_spatial', 'test_v13_mid_model', 'test_v14_qwen', 'test_v15_math',
     'test_v16_code', 'test_v17_ic', 'test_v18_agent_plugins', 'test_v19_common',
     'test_v19_extended', 'test_v533_mid', 'test_v5_cases',
@@ -3432,6 +3446,69 @@ def test_task_grammar_suite():
         getattr(m, name)()
     _pass("test_task_grammar_suite",
           "T34 task grammar: all 4 sidecar tests under the daily gate")
+
+
+# 2026-11-28 daily-maintenance round: four harness-plugin smoke
+# sidecars folded into the daily gate. All are plain zero-fixture
+# functions, so each wrapper is a straight drift-guard + call-through.
+# Wall-clock on this machine (2026-11-28, CPU): v115_benchmark ~3.2 s
+# (the benchmark pair scores three retrievers), the other three are
+# sub-0.1 s — ~3.2 s combined.
+
+
+def test_v112_niche_suite():
+    """T54 niche harness plugins (MCP wizard / tmux / everything-search)
+    under the daily gate: all three sidecar tests as-is. The tmux test
+    self-skips loudly when tmux is not installed."""
+    from helioslm_v5.tests import test_v112_niche as m
+    expected = {"test_everything_search", "test_mcp_stub",
+                "test_tmux_or_skip"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_v112_niche_suite",
+          "T54 niche plugins: all 3 sidecar tests under the daily gate")
+
+
+def test_v114_blender_omi_suite():
+    """T56 blender/omi harness plugins under the daily gate: all three
+    sidecar tests as-is."""
+    from helioslm_v5.tests import test_v114_blender_omi as m
+    expected = {"test_blender_gen_script", "test_blender_run_or_missing",
+                "test_omi_stub"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_v114_blender_omi_suite",
+          "T56 blender/omi plugins: all 3 sidecar tests under the daily "
+          "gate")
+
+
+def test_v115_benchmark_suite():
+    """T57 benchmark + report harness plugins under the daily gate: both
+    sidecar tests as-is."""
+    from helioslm_v5.tests import test_v115_benchmark as m
+    expected = {"test_benchmark_summary", "test_report_gen"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_v115_benchmark_suite",
+          "T57 benchmark plugins: both sidecar tests under the daily "
+          "gate")
+
+
+def test_v119_voice_ui_drive_suite():
+    """T61 voice dialog / terminal UI / auto-drive harness plugins under
+    the daily gate: all three sidecar tests as-is."""
+    from helioslm_v5.tests import test_v119_voice_ui_drive as m
+    expected = {"test_autodrive_sim", "test_terminal_ui",
+                "test_voice_dialog_turn"}
+    _drift_guard(m, expected)
+    for name in sorted(expected):
+        getattr(m, name)()
+    _pass("test_v119_voice_ui_drive_suite",
+          "T61 voice/UI/drive plugins: all 3 sidecar tests under the "
+          "daily gate")
 
 
 def test_sidecar_coverage_guard():

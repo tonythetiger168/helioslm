@@ -1,5 +1,11 @@
-# HeliosLM v5.277 - DeepSeek/K3-Style Architecture
+# HeliosLM v5.278 - DeepSeek/K3-Style Architecture
 
+v5.278 (2026-11-28): four harness-plugin smoke sidecars folded into
+the mandated daily gate (test_v112_niche/T54, test_v114_blender_omi/T56,
+test_v115_benchmark/T57, test_v119_voice_ui_drive/T61; 122 folded /
+91 exempt, TESTS 238, ~3.2 s combined on CPU). The entry also records
+the four 2026-11-27 interim merges that landed without a CHANGELOG
+entry (#320, #321, the T15/T34 fold, #322).
 v5.277 (2026-11-27): four more zero-fixture sidecars folded into the
 mandated daily gate (test_calibrated_router/T30, test_csa_learned/T93,
 test_csa_learned_h64/T94, test_kv_compress/T23; 116 folded / 97 exempt,
